@@ -1,13 +1,31 @@
 const { Pool } = require('pg');
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgres://pinuy_admin:pinuy_secure_2024@faithful-comfort.railway.internal:5432/pinuy_binuy';
+let poolConfig;
 
-console.log(`[pool] DATABASE_URL defined: ${!!process.env.DATABASE_URL}`);
-console.log(`[pool] SSL: ${process.env.DATABASE_SSL}`);
+if (process.env.DATABASE_URL) {
+  console.log('[pool] Using DATABASE_URL');
+  poolConfig = {
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  };
+} else {
+  const host = process.env.PGHOST || 'localhost';
+  const port = process.env.PGPORT || 5432;
+  const database = process.env.PGDATABASE || 'pinuy_binuy';
+  const user = process.env.PGUSER || 'pinuy_admin';
+  console.log(`[pool] Using individual params - host: ${host}, port: ${port}, db: ${database}`);
+  poolConfig = {
+    host,
+    port: parseInt(port),
+    database,
+    user,
+    password: process.env.PGPASSWORD || 'pinuy_secure_2024',
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  };
+}
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  ...poolConfig,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
