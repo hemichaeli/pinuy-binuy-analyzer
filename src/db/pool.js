@@ -2,10 +2,12 @@ const { Pool } = require('pg');
 
 let poolConfig;
 
-if (process.env.DATABASE_URL) {
-  console.log('[pool] Using DATABASE_URL');
+const dbUrl = process.env.DATABASE_URL;
+
+if (dbUrl && dbUrl.length > 10) {
+  console.log(`[pool] Using DATABASE_URL (${dbUrl.substring(0, 20)}...)`);
   poolConfig = {
-    connectionString: process.env.DATABASE_URL,
+    connectionString: dbUrl,
     ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
   };
 } else {
@@ -13,16 +15,19 @@ if (process.env.DATABASE_URL) {
   const port = process.env.PGPORT || 5432;
   const database = process.env.PGDATABASE || 'pinuy_binuy';
   const user = process.env.PGUSER || 'pinuy_admin';
-  console.log(`[pool] Using individual params - host: ${host}, port: ${port}, db: ${database}`);
+  const password = process.env.PGPASSWORD || 'pinuy_secure_2024';
+  console.log(`[pool] Using individual params - host: ${host}, port: ${port}, db: ${database}, user: ${user}`);
   poolConfig = {
     host,
     port: parseInt(port),
     database,
     user,
-    password: process.env.PGPASSWORD || 'pinuy_secure_2024',
+    password,
     ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
   };
 }
+
+console.log('[pool] SSL:', process.env.DATABASE_SSL === 'true' ? 'enabled' : 'disabled');
 
 const pool = new Pool({
   ...poolConfig,
