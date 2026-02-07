@@ -151,67 +151,49 @@ const ALL_PROJECTS = [
   { slug: 'as_hashoftim', name: 'השופטים', city: 'אשדוד', region: 'דרום', addresses: 'רחוב השופטים', planned_units: 160, status: 'planning' },
 
   // ========== HAIFA AREA (23) ==========
-  // Kiryat Eliezer
   { slug: 'hf_rotschild', name: 'רוטשילד (קריית אליעזר)', city: 'חיפה', region: 'חיפה', addresses: 'רוטשילד 22-34', planned_units: 760, developer: 'דוניץ-אלעד', status: 'approved' },
   { slug: 'hf_hachotrim', name: 'החותרים (קריית אליעזר)', city: 'חיפה', region: 'חיפה', addresses: 'אלנבי, רוטשילד, החותרים, דרור', planned_units: 503, developer: 'דוניץ-אלעד', status: 'deposited', deposit_date: '2025-11-01' },
   { slug: 'hf_hagana_yoav', name: 'הגנה/יואב (קריית אליעזר)', city: 'חיפה', region: 'חיפה', addresses: 'פינת הגנה ויואב', planned_units: 474, developer: 'קרדן נדל"ן', status: 'deposited', deposit_date: '2024-07-01' },
   { slug: 'hf_mitcham_11', name: 'מתחם 11 (קריית אליעזר)', city: 'חיפה', region: 'חיפה', addresses: 'גדנ"ע 2-8, צה"ל 33-45, אלנבי 132-150, עמל 22-33', planned_units: 667, developer: 'אלמוגים החזקות', status: 'pre_deposit' },
   { slug: 'hf_mitcham_12', name: 'מתחם 12 (קריית אליעזר)', city: 'חיפה', region: 'חיפה', addresses: 'בין אלנבי לצה"ל', planned_units: 970, developer: 'רייק נדל"ן', status: 'pre_deposit' },
   { slug: 'hf_mitcham_13', name: 'מתחם 13 (קריית אליעזר)', city: 'חיפה', region: 'חיפה', addresses: 'גדנ"ע, נח"ל, צה"ל', planned_units: 950, status: 'pre_deposit' },
-  // Kiryat Eliyahu
   { slug: 'hf_yafo_ta', name: 'יפו-תל אביב (קריית אליהו)', city: 'חיפה', region: 'חיפה', addresses: 'יפו 147-155א, רודנר 3-15, ת"א 28-44א', planned_units: 760, status: 'pre_deposit' },
-  // Kiryat Shprintzak
   { slug: 'hf_struma', name: 'סטרומה (קריית שפרינצק)', city: 'חיפה', region: 'חיפה', addresses: 'שכונת קריית שפרינצק - 65 דונם', existing_units: 557, planned_units: 2407, developer: 'ICR', status: 'pre_deposit', area_dunam: 65 },
-  // Hadar
   { slug: 'hf_masada', name: 'מסדה', city: 'חיפה', region: 'חיפה', addresses: 'רחוב מסדה, הדר', planned_units: 450, status: 'pre_deposit' },
   { slug: 'hf_herzl_hadar', name: 'הרצל (הדר)', city: 'חיפה', region: 'חיפה', addresses: 'רחוב הרצל, הדר', planned_units: 380, status: 'planning' },
-  // Neve Shaanan
   { slug: 'hf_neve_shaanan', name: 'נווה שאנן', city: 'חיפה', region: 'חיפה', addresses: 'שכונת נווה שאנן', planned_units: 520, status: 'planning' },
-  // Haifa Bay
   { slug: 'hf_check_post', name: 'צ\'ק פוסט', city: 'חיפה', region: 'חיפה', addresses: 'אזור צ\'ק פוסט', planned_units: 600, status: 'planning' },
-  // Yehoshafat
   { slug: 'hf_yehoshafat', name: 'יהושפט המלך', city: 'חיפה', region: 'חיפה', addresses: 'רחוב יהושפט המלך - 12.7 דונם, 7 מבני שיכון', existing_units: 102, planned_units: 361, developer: 'א.פ.י נתיב פיתוח', status: 'pre_deposit', area_dunam: 12.7 },
   { slug: 'hf_azorim', name: 'אזורים', city: 'חיפה', region: 'חיפה', addresses: 'חיפה', planned_units: 1000, developer: 'אזורים', status: 'pre_deposit' },
-  // Bat Galim
   { slug: 'hf_bat_galim', name: 'תוכנית כוללת בת גלים', city: 'חיפה', region: 'חיפה', addresses: 'שכונת בת גלים - 31 דונם', existing_units: 178, planned_units: 725, status: 'approved', area_dunam: 31 },
   { slug: 'hf_aliya2_20', name: 'העלייה השנייה 20', city: 'חיפה', region: 'חיפה', addresses: 'רחוב העלייה השנייה 20', existing_units: 82, planned_units: 309, developer: 'קרסו נדל"ן + א.ד. חבצלת', status: 'planning' },
-  // Shaar HaAliya
   { slug: 'hf_saadia', name: 'סעדיה-פז', city: 'חיפה', region: 'חיפה', addresses: 'רחוב אצ"ל, אנקוה, ברוך הכהן, סעדיה פז', existing_units: 184, planned_units: 800, developer: 'נקסט אורבן', status: 'planning' },
   { slug: 'hf_yetziat_europa', name: 'יציאת אירופה', city: 'חיפה', region: 'חיפה', planned_units: 126, status: 'planning' },
-  // Kiryat Haim
   { slug: 'hf_khaim_west', name: 'קריית חיים מערבית', city: 'חיפה', region: 'חיפה', addresses: 'שכונות טרומן, דגניה, ורבורג', existing_units: 2100, planned_units: 6600, status: 'planning' },
   { slug: 'hf_dganya_khaim', name: 'דגניה (קריית חיים)', city: 'חיפה', region: 'חיפה', addresses: 'רחוב דגניה 57-69', existing_units: 140, planned_units: 630, developer: 'אלמוגים + W GROUP', status: 'planning' },
-  // Additional Haifa
   { slug: 'hf_ramat_vizhnitz', name: 'רמת ויז\'ניץ', city: 'חיפה', region: 'חיפה', planned_units: 400, status: 'planning' },
   { slug: 'hf_kiryat_haim_east', name: 'קריית חיים מזרחית', city: 'חיפה', region: 'חיפה', planned_units: 350, status: 'planning' },
   { slug: 'hf_neve_david', name: 'נווה דוד', city: 'חיפה', region: 'חיפה', planned_units: 300, status: 'planning' },
 
   // ========== OTHER CITIES ==========
-  // Nesher
   { slug: 'ns_central', name: 'מתחם מרכזי', city: 'נשר', region: 'חיפה', planned_units: 1900, status: 'planning' },
-  // Krayot
   { slug: 'kr_yoseftal', name: 'יוספטל צפון (ק/440)', city: 'קריות', region: 'חיפה', addresses: 'רחוב יוספטל (חלק צפוני)', existing_units: 88, planned_units: 449, status: 'planning' },
-  // Hadera
   { slug: 'hd_eli_cohen', name: 'שכונת אלי כהן', city: 'חדרה', region: 'שרון', addresses: 'שכונת אלי כהן', status: 'planning' },
-  // Jerusalem
   { slug: 'jr_gonen', name: 'מעגלי יבנה (גוננים)', city: 'ירושלים', region: 'ירושלים', addresses: 'שכונת גוננים', developer: 'אשדר / הרשות להתחדשות', status: 'planning' },
   { slug: 'jr_armon', name: 'ארמון הנציב', city: 'ירושלים', region: 'ירושלים', addresses: 'שכונת ארמון הנציב', planned_units: 950, developer: 'מידר', status: 'planning' },
   { slug: 'jr_katamonim', name: 'קטמונים', city: 'ירושלים', region: 'ירושלים', addresses: 'שכונת קטמונים', planned_units: 287, developer: 'בית ירושלמי', status: 'planning' },
-  // Beer Sheva
   { slug: 'bs_bgu', name: 'ליד אונ\' בן גוריון וסורוקה', city: 'באר שבע', region: 'דרום', addresses: 'סמוך לאוניברסיטת בן גוריון ובית החולים סורוקה', planned_units: 870, developer: 'אלקטרה / אפריקה / ב.ס.ר', status: 'planning' },
-  // Beer Yaakov
   { slug: 'bya_herzl', name: 'מתחם הרצל', city: 'באר יעקב', region: 'דרום', addresses: 'רחוב הרצל', existing_units: 449, planned_units: 1880, developer: 'אלמוג / ענב', status: 'pre_deposit' },
-  // Yavne
   { slug: 'yv_center', name: 'מרכז יבנה', city: 'יבנה', region: 'דרום', addresses: 'מרכז העיר', planned_units: 480, developer: 'בוני התיכון', status: 'planning' },
   { slug: 'yv_gefen', name: 'מתחם גפן-שלי', city: 'יבנה', region: 'דרום', planned_units: 200, developer: 'גפן מגורים / דני שלי', status: 'planning' },
-  // Lod
   { slug: 'ld_central', name: 'מתחם מרכזי', city: 'לוד', region: 'גוש דן ומרכז', planned_units: 184, developer: 'קטה גרופ', status: 'planning' },
 ];
 
-async function seed() {
+// Core seed logic - accepts pool, does NOT close it
+async function seedWithPool(dbPool) {
   console.log(`Seeding ${ALL_PROJECTS.length} projects...`);
   
-  const client = await pool.connect();
+  const client = await dbPool.connect();
   
   try {
     await client.query('BEGIN');
@@ -274,12 +256,17 @@ async function seed() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
   }
+}
+
+// CLI seed - uses local pool and closes it when done
+async function seed() {
+  await seedWithPool(pool);
+  await pool.end();
 }
 
 if (require.main === module) {
   seed().catch(() => process.exit(1));
 }
 
-module.exports = { seed, ALL_PROJECTS };
+module.exports = { seed, seedWithPool, ALL_PROJECTS };
