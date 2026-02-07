@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 
 // Auto-migrate and seed on startup
 async function initDatabase() {
-  const maxRetries = 10;
+  const maxRetries = 15;
   const retryDelay = 3000;
   
   for (let i = 0; i < maxRetries; i++) {
@@ -54,11 +54,8 @@ async function initDatabase() {
     const countCheck = await pool.query('SELECT COUNT(*) FROM complexes');
     if (parseInt(countCheck.rows[0].count) === 0) {
       logger.info('No data found - running seed...');
-      const seedModule = require('./db/seed');
-      if (typeof seedModule === 'function') {
-        // seed.js exports a function that runs seeding
-        await seedModule();
-      }
+      const { seedWithPool } = require('./db/seed');
+      await seedWithPool(pool);
       logger.info('Seed completed');
     } else {
       logger.info(`Database has ${countCheck.rows[0].count} complexes - skipping seed`);
