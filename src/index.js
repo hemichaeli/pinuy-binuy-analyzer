@@ -3,11 +3,73 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const fs = require('fs');
+const path = require('path');
 const { logger } = require('./services/logger');
 const pool = require('./db/pool');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Auto-migrate and seed on startup
+async function initDatabase() {
+  const maxRetries = 10;
+  const retryDelay = 3000;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await pool.query('SELECT 1');
+      logger.info('Database connected');
+      break;
+    } catch (err) {
+      logger.warn(`DB connection attempt ${i + 1}/${maxRetries} failed: ${err.message}`);
+      if (i === maxRetries - 1) {
+        logger.error('Could not connect to database after all retries');
+        return false;
+      }
+      await new Promise(r => setTimeout(r, retryDelay));
+    }
+  }
+
+  try {
+    // Check if tables exist
+    const tableCheck = await pool.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'complexes'
+      )
+    `);
+    
+    if (!tableCheck.rows[0].exists) {
+      logger.info('Tables not found - running migration...');
+      const schemaPath = path.join(__dirname, 'db', 'schema.sql');
+      const schema = fs.readFileSync(schemaPath, 'utf8');
+      await pool.query(schema);
+      logger.info('Migration completed: all tables created');
+    } else {
+      logger.info('Tables already exist - skipping migration');
+    }
+
+    // Check if seed data needed
+    const countCheck = await pool.query('SELECT COUNT(*) FROM complexes');
+    if (parseInt(countCheck.rows[0].count) === 0) {
+      logger.info('No data found - running seed...');
+      const seedModule = require('./db/seed');
+      if (typeof seedModule === 'function') {
+        // seed.js exports a function that runs seeding
+        await seedModule();
+      }
+      logger.info('Seed completed');
+    } else {
+      logger.info(`Database has ${countCheck.rows[0].count} complexes - skipping seed`);
+    }
+    
+    return true;
+  } catch (err) {
+    logger.error(`Database init error: ${err.message}`);
+    return false;
+  }
+}
 
 // Middleware
 app.use(helmet());
@@ -104,9 +166,20 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  logger.info(`Pinuy Binuy API running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Start with DB init
+async function start() {
+  const dbReady = await initDatabase();
+  if (!dbReady) {
+    logger.warn('Starting without database - some features may be unavailable');
+  }
+  
+  app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Pinuy Binuy API running on port ${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
+  });
+}
+
+start();
 
 module.exports = app;
