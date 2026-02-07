@@ -22,4 +22,4 @@ RUN chmod +x start.sh
 
 EXPOSE ${PORT:-3000}
 
-CMD ["sh", "start.sh"]
+ENTRYPOINT ["sh", "start.sh"]
