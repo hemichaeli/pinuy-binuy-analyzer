@@ -97,7 +97,7 @@ app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    if (req.path !== '/health') {
+    if (req.path !== '/health' && req.path !== '/debug') {
       logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
     }
   });
@@ -114,6 +114,27 @@ app.use('/api/projects', projectRoutes);
 app.use('/api', opportunityRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/alerts', alertRoutes);
+
+// Debug endpoint - temporary for deployment troubleshooting
+app.get('/debug', (req, res) => {
+  res.json({
+    timestamp: new Date().toISOString(),
+    node_version: process.version,
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
+      PGHOST: process.env.PGHOST || '(not set)',
+      PGPORT: process.env.PGPORT || '(not set)',
+      PGDATABASE: process.env.PGDATABASE || '(not set)',
+      PGUSER: process.env.PGUSER || '(not set)',
+      PGPASSWORD: process.env.PGPASSWORD ? '(set)' : '(not set)',
+      DATABASE_SSL: process.env.DATABASE_SSL || '(not set)',
+      PORT: process.env.PORT || '(not set)',
+      NODE_ENV: process.env.NODE_ENV || '(not set)',
+    },
+    cwd: process.cwd(),
+    cmd: process.argv.join(' '),
+  });
+});
 
 // Health check
 app.get('/health', async (req, res) => {
