@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Railway private networking uses IPv6 - ensure Node.js resolves it
+const dns = require('dns');
+dns.setDefaultResultOrder('verbatim');
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
