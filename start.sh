@@ -24,7 +24,7 @@ su - postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname = 'pinuy_bi
 }
 
 # Set DATABASE_URL for the Node app (local connection)
-export DATABASE_URL="postgresql://pinuy_admin:pinuy_secure_2024@localhost:5432/pinuy_binuy"
+export DATABASE_URL="postgres://pinuy_admin:pinuy_secure_2024@localhost:5432/pinuy_binuy"
 export DATABASE_SSL="false"
 
 echo "Starting Node.js application..."
