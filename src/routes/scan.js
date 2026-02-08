@@ -4,6 +4,7 @@ const pool = require('../db/pool');
 const { logger } = require('../services/logger');
 const { scanComplex, scanAll } = require('../services/perplexityService');
 const { calculateIAI, calculateAllIAI } = require('../services/iaiCalculator');
+const { calculateSSI, calculateAllSSI } = require('../services/ssiCalculator');
 
 // POST /api/scan/run - Trigger a scan
 router.post('/run', async (req, res) => {
@@ -66,6 +67,14 @@ router.post('/run', async (req, res) => {
           });
         }
 
+        // Calculate SSI scores for all active listings
+        logger.info('Calculating SSI scores...');
+        try {
+          await calculateAllSSI();
+        } catch (ssiErr) {
+          logger.warn('SSI calculation failed during scan', { error: ssiErr.message });
+        }
+
         // Recalculate IAI scores after data collection
         logger.info('Recalculating IAI scores...');
         await calculateAllIAI();
@@ -86,7 +95,7 @@ router.post('/run', async (req, res) => {
             results.totalNewListings,
             `Perplexity scan: ${results.succeeded}/${results.total} succeeded, ` +
             `${results.totalNewTransactions} new transactions, ${results.totalNewListings} new listings. ` +
-            `${results.failed} failed.`,
+            `${results.failed} failed. SSI + IAI recalculated.`,
             scanId
           ]
         );
@@ -125,17 +134,48 @@ router.post('/complex/:id', async (req, res) => {
 
     const result = await scanComplex(complexId);
 
+    // Calculate SSI for listings in this complex
+    const listings = await pool.query(
+      'SELECT id FROM listings WHERE complex_id = $1 AND is_active = TRUE',
+      [complexId]
+    );
+    const ssiResults = [];
+    for (const listing of listings.rows) {
+      try {
+        const ssi = await calculateSSI(listing.id);
+        if (ssi) ssiResults.push(ssi);
+      } catch (e) {
+        logger.warn(`SSI calc failed for listing ${listing.id}`, { error: e.message });
+      }
+    }
+
     // Recalculate IAI for this complex
     const iai = await calculateIAI(complexId);
 
     res.json({
       scan_result: result,
       iai_score: iai ? iai.iai_score : null,
-      message: `Scanned ${complexCheck.rows[0].name}: ${result.transactions} transactions, ${result.listings} listings found`
+      ssi_results: ssiResults,
+      message: `Scanned ${complexCheck.rows[0].name}: ${result.transactions} transactions, ${result.listings} listings found, ${ssiResults.length} SSI calculated`
     });
   } catch (err) {
     logger.error('Error scanning complex', { error: err.message, complexId: req.params.id });
     res.status(500).json({ error: `Scan failed: ${err.message}` });
+  }
+});
+
+// POST /api/scan/ssi - Manual SSI recalculation for all active listings
+router.post('/ssi', async (req, res) => {
+  try {
+    logger.info('Manual SSI recalculation triggered');
+    const results = await calculateAllSSI();
+    res.json({
+      message: 'SSI recalculation complete',
+      results
+    });
+  } catch (err) {
+    logger.error('SSI recalculation failed', { error: err.message });
+    res.status(500).json({ error: `SSI recalculation failed: ${err.message}` });
   }
 });
 
