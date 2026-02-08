@@ -6,9 +6,14 @@ let poolConfig;
 
 if (dbUrl) {
   console.log(`[pool] Using DATABASE_URL (length=${dbUrl.length}): ${dbUrl.substring(0, 40)}...`);
+  
+  // Railway native Postgres and most managed DBs need SSL
+  // Only disable SSL if explicitly set to 'false'
+  const sslDisabled = process.env.DATABASE_SSL === 'false';
+  
   poolConfig = {
     connectionString: dbUrl,
-    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: sslDisabled ? false : { rejectUnauthorized: false },
   };
 } else {
   const host = process.env.PGHOST || 'localhost';
@@ -21,6 +26,7 @@ if (dbUrl) {
 }
 
 console.log('[pool] Pool config keys:', Object.keys(poolConfig).join(', '));
+console.log('[pool] SSL:', poolConfig.ssl ? 'enabled' : 'disabled');
 
 const pool = new Pool({
   ...poolConfig,
