@@ -5,6 +5,7 @@ const { calculateAllIAI } = require('../services/iaiCalculator');
 const { calculateAllSSI } = require('../services/ssiCalculator');
 const nadlanScraper = require('../services/nadlanScraper');
 const { calculateAllBenchmarks } = require('../services/benchmarkService');
+const yad2Scraper = require('../services/yad2Scraper');
 const { logger } = require('../services/logger');
 
 const WEEKLY_CRON = process.env.SCAN_CRON || '0 4 * * 0';
@@ -129,7 +130,7 @@ function formatPrice(price) {
 
 /**
  * Run the weekly scan
- * Order: Nadlan -> Benchmarks -> Perplexity -> SSI -> IAI -> Alerts
+ * Order: Nadlan -> Benchmarks -> Perplexity -> yad2 -> SSI -> IAI -> Alerts
  */
 async function runWeeklyScan() {
   if (isRunning) {
@@ -151,7 +152,7 @@ async function runWeeklyScan() {
     // Step 1: Nadlan.gov.il transaction scan
     let nadlanResults = { total: 0, succeeded: 0, failed: 0, totalNew: 0 };
     try {
-      logger.info('Step 1/6: Running nadlan.gov.il transaction scan...');
+      logger.info('Step 1/7: Running nadlan.gov.il transaction scan...');
       nadlanResults = await nadlanScraper.scanAll({ staleOnly: true, limit: 50 });
       logger.info(`Nadlan scan: ${nadlanResults.totalNew} new transactions from ${nadlanResults.succeeded} complexes`);
     } catch (nadlanErr) {
@@ -161,38 +162,48 @@ async function runWeeklyScan() {
     // Step 2: Benchmark calculation (after new transaction data)
     let benchmarkResults = { calculated: 0, skipped: 0, errors: 0 };
     try {
-      logger.info('Step 2/6: Calculating benchmarks...');
+      logger.info('Step 2/7: Calculating benchmarks...');
       benchmarkResults = await calculateAllBenchmarks({ limit: 50 });
       logger.info(`Benchmarks: ${benchmarkResults.calculated} calculated, ${benchmarkResults.skipped} skipped`);
     } catch (bmErr) {
       logger.warn('Benchmark calculation failed (non-critical)', { error: bmErr.message });
     }
 
-    // Step 3: Perplexity scan
-    logger.info('Step 3/6: Running Perplexity scan...');
+    // Step 3: Perplexity scan (status updates + general data)
+    logger.info('Step 3/7: Running Perplexity scan...');
     const results = await scanAll({ staleOnly: true });
 
-    // Step 4: SSI scores
+    // Step 4: yad2 listing scan (dedicated listing collection)
+    let yad2Results = { total: 0, succeeded: 0, failed: 0, totalNew: 0, totalUpdated: 0, totalPriceChanges: 0 };
+    try {
+      logger.info('Step 4/7: Running yad2 listing scan...');
+      yad2Results = await yad2Scraper.scanAll({ staleOnly: true, limit: 40 });
+      logger.info(`yad2 scan: ${yad2Results.totalNew} new, ${yad2Results.totalUpdated} updated, ${yad2Results.totalPriceChanges} price changes`);
+    } catch (yad2Err) {
+      logger.warn('yad2 scan failed (non-critical)', { error: yad2Err.message });
+    }
+
+    // Step 5: SSI scores (after all listing data is collected)
     let ssiResults = { total: 0, calculated: 0, errors: 0, stressed: 0, very_stressed: 0 };
     try {
-      logger.info('Step 4/6: Calculating SSI scores...');
+      logger.info('Step 5/7: Calculating SSI scores...');
       ssiResults = await calculateAllSSI();
       logger.info('SSI scores calculated', ssiResults);
     } catch (ssiErr) {
       logger.warn('SSI calculation failed', { error: ssiErr.message });
     }
 
-    // Step 5: IAI scores (after benchmarks + SSI so premium_gap is fresh)
+    // Step 6: IAI scores (after benchmarks + SSI so premium_gap is fresh)
     try {
-      logger.info('Step 5/6: Recalculating IAI scores...');
+      logger.info('Step 6/7: Recalculating IAI scores...');
       await calculateAllIAI();
       logger.info('IAI scores recalculated');
     } catch (iaiErr) {
       logger.warn('IAI recalculation failed', { error: iaiErr.message });
     }
 
-    // Step 6: Generate alerts
-    logger.info('Step 6/6: Generating alerts...');
+    // Step 7: Generate alerts
+    logger.info('Step 7/7: Generating alerts...');
     const alertCount = await generateAlerts(beforeSnapshot);
 
     const duration = Math.round((Date.now() - startTime) / 1000);
@@ -200,18 +211,23 @@ async function runWeeklyScan() {
       `Nadlan: ${nadlanResults.totalNew} new tx. ` +
       `Benchmarks: ${benchmarkResults.calculated} calculated. ` +
       `Perplexity: ${results.succeeded}/${results.total} ok, ${results.totalNewTransactions} tx, ${results.totalNewListings} listings. ` +
-      `SSI: ${ssiResults.very_stressed} very stressed + ${ssiResults.stressed} stressed. ` +
+      `yad2: ${yad2Results.totalNew} new, ${yad2Results.totalUpdated} updated, ${yad2Results.totalPriceChanges} price changes. ` +
+      `SSI: ${ssiResults.very_stressed || 0} very stressed + ${ssiResults.stressed || 0} stressed. ` +
       `${alertCount} alerts. Duration: ${duration}s`;
 
     await pool.query(
       `UPDATE scan_logs SET 
         completed_at = NOW(), status = 'completed', complexes_scanned = $1,
-        new_transactions = $2, new_listings = $3, alerts_sent = $4, summary = $5,
-        errors = $6
-       WHERE id = $7`,
-      [results.scanned, (results.totalNewTransactions || 0) + (nadlanResults.totalNew || 0),
-        results.totalNewListings, alertCount, summary,
-        results.failed > 0 ? JSON.stringify(results.details.filter(d => d.status === 'error')) : null, scanId]
+        new_transactions = $2, new_listings = $3, updated_listings = $4,
+        alerts_sent = $5, summary = $6, errors = $7
+       WHERE id = $8`,
+      [results.scanned,
+        (results.totalNewTransactions || 0) + (nadlanResults.totalNew || 0),
+        (results.totalNewListings || 0) + (yad2Results.totalNew || 0),
+        yad2Results.totalUpdated || 0,
+        alertCount, summary,
+        results.failed > 0 ? JSON.stringify(results.details.filter(d => d.status === 'error')) : null,
+        scanId]
     );
 
     lastRunResult = {
@@ -220,6 +236,7 @@ async function runWeeklyScan() {
       benchmarks: { calculated: benchmarkResults.calculated },
       perplexity: { succeeded: results.succeeded, failed: results.failed,
         newTransactions: results.totalNewTransactions, newListings: results.totalNewListings },
+      yad2: { newListings: yad2Results.totalNew, updated: yad2Results.totalUpdated, priceChanges: yad2Results.totalPriceChanges },
       ssi: ssiResults, alertsGenerated: alertCount, summary
     };
 
