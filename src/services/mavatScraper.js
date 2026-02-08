@@ -1,64 +1,67 @@
+/**
+ * mavat Planning Scraper + Committee Tracking (Tasks 5 & 6)
+ * 
+ * Uses Perplexity AI to query Israel's planning authority (mavat/iplan)
+ * for status updates and committee approval events.
+ * 
+ * Key triggers tracked:
+ * - Local committee (ועדה מקומית) approvals
+ * - District committee (ועדה מחוזית) approvals
+ * - Plan deposits (הפקדה)
+ * - Plan approvals (אישור תכנית)
+ * - Permit issuance (היתר בנייה)
+ * 
+ * Committee approvals are critical price triggers:
+ * - Local committee approval = first major price jump
+ * - District committee = second wave
+ */
+
 const axios = require('axios');
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 const PERPLEXITY_API = 'https://api.perplexity.ai/chat/completions';
-const DELAY_BETWEEN_REQUESTS = 4000;
+const DELAY_MS = 4000; // Rate limit between API calls
 
 /**
- * Query Perplexity for planning status from mavat/iplan
+ * Query Perplexity for planning status of a specific complex
  */
-async function queryPlanStatus(complex) {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) throw new Error('PERPLEXITY_API_KEY not configured');
+async function queryPlanningStatus(complex) {
+  if (!process.env.PERPLEXITY_API_KEY) {
+    throw new Error('PERPLEXITY_API_KEY not configured');
+  }
 
-  const planInfo = complex.plan_number ? `מספר תכנית: ${complex.plan_number}` : '';
-  
-  const prompt = `חפש במערכת התכנון הארצית (mavat.iplan.gov.il) ובמקורות רשמיים מידע עדכני על תכנית פינוי בינוי:
-מתחם: ${complex.name}
-עיר: ${complex.city}
-${planInfo}
-כתובות: ${complex.addresses || 'לא צוינו'}
+  const prompt = `חפש מידע עדכני על תכנית פינוי בינוי "${complex.name}" ב${complex.city}.
+${complex.plan_number ? `מספר תכנית: ${complex.plan_number}` : ''}
+${complex.addresses ? `כתובות: ${complex.addresses}` : ''}
 
-החזר את המידע בפורמט JSON בלבד:
+אני מחפש מידע ספציפי על:
+1. סטטוס עדכני של התכנית (הוכרזה/בתכנון/הופקדה/אושרה/היתר/בביצוע)
+2. האם התכנית עברה אישור ועדה מקומית? אם כן, מתי?
+3. האם התכנית עברה אישור ועדה מחוזית? אם כן, מתי?
+4. האם יש ישיבות ועדה קרובות הקשורות לתכנית?
+5. מספר תכנית (אם ידוע)
+6. תאריכי אבני דרך: הכרזה, הפקדה, אישור, היתר
+
+השב בפורמט JSON בלבד:
 {
-  "plan_number": "מספר תכנית אם נמצא",
-  "current_status": "אחד מ: declared/planning/pre_deposit/deposited/approved/permit/construction",
-  "status_hebrew": "הסטטוס בעברית",
-  "last_committee": {
-    "type": "local/regional/national",
-    "name": "שם הוועדה",
-    "date": "YYYY-MM-DD אם ידוע",
-    "decision": "תיאור ההחלטה",
-    "approved": true/false
+  "status": "declared|planning|pre_deposit|deposited|approved|permit|construction",
+  "plan_number": "מספר תכנית או null",
+  "local_committee_approved": true/false,
+  "local_committee_date": "YYYY-MM-DD או null",
+  "district_committee_approved": true/false,
+  "district_committee_date": "YYYY-MM-DD או null",
+  "upcoming_hearing": "תיאור ישיבה קרובה או null",
+  "upcoming_hearing_date": "YYYY-MM-DD או null",
+  "milestones": {
+    "declaration_date": "YYYY-MM-DD או null",
+    "deposit_date": "YYYY-MM-DD או null",
+    "approval_date": "YYYY-MM-DD או null",
+    "permit_date": "YYYY-MM-DD או null"
   },
-  "milestones": [
-    {
-      "event": "תיאור אירוע",
-      "date": "YYYY-MM-DD",
-      "status_after": "הסטטוס לאחר האירוע"
-    }
-  ],
-  "next_expected": "מה הצעד הבא הצפוי",
-  "objections_period": {
-    "active": true/false,
-    "deadline": "YYYY-MM-DD אם רלוונטי",
-    "num_objections": "מספר התנגדויות אם ידוע"
-  },
-  "developer": "שם היזם אם נמצא",
-  "planned_units": "מספר יחידות מתוכננות",
-  "existing_units": "מספר יחידות קיימות",
-  "signature_percent": "אחוז חתימות אם ידוע",
   "notes": "הערות נוספות",
-  "data_source": "מקור המידע (mavat/עיריה/חדשות)",
-  "confidence": "high/medium/low"
-}
-
-חשוב:
-- אם הסטטוס שונה ממה שידוע (${complex.status}), ציין זאת
-- בדוק אם יש החלטות ועדה חדשות מהחודשים האחרונים
-- חפש גם באתר העירייה ובחדשות מקומיות
-- אם אין מידע, החזר JSON עם confidence: "low"`;
+  "confidence": "high|medium|low"
+}`;
 
   try {
     const response = await axios.post(PERPLEXITY_API, {
@@ -66,278 +69,331 @@ ${planInfo}
       messages: [
         {
           role: 'system',
-          content: 'You are an Israeli urban planning data analyst. Return ONLY valid JSON, no markdown, no explanations.'
+          content: 'אתה מומחה בתכנון ובנייה בישראל. השב בפורמט JSON בלבד, ללא טקסט נוסף. אם אינך בטוח, סמן confidence כ-low.'
         },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 1500,
+      max_tokens: 1000,
       temperature: 0.1
     }, {
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
         'Content-Type': 'application/json'
       },
       timeout: 30000
     });
 
     const content = response.data.choices?.[0]?.message?.content || '';
-    return parsePlanResponse(content);
+    return parseResponse(content);
   } catch (err) {
-    logger.warn(`Perplexity mavat query failed for ${complex.name}`, { error: err.message });
-    return null;
-  }
-}
-
-/**
- * Parse Perplexity response into structured plan data
- */
-function parsePlanResponse(content) {
-  try {
-    const cleaned = content
-      .replace(/```json\s*/g, '')
-      .replace(/```\s*/g, '')
-      .trim();
-    return JSON.parse(cleaned);
-  } catch (e) {
-    const jsonMatch = content.match(/\{[\s\S]*"current_status"[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[0]);
-      } catch (e2) {
-        logger.warn('Failed to parse mavat plan JSON');
-      }
+    if (err.response?.status === 429) {
+      logger.warn('Perplexity rate limit hit, waiting 10s...');
+      await new Promise(r => setTimeout(r, 10000));
+      return null;
     }
+    logger.error(`Perplexity mavat query failed for ${complex.name}`, { error: err.message });
     return null;
   }
 }
 
 /**
- * Map Hebrew/mixed status to normalized English status
+ * Parse Perplexity JSON response
  */
-function normalizeStatus(statusStr) {
-  if (!statusStr) return null;
-  const s = statusStr.toLowerCase().trim();
-  const map = {
-    'declared': 'declared', 'הוכרז': 'declared',
+function parseResponse(content) {
+  try {
+    // Extract JSON from response (may be wrapped in markdown code blocks)
+    let jsonStr = content;
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1].trim();
+    } else {
+      // Try to find raw JSON object
+      const objMatch = content.match(/\{[\s\S]*\}/);
+      if (objMatch) jsonStr = objMatch[0];
+    }
+
+    const data = JSON.parse(jsonStr);
+    return {
+      status: normalizeStatus(data.status),
+      plan_number: data.plan_number || null,
+      local_committee_approved: !!data.local_committee_approved,
+      local_committee_date: parseDate(data.local_committee_date),
+      district_committee_approved: !!data.district_committee_approved,
+      district_committee_date: parseDate(data.district_committee_date),
+      upcoming_hearing: data.upcoming_hearing || null,
+      upcoming_hearing_date: parseDate(data.upcoming_hearing_date),
+      milestones: data.milestones || {},
+      notes: data.notes || null,
+      confidence: data.confidence || 'low'
+    };
+  } catch (err) {
+    logger.warn('Failed to parse mavat response', { error: err.message, content: content.substring(0, 200) });
+    return null;
+  }
+}
+
+/**
+ * Normalize status string to DB enum
+ */
+function normalizeStatus(status) {
+  if (!status) return null;
+  const statusMap = {
+    'declared': 'declared', 'הוכרז': 'declared', 'הוכרזה': 'declared',
     'planning': 'planning', 'בתכנון': 'planning', 'תכנון': 'planning',
     'pre_deposit': 'pre_deposit', 'להפקדה': 'pre_deposit',
     'deposited': 'deposited', 'הופקדה': 'deposited', 'הפקדה': 'deposited',
-    'approved': 'approved', 'אושרה': 'approved', 'אישור': 'approved',
+    'approved': 'approved', 'אושרה': 'approved', 'אושר': 'approved', 'מאושר': 'approved',
     'permit': 'permit', 'היתר': 'permit', 'היתר בנייה': 'permit',
     'construction': 'construction', 'בביצוע': 'construction', 'בנייה': 'construction'
   };
-  return map[s] || null;
+  return statusMap[status.toLowerCase().trim()] || null;
 }
 
 /**
- * Status progression order for detecting advancement
+ * Parse date string, return null if invalid
  */
-const STATUS_ORDER = ['unknown', 'declared', 'planning', 'pre_deposit', 'deposited', 'approved', 'permit', 'construction'];
-
-function isStatusAdvancement(oldStatus, newStatus) {
-  const oldIdx = STATUS_ORDER.indexOf(oldStatus || 'unknown');
-  const newIdx = STATUS_ORDER.indexOf(newStatus || 'unknown');
-  return newIdx > oldIdx;
+function parseDate(dateStr) {
+  if (!dateStr || dateStr === 'null' || dateStr === 'undefined') return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().split('T')[0];
 }
 
 /**
- * Scan and update a single complex from mavat data
+ * Scan a single complex for planning updates
  */
 async function scanComplex(complexId) {
-  const complexResult = await pool.query(
-    'SELECT id, name, city, addresses, plan_number, status, developer, existing_units, planned_units, signature_percent FROM complexes WHERE id = $1',
-    [complexId]
-  );
-  if (complexResult.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
-
-  const complex = complexResult.rows[0];
-  logger.info(`mavat scan: ${complex.name} (${complex.city})`);
-
-  const planData = await queryPlanStatus(complex);
-  if (!planData) {
-    return { complex: complex.name, status: 'no_data', updated: false };
-  }
-
-  const updates = {};
-  let statusChanged = false;
-  let committeeUpdate = false;
-
-  // Check for status change
-  const newStatus = normalizeStatus(planData.current_status);
-  if (newStatus && newStatus !== complex.status) {
-    if (isStatusAdvancement(complex.status, newStatus)) {
-      updates.status = newStatus;
-      statusChanged = true;
-      logger.info(`Status change for ${complex.name}: ${complex.status} -> ${newStatus}`);
-    }
-  }
-
-  // Update plan number if found
-  if (planData.plan_number && !complex.plan_number) {
-    updates.plan_number = planData.plan_number;
-  }
-
-  // Update developer if found
-  if (planData.developer && (!complex.developer || complex.developer === 'unknown')) {
-    updates.developer = planData.developer;
-  }
-
-  // Update units if found
-  if (planData.planned_units && !complex.planned_units) {
-    const units = parseInt(planData.planned_units);
-    if (units > 0) updates.planned_units = units;
-  }
-  if (planData.existing_units && !complex.existing_units) {
-    const units = parseInt(planData.existing_units);
-    if (units > 0) updates.existing_units = units;
-  }
-
-  // Update signature percent
-  if (planData.signature_percent) {
-    const pct = parseInt(planData.signature_percent);
-    if (pct > 0 && pct <= 100) updates.signature_percent = pct;
-  }
-
-  // Store committee decision
-  if (planData.last_committee && planData.last_committee.date) {
-    committeeUpdate = true;
-    // Store in perplexity_summary as structured note
-    const committeeNote = `ועדה: ${planData.last_committee.name || planData.last_committee.type} | ` +
-      `${planData.last_committee.date} | ` +
-      `${planData.last_committee.decision || 'ללא פירוט'} | ` +
-      `${planData.last_committee.approved ? 'אושר' : 'לא אושר'}`;
-    
-    const existingSummary = complex.perplexity_summary || '';
-    if (!existingSummary.includes(committeeNote.substring(0, 30))) {
-      updates.perplexity_summary = existingSummary
-        ? `${existingSummary}\n${committeeNote}`
-        : committeeNote;
-    }
-  }
-
-  // Apply updates
-  if (Object.keys(updates).length > 0) {
-    const setClauses = [];
-    const values = [];
-    let paramCount = 0;
-
-    for (const [key, value] of Object.entries(updates)) {
-      paramCount++;
-      setClauses.push(`${key} = $${paramCount}`);
-      values.push(value);
-    }
-
-    paramCount++;
-    setClauses.push(`last_perplexity_update = NOW()`);
-
-    paramCount++;
-    values.push(complexId);
-
-    await pool.query(
-      `UPDATE complexes SET ${setClauses.join(', ')} WHERE id = $${paramCount}`,
-      values
+  try {
+    const result = await pool.query(
+      `SELECT id, name, city, addresses, plan_number, status, 
+              local_committee_date, district_committee_date,
+              declaration_date, deposit_date, approval_date, permit_date
+       FROM complexes WHERE id = $1`,
+      [complexId]
     );
-  }
 
-  return {
-    complex: complex.name,
-    city: complex.city,
-    status: 'ok',
-    statusChanged,
-    oldStatus: complex.status,
-    newStatus: newStatus || complex.status,
-    committeeUpdate,
-    updatedFields: Object.keys(updates),
-    confidence: planData.confidence || 'unknown',
-    nextExpected: planData.next_expected || null
-  };
+    if (result.rows.length === 0) {
+      return { status: 'error', error: 'Complex not found', complexId };
+    }
+
+    const complex = result.rows[0];
+    const data = await queryPlanningStatus(complex);
+
+    if (!data) {
+      return { status: 'no_data', complexId, name: complex.name };
+    }
+
+    // Track what changed
+    const changes = [];
+    const updates = {};
+
+    // Status change detection
+    if (data.status && data.status !== complex.status) {
+      const statusOrder = ['declared', 'planning', 'pre_deposit', 'deposited', 'approved', 'permit', 'construction'];
+      const oldIdx = statusOrder.indexOf(complex.status);
+      const newIdx = statusOrder.indexOf(data.status);
+
+      // Only update if moving forward (or if confidence is high)
+      if (newIdx > oldIdx || data.confidence === 'high') {
+        changes.push({
+          type: 'status_change',
+          old: complex.status,
+          new: data.status
+        });
+        updates.status = data.status;
+      }
+    }
+
+    // Plan number update
+    if (data.plan_number && !complex.plan_number) {
+      updates.plan_number = data.plan_number;
+    }
+
+    // Committee tracking
+    if (data.local_committee_approved && data.local_committee_date && !complex.local_committee_date) {
+      updates.local_committee_date = data.local_committee_date;
+      changes.push({
+        type: 'committee_approval',
+        committee: 'local',
+        date: data.local_committee_date
+      });
+    }
+
+    if (data.district_committee_approved && data.district_committee_date && !complex.district_committee_date) {
+      updates.district_committee_date = data.district_committee_date;
+      changes.push({
+        type: 'committee_approval',
+        committee: 'district',
+        date: data.district_committee_date
+      });
+    }
+
+    // Milestone dates (only fill in missing dates)
+    const milestones = data.milestones || {};
+    if (milestones.declaration_date && !complex.declaration_date) {
+      updates.declaration_date = milestones.declaration_date;
+    }
+    if (milestones.deposit_date && !complex.deposit_date) {
+      updates.deposit_date = milestones.deposit_date;
+    }
+    if (milestones.approval_date && !complex.approval_date) {
+      updates.approval_date = milestones.approval_date;
+    }
+    if (milestones.permit_date && !complex.permit_date) {
+      updates.permit_date = milestones.permit_date;
+    }
+
+    // Upcoming hearing info stored in notes
+    if (data.upcoming_hearing) {
+      const hearingNote = `ישיבה קרובה: ${data.upcoming_hearing}${data.upcoming_hearing_date ? ` (${data.upcoming_hearing_date})` : ''}`;
+      updates.planning_notes = hearingNote;
+    }
+
+    // Apply updates to DB
+    if (Object.keys(updates).length > 0) {
+      const setClauses = [];
+      const values = [];
+      let paramIdx = 1;
+
+      for (const [key, value] of Object.entries(updates)) {
+        setClauses.push(`${key} = $${paramIdx}`);
+        values.push(value);
+        paramIdx++;
+      }
+
+      setClauses.push(`last_mavat_update = NOW()`);
+      values.push(complexId);
+
+      await pool.query(
+        `UPDATE complexes SET ${setClauses.join(', ')} WHERE id = $${paramIdx}`,
+        values
+      );
+    } else {
+      // Just update the timestamp
+      await pool.query(
+        `UPDATE complexes SET last_mavat_update = NOW() WHERE id = $1`,
+        [complexId]
+      );
+    }
+
+    return {
+      status: 'success',
+      complexId,
+      name: complex.name,
+      city: complex.city,
+      changes,
+      updatedFields: Object.keys(updates),
+      confidence: data.confidence,
+      upcomingHearing: data.upcoming_hearing || null,
+      source: 'perplexity_mavat'
+    };
+  } catch (err) {
+    logger.error(`mavat scan failed for complex ${complexId}`, { error: err.message });
+    return { status: 'error', complexId, error: err.message };
+  }
 }
 
 /**
- * Scan all complexes for planning status updates
+ * Scan all complexes for planning updates
  */
 async function scanAll(options = {}) {
-  const { staleOnly = true, limit = 30, city = null, prioritizeActive = true } = options;
+  const { city, limit, staleOnly = true, statusFilter } = options;
 
-  let query = 'SELECT id, name, city FROM complexes WHERE 1=1';
+  let query = 'SELECT id, name, city, status FROM complexes WHERE 1=1';
   const params = [];
-  let paramCount = 0;
+  let paramIdx = 1;
 
   if (city) {
-    paramCount++;
-    query += ` AND city = $${paramCount}`;
+    query += ` AND city = $${paramIdx}`;
     params.push(city);
+    paramIdx++;
   }
 
+  if (statusFilter) {
+    query += ` AND status = $${paramIdx}`;
+    params.push(statusFilter);
+    paramIdx++;
+  }
+
+  // Skip complexes in construction (no more planning changes expected)
+  query += ` AND status != 'construction'`;
+
   if (staleOnly) {
-    query += ` AND (last_perplexity_update IS NULL OR last_perplexity_update < NOW() - INTERVAL '7 days')`;
+    query += ` AND (last_mavat_update IS NULL OR last_mavat_update < NOW() - INTERVAL '7 days')`;
   }
 
   // Prioritize complexes in active planning stages
-  if (prioritizeActive) {
-    query += ` ORDER BY CASE 
-      WHEN status IN ('deposited', 'pre_deposit') THEN 1
-      WHEN status = 'planning' THEN 2
-      WHEN status = 'approved' THEN 3
-      WHEN status = 'declared' THEN 4
-      ELSE 5
-    END, iai_score DESC NULLS LAST`;
-  } else {
-    query += ' ORDER BY iai_score DESC NULLS LAST';
+  query += ` ORDER BY CASE status 
+    WHEN 'pre_deposit' THEN 1
+    WHEN 'deposited' THEN 2
+    WHEN 'planning' THEN 3
+    WHEN 'declared' THEN 4
+    WHEN 'approved' THEN 5
+    WHEN 'permit' THEN 6
+    ELSE 7
+  END, last_mavat_update ASC NULLS FIRST`;
+
+  if (limit) {
+    query += ` LIMIT $${paramIdx}`;
+    params.push(limit);
   }
 
-  paramCount++;
-  query += ` LIMIT $${paramCount}`;
-  params.push(limit);
+  const result = await pool.query(query, params);
+  const complexes = result.rows;
 
-  const complexes = await pool.query(query, params);
-  const total = complexes.rows.length;
+  logger.info(`mavat scan: ${complexes.length} complexes to scan`);
 
-  logger.info(`mavat batch scan: ${total} complexes to scan`);
+  const results = {
+    total: complexes.length,
+    scanned: 0,
+    succeeded: 0,
+    failed: 0,
+    statusChanges: 0,
+    committeeApprovals: 0,
+    upcomingHearings: 0,
+    details: []
+  };
 
-  let succeeded = 0;
-  let failed = 0;
-  let statusChanges = 0;
-  let committeeUpdates = 0;
-  const details = [];
-
-  for (const complex of complexes.rows) {
+  for (const complex of complexes) {
     try {
-      const result = await scanComplex(complex.id);
-      succeeded++;
-      if (result.statusChanged) statusChanges++;
-      if (result.committeeUpdate) committeeUpdates++;
-      details.push(result);
+      const scanResult = await scanComplex(complex.id);
+      results.scanned++;
 
-      await new Promise(r => setTimeout(r, DELAY_BETWEEN_REQUESTS));
+      if (scanResult.status === 'success') {
+        results.succeeded++;
+        
+        for (const change of (scanResult.changes || [])) {
+          if (change.type === 'status_change') results.statusChanges++;
+          if (change.type === 'committee_approval') results.committeeApprovals++;
+        }
+        if (scanResult.upcomingHearing) results.upcomingHearings++;
+      } else {
+        results.failed++;
+      }
+
+      results.details.push(scanResult);
+
+      // Rate limiting
+      if (results.scanned < complexes.length) {
+        await new Promise(r => setTimeout(r, DELAY_MS));
+      }
     } catch (err) {
-      failed++;
-      details.push({
-        complex: complex.name, city: complex.city,
-        status: 'error', error: err.message
-      });
-      logger.warn(`mavat scan failed for ${complex.name}`, { error: err.message });
-      await new Promise(r => setTimeout(r, 1000));
+      logger.error(`mavat scan error for ${complex.name}`, { error: err.message });
+      results.failed++;
+      results.scanned++;
     }
   }
 
-  logger.info(`mavat batch scan complete: ${succeeded}/${total} ok, ${statusChanges} status changes, ${committeeUpdates} committee updates`);
+  logger.info(`mavat scan complete: ${results.succeeded}/${results.total} ok, ` +
+    `${results.statusChanges} status changes, ${results.committeeApprovals} committee approvals, ` +
+    `${results.upcomingHearings} upcoming hearings`);
 
-  return {
-    total,
-    succeeded,
-    failed,
-    statusChanges,
-    committeeUpdates,
-    details
-  };
+  return results;
 }
 
 module.exports = {
   scanComplex,
   scanAll,
-  queryPlanStatus,
-  normalizeStatus,
-  isStatusAdvancement,
-  STATUS_ORDER
+  queryPlanningStatus,
+  normalizeStatus
 };
