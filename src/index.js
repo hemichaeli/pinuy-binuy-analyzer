@@ -119,6 +119,7 @@ app.use('/api/alerts', alertRoutes);
 app.get('/debug', (req, res) => {
   res.json({
     timestamp: new Date().toISOString(),
+    build: '2026-02-08-phase2',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
