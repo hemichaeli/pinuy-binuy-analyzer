@@ -9,6 +9,7 @@ const nadlanScraper = require('../services/nadlanScraper');
 const { calculateAllBenchmarks, calculateBenchmark } = require('../services/benchmarkService');
 const yad2Scraper = require('../services/yad2Scraper');
 const mavatScraper = require('../services/mavatScraper');
+const notificationService = require('../services/notificationService');
 
 // POST /api/scan/run - Trigger a Perplexity scan
 router.post('/run', async (req, res) => {
@@ -55,12 +56,7 @@ router.post('/run', async (req, res) => {
           });
         }
 
-        logger.info('Calculating SSI scores...');
-        try { await calculateAllSSI(); } catch (ssiErr) {
-          logger.warn('SSI calculation failed during scan', { error: ssiErr.message });
-        }
-
-        logger.info('Recalculating IAI scores...');
+        try { await calculateAllSSI(); } catch (e) { logger.warn('SSI failed', { error: e.message }); }
         await calculateAllIAI();
 
         await pool.query(
@@ -69,8 +65,7 @@ router.post('/run', async (req, res) => {
           WHERE id = $5`,
           [results.scanned, results.totalNewTransactions, results.totalNewListings,
             `Perplexity scan: ${results.succeeded}/${results.total} succeeded, ` +
-            `${results.totalNewTransactions} new tx, ${results.totalNewListings} new listings. ` +
-            `${results.failed} failed. SSI + IAI recalculated.`, scanId]
+            `${results.totalNewTransactions} new tx, ${results.totalNewListings} new listings.`, scanId]
         );
       } catch (err) {
         logger.error(`Scan ${scanId} failed`, { error: err.message });
@@ -114,7 +109,6 @@ router.post('/nadlan', async (req, res) => {
             `Nadlan: ${results.succeeded}/${results.total} ok, ${results.totalNew || 0} new tx`, scanId]
         );
       } catch (err) {
-        logger.error(`Nadlan scan ${scanId} failed`, { error: err.message });
         await pool.query(
           `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
           [err.message, scanId]
@@ -122,7 +116,6 @@ router.post('/nadlan', async (req, res) => {
       }
     })();
   } catch (err) {
-    logger.error('Error triggering nadlan scan', { error: err.message });
     res.status(500).json({ error: 'Failed to trigger nadlan scan' });
   }
 });
@@ -155,7 +148,6 @@ router.post('/yad2', async (req, res) => {
             `yad2: ${results.succeeded}/${results.total} ok, ${results.totalNew} new, ${results.totalUpdated} updated`, scanId]
         );
       } catch (err) {
-        logger.error(`yad2 scan ${scanId} failed`, { error: err.message });
         await pool.query(
           `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
           [err.message, scanId]
@@ -163,12 +155,11 @@ router.post('/yad2', async (req, res) => {
       }
     })();
   } catch (err) {
-    logger.error('Error triggering yad2 scan', { error: err.message });
     res.status(500).json({ error: 'Failed to trigger yad2 scan' });
   }
 });
 
-// POST /api/scan/mavat - Trigger planning authority status scan
+// POST /api/scan/mavat - Planning authority status scan
 router.post('/mavat', async (req, res) => {
   try {
     const { city, limit, complexId } = req.body;
@@ -188,16 +179,14 @@ router.post('/mavat', async (req, res) => {
         const results = await mavatScraper.scanAll({
           city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: true
         });
-        // Recalculate IAI after potential status changes
         await calculateAllIAI();
         await pool.query(
           `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
             complexes_scanned = $1, status_changes = $2, summary = $3 WHERE id = $4`,
           [results.total, results.statusChanges,
-            `mavat: ${results.succeeded}/${results.total} ok, ${results.statusChanges} status changes, ${results.committeeUpdates} committee updates`, scanId]
+            `mavat: ${results.succeeded}/${results.total} ok, ${results.statusChanges} status changes, ${results.committeeApprovals} committee approvals`, scanId]
         );
       } catch (err) {
-        logger.error(`mavat scan ${scanId} failed`, { error: err.message });
         await pool.query(
           `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
           [err.message, scanId]
@@ -205,7 +194,6 @@ router.post('/mavat', async (req, res) => {
       }
     })();
   } catch (err) {
-    logger.error('Error triggering mavat scan', { error: err.message });
     res.status(500).json({ error: 'Failed to trigger mavat scan' });
   }
 });
@@ -219,20 +207,54 @@ router.post('/benchmark', async (req, res) => {
       if (!result) return res.json({ message: 'No benchmark data available', complex_id: complexId });
       return res.json({ message: 'Benchmark calculated', result });
     }
-
     res.json({ message: 'Benchmark calculation triggered' });
     (async () => {
       try {
         await calculateAllBenchmarks({ city: city || null, limit: limit ? parseInt(limit) : null, force: !!force });
         await calculateAllIAI();
-      } catch (err) {
-        logger.error('Benchmark batch failed', { error: err.message });
-      }
+      } catch (err) { logger.error('Benchmark batch failed', { error: err.message }); }
     })();
   } catch (err) {
-    logger.error('Error triggering benchmark', { error: err.message });
-    res.status(500).json({ error: 'Failed to trigger benchmark calculation' });
+    res.status(500).json({ error: 'Failed to trigger benchmark' });
   }
+});
+
+// POST /api/scan/notifications - Send pending notifications manually
+router.post('/notifications', async (req, res) => {
+  try {
+    if (!notificationService.isConfigured()) {
+      return res.json({
+        message: 'Notifications not configured',
+        note: 'Set SMTP_HOST, SMTP_USER, SMTP_PASS environment variables',
+        recipients: notificationService.NOTIFICATION_EMAILS
+      });
+    }
+
+    const { type } = req.body;
+    if (type === 'digest') {
+      const result = await notificationService.sendWeeklyDigest(null);
+      return res.json({ message: 'Weekly digest sent', result });
+    }
+
+    const result = await notificationService.sendPendingAlerts();
+    res.json({ message: 'Pending alerts sent', result });
+  } catch (err) {
+    logger.error('Error sending notifications', { error: err.message });
+    res.status(500).json({ error: 'Failed to send notifications' });
+  }
+});
+
+// GET /api/scan/notifications/status - Check notification configuration
+router.get('/notifications/status', (req, res) => {
+  res.json({
+    configured: notificationService.isConfigured(),
+    smtp_host: process.env.SMTP_HOST ? '(set)' : '(not set)',
+    smtp_user: process.env.SMTP_USER ? '(set)' : '(not set)',
+    smtp_pass: process.env.SMTP_PASS ? '(set)' : '(not set)',
+    recipients: notificationService.NOTIFICATION_EMAILS,
+    trello_email: process.env.TRELLO_BOARD_EMAIL || 'uth_limited+c9otswetpgdfphdpoehc@boards.trello.com',
+    office_email: process.env.OFFICE_EMAIL || 'Office@u-r-quantum.com'
+  });
 });
 
 // POST /api/scan/complex/:id - Full single complex scan
@@ -243,12 +265,10 @@ router.post('/complex/:id', async (req, res) => {
     if (complexCheck.rows.length === 0) return res.status(404).json({ error: 'Complex not found' });
 
     const result = await scanComplex(complexId);
-
     const listings = await pool.query('SELECT id FROM listings WHERE complex_id = $1 AND is_active = TRUE', [complexId]);
     const ssiResults = [];
     for (const listing of listings.rows) {
-      try { const ssi = await calculateSSI(listing.id); if (ssi) ssiResults.push(ssi); }
-      catch (e) { logger.warn(`SSI calc failed for listing ${listing.id}`); }
+      try { const ssi = await calculateSSI(listing.id); if (ssi) ssiResults.push(ssi); } catch (e) {}
     }
     const iai = await calculateIAI(complexId);
 
@@ -259,7 +279,6 @@ router.post('/complex/:id', async (req, res) => {
       message: `Scanned ${complexCheck.rows[0].name}: ${result.transactions} tx, ${result.listings} listings, ${ssiResults.length} SSI`
     });
   } catch (err) {
-    logger.error('Error scanning complex', { error: err.message });
     res.status(500).json({ error: `Scan failed: ${err.message}` });
   }
 });
