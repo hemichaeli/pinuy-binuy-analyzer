@@ -145,7 +145,7 @@ app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-08-phase2-cron',
+    build: '2026-02-08-phase3-ssi',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
@@ -160,6 +160,12 @@ app.get('/debug', (req, res) => {
       isRunning: scheduler.isRunning,
       lastRun: scheduler.lastRun
     },
+    features: {
+      ssi_calculator: 'active',
+      iai_calculator: 'active',
+      perplexity_scanner: process.env.PERPLEXITY_API_KEY ? 'active' : 'disabled',
+      weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
+    },
     cwd: process.cwd(),
   });
 });
@@ -170,15 +176,22 @@ app.get('/health', async (req, res) => {
     const result = await pool.query('SELECT COUNT(*) FROM complexes');
     const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
     const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
+    const activeListings = await pool.query('SELECT COUNT(*) FROM listings WHERE is_active = TRUE');
+    const stressedCount = await pool.query('SELECT COUNT(*) FROM listings WHERE ssi_score >= 50 AND is_active = TRUE');
     const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
     const scheduler = getSchedulerStatus();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
+      version: '2.2.0',
       db: 'connected',
       complexes: parseInt(result.rows[0].count),
       transactions: parseInt(txCount.rows[0].count),
-      listings: parseInt(listingCount.rows[0].count),
+      listings: {
+        total: parseInt(listingCount.rows[0].count),
+        active: parseInt(activeListings.rows[0].count),
+        stressed: parseInt(stressedCount.rows[0].count)
+      },
       unread_alerts: parseInt(alertCount.rows[0].count),
       perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured',
       scheduler: scheduler.enabled ? 'active' : 'disabled'
@@ -197,10 +210,11 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'Pinuy Binuy Investment Analyzer API',
-    version: '2.1.0',
-    phase: 'Phase 2 - Perplexity + Weekly Auto-Scan',
+    version: '2.2.0',
+    phase: 'Phase 3 - SSI Calculator + Enhanced Weekly Scan',
     endpoints: {
       health: 'GET /health',
+      debug: 'GET /debug',
       projects: 'GET /api/projects',
       project: 'GET /api/projects/:id',
       transactions: 'GET /api/projects/:id/transactions',
@@ -211,6 +225,7 @@ app.get('/', (req, res) => {
       dashboard: 'GET /api/dashboard',
       scanRun: 'POST /api/scan/run',
       scanComplex: 'POST /api/scan/complex/:id',
+      scanSSI: 'POST /api/scan/ssi (manual SSI recalculation)',
       scanResults: 'GET /api/scan/results',
       alerts: 'GET /api/alerts',
       alertMarkRead: 'PUT /api/alerts/:id/read',
@@ -245,11 +260,12 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Pinuy Binuy API v2.1 running on port ${PORT}`);
+    logger.info(`Pinuy Binuy API v2.2 running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
     logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
     logger.info(`Weekly scanner: ${process.env.PERPLEXITY_API_KEY ? 'enabled (Sunday 06:00 IST)' : 'disabled (no API key)'}`);
+    logger.info('SSI Calculator: active');
   });
 }
 
