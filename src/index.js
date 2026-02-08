@@ -115,24 +115,18 @@ app.use('/api', opportunityRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/alerts', alertRoutes);
 
-// Debug endpoint - temporary for deployment troubleshooting
+// Debug endpoint
 app.get('/debug', (req, res) => {
   res.json({
     timestamp: new Date().toISOString(),
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
-      PGHOST: process.env.PGHOST || '(not set)',
-      PGPORT: process.env.PGPORT || '(not set)',
-      PGDATABASE: process.env.PGDATABASE || '(not set)',
-      PGUSER: process.env.PGUSER || '(not set)',
-      PGPASSWORD: process.env.PGPASSWORD ? '(set)' : '(not set)',
-      DATABASE_SSL: process.env.DATABASE_SSL || '(not set)',
+      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? `${process.env.PERPLEXITY_API_KEY.substring(0, 8)}...(set)` : '(not set)',
       PORT: process.env.PORT || '(not set)',
       NODE_ENV: process.env.NODE_ENV || '(not set)',
     },
     cwd: process.cwd(),
-    cmd: process.argv.join(' '),
   });
 });
 
@@ -140,11 +134,16 @@ app.get('/debug', (req, res) => {
 app.get('/health', async (req, res) => {
   try {
     const result = await pool.query('SELECT COUNT(*) FROM complexes');
+    const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
+    const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       db: 'connected',
-      complexes: parseInt(result.rows[0].count)
+      complexes: parseInt(result.rows[0].count),
+      transactions: parseInt(txCount.rows[0].count),
+      listings: parseInt(listingCount.rows[0].count),
+      perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured'
     });
   } catch (err) {
     res.status(503).json({
@@ -160,7 +159,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'Pinuy Binuy Investment Analyzer API',
-    version: '1.0.0',
+    version: '2.0.0',
+    phase: 'Phase 2 - Perplexity Data Collection',
     endpoints: {
       health: 'GET /health',
       projects: 'GET /api/projects',
@@ -171,7 +171,8 @@ app.get('/', (req, res) => {
       opportunities: 'GET /api/opportunities',
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
-      scanRun: 'POST /api/scan/run',
+      scanRun: 'POST /api/scan/run {type, city, status, limit, complexId, staleOnly}',
+      scanComplex: 'POST /api/scan/complex/:id (synchronous single scan)',
       scanResults: 'GET /api/scan/results',
       alerts: 'GET /api/alerts'
     }
@@ -197,9 +198,10 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Pinuy Binuy API running on port ${PORT}`);
+    logger.info(`Pinuy Binuy API v2.0 running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
+    logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
   });
 }
 
