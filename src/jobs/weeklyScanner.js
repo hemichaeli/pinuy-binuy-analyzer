@@ -7,7 +7,6 @@ const nadlanScraper = require('../services/nadlanScraper');
 const { calculateAllBenchmarks } = require('../services/benchmarkService');
 const yad2Scraper = require('../services/yad2Scraper');
 const mavatScraper = require('../services/mavatScraper');
-const { sendPendingNotifications } = require('../services/notificationService');
 const { logger } = require('../services/logger');
 
 const WEEKLY_CRON = process.env.SCAN_CRON || '0 4 * * 0';
@@ -17,22 +16,33 @@ let lastRunResult = null;
 let scheduledTask = null;
 
 async function snapshotStatuses() {
-  const result = await pool.query('SELECT id, status, iai_score, actual_premium FROM complexes');
+  const result = await pool.query(
+    'SELECT id, status, iai_score, actual_premium, local_committee_date, district_committee_date FROM complexes'
+  );
   const map = {};
   for (const row of result.rows) {
-    map[row.id] = { status: row.status, iai_score: row.iai_score, actual_premium: row.actual_premium };
+    map[row.id] = {
+      status: row.status, iai_score: row.iai_score,
+      actual_premium: row.actual_premium,
+      local_committee_date: row.local_committee_date,
+      district_committee_date: row.district_committee_date
+    };
   }
   return map;
 }
 
 async function generateAlerts(beforeSnapshot) {
-  const afterResult = await pool.query('SELECT id, name, city, status, iai_score, actual_premium FROM complexes');
+  const afterResult = await pool.query(
+    `SELECT id, name, city, status, iai_score, actual_premium,
+            local_committee_date, district_committee_date FROM complexes`
+  );
   let alertCount = 0;
 
   for (const complex of afterResult.rows) {
     const before = beforeSnapshot[complex.id];
     if (!before) continue;
 
+    // Status change alert
     if (before.status !== complex.status) {
       await createAlert({
         complexId: complex.id, type: 'status_change', severity: 'high',
@@ -43,6 +53,29 @@ async function generateAlerts(beforeSnapshot) {
       alertCount++;
     }
 
+    // Local committee approval alert (critical price trigger!)
+    if (complex.local_committee_date && !before.local_committee_date) {
+      await createAlert({
+        complexId: complex.id, type: 'committee_approval', severity: 'critical',
+        title: `אישור ועדה מקומית: ${complex.name} (${complex.city})`,
+        message: `התכנית אושרה בוועדה מקומית ב-${complex.local_committee_date}. זהו טריגר ראשון לעליית מחירים!`,
+        data: { committee: 'local', date: complex.local_committee_date }
+      });
+      alertCount++;
+    }
+
+    // District committee approval alert (second price wave)
+    if (complex.district_committee_date && !before.district_committee_date) {
+      await createAlert({
+        complexId: complex.id, type: 'committee_approval', severity: 'high',
+        title: `אישור ועדה מחוזית: ${complex.name} (${complex.city})`,
+        message: `התכנית אושרה בוועדה מחוזית ב-${complex.district_committee_date}. גל שני של עליית מחירים!`,
+        data: { committee: 'district', date: complex.district_committee_date }
+      });
+      alertCount++;
+    }
+
+    // IAI threshold alerts
     if (complex.iai_score >= 70 && (before.iai_score || 0) < 70) {
       await createAlert({
         complexId: complex.id, type: 'opportunity', severity: 'high',
@@ -55,20 +88,20 @@ async function generateAlerts(beforeSnapshot) {
       await createAlert({
         complexId: complex.id, type: 'opportunity', severity: 'medium',
         title: `שווה בדיקה: ${complex.name} (${complex.city})`,
-        message: `ציון IAI עלה ל-${complex.iai_score}`,
+        message: `ציון IAI עלה ל-${complex.iai_score} (שווה בדיקה מעמיקה)`,
         data: { old_iai: before.iai_score, new_iai: complex.iai_score }
       });
       alertCount++;
     }
   }
 
-  // Stressed sellers
-  const stressed = await pool.query(`
+  // Stressed seller alerts
+  const newStressedListings = await pool.query(`
     SELECT l.*, c.name as complex_name, c.city 
     FROM listings l JOIN complexes c ON l.complex_id = c.id
     WHERE l.ssi_score >= 50 AND l.created_at > NOW() - INTERVAL '8 days' AND l.is_active = true
   `);
-  for (const listing of stressed.rows) {
+  for (const listing of newStressedListings.rows) {
     await createAlert({
       complexId: listing.complex_id, type: 'stressed_seller',
       severity: listing.ssi_score >= 70 ? 'high' : 'medium',
@@ -79,18 +112,18 @@ async function generateAlerts(beforeSnapshot) {
     alertCount++;
   }
 
-  // Price drops
-  const drops = await pool.query(`
+  // Price drop alerts
+  const priceDrops = await pool.query(`
     SELECT l.*, c.name as complex_name, c.city
     FROM listings l JOIN complexes c ON l.complex_id = c.id
     WHERE l.total_price_drop_percent > 5 AND l.updated_at > NOW() - INTERVAL '8 days' AND l.is_active = true
   `);
-  for (const listing of drops.rows) {
+  for (const listing of priceDrops.rows) {
     await createAlert({
       complexId: listing.complex_id, type: 'price_drop',
       severity: parseFloat(listing.total_price_drop_percent) >= 10 ? 'high' : 'medium',
       title: `ירידת מחיר: ${listing.complex_name} (${listing.city})`,
-      message: `ירידה של ${listing.total_price_drop_percent}% | ${listing.address} | ${formatPrice(listing.asking_price)}`,
+      message: `ירידה של ${listing.total_price_drop_percent}% | ${listing.address} | ${formatPrice(listing.asking_price)} (היה ${formatPrice(listing.original_price)})`,
       data: { listing_id: listing.id, drop_percent: listing.total_price_drop_percent }
     });
     alertCount++;
@@ -115,20 +148,28 @@ async function createAlert({ complexId, type, severity, title, message, data }) 
   }
 }
 
-function translateStatus(s) {
-  const map = { 'declared':'הוכרז','planning':'בתכנון','pre_deposit':'להפקדה','deposited':'הופקדה','approved':'אושרה','construction':'בביצוע','permit':'היתר בנייה' };
-  return map[s] || s;
+function translateStatus(status) {
+  const map = {
+    'declared': 'הוכרז', 'planning': 'בתכנון', 'pre_deposit': 'להפקדה',
+    'deposited': 'הופקדה', 'approved': 'אושרה', 'construction': 'בביצוע', 'permit': 'היתר בנייה'
+  };
+  return map[status] || status;
 }
 
-function formatPrice(p) {
-  return p ? `${Number(p).toLocaleString('he-IL')} ש"ח` : 'N/A';
+function formatPrice(price) {
+  if (!price) return 'N/A';
+  return `${Number(price).toLocaleString('he-IL')} ש"ח`;
 }
 
 /**
- * Weekly scan: Nadlan -> Benchmarks -> mavat -> Perplexity -> yad2 -> SSI -> IAI -> Alerts -> Notifications
+ * Run the weekly scan
+ * Order: Nadlan -> Benchmarks -> Perplexity -> yad2 -> mavat -> SSI -> IAI -> Alerts
  */
 async function runWeeklyScan() {
-  if (isRunning) { logger.warn('Weekly scan already running'); return null; }
+  if (isRunning) {
+    logger.warn('Weekly scan already running, skipping');
+    return null;
+  }
 
   isRunning = true;
   const startTime = Date.now();
@@ -141,103 +182,111 @@ async function runWeeklyScan() {
     const scanId = scanLog.rows[0].id;
     const beforeSnapshot = await snapshotStatuses();
 
-    // Step 1: Nadlan.gov.il
-    let nadlanResults = { total: 0, succeeded: 0, totalNew: 0 };
+    // Step 1: Nadlan.gov.il transaction scan
+    let nadlanResults = { total: 0, succeeded: 0, failed: 0, totalNew: 0 };
     try {
-      logger.info('Step 1/9: nadlan.gov.il transaction scan...');
+      logger.info('Step 1/8: Running nadlan.gov.il transaction scan...');
       nadlanResults = await nadlanScraper.scanAll({ staleOnly: true, limit: 50 });
-      logger.info(`Nadlan: ${nadlanResults.totalNew} new tx`);
-    } catch (err) { logger.warn('Nadlan scan failed', { error: err.message }); }
+      logger.info(`Nadlan scan: ${nadlanResults.totalNew} new transactions from ${nadlanResults.succeeded} complexes`);
+    } catch (nadlanErr) {
+      logger.warn('Nadlan scan failed (non-critical)', { error: nadlanErr.message });
+    }
 
-    // Step 2: Benchmarks
-    let bmResults = { calculated: 0, skipped: 0 };
+    // Step 2: Benchmark calculation (after new transaction data)
+    let benchmarkResults = { calculated: 0, skipped: 0, errors: 0 };
     try {
-      logger.info('Step 2/9: Benchmark calculation...');
-      bmResults = await calculateAllBenchmarks({ limit: 50 });
-      logger.info(`Benchmarks: ${bmResults.calculated} calculated`);
-    } catch (err) { logger.warn('Benchmark failed', { error: err.message }); }
+      logger.info('Step 2/8: Calculating benchmarks...');
+      benchmarkResults = await calculateAllBenchmarks({ limit: 50 });
+      logger.info(`Benchmarks: ${benchmarkResults.calculated} calculated, ${benchmarkResults.skipped} skipped`);
+    } catch (bmErr) {
+      logger.warn('Benchmark calculation failed (non-critical)', { error: bmErr.message });
+    }
 
-    // Step 3: mavat planning status
-    let mavatResults = { total: 0, succeeded: 0, statusChanges: 0, committeeUpdates: 0 };
+    // Step 3: Perplexity scan (status updates + general data)
+    logger.info('Step 3/8: Running Perplexity scan...');
+    const results = await scanAll({ staleOnly: true });
+
+    // Step 4: yad2 listing scan (dedicated listing collection)
+    let yad2Results = { total: 0, succeeded: 0, failed: 0, totalNew: 0, totalUpdated: 0, totalPriceChanges: 0 };
     try {
-      logger.info('Step 3/9: mavat planning status scan...');
-      mavatResults = await mavatScraper.scanAll({ staleOnly: true, limit: 30 });
-      logger.info(`mavat: ${mavatResults.statusChanges} status changes, ${mavatResults.committeeUpdates} committee updates`);
-    } catch (err) { logger.warn('mavat scan failed', { error: err.message }); }
-
-    // Step 4: Perplexity
-    logger.info('Step 4/9: Perplexity scan...');
-    const pxResults = await scanAll({ staleOnly: true });
-
-    // Step 5: yad2
-    let yad2Results = { total: 0, succeeded: 0, totalNew: 0, totalUpdated: 0, totalPriceChanges: 0 };
-    try {
-      logger.info('Step 5/9: yad2 listing scan...');
+      logger.info('Step 4/8: Running yad2 listing scan...');
       yad2Results = await yad2Scraper.scanAll({ staleOnly: true, limit: 40 });
-      logger.info(`yad2: ${yad2Results.totalNew} new, ${yad2Results.totalUpdated} updated`);
-    } catch (err) { logger.warn('yad2 scan failed', { error: err.message }); }
+      logger.info(`yad2 scan: ${yad2Results.totalNew} new, ${yad2Results.totalUpdated} updated, ${yad2Results.totalPriceChanges} price changes`);
+    } catch (yad2Err) {
+      logger.warn('yad2 scan failed (non-critical)', { error: yad2Err.message });
+    }
 
-    // Step 6: SSI
-    let ssiResults = { total: 0, highStress: 0 };
+    // Step 5: mavat planning scan (committee approvals + status tracking)
+    let mavatResults = { total: 0, succeeded: 0, failed: 0, statusChanges: 0, committeeApprovals: 0, upcomingHearings: 0 };
     try {
-      logger.info('Step 6/9: SSI scores...');
+      logger.info('Step 5/8: Running mavat planning scan...');
+      mavatResults = await mavatScraper.scanAll({ staleOnly: true, limit: 30 });
+      logger.info(`mavat scan: ${mavatResults.statusChanges} status changes, ${mavatResults.committeeApprovals} committee approvals, ${mavatResults.upcomingHearings} hearings`);
+    } catch (mavatErr) {
+      logger.warn('mavat scan failed (non-critical)', { error: mavatErr.message });
+    }
+
+    // Step 6: SSI scores (after all listing data is collected)
+    let ssiResults = { total: 0, calculated: 0, errors: 0, stressed: 0, very_stressed: 0 };
+    try {
+      logger.info('Step 6/8: Calculating SSI scores...');
       ssiResults = await calculateAllSSI();
-    } catch (err) { logger.warn('SSI failed', { error: err.message }); }
+      logger.info('SSI scores calculated', ssiResults);
+    } catch (ssiErr) {
+      logger.warn('SSI calculation failed', { error: ssiErr.message });
+    }
 
-    // Step 7: IAI
+    // Step 7: IAI scores (after benchmarks + SSI so premium_gap is fresh)
     try {
-      logger.info('Step 7/9: IAI scores...');
+      logger.info('Step 7/8: Recalculating IAI scores...');
       await calculateAllIAI();
-    } catch (err) { logger.warn('IAI failed', { error: err.message }); }
+      logger.info('IAI scores recalculated');
+    } catch (iaiErr) {
+      logger.warn('IAI recalculation failed', { error: iaiErr.message });
+    }
 
-    // Step 8: Alerts
-    logger.info('Step 8/9: Generating alerts...');
+    // Step 8: Generate alerts (including committee approval alerts)
+    logger.info('Step 8/8: Generating alerts...');
     const alertCount = await generateAlerts(beforeSnapshot);
-
-    // Step 9: Send notifications
-    let notifResults = { sent: 0 };
-    try {
-      logger.info('Step 9/9: Sending notifications...');
-      notifResults = await sendPendingNotifications();
-    } catch (err) { logger.warn('Notifications failed', { error: err.message }); }
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     const summary = `Weekly scan: ` +
-      `Nadlan: ${nadlanResults.totalNew} tx. ` +
-      `BM: ${bmResults.calculated}. ` +
-      `mavat: ${mavatResults.statusChanges} status, ${mavatResults.committeeUpdates} committee. ` +
-      `PX: ${pxResults.succeeded}/${pxResults.total}. ` +
-      `yad2: ${yad2Results.totalNew} new, ${yad2Results.totalUpdated} upd. ` +
-      `SSI: ${ssiResults.highStress || 0} stressed. ` +
-      `${alertCount} alerts, ${notifResults.totalAlerts || 0} notified. ${duration}s`;
+      `Nadlan: ${nadlanResults.totalNew} new tx. ` +
+      `Benchmarks: ${benchmarkResults.calculated} calculated. ` +
+      `Perplexity: ${results.succeeded}/${results.total} ok, ${results.totalNewTransactions} tx, ${results.totalNewListings} listings. ` +
+      `yad2: ${yad2Results.totalNew} new, ${yad2Results.totalUpdated} updated, ${yad2Results.totalPriceChanges} price changes. ` +
+      `mavat: ${mavatResults.statusChanges} status changes, ${mavatResults.committeeApprovals} committee approvals. ` +
+      `SSI: ${ssiResults.very_stressed || 0} very stressed + ${ssiResults.stressed || 0} stressed. ` +
+      `${alertCount} alerts. Duration: ${duration}s`;
 
     await pool.query(
-      `UPDATE scan_logs SET completed_at = NOW(), status = 'completed',
-        complexes_scanned = $1, new_transactions = $2, new_listings = $3,
-        updated_listings = $4, status_changes = $5, alerts_sent = $6, summary = $7
-       WHERE id = $8`,
-      [pxResults.scanned,
-        (pxResults.totalNewTransactions || 0) + (nadlanResults.totalNew || 0),
-        (pxResults.totalNewListings || 0) + (yad2Results.totalNew || 0),
+      `UPDATE scan_logs SET 
+        completed_at = NOW(), status = 'completed', complexes_scanned = $1,
+        new_transactions = $2, new_listings = $3, updated_listings = $4,
+        status_changes = $5, alerts_sent = $6, summary = $7, errors = $8
+       WHERE id = $9`,
+      [results.scanned,
+        (results.totalNewTransactions || 0) + (nadlanResults.totalNew || 0),
+        (results.totalNewListings || 0) + (yad2Results.totalNew || 0),
         yad2Results.totalUpdated || 0,
-        mavatResults.statusChanges || 0,
-        alertCount, summary, scanId]
+        (mavatResults.statusChanges || 0),
+        alertCount, summary,
+        results.failed > 0 ? JSON.stringify(results.details.filter(d => d.status === 'error')) : null,
+        scanId]
     );
 
     lastRunResult = {
       scanId, completedAt: new Date().toISOString(), duration: `${duration}s`,
-      nadlan: { newTx: nadlanResults.totalNew },
-      benchmarks: { calculated: bmResults.calculated },
-      mavat: { statusChanges: mavatResults.statusChanges, committeeUpdates: mavatResults.committeeUpdates },
-      perplexity: { succeeded: pxResults.succeeded, failed: pxResults.failed },
-      yad2: { new: yad2Results.totalNew, updated: yad2Results.totalUpdated, priceChanges: yad2Results.totalPriceChanges },
-      ssi: ssiResults,
-      alertsGenerated: alertCount,
-      notifications: notifResults,
-      summary
+      nadlan: { newTransactions: nadlanResults.totalNew },
+      benchmarks: { calculated: benchmarkResults.calculated },
+      perplexity: { succeeded: results.succeeded, failed: results.failed,
+        newTransactions: results.totalNewTransactions, newListings: results.totalNewListings },
+      yad2: { newListings: yad2Results.totalNew, updated: yad2Results.totalUpdated, priceChanges: yad2Results.totalPriceChanges },
+      mavat: { statusChanges: mavatResults.statusChanges, committeeApprovals: mavatResults.committeeApprovals, upcomingHearings: mavatResults.upcomingHearings },
+      ssi: ssiResults, alertsGenerated: alertCount, summary
     };
 
-    logger.info(`=== Weekly scan completed in ${duration}s ===`);
+    logger.info(`=== Weekly scan completed in ${duration}s ===`, lastRunResult);
     return lastRunResult;
 
   } catch (err) {
@@ -255,18 +304,18 @@ function startScheduler() {
     return;
   }
   if (!cron.validate(WEEKLY_CRON)) {
-    logger.error(`Invalid cron: ${WEEKLY_CRON}`);
+    logger.error(`Invalid cron expression: ${WEEKLY_CRON}`);
     return;
   }
   scheduledTask = cron.schedule(WEEKLY_CRON, async () => {
     logger.info(`Cron triggered: ${WEEKLY_CRON}`);
     await runWeeklyScan();
   }, { timezone: 'Asia/Jerusalem' });
-  logger.info(`Weekly scanner: ${WEEKLY_CRON} (Asia/Jerusalem)`);
+  logger.info(`Weekly scanner scheduled: ${WEEKLY_CRON} (Asia/Jerusalem)`);
 }
 
 function stopScheduler() {
-  if (scheduledTask) { scheduledTask.stop(); }
+  if (scheduledTask) { scheduledTask.stop(); logger.info('Weekly scanner stopped'); }
 }
 
 function getSchedulerStatus() {
