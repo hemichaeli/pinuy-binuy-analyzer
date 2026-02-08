@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const pool = require('../db/pool');
 const { scanAll } = require('../services/perplexityService');
 const { calculateAllIAI } = require('../services/iaiCalculator');
+const { calculateAllSSI } = require('../services/ssiCalculator');
 const { logger } = require('../services/logger');
 
 // Israel is UTC+2 (winter) / UTC+3 (summer)
@@ -179,6 +180,7 @@ function formatPrice(price) {
 
 /**
  * Run the weekly scan
+ * Order: Perplexity -> SSI -> IAI -> Alerts
  */
 async function runWeeklyScan() {
   if (isRunning) {
@@ -204,8 +206,14 @@ async function runWeeklyScan() {
     // 3. Run Perplexity scan on all complexes (stale = not scanned in 6+ days)
     const results = await scanAll({ staleOnly: true });
 
-    // 4. Generate alerts from changes
-    const alertCount = await generateAlerts(beforeSnapshot);
+    // 4. Calculate SSI scores for all active listings
+    let ssiResults = { total: 0, calculated: 0, errors: 0, stressed: 0, very_stressed: 0 };
+    try {
+      ssiResults = await calculateAllSSI();
+      logger.info('SSI scores calculated for all active listings', ssiResults);
+    } catch (ssiErr) {
+      logger.warn('SSI calculation failed', { error: ssiErr.message });
+    }
 
     // 5. Recalculate IAI scores for all complexes
     try {
@@ -215,10 +223,14 @@ async function runWeeklyScan() {
       logger.warn('IAI recalculation failed', { error: iaiErr.message });
     }
 
-    // 6. Update scan log
+    // 6. Generate alerts from changes (after SSI + IAI so scores are fresh)
+    const alertCount = await generateAlerts(beforeSnapshot);
+
+    // 7. Update scan log
     const duration = Math.round((Date.now() - startTime) / 1000);
     const summary = `Weekly scan: ${results.succeeded}/${results.total} succeeded, ` +
       `${results.totalNewTransactions} new tx, ${results.totalNewListings} new listings, ` +
+      `SSI: ${ssiResults.very_stressed} very stressed + ${ssiResults.stressed} stressed, ` +
       `${alertCount} alerts. ${results.failed} failed. Duration: ${duration}s`;
 
     await pool.query(
@@ -252,6 +264,7 @@ async function runWeeklyScan() {
       failed: results.failed,
       newTransactions: results.totalNewTransactions,
       newListings: results.totalNewListings,
+      ssi: ssiResults,
       alertsGenerated: alertCount,
       summary
     };
@@ -322,5 +335,6 @@ module.exports = {
   startScheduler,
   stopScheduler,
   runWeeklyScan,
-  getSchedulerStatus
+  getSchedulerStatus,
+  createAlert
 };
