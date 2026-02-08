@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const pool = require('../db/pool');
 const { scanAll } = require('../services/perplexityService');
+const { calculateAllIAI } = require('../services/iaiCalculator');
 const { logger } = require('../services/logger');
 
 // Israel is UTC+2 (winter) / UTC+3 (summer)
@@ -206,10 +207,12 @@ async function runWeeklyScan() {
     // 4. Generate alerts from changes
     const alertCount = await generateAlerts(beforeSnapshot);
 
-    // 5. Recalculate IAI scores for scanned complexes
-    const { recalculateAllIAI } = require('../services/iaiCalculator');
-    if (typeof recalculateAllIAI === 'function') {
-      await recalculateAllIAI();
+    // 5. Recalculate IAI scores for all complexes
+    try {
+      await calculateAllIAI();
+      logger.info('IAI scores recalculated for all complexes');
+    } catch (iaiErr) {
+      logger.warn('IAI recalculation failed', { error: iaiErr.message });
     }
 
     // 6. Update scan log
