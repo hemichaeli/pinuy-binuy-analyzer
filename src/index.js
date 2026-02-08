@@ -115,17 +115,50 @@ app.use('/api', opportunityRoutes);
 app.use('/api/scan', scanRoutes);
 app.use('/api/alerts', alertRoutes);
 
+// Weekly scheduler routes
+const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
+
+// GET /api/scheduler - Scheduler status
+app.get('/api/scheduler', (req, res) => {
+  res.json(getSchedulerStatus());
+});
+
+// POST /api/scheduler/run - Manually trigger weekly scan
+app.post('/api/scheduler/run', async (req, res) => {
+  const status = getSchedulerStatus();
+  if (status.isRunning) {
+    return res.status(409).json({ error: 'Scan already running' });
+  }
+  
+  // Run in background
+  res.json({ message: 'Weekly scan triggered manually', note: 'Running in background' });
+  
+  try {
+    await runWeeklyScan();
+  } catch (err) {
+    logger.error('Manual weekly scan failed', { error: err.message });
+  }
+});
+
 // Debug endpoint
 app.get('/debug', (req, res) => {
+  const scheduler = getSchedulerStatus();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-08-phase2',
+    build: '2026-02-08-phase2-cron',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
       PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? `${process.env.PERPLEXITY_API_KEY.substring(0, 8)}...(set)` : '(not set)',
+      SCAN_CRON: process.env.SCAN_CRON || '0 4 * * 0 (default)',
       PORT: process.env.PORT || '(not set)',
       NODE_ENV: process.env.NODE_ENV || '(not set)',
+    },
+    scheduler: {
+      enabled: scheduler.enabled,
+      cron: scheduler.cron,
+      isRunning: scheduler.isRunning,
+      lastRun: scheduler.lastRun
     },
     cwd: process.cwd(),
   });
@@ -137,6 +170,8 @@ app.get('/health', async (req, res) => {
     const result = await pool.query('SELECT COUNT(*) FROM complexes');
     const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
     const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
+    const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
+    const scheduler = getSchedulerStatus();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -144,7 +179,9 @@ app.get('/health', async (req, res) => {
       complexes: parseInt(result.rows[0].count),
       transactions: parseInt(txCount.rows[0].count),
       listings: parseInt(listingCount.rows[0].count),
-      perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured'
+      unread_alerts: parseInt(alertCount.rows[0].count),
+      perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured',
+      scheduler: scheduler.enabled ? 'active' : 'disabled'
     });
   } catch (err) {
     res.status(503).json({
@@ -160,8 +197,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'Pinuy Binuy Investment Analyzer API',
-    version: '2.0.0',
-    phase: 'Phase 2 - Perplexity Data Collection',
+    version: '2.1.0',
+    phase: 'Phase 2 - Perplexity + Weekly Auto-Scan',
     endpoints: {
       health: 'GET /health',
       projects: 'GET /api/projects',
@@ -172,10 +209,13 @@ app.get('/', (req, res) => {
       opportunities: 'GET /api/opportunities',
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
-      scanRun: 'POST /api/scan/run {type, city, status, limit, complexId, staleOnly}',
-      scanComplex: 'POST /api/scan/complex/:id (synchronous single scan)',
+      scanRun: 'POST /api/scan/run',
+      scanComplex: 'POST /api/scan/complex/:id',
       scanResults: 'GET /api/scan/results',
-      alerts: 'GET /api/alerts'
+      alerts: 'GET /api/alerts',
+      alertMarkRead: 'PUT /api/alerts/:id/read',
+      scheduler: 'GET /api/scheduler',
+      schedulerRun: 'POST /api/scheduler/run (manual trigger)'
     }
   });
 });
@@ -191,18 +231,25 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Start with DB init
+// Start with DB init + scheduler
 async function start() {
   const dbReady = await initDatabase();
   if (!dbReady) {
     logger.warn('Starting without database - some features may be unavailable');
   }
   
+  // Start weekly scanner cron job
+  if (dbReady) {
+    const { startScheduler } = require('./jobs/weeklyScanner');
+    startScheduler();
+  }
+  
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Pinuy Binuy API v2.0 running on port ${PORT}`);
+    logger.info(`Pinuy Binuy API v2.1 running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
     logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
+    logger.info(`Weekly scanner: ${process.env.PERPLEXITY_API_KEY ? 'enabled (Sunday 06:00 IST)' : 'disabled (no API key)'}`);
   });
 }
 
