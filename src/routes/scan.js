@@ -7,6 +7,7 @@ const { calculateIAI, calculateAllIAI } = require('../services/iaiCalculator');
 const { calculateSSI, calculateAllSSI } = require('../services/ssiCalculator');
 const nadlanScraper = require('../services/nadlanScraper');
 const { calculateAllBenchmarks, calculateBenchmark } = require('../services/benchmarkService');
+const yad2Scraper = require('../services/yad2Scraper');
 
 // POST /api/scan/run - Trigger a scan
 router.post('/run', async (req, res) => {
@@ -151,13 +152,75 @@ router.post('/nadlan', async (req, res) => {
   }
 });
 
+// POST /api/scan/yad2 - Trigger yad2 listing scan
+router.post('/yad2', async (req, res) => {
+  try {
+    const { city, limit, complexId } = req.body;
+    const running = await pool.query(
+      "SELECT id FROM scan_logs WHERE status = 'running' AND started_at > NOW() - INTERVAL '1 hour'"
+    );
+    if (running.rows.length > 0) {
+      return res.status(409).json({ error: 'A scan is already running', scan_id: running.rows[0].id });
+    }
+
+    if (complexId) {
+      // Synchronous single complex yad2 scan
+      const result = await yad2Scraper.scanComplex(parseInt(complexId));
+      return res.json({ message: 'yad2 scan complete', result });
+    }
+
+    const scanLog = await pool.query(
+      `INSERT INTO scan_logs (scan_type, status) VALUES ('yad2', 'running') RETURNING *`
+    );
+    const scanId = scanLog.rows[0].id;
+
+    res.json({
+      message: 'yad2 listing scan triggered', scan_id: scanId,
+      note: `Scanning ${city ? `complexes in ${city}` : 'all complexes'}${limit ? ` (limit: ${limit})` : ''}`
+    });
+
+    (async () => {
+      try {
+        const results = await yad2Scraper.scanAll({
+          city: city || null,
+          limit: limit ? parseInt(limit) : null,
+          staleOnly: true
+        });
+
+        // Recalculate SSI after new listings
+        logger.info('Recalculating SSI after yad2 scan...');
+        await calculateAllSSI();
+
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+            complexes_scanned = $1, new_listings = $2, updated_listings = $3,
+            summary = $4 WHERE id = $5`,
+          [results.total, results.totalNew, results.totalUpdated,
+            `yad2 scan: ${results.succeeded}/${results.total} succeeded, ` +
+            `${results.totalNew} new listings, ${results.totalUpdated} updated, ` +
+            `${results.totalPriceChanges} price changes. SSI recalculated.`, scanId]
+        );
+        logger.info(`yad2 scan ${scanId} completed`, results);
+      } catch (err) {
+        logger.error(`yad2 scan ${scanId} failed`, { error: err.message });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+          [err.message, scanId]
+        );
+      }
+    })();
+  } catch (err) {
+    logger.error('Error triggering yad2 scan', { error: err.message });
+    res.status(500).json({ error: 'Failed to trigger yad2 scan' });
+  }
+});
+
 // POST /api/scan/benchmark - Trigger benchmark calculation
 router.post('/benchmark', async (req, res) => {
   try {
     const { city, limit, complexId, force } = req.body;
 
     if (complexId) {
-      // Synchronous single complex benchmark
       const result = await calculateBenchmark(parseInt(complexId));
       if (!result) {
         return res.json({ message: 'No benchmark data available (insufficient transactions)', complex_id: complexId });
@@ -165,7 +228,6 @@ router.post('/benchmark', async (req, res) => {
       return res.json({ message: 'Benchmark calculated', result });
     }
 
-    // Batch benchmark (async)
     res.json({
       message: 'Benchmark calculation triggered',
       note: `Calculating benchmarks${city ? ` for ${city}` : ''}${limit ? ` (limit: ${limit})` : ''}${force ? ' (force recalc)' : ''}`
@@ -179,10 +241,8 @@ router.post('/benchmark', async (req, res) => {
           force: !!force
         });
 
-        // Recalculate IAI after benchmarks (premium_gap changed)
         logger.info('Recalculating IAI after benchmark update...');
         await calculateAllIAI();
-
         logger.info('Benchmark batch complete', results);
       } catch (err) {
         logger.error('Benchmark batch failed', { error: err.message });
