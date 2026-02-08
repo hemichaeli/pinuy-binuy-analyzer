@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { logger } = require('./services/logger');
 const pool = require('./db/pool');
+const notificationService = require('./services/notificationService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -144,16 +145,58 @@ app.post('/api/scheduler/run', async (req, res) => {
   }
 });
 
+// Notification routes
+app.get('/api/notifications/status', (req, res) => {
+  res.json({
+    configured: notificationService.isConfigured(),
+    smtp_host: process.env.SMTP_HOST ? `${process.env.SMTP_HOST} (set)` : '(not set)',
+    smtp_user: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 4)}...(set)` : '(not set)',
+    targets: notificationService.NOTIFICATION_EMAILS
+  });
+});
+
+app.post('/api/notifications/test', async (req, res) => {
+  if (!notificationService.isConfigured()) {
+    return res.status(400).json({ error: 'SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS' });
+  }
+  try {
+    const testSubject = `[QUANTUM] Test notification - ${new Date().toISOString()}`;
+    const testBody = '<div dir="rtl"><h2>QUANTUM - בדיקת התראות</h2><p>אם אתה רואה הודעה זו, מערכת ההתראות פעילה!</p></div>';
+    const results = [];
+    for (const email of notificationService.NOTIFICATION_EMAILS) {
+      const sent = await notificationService.sendEmail(email, testSubject, testBody);
+      results.push({ email, sent });
+    }
+    res.json({ test: 'completed', results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/notifications/send', async (req, res) => {
+  if (!notificationService.isConfigured()) {
+    return res.status(400).json({ error: 'SMTP not configured' });
+  }
+  try {
+    const result = await notificationService.sendPendingAlerts();
+    res.json({ message: 'Pending alerts processed', ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Debug endpoint
 app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-09-phase7-mavat-committee',
+    build: '2026-02-09-v3-full-pipeline',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
       PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? `${process.env.PERPLEXITY_API_KEY.substring(0, 8)}...(set)` : '(not set)',
+      SMTP_HOST: process.env.SMTP_HOST || '(not set)',
+      SMTP_USER: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 4)}...(set)` : '(not set)',
       SCAN_CRON: process.env.SCAN_CRON || '0 4 * * 0 (default)',
       PORT: process.env.PORT || '(not set)',
       NODE_ENV: process.env.NODE_ENV || '(not set)',
@@ -162,7 +205,8 @@ app.get('/debug', (req, res) => {
       enabled: scheduler.enabled,
       cron: scheduler.cron,
       isRunning: scheduler.isRunning,
-      lastRun: scheduler.lastRun
+      lastRun: scheduler.lastRun,
+      notificationsConfigured: scheduler.notificationsConfigured
     },
     features: {
       ssi_calculator: 'active',
@@ -173,6 +217,7 @@ app.get('/debug', (req, res) => {
       mavat_scraper: 'active',
       committee_tracking: 'active',
       perplexity_scanner: process.env.PERPLEXITY_API_KEY ? 'active' : 'disabled',
+      notification_service: notificationService.isConfigured() ? 'active' : 'disabled (set SMTP_HOST, SMTP_USER, SMTP_PASS)',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
     weekly_scan_steps: [
@@ -183,7 +228,8 @@ app.get('/debug', (req, res) => {
       '5. mavat planning scan (committee approvals + status)',
       '6. SSI score calculation',
       '7. IAI score recalculation',
-      '8. Alert generation (incl. committee alerts)'
+      '8. Alert generation (incl. committee alerts)',
+      '9. Email notifications (Trello cards + office digest)'
     ],
     alert_types: [
       'status_change - plan status progression',
@@ -192,6 +238,7 @@ app.get('/debug', (req, res) => {
       'stressed_seller - high SSI listing found',
       'price_drop - significant price reduction'
     ],
+    notification_targets: notificationService.NOTIFICATION_EMAILS,
     cwd: process.cwd(),
   });
 });
@@ -235,6 +282,7 @@ app.get('/health', async (req, res) => {
       committee_tracked: committeeStats,
       unread_alerts: parseInt(alertCount.rows[0].count),
       perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured',
+      notifications: notificationService.isConfigured() ? 'configured' : 'not_configured',
       scheduler: scheduler.enabled ? 'active' : 'disabled'
     });
   } catch (err) {
@@ -250,7 +298,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Pinuy Binuy Investment Analyzer API',
     version: '3.0.0',
-    phase: 'Phase 7 - mavat Scraper + Committee Tracking',
+    phase: 'v3.0 - Full Pipeline (9-step scan + notifications)',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -272,6 +320,9 @@ app.get('/', (req, res) => {
       scanResults: 'GET /api/scan/results',
       alerts: 'GET /api/alerts',
       alertMarkRead: 'PUT /api/alerts/:id/read',
+      notificationsStatus: 'GET /api/notifications/status',
+      notificationsTest: 'POST /api/notifications/test',
+      notificationsSend: 'POST /api/notifications/send',
       scheduler: 'GET /api/scheduler',
       schedulerRun: 'POST /api/scheduler/run'
     }
@@ -303,7 +354,8 @@ async function start() {
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
     logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
-    logger.info(`Features: SSI, IAI, Benchmark, Nadlan, yad2, mavat, Committee Tracking, Weekly Scanner`);
+    logger.info(`Notifications: ${notificationService.isConfigured() ? 'configured' : 'not configured (set SMTP vars)'}`);
+    logger.info('Features: SSI, IAI, Benchmark, Nadlan, yad2, mavat, Committee, Notifications, Weekly Scanner');
   });
 }
 
