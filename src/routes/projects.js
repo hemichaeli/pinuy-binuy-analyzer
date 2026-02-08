@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
+const { getBenchmarkSummary } = require('../services/benchmarkService');
 
 // GET /api/projects - List all projects with optional filters
 router.get('/', async (req, res) => {
@@ -116,6 +117,8 @@ router.get('/stats', async (req, res) => {
         AVG(iai_score) FILTER (WHERE iai_score > 0) as avg_iai,
         COUNT(*) FILTER (WHERE iai_score >= 70) as excellent_opportunities,
         COUNT(*) FILTER (WHERE iai_score >= 50 AND iai_score < 70) as good_opportunities,
+        COUNT(*) FILTER (WHERE actual_premium IS NOT NULL) as benchmarked_complexes,
+        AVG(actual_premium) FILTER (WHERE actual_premium IS NOT NULL) as avg_actual_premium,
         COUNT(DISTINCT city) as cities
       FROM complexes
     `);
@@ -262,7 +265,7 @@ router.get('/:id/listings', async (req, res) => {
   }
 });
 
-// GET /api/projects/:id/benchmark
+// GET /api/projects/:id/benchmark - Enhanced benchmark with service
 router.get('/:id/benchmark', async (req, res) => {
   try {
     const { id } = req.params;
@@ -272,7 +275,11 @@ router.get('/:id/benchmark', async (req, res) => {
       : parseInt(id);
     if (!complexId) return res.status(404).json({ error: 'Project not found' });
     
-    const benchmarks = await pool.query(`
+    // Get enhanced benchmark summary from service
+    const summary = await getBenchmarkSummary(complexId);
+    
+    // Also get building-level benchmarks if they exist
+    const buildingBenchmarks = await pool.query(`
       SELECT bm.*, b.address as building_address, b.avg_price_sqm as building_price_sqm,
         CASE WHEN bm.benchmark_price_sqm > 0 
           THEN ROUND(((b.avg_price_sqm - bm.benchmark_price_sqm) / bm.benchmark_price_sqm * 100)::numeric, 1)
@@ -281,7 +288,11 @@ router.get('/:id/benchmark', async (req, res) => {
       WHERE bm.complex_id = $1 ORDER BY b.address
     `, [complexId]);
     
-    res.json({ benchmarks: benchmarks.rows, total: benchmarks.rows.length });
+    res.json({
+      summary: summary,
+      building_benchmarks: buildingBenchmarks.rows,
+      total_building_benchmarks: buildingBenchmarks.rows.length
+    });
   } catch (err) {
     logger.error('Error fetching benchmarks', { error: err.message });
     res.status(500).json({ error: 'Failed to fetch benchmarks' });
