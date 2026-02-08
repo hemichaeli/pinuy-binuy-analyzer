@@ -132,7 +132,7 @@ app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-08-phase4-benchmark',
+    build: '2026-02-09-phase5-yad2',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
@@ -152,6 +152,7 @@ app.get('/debug', (req, res) => {
       iai_calculator: 'active',
       benchmark_service: 'active',
       nadlan_scraper: 'active',
+      yad2_scraper: 'active',
       perplexity_scanner: process.env.PERPLEXITY_API_KEY ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
@@ -159,9 +160,10 @@ app.get('/debug', (req, res) => {
       '1. nadlan.gov.il transaction scan',
       '2. Benchmark calculation (actual_premium)',
       '3. Perplexity AI scan (status + listings)',
-      '4. SSI score calculation',
-      '5. IAI score recalculation',
-      '6. Alert generation'
+      '4. yad2 listing scan (dedicated price tracking)',
+      '5. SSI score calculation',
+      '6. IAI score recalculation',
+      '7. Alert generation'
     ],
     cwd: process.cwd(),
   });
@@ -174,6 +176,7 @@ app.get('/health', async (req, res) => {
     const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
     const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
     const activeListings = await pool.query('SELECT COUNT(*) FROM listings WHERE is_active = TRUE');
+    const yad2Listings = await pool.query("SELECT COUNT(*) FROM listings WHERE source = 'yad2' AND is_active = TRUE");
     const stressedCount = await pool.query('SELECT COUNT(*) FROM listings WHERE ssi_score >= 50 AND is_active = TRUE');
     const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
     const benchmarkedCount = await pool.query('SELECT COUNT(*) FROM complexes WHERE actual_premium IS NOT NULL');
@@ -181,13 +184,14 @@ app.get('/health', async (req, res) => {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      version: '2.3.0',
+      version: '2.5.0',
       db: 'connected',
       complexes: parseInt(result.rows[0].count),
       transactions: parseInt(txCount.rows[0].count),
       listings: {
         total: parseInt(listingCount.rows[0].count),
         active: parseInt(activeListings.rows[0].count),
+        yad2_active: parseInt(yad2Listings.rows[0].count),
         stressed: parseInt(stressedCount.rows[0].count)
       },
       benchmarked_complexes: parseInt(benchmarkedCount.rows[0].count),
@@ -207,8 +211,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'Pinuy Binuy Investment Analyzer API',
-    version: '2.3.0',
-    phase: 'Phase 4 - Benchmark Service + Nadlan Scraper',
+    version: '2.5.0',
+    phase: 'Phase 5 - yad2 Scraper + Full Pipeline',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -222,6 +226,7 @@ app.get('/', (req, res) => {
       dashboard: 'GET /api/dashboard',
       scanRun: 'POST /api/scan/run',
       scanNadlan: 'POST /api/scan/nadlan',
+      scanYad2: 'POST /api/scan/yad2',
       scanBenchmark: 'POST /api/scan/benchmark',
       scanComplex: 'POST /api/scan/complex/:id',
       scanSSI: 'POST /api/scan/ssi',
@@ -255,11 +260,11 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Pinuy Binuy API v2.3 running on port ${PORT}`);
+    logger.info(`Pinuy Binuy API v2.5 running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
     logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
-    logger.info(`Features: SSI, IAI, Benchmark, Nadlan Scraper, Weekly Scanner`);
+    logger.info(`Features: SSI, IAI, Benchmark, Nadlan Scraper, yad2 Scraper, Weekly Scanner`);
   });
 }
 
