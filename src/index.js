@@ -37,7 +37,6 @@ async function initDatabase() {
   }
 
   try {
-    // Check if tables exist
     const tableCheck = await pool.query(`
       SELECT EXISTS (
         SELECT FROM information_schema.tables 
@@ -55,7 +54,6 @@ async function initDatabase() {
       logger.info('Tables already exist - skipping migration');
     }
 
-    // Check if seed data needed
     const countCheck = await pool.query('SELECT COUNT(*) FROM complexes');
     if (parseInt(countCheck.rows[0].count) === 0) {
       logger.info('No data found - running seed...');
@@ -82,17 +80,13 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
+  windowMs: 15 * 60 * 1000, max: 100,
+  standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
 
-// Request logging
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -118,24 +112,17 @@ app.use('/api/alerts', alertRoutes);
 // Weekly scheduler routes
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
-// GET /api/scheduler - Scheduler status
 app.get('/api/scheduler', (req, res) => {
   res.json(getSchedulerStatus());
 });
 
-// POST /api/scheduler/run - Manually trigger weekly scan
 app.post('/api/scheduler/run', async (req, res) => {
   const status = getSchedulerStatus();
   if (status.isRunning) {
     return res.status(409).json({ error: 'Scan already running' });
   }
-  
-  // Run in background
   res.json({ message: 'Weekly scan triggered manually', note: 'Running in background' });
-  
-  try {
-    await runWeeklyScan();
-  } catch (err) {
+  try { await runWeeklyScan(); } catch (err) {
     logger.error('Manual weekly scan failed', { error: err.message });
   }
 });
@@ -145,7 +132,7 @@ app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-08-phase3-ssi',
+    build: '2026-02-08-phase4-benchmark',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
@@ -163,9 +150,19 @@ app.get('/debug', (req, res) => {
     features: {
       ssi_calculator: 'active',
       iai_calculator: 'active',
+      benchmark_service: 'active',
+      nadlan_scraper: 'active',
       perplexity_scanner: process.env.PERPLEXITY_API_KEY ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
+    weekly_scan_steps: [
+      '1. nadlan.gov.il transaction scan',
+      '2. Benchmark calculation (actual_premium)',
+      '3. Perplexity AI scan (status + listings)',
+      '4. SSI score calculation',
+      '5. IAI score recalculation',
+      '6. Alert generation'
+    ],
     cwd: process.cwd(),
   });
 });
@@ -179,11 +176,12 @@ app.get('/health', async (req, res) => {
     const activeListings = await pool.query('SELECT COUNT(*) FROM listings WHERE is_active = TRUE');
     const stressedCount = await pool.query('SELECT COUNT(*) FROM listings WHERE ssi_score >= 50 AND is_active = TRUE');
     const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
+    const benchmarkedCount = await pool.query('SELECT COUNT(*) FROM complexes WHERE actual_premium IS NOT NULL');
     const scheduler = getSchedulerStatus();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      version: '2.2.0',
+      version: '2.3.0',
       db: 'connected',
       complexes: parseInt(result.rows[0].count),
       transactions: parseInt(txCount.rows[0].count),
@@ -192,16 +190,15 @@ app.get('/health', async (req, res) => {
         active: parseInt(activeListings.rows[0].count),
         stressed: parseInt(stressedCount.rows[0].count)
       },
+      benchmarked_complexes: parseInt(benchmarkedCount.rows[0].count),
       unread_alerts: parseInt(alertCount.rows[0].count),
       perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured',
       scheduler: scheduler.enabled ? 'active' : 'disabled'
     });
   } catch (err) {
     res.status(503).json({
-      status: 'error',
-      timestamp: new Date().toISOString(),
-      db: 'disconnected',
-      error: err.message
+      status: 'error', timestamp: new Date().toISOString(),
+      db: 'disconnected', error: err.message
     });
   }
 });
@@ -210,8 +207,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'Pinuy Binuy Investment Analyzer API',
-    version: '2.2.0',
-    phase: 'Phase 3 - SSI Calculator + Enhanced Weekly Scan',
+    version: '2.3.0',
+    phase: 'Phase 4 - Benchmark Service + Nadlan Scraper',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -224,48 +221,45 @@ app.get('/', (req, res) => {
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
       scanRun: 'POST /api/scan/run',
+      scanNadlan: 'POST /api/scan/nadlan',
+      scanBenchmark: 'POST /api/scan/benchmark',
       scanComplex: 'POST /api/scan/complex/:id',
-      scanSSI: 'POST /api/scan/ssi (manual SSI recalculation)',
+      scanSSI: 'POST /api/scan/ssi',
       scanResults: 'GET /api/scan/results',
       alerts: 'GET /api/alerts',
       alertMarkRead: 'PUT /api/alerts/:id/read',
       scheduler: 'GET /api/scheduler',
-      schedulerRun: 'POST /api/scheduler/run (manual trigger)'
+      schedulerRun: 'POST /api/scheduler/run'
     }
   });
 });
 
-// Error handler
 app.use((err, req, res, _next) => {
   logger.error(`Unhandled error: ${err.message}`, { stack: err.stack });
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// Start with DB init + scheduler
 async function start() {
   const dbReady = await initDatabase();
   if (!dbReady) {
     logger.warn('Starting without database - some features may be unavailable');
   }
   
-  // Start weekly scanner cron job
   if (dbReady) {
     const { startScheduler } = require('./jobs/weeklyScanner');
     startScheduler();
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Pinuy Binuy API v2.2 running on port ${PORT}`);
+    logger.info(`Pinuy Binuy API v2.3 running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
     logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
-    logger.info(`Weekly scanner: ${process.env.PERPLEXITY_API_KEY ? 'enabled (Sunday 06:00 IST)' : 'disabled (no API key)'}`);
-    logger.info('SSI Calculator: active');
+    logger.info(`Features: SSI, IAI, Benchmark, Nadlan Scraper, Weekly Scanner`);
   });
 }
 
