@@ -5,6 +5,7 @@ const { logger } = require('../services/logger');
 const { scanComplex, scanAll } = require('../services/perplexityService');
 const { calculateIAI, calculateAllIAI } = require('../services/iaiCalculator');
 const { calculateSSI, calculateAllSSI } = require('../services/ssiCalculator');
+const nadlanScraper = require('../services/nadlanScraper');
 
 // POST /api/scan/run - Trigger a scan
 router.post('/run', async (req, res) => {
@@ -117,6 +118,97 @@ router.post('/run', async (req, res) => {
   } catch (err) {
     logger.error('Error triggering scan', { error: err.message });
     res.status(500).json({ error: 'Failed to trigger scan' });
+  }
+});
+
+// POST /api/scan/nadlan - Trigger nadlan.gov.il transaction scan
+router.post('/nadlan', async (req, res) => {
+  try {
+    const { city, limit, complexId } = req.body;
+
+    // Check if a scan is already running
+    const running = await pool.query(
+      "SELECT id FROM scan_logs WHERE status = 'running' AND started_at > NOW() - INTERVAL '1 hour'"
+    );
+
+    if (running.rows.length > 0) {
+      return res.status(409).json({
+        error: 'A scan is already running',
+        scan_id: running.rows[0].id
+      });
+    }
+
+    // Create scan log entry
+    const scanLog = await pool.query(
+      `INSERT INTO scan_logs (scan_type, status) VALUES ('nadlan', 'running') RETURNING *`
+    );
+    const scanId = scanLog.rows[0].id;
+
+    // Respond immediately
+    res.json({
+      message: 'Nadlan.gov.il scan triggered',
+      scan_id: scanId,
+      note: complexId
+        ? `Scanning single complex ${complexId}`
+        : `Scanning ${city ? `complexes in ${city}` : 'all complexes'}${limit ? ` (limit: ${limit})` : ''}`
+    });
+
+    // Run in background
+    (async () => {
+      try {
+        let results;
+
+        if (complexId) {
+          const result = await nadlanScraper.scanComplex(parseInt(complexId));
+          results = {
+            total: 1, scanned: 1,
+            succeeded: result.status === 'success' ? 1 : 0,
+            failed: result.status === 'error' ? 1 : 0,
+            totalNew: result.newTransactions || 0,
+            source: result.source || 'nadlan_gov'
+          };
+        } else {
+          results = await nadlanScraper.scanAll({
+            city: city || null,
+            limit: limit ? parseInt(limit) : null,
+            staleOnly: true
+          });
+        }
+
+        // Recalculate IAI after new transaction data
+        logger.info('Recalculating IAI after nadlan scan...');
+        await calculateAllIAI();
+
+        await pool.query(
+          `UPDATE scan_logs SET 
+            status = 'completed',
+            completed_at = NOW(),
+            complexes_scanned = $1,
+            new_transactions = $2,
+            summary = $3
+          WHERE id = $4`,
+          [
+            results.scanned || 1,
+            results.totalNew || 0,
+            `Nadlan scan (${results.source || 'nadlan_gov'}): ${results.succeeded || 0}/${results.total || 1} succeeded, ` +
+            `${results.totalNew || 0} new transactions. IAI recalculated.`,
+            scanId
+          ]
+        );
+
+        logger.info(`Nadlan scan ${scanId} completed`, results);
+      } catch (err) {
+        logger.error(`Nadlan scan ${scanId} failed`, { error: err.message });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+          [err.message, scanId]
+        );
+      }
+    })();
+
+  } catch (err) {
+    logger.error('Error triggering nadlan scan', { error: err.message });
+    res.status(500).json({ error: 'Failed to trigger nadlan scan' });
   }
 });
 
