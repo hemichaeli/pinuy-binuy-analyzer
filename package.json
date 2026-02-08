@@ -1,6 +1,6 @@
 {
   "name": "pinuy-binuy-analyzer",
-  "version": "2.5.0",
+  "version": "3.0.0",
   "description": "Investment analyzer for Pinuy Binuy (Urban Renewal) projects in Israel",
   "main": "src/index.js",
   "scripts": {
