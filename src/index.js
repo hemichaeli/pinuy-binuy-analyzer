@@ -164,12 +164,13 @@ app.post('/api/notifications/test', async (req, res) => {
     const testBody = '<div dir="rtl"><h2>QUANTUM - בדיקת התראות</h2><p>אם אתה רואה הודעה זו, מערכת ההתראות פעילה!</p></div>';
     const results = [];
     for (const email of notificationService.NOTIFICATION_EMAILS) {
-      const sent = await notificationService.sendEmail(email, testSubject, testBody);
-      results.push({ email, sent });
+      const result = await notificationService.sendEmail(email, testSubject, testBody);
+      results.push({ email, ...result });
     }
-    res.json({ test: 'completed', results });
+    const allSent = results.every(r => r.sent);
+    res.json({ test: allSent ? 'success' : 'partial_failure', results });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
@@ -190,13 +191,15 @@ app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-09-v3-full-pipeline',
+    build: '2026-02-09-v3-smtp-diag',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
       PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? `${process.env.PERPLEXITY_API_KEY.substring(0, 8)}...(set)` : '(not set)',
       SMTP_HOST: process.env.SMTP_HOST || '(not set)',
       SMTP_USER: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 4)}...(set)` : '(not set)',
+      SMTP_PORT: process.env.SMTP_PORT || '587 (default)',
+      SMTP_SECURE: process.env.SMTP_SECURE || 'false (default)',
       SCAN_CRON: process.env.SCAN_CRON || '0 4 * * 0 (default)',
       PORT: process.env.PORT || '(not set)',
       NODE_ENV: process.env.NODE_ENV || '(not set)',
