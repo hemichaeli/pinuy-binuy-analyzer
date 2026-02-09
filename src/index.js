@@ -197,7 +197,7 @@ app.get('/debug', (req, res) => {
   const emailProvider = notificationService.getProvider();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-09-v3-resend',
+    build: '2026-02-09-v4-forceall',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
@@ -325,6 +325,7 @@ app.get('/', (req, res) => {
       scanYad2: 'POST /api/scan/yad2',
       scanMavat: 'POST /api/scan/mavat',
       scanBenchmark: 'POST /api/scan/benchmark',
+      scanWeekly: 'POST /api/scan/weekly',
       scanComplex: 'POST /api/scan/complex/:id',
       scanSSI: 'POST /api/scan/ssi',
       scanResults: 'GET /api/scan/results',
