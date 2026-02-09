@@ -40,7 +40,6 @@ const ALERT_TYPE_LABEL = {
 
 /**
  * Create email transporter
- * Supports SMTP (Gmail, custom) and Resend
  */
 function createTransporter() {
   const smtpHost = process.env.SMTP_HOST;
@@ -64,28 +63,27 @@ function createTransporter() {
 }
 
 /**
- * Send a single email
+ * Send a single email - returns { sent: boolean, error?: string }
  */
 async function sendEmail(to, subject, htmlBody, textBody) {
   const transporter = createTransporter();
   if (!transporter) {
-    logger.warn('Cannot send email - SMTP not configured');
-    return false;
+    return { sent: false, error: 'SMTP not configured' };
   }
 
   try {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
       to,
       subject,
       html: htmlBody,
       text: textBody || htmlBody.replace(/<[^>]*>/g, '')
     });
-    logger.info(`Email sent to ${to}: ${subject}`);
-    return true;
+    logger.info(`Email sent to ${to}: ${subject}`, { messageId: info.messageId });
+    return { sent: true, messageId: info.messageId };
   } catch (err) {
-    logger.error(`Failed to send email to ${to}`, { error: err.message, subject });
-    return false;
+    logger.error(`Failed to send email to ${to}`, { error: err.message, code: err.code, subject });
+    return { sent: false, error: err.message, code: err.code };
   }
 }
 
@@ -122,9 +120,7 @@ function formatAlertForTrello(alert) {
     }
   }
 
-  // Trello subject = card title
   const subject = `${emoji} [QUANTUM] ${typeLabel}: ${alert.title}`;
-
   return { subject, body };
 }
 
@@ -153,7 +149,7 @@ function formatAlertHTML(alert) {
  * Send real-time notification for a high-severity alert
  */
 async function sendAlertNotification(alert) {
-  if (!alert || !['critical', 'high'].includes(alert.severity)) return;
+  if (!alert || !['critical', 'high'].includes(alert.severity)) return 0;
 
   const trelloFormat = formatAlertForTrello(alert);
   const htmlBody = formatAlertHTML(alert);
@@ -161,13 +157,11 @@ async function sendAlertNotification(alert) {
 
   let sentCount = 0;
 
-  // Send to Trello (plain text for card description)
   if (TRELLO_EMAIL) {
-    const sent = await sendEmail(TRELLO_EMAIL, subject, trelloFormat.body, trelloFormat.body);
-    if (sent) sentCount++;
+    const result = await sendEmail(TRELLO_EMAIL, subject, trelloFormat.body, trelloFormat.body);
+    if (result.sent) sentCount++;
   }
 
-  // Send to office (HTML formatted)
   if (OFFICE_EMAIL) {
     const fullHTML = `
       <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px;">
@@ -179,17 +173,13 @@ async function sendAlertNotification(alert) {
         </p>
       </div>
     `;
-    const sent = await sendEmail(OFFICE_EMAIL, subject, fullHTML);
-    if (sent) sentCount++;
+    const result = await sendEmail(OFFICE_EMAIL, subject, fullHTML);
+    if (result.sent) sentCount++;
   }
 
-  // Mark alert as sent
   if (sentCount > 0) {
     try {
-      await pool.query(
-        'UPDATE alerts SET sent_at = NOW() WHERE id = $1',
-        [alert.id]
-      );
+      await pool.query('UPDATE alerts SET sent_at = NOW() WHERE id = $1', [alert.id]);
     } catch (err) {
       logger.warn('Failed to mark alert as sent', { alertId: alert.id, error: err.message });
     }
@@ -214,23 +204,30 @@ async function sendPendingAlerts() {
 
     if (result.rows.length === 0) {
       logger.info('No pending alerts to send');
-      return { sent: 0 };
+      return { totalAlerts: 0, sent: 0 };
     }
 
     let sent = 0;
     for (const alert of result.rows) {
       const count = await sendAlertNotification(alert);
       if (count > 0) sent++;
-      // Small delay between emails
       await new Promise(r => setTimeout(r, 1000));
     }
 
     logger.info(`Sent ${sent}/${result.rows.length} pending alerts`);
-    return { total: result.rows.length, sent };
+    return { totalAlerts: result.rows.length, sent };
   } catch (err) {
     logger.error('Failed to send pending alerts', { error: err.message });
     return { error: err.message };
   }
+}
+
+/**
+ * Alias for weekly scanner compatibility
+ */
+async function sendPendingNotifications() {
+  const alertResult = await sendPendingAlerts();
+  return alertResult;
 }
 
 /**
@@ -241,7 +238,6 @@ async function sendWeeklyDigest(scanResult) {
 
   const subject = `📊 [QUANTUM] סיכום שבועי - Pinuy Binuy Analyzer`;
 
-  // Get this week's alerts
   const alertsResult = await pool.query(`
     SELECT a.*, c.name as complex_name, c.city
     FROM alerts a
@@ -256,14 +252,12 @@ async function sendWeeklyDigest(scanResult) {
     LIMIT 30
   `);
 
-  // Get top opportunities
   const topOpps = await pool.query(`
     SELECT name, city, status, iai_score, actual_premium
     FROM complexes WHERE iai_score >= 50
     ORDER BY iai_score DESC LIMIT 10
   `);
 
-  // Build digest HTML
   let html = `
     <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
       <h1 style="color: #1f2937; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">
@@ -275,9 +269,9 @@ async function sendWeeklyDigest(scanResult) {
         <table style="width: 100%; border-collapse: collapse;">
   `;
 
-  if (scanResult.nadlan) html += `<tr><td style="padding: 4px 8px;">nadlan.gov.il</td><td>${scanResult.nadlan.newTransactions || 0} עסקאות חדשות</td></tr>`;
-  if (scanResult.yad2) html += `<tr><td style="padding: 4px 8px;">yad2</td><td>${scanResult.yad2.newListings || 0} מודעות חדשות, ${scanResult.yad2.priceChanges || 0} שינויי מחיר</td></tr>`;
-  if (scanResult.mavat) html += `<tr><td style="padding: 4px 8px;">mavat</td><td>${scanResult.mavat.statusChanges || 0} שינויי סטטוס, ${scanResult.mavat.committeeApprovals || 0} אישורי ועדה</td></tr>`;
+  if (scanResult.nadlan) html += `<tr><td style="padding: 4px 8px;">nadlan.gov.il</td><td>${scanResult.nadlan.newTransactions || scanResult.nadlan.newTx || 0} עסקאות חדשות</td></tr>`;
+  if (scanResult.yad2) html += `<tr><td style="padding: 4px 8px;">yad2</td><td>${scanResult.yad2.new || scanResult.yad2.newListings || 0} מודעות חדשות, ${scanResult.yad2.priceChanges || 0} שינויי מחיר</td></tr>`;
+  if (scanResult.mavat) html += `<tr><td style="padding: 4px 8px;">mavat</td><td>${scanResult.mavat.statusChanges || 0} שינויי סטטוס, ${scanResult.mavat.committeeUpdates || 0} אישורי ועדה</td></tr>`;
   if (scanResult.benchmarks) html += `<tr><td style="padding: 4px 8px;">Benchmarks</td><td>${scanResult.benchmarks.calculated || 0} חושבו</td></tr>`;
 
   html += `
@@ -286,7 +280,6 @@ async function sendWeeklyDigest(scanResult) {
       </div>
   `;
 
-  // Alerts section
   if (alertsResult.rows.length > 0) {
     html += `<h3 style="color: #1f2937; margin-top: 24px;">התראות השבוע (${alertsResult.rows.length})</h3>`;
     for (const alert of alertsResult.rows) {
@@ -294,7 +287,6 @@ async function sendWeeklyDigest(scanResult) {
     }
   }
 
-  // Top opportunities
   if (topOpps.rows.length > 0) {
     html += `
       <h3 style="color: #1f2937; margin-top: 24px;">Top 10 הזדמנויות</h3>
@@ -334,7 +326,6 @@ async function sendWeeklyDigest(scanResult) {
     </div>
   `;
 
-  // Trello gets a simplified text version
   const trelloText = `סיכום שבועי QUANTUM\n\n` +
     `סריקה: ${scanResult.summary || 'N/A'}\n\n` +
     `התראות: ${alertsResult.rows.length}\n` +
@@ -344,12 +335,12 @@ async function sendWeeklyDigest(scanResult) {
 
   let sent = 0;
   if (TRELLO_EMAIL) {
-    const ok = await sendEmail(TRELLO_EMAIL, subject, trelloText, trelloText);
-    if (ok) sent++;
+    const result = await sendEmail(TRELLO_EMAIL, subject, trelloText, trelloText);
+    if (result.sent) sent++;
   }
   if (OFFICE_EMAIL) {
-    const ok = await sendEmail(OFFICE_EMAIL, subject, html);
-    if (ok) sent++;
+    const result = await sendEmail(OFFICE_EMAIL, subject, html);
+    if (result.sent) sent++;
   }
 
   logger.info(`Weekly digest sent to ${sent} recipients`);
@@ -366,6 +357,7 @@ function isConfigured() {
 module.exports = {
   sendAlertNotification,
   sendPendingAlerts,
+  sendPendingNotifications,
   sendWeeklyDigest,
   sendEmail,
   isConfigured,
