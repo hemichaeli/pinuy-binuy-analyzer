@@ -84,7 +84,7 @@ router.post('/run', async (req, res) => {
 // POST /api/scan/nadlan
 router.post('/nadlan', async (req, res) => {
   try {
-    const { city, limit, complexId } = req.body;
+    const { city, limit, complexId, staleOnly } = req.body;
     if (complexId) {
       const result = await nadlanScraper.scanComplex(parseInt(complexId));
       return res.json({ message: 'Nadlan scan complete', result });
@@ -99,7 +99,7 @@ router.post('/nadlan', async (req, res) => {
     (async () => {
       try {
         const results = await nadlanScraper.scanAll({
-          city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: true
+          city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: staleOnly !== false
         });
         await calculateAllIAI();
         await pool.query(
@@ -123,7 +123,7 @@ router.post('/nadlan', async (req, res) => {
 // POST /api/scan/yad2
 router.post('/yad2', async (req, res) => {
   try {
-    const { city, limit, complexId } = req.body;
+    const { city, limit, complexId, staleOnly } = req.body;
     if (complexId) {
       const result = await yad2Scraper.scanComplex(parseInt(complexId));
       return res.json({ message: 'yad2 scan complete', result });
@@ -138,7 +138,7 @@ router.post('/yad2', async (req, res) => {
     (async () => {
       try {
         const results = await yad2Scraper.scanAll({
-          city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: true
+          city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: staleOnly !== false
         });
         await calculateAllSSI();
         await pool.query(
@@ -162,7 +162,7 @@ router.post('/yad2', async (req, res) => {
 // POST /api/scan/mavat - Planning authority status scan
 router.post('/mavat', async (req, res) => {
   try {
-    const { city, limit, complexId } = req.body;
+    const { city, limit, complexId, staleOnly } = req.body;
     if (complexId) {
       const result = await mavatScraper.scanComplex(parseInt(complexId));
       return res.json({ message: 'mavat scan complete', result });
@@ -177,7 +177,7 @@ router.post('/mavat', async (req, res) => {
     (async () => {
       try {
         const results = await mavatScraper.scanAll({
-          city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: true
+          city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: staleOnly !== false
         });
         await calculateAllIAI();
         await pool.query(
@@ -195,6 +195,28 @@ router.post('/mavat', async (req, res) => {
     })();
   } catch (err) {
     res.status(500).json({ error: 'Failed to trigger mavat scan' });
+  }
+});
+
+// POST /api/scan/weekly - Trigger full weekly scan pipeline
+router.post('/weekly', async (req, res) => {
+  try {
+    const { runWeeklyScan } = require('../jobs/weeklyScanner');
+    const { forceAll } = req.body;
+    res.json({
+      message: 'Weekly scan triggered',
+      forceAll: !!forceAll,
+      note: forceAll ? 'Scanning ALL complexes (staleOnly bypassed)' : 'Scanning stale complexes only'
+    });
+    (async () => {
+      try {
+        await runWeeklyScan({ forceAll: !!forceAll });
+      } catch (err) {
+        logger.error('Weekly scan trigger failed', { error: err.message });
+      }
+    })();
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to trigger weekly scan' });
   }
 });
 
