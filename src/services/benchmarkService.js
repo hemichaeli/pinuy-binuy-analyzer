@@ -18,7 +18,9 @@ const { logger } = require('./logger');
  *   premium_gap = theoretical_premium_mid - actual_premium  (used by IAI calculator)
  */
 
-const RATE_LIMIT_DELAY = 2000;
+const PERPLEXITY_MODEL = 'sonar';
+const RATE_LIMIT_DELAY = 3500; // 3.5s between requests
+const MAX_RETRIES = 2;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -101,57 +103,73 @@ async function getInternalBenchmark(complexId, city) {
  */
 async function getPerplexityBenchmark(complexName, city, neighborhood) {
   if (!process.env.PERPLEXITY_API_KEY) {
+    logger.warn('Perplexity API key not configured - cannot calculate benchmarks');
     return null;
   }
 
-  try {
-    const locationDetail = neighborhood ? `שכונת ${neighborhood} ב${city}` : city;
-    const prompt = `מה המחיר הממוצע למטר רבוע של דירות יד שנייה (לא פינוי בינוי, לא חדש מקבלן) ב${locationDetail}?
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const locationDetail = neighborhood ? `שכונת ${neighborhood} ב${city}` : city;
+      const prompt = `מה המחיר הממוצע למטר רבוע של דירות יד שנייה (לא פינוי בינוי, לא חדש מקבלן) ב${locationDetail}?
 אני מחפש מחיר ממוצע למ"ר של דירות בבניינים רגילים (ישנים, לפני פינוי בינוי) באזור.
 החזר רק מספר אחד - המחיר הממוצע למ"ר בש"ח. 
 פורמט: {"avg_price_per_sqm": NUMBER, "source": "TEXT", "confidence": "high/medium/low"}`;
 
-    const response = await axios.post('https://api.perplexity.ai/chat/completions', {
-      model: 'llama-3.1-sonar-large-128k-online',
-      messages: [
-        { role: 'system', content: 'You are a real estate price analyst for Israel. Return ONLY valid JSON. No explanations.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 500,
-      temperature: 0.1
-    }, {
-      headers: {
-        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 20000
-    });
+      const response = await axios.post('https://api.perplexity.ai/chat/completions', {
+        model: PERPLEXITY_MODEL,
+        messages: [
+          { role: 'system', content: 'You are a real estate price analyst for Israel. Return ONLY valid JSON. No explanations.' },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 500,
+        temperature: 0.1
+      }, {
+        headers: {
+          'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
 
-    const content = response.data.choices?.[0]?.message?.content || '';
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
+      const content = response.data.choices?.[0]?.message?.content || '';
+      logger.debug(`Perplexity benchmark response for ${city}: ${content.substring(0, 200)}`);
+      
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        logger.warn(`Perplexity benchmark no JSON found for ${city}: ${content.substring(0, 100)}`);
+        if (attempt < MAX_RETRIES) { await sleep(RATE_LIMIT_DELAY); continue; }
+        return null;
+      }
 
-    const parsed = JSON.parse(jsonMatch[0]);
-    const avgPsm = parseFloat(parsed.avg_price_per_sqm);
+      const parsed = JSON.parse(jsonMatch[0]);
+      const avgPsm = parseFloat(parsed.avg_price_per_sqm);
 
-    if (!avgPsm || avgPsm < 5000 || avgPsm > 200000) {
-      logger.warn(`Perplexity benchmark unrealistic for ${city}: ${avgPsm}`);
-      return null;
+      if (!avgPsm || avgPsm < 5000 || avgPsm > 200000) {
+        logger.warn(`Perplexity benchmark unrealistic for ${city}: ${avgPsm}`);
+        return null;
+      }
+
+      logger.info(`Perplexity benchmark for ${city}: ${avgPsm}/sqm (confidence: ${parsed.confidence || 'unknown'})`);
+
+      return {
+        benchmark_psm: Math.round(avgPsm),
+        tx_count: 0, // estimated
+        complex_count: 0,
+        source: 'perplexity',
+        confidence: parsed.confidence || 'medium',
+        perplexity_source: parsed.source || ''
+      };
+
+    } catch (err) {
+      logger.warn(`Perplexity benchmark attempt ${attempt + 1} failed for ${city}: ${err.message}`);
+      if (attempt < MAX_RETRIES) {
+        await sleep(RATE_LIMIT_DELAY);
+      } else {
+        return null;
+      }
     }
-
-    return {
-      benchmark_psm: Math.round(avgPsm),
-      tx_count: 0, // estimated
-      complex_count: 0,
-      source: 'perplexity',
-      confidence: parsed.confidence || 'medium',
-      perplexity_source: parsed.source || ''
-    };
-
-  } catch (err) {
-    logger.warn(`Perplexity benchmark failed for ${city}: ${err.message}`);
-    return null;
   }
+  return null;
 }
 
 /**
@@ -176,6 +194,8 @@ async function calculateBenchmark(complexId) {
       return null;
     }
 
+    logger.info(`Benchmark calculating for "${name}" (${city}): complex avg=${complexPrice.avg_price_per_sqm}/sqm, ${complexPrice.tx_count} transactions`);
+
     // Try internal benchmark first, then Perplexity
     let benchmark = await getInternalBenchmark(complexId, city);
     
@@ -184,7 +204,7 @@ async function calculateBenchmark(complexId) {
     }
 
     if (!benchmark) {
-      logger.debug(`No benchmark data available for ${name} (${city})`);
+      logger.info(`No benchmark data available for ${name} (${city}) - skipping`);
       return null;
     }
 
@@ -235,7 +255,7 @@ async function calculateBenchmark(complexId) {
     return result;
 
   } catch (err) {
-    logger.error(`Benchmark calculation failed for complex ${complexId}`, { error: err.message });
+    logger.error(`Benchmark calculation failed for complex ${complexId}`, { error: err.message, stack: err.stack });
     return { complexId, status: 'error', error: err.message };
   }
 }
@@ -246,20 +266,27 @@ async function calculateBenchmark(complexId) {
 async function calculateAllBenchmarks(options = {}) {
   const { city, limit, force } = options;
 
-  let query = 'SELECT id, name, city FROM complexes WHERE 1=1';
+  // Only benchmark complexes that have transactions
+  let query = `
+    SELECT DISTINCT c.id, c.name, c.city 
+    FROM complexes c
+    INNER JOIN transactions t ON c.id = t.complex_id 
+      AND t.price_per_sqm IS NOT NULL 
+      AND t.price_per_sqm > 5000
+    WHERE 1=1
+  `;
   const params = [];
 
   if (city) {
     params.push(city);
-    query += ` AND city = $${params.length}`;
+    query += ` AND c.city = $${params.length}`;
   }
 
   if (!force) {
-    // Skip complexes already benchmarked recently (last 7 days)
-    query += ` AND (actual_premium IS NULL OR updated_at < NOW() - INTERVAL '7 days')`;
+    query += ` AND (c.actual_premium IS NULL OR c.updated_at < NOW() - INTERVAL '7 days')`;
   }
 
-  query += ' ORDER BY iai_score DESC NULLS LAST';
+  query += ' ORDER BY c.iai_score DESC NULLS LAST';
 
   if (limit) {
     params.push(limit);
@@ -267,7 +294,7 @@ async function calculateAllBenchmarks(options = {}) {
   }
 
   const complexes = await pool.query(query, params);
-  logger.info(`Benchmark calculation starting for ${complexes.rows.length} complexes`);
+  logger.info(`Benchmark calculation starting for ${complexes.rows.length} complexes with transaction data`);
 
   const results = {
     total: complexes.rows.length,
