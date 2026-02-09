@@ -147,28 +147,32 @@ app.post('/api/scheduler/run', async (req, res) => {
 
 // Notification routes
 app.get('/api/notifications/status', (req, res) => {
+  const provider = notificationService.getProvider();
   res.json({
     configured: notificationService.isConfigured(),
-    smtp_host: process.env.SMTP_HOST ? `${process.env.SMTP_HOST} (set)` : '(not set)',
-    smtp_user: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 4)}...(set)` : '(not set)',
+    provider,
+    resend_api_key: process.env.RESEND_API_KEY ? `${process.env.RESEND_API_KEY.substring(0, 8)}...(set)` : '(not set)',
+    email_from: process.env.EMAIL_FROM || 'QUANTUM <notifications@u-r-quantum.com>',
+    smtp_host: process.env.SMTP_HOST ? `${process.env.SMTP_HOST} (set)` : '(not set, fallback)',
     targets: notificationService.NOTIFICATION_EMAILS
   });
 });
 
 app.post('/api/notifications/test', async (req, res) => {
   if (!notificationService.isConfigured()) {
-    return res.status(400).json({ error: 'SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS' });
+    return res.status(400).json({ error: 'Email not configured. Set RESEND_API_KEY (preferred) or SMTP_HOST/USER/PASS' });
   }
   try {
+    const provider = notificationService.getProvider();
     const testSubject = `[QUANTUM] Test notification - ${new Date().toISOString()}`;
-    const testBody = '<div dir="rtl"><h2>QUANTUM - בדיקת התראות</h2><p>אם אתה רואה הודעה זו, מערכת ההתראות פעילה!</p></div>';
+    const testBody = `<div dir="rtl"><h2>QUANTUM - בדיקת התראות</h2><p>אם אתה רואה הודעה זו, מערכת ההתראות פעילה!</p><p>Provider: ${provider}</p></div>`;
     const results = [];
     for (const email of notificationService.NOTIFICATION_EMAILS) {
       const result = await notificationService.sendEmail(email, testSubject, testBody);
       results.push({ email, ...result });
     }
     const allSent = results.every(r => r.sent);
-    res.json({ test: allSent ? 'success' : 'partial_failure', results });
+    res.json({ test: allSent ? 'success' : 'partial_failure', provider, results });
   } catch (err) {
     res.status(500).json({ error: err.message, stack: err.stack });
   }
@@ -176,11 +180,11 @@ app.post('/api/notifications/test', async (req, res) => {
 
 app.post('/api/notifications/send', async (req, res) => {
   if (!notificationService.isConfigured()) {
-    return res.status(400).json({ error: 'SMTP not configured' });
+    return res.status(400).json({ error: 'Email not configured. Set RESEND_API_KEY or SMTP vars.' });
   }
   try {
     const result = await notificationService.sendPendingAlerts();
-    res.json({ message: 'Pending alerts processed', ...result });
+    res.json({ message: 'Pending alerts processed', provider: notificationService.getProvider(), ...result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -189,17 +193,17 @@ app.post('/api/notifications/send', async (req, res) => {
 // Debug endpoint
 app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
+  const emailProvider = notificationService.getProvider();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-09-v3-smtp-diag',
+    build: '2026-02-09-v3-resend',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
       PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? `${process.env.PERPLEXITY_API_KEY.substring(0, 8)}...(set)` : '(not set)',
-      SMTP_HOST: process.env.SMTP_HOST || '(not set)',
-      SMTP_USER: process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 4)}...(set)` : '(not set)',
-      SMTP_PORT: process.env.SMTP_PORT || '587 (default)',
-      SMTP_SECURE: process.env.SMTP_SECURE || 'false (default)',
+      RESEND_API_KEY: process.env.RESEND_API_KEY ? `${process.env.RESEND_API_KEY.substring(0, 8)}...(set)` : '(not set)',
+      EMAIL_FROM: process.env.EMAIL_FROM || 'QUANTUM <notifications@u-r-quantum.com> (default)',
+      SMTP_HOST: process.env.SMTP_HOST || '(not set, fallback)',
       SCAN_CRON: process.env.SCAN_CRON || '0 4 * * 0 (default)',
       PORT: process.env.PORT || '(not set)',
       NODE_ENV: process.env.NODE_ENV || '(not set)',
@@ -220,7 +224,9 @@ app.get('/debug', (req, res) => {
       mavat_scraper: 'active',
       committee_tracking: 'active',
       perplexity_scanner: process.env.PERPLEXITY_API_KEY ? 'active' : 'disabled',
-      notification_service: notificationService.isConfigured() ? 'active' : 'disabled (set SMTP_HOST, SMTP_USER, SMTP_PASS)',
+      notification_service: notificationService.isConfigured()
+        ? `active (${emailProvider})`
+        : 'disabled (set RESEND_API_KEY or SMTP vars)',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
     weekly_scan_steps: [
@@ -285,7 +291,9 @@ app.get('/health', async (req, res) => {
       committee_tracked: committeeStats,
       unread_alerts: parseInt(alertCount.rows[0].count),
       perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured',
-      notifications: notificationService.isConfigured() ? 'configured' : 'not_configured',
+      notifications: notificationService.isConfigured()
+        ? `configured (${notificationService.getProvider()})`
+        : 'not_configured',
       scheduler: scheduler.enabled ? 'active' : 'disabled'
     });
   } catch (err) {
@@ -352,12 +360,13 @@ async function start() {
     startScheduler();
   }
   
+  const emailProvider = notificationService.getProvider();
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Pinuy Binuy API v3.0 running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
     logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
-    logger.info(`Notifications: ${notificationService.isConfigured() ? 'configured' : 'not configured (set SMTP vars)'}`);
+    logger.info(`Notifications: ${notificationService.isConfigured() ? `configured (${emailProvider})` : 'not configured (set RESEND_API_KEY)'}`);
     logger.info('Features: SSI, IAI, Benchmark, Nadlan, yad2, mavat, Committee, Notifications, Weekly Scanner');
   });
 }
