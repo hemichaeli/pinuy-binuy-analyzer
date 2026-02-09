@@ -5,15 +5,13 @@
  * 1. Trello board (creates cards automatically via email-to-board)
  * 2. Office email for human review
  * 
- * Supports:
- * - Real-time alerts (critical/high severity)
- * - Weekly digest summary
+ * Uses Resend HTTPS API (works on Railway Hobby plan, no SMTP needed).
+ * Falls back to nodemailer SMTP if RESEND_API_KEY not set.
  * 
  * Email subject -> Trello card title
  * Email body -> Trello card description
  */
 
-const nodemailer = require('nodemailer');
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 
@@ -39,37 +37,57 @@ const ALERT_TYPE_LABEL = {
 };
 
 /**
- * Create email transporter
+ * Send email via Resend HTTPS API
  */
-function createTransporter() {
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
+async function sendViaResend(to, subject, htmlBody, textBody) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM || 'QUANTUM <notifications@u-r-quantum.com>';
 
-  if (!smtpHost || !smtpUser || !smtpPass) {
-    logger.warn('SMTP not configured - notifications disabled. Set SMTP_HOST, SMTP_USER, SMTP_PASS');
-    return null;
-  }
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject,
+        html: htmlBody,
+        text: textBody || htmlBody.replace(/<[^>]*>/g, '')
+      })
+    });
 
-  return nodemailer.createTransport({
-    host: smtpHost,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: smtpUser,
-      pass: smtpPass
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error(`Resend API error for ${to}`, { status: response.status, error: data });
+      return { sent: false, error: data.message || JSON.stringify(data), statusCode: response.status };
     }
-  });
+
+    logger.info(`Email sent via Resend to ${to}: ${subject}`, { id: data.id });
+    return { sent: true, messageId: data.id };
+  } catch (err) {
+    logger.error(`Resend request failed for ${to}`, { error: err.message });
+    return { sent: false, error: err.message };
+  }
 }
 
 /**
- * Send a single email - returns { sent: boolean, error?: string }
+ * Send email via SMTP (fallback)
  */
-async function sendEmail(to, subject, htmlBody, textBody) {
-  const transporter = createTransporter();
-  if (!transporter) {
-    return { sent: false, error: 'SMTP not configured' };
-  }
+async function sendViaSMTP(to, subject, htmlBody, textBody) {
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS
+    }
+  });
 
   try {
     const info = await transporter.sendMail({
@@ -79,12 +97,28 @@ async function sendEmail(to, subject, htmlBody, textBody) {
       html: htmlBody,
       text: textBody || htmlBody.replace(/<[^>]*>/g, '')
     });
-    logger.info(`Email sent to ${to}: ${subject}`, { messageId: info.messageId });
+    logger.info(`Email sent via SMTP to ${to}: ${subject}`, { messageId: info.messageId });
     return { sent: true, messageId: info.messageId };
   } catch (err) {
-    logger.error(`Failed to send email to ${to}`, { error: err.message, code: err.code, subject });
+    logger.error(`SMTP failed for ${to}`, { error: err.message, code: err.code });
     return { sent: false, error: err.message, code: err.code };
   }
+}
+
+/**
+ * Send a single email - uses Resend if available, falls back to SMTP
+ */
+async function sendEmail(to, subject, htmlBody, textBody) {
+  if (process.env.RESEND_API_KEY) {
+    return sendViaResend(to, subject, htmlBody, textBody);
+  }
+
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return sendViaSMTP(to, subject, htmlBody, textBody);
+  }
+
+  logger.warn('No email provider configured. Set RESEND_API_KEY or SMTP_HOST/USER/PASS');
+  return { sent: false, error: 'No email provider configured' };
 }
 
 /**
@@ -226,8 +260,7 @@ async function sendPendingAlerts() {
  * Alias for weekly scanner compatibility
  */
 async function sendPendingNotifications() {
-  const alertResult = await sendPendingAlerts();
-  return alertResult;
+  return await sendPendingAlerts();
 }
 
 /**
@@ -351,7 +384,16 @@ async function sendWeeklyDigest(scanResult) {
  * Check if notifications are configured
  */
 function isConfigured() {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return !!(process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
+}
+
+/**
+ * Get provider info
+ */
+function getProvider() {
+  if (process.env.RESEND_API_KEY) return 'resend';
+  if (process.env.SMTP_HOST) return 'smtp';
+  return 'none';
 }
 
 module.exports = {
@@ -361,5 +403,6 @@ module.exports = {
   sendWeeklyDigest,
   sendEmail,
   isConfigured,
+  getProvider,
   NOTIFICATION_EMAILS
 };
