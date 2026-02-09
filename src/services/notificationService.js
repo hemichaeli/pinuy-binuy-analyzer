@@ -1,12 +1,12 @@
 /**
- * Notification Service (Task 7)
+ * Notification Service (Task 7) - v2 with Resend API
  * 
  * Sends alerts via email to:
  * 1. Trello board (creates cards automatically via email-to-board)
  * 2. Office email for human review
  * 
- * Uses Resend HTTPS API (works on Railway Hobby plan, no SMTP needed).
- * Falls back to nodemailer SMTP if RESEND_API_KEY not set.
+ * Uses Resend HTTP API (works on Railway, no SMTP port needed)
+ * Fallback to SMTP if RESEND_API_KEY not set but SMTP vars are
  * 
  * Email subject -> Trello card title
  * Email body -> Trello card description
@@ -37,11 +37,13 @@ const ALERT_TYPE_LABEL = {
 };
 
 /**
- * Send email via Resend HTTPS API
+ * Send email via Resend HTTP API
  */
 async function sendViaResend(to, subject, htmlBody, textBody) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM || 'QUANTUM <notifications@u-r-quantum.com>';
+  if (!apiKey) return { sent: false, error: 'RESEND_API_KEY not set' };
+
+  const fromAddress = process.env.EMAIL_FROM || 'QUANTUM <onboarding@resend.dev>';
 
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -51,9 +53,9 @@ async function sendViaResend(to, subject, htmlBody, textBody) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from,
+        from: fromAddress,
         to: [to],
-        subject,
+        subject: subject,
         html: htmlBody,
         text: textBody || htmlBody.replace(/<[^>]*>/g, '')
       })
@@ -61,64 +63,72 @@ async function sendViaResend(to, subject, htmlBody, textBody) {
 
     const data = await response.json();
 
-    if (!response.ok) {
+    if (response.ok) {
+      logger.info(`Resend email sent to ${to}: ${subject}`, { id: data.id });
+      return { sent: true, messageId: data.id, provider: 'resend' };
+    } else {
       logger.error(`Resend API error for ${to}`, { status: response.status, error: data });
-      return { sent: false, error: data.message || JSON.stringify(data), statusCode: response.status };
+      return { sent: false, error: data.message || JSON.stringify(data), statusCode: response.status, provider: 'resend' };
     }
-
-    logger.info(`Email sent via Resend to ${to}: ${subject}`, { id: data.id });
-    return { sent: true, messageId: data.id };
   } catch (err) {
     logger.error(`Resend request failed for ${to}`, { error: err.message });
-    return { sent: false, error: err.message };
+    return { sent: false, error: err.message, provider: 'resend' };
   }
 }
 
 /**
- * Send email via SMTP (fallback)
+ * Send email via SMTP (nodemailer) - fallback
  */
 async function sendViaSMTP(to, subject, htmlBody, textBody) {
-  const nodemailer = require('nodemailer');
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    return { sent: false, error: 'SMTP not configured' };
+  }
 
   try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: { user: smtpUser, pass: smtpPass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000
+    });
+
     const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from: process.env.SMTP_FROM || smtpUser,
       to,
       subject,
       html: htmlBody,
       text: textBody || htmlBody.replace(/<[^>]*>/g, '')
     });
-    logger.info(`Email sent via SMTP to ${to}: ${subject}`, { messageId: info.messageId });
-    return { sent: true, messageId: info.messageId };
+
+    logger.info(`SMTP email sent to ${to}: ${subject}`, { messageId: info.messageId });
+    return { sent: true, messageId: info.messageId, provider: 'smtp' };
   } catch (err) {
     logger.error(`SMTP failed for ${to}`, { error: err.message, code: err.code });
-    return { sent: false, error: err.message, code: err.code };
+    return { sent: false, error: err.message, code: err.code, provider: 'smtp' };
   }
 }
 
 /**
- * Send a single email - uses Resend if available, falls back to SMTP
+ * Send a single email - tries Resend first, falls back to SMTP
  */
 async function sendEmail(to, subject, htmlBody, textBody) {
+  // Prefer Resend (works on Railway)
   if (process.env.RESEND_API_KEY) {
     return sendViaResend(to, subject, htmlBody, textBody);
   }
-
+  // Fallback to SMTP
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     return sendViaSMTP(to, subject, htmlBody, textBody);
   }
-
-  logger.warn('No email provider configured. Set RESEND_API_KEY or SMTP_HOST/USER/PASS');
-  return { sent: false, error: 'No email provider configured' };
+  return { sent: false, error: 'No email provider configured. Set RESEND_API_KEY or SMTP_HOST/USER/PASS' };
 }
 
 /**
@@ -260,7 +270,7 @@ async function sendPendingAlerts() {
  * Alias for weekly scanner compatibility
  */
 async function sendPendingNotifications() {
-  return await sendPendingAlerts();
+  return sendPendingAlerts();
 }
 
 /**
@@ -384,11 +394,14 @@ async function sendWeeklyDigest(scanResult) {
  * Check if notifications are configured
  */
 function isConfigured() {
-  return !!(process.env.RESEND_API_KEY || (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS));
+  // Resend takes priority
+  if (process.env.RESEND_API_KEY) return true;
+  // Fallback to SMTP
+  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
 /**
- * Get provider info
+ * Get active provider info
  */
 function getProvider() {
   if (process.env.RESEND_API_KEY) return 'resend';
