@@ -159,8 +159,11 @@ function formatPrice(price) {
 /**
  * Run the weekly scan
  * Order: Nadlan -> Benchmarks -> Perplexity -> yad2 -> mavat -> SSI -> IAI -> Alerts -> Notifications
+ * @param {Object} options
+ * @param {boolean} options.forceAll - If true, scan all complexes regardless of staleness
  */
-async function runWeeklyScan() {
+async function runWeeklyScan(options = {}) {
+  const { forceAll = false } = options;
   if (isRunning) {
     logger.warn('Weekly scan already running, skipping');
     return null;
@@ -168,7 +171,8 @@ async function runWeeklyScan() {
 
   isRunning = true;
   const startTime = Date.now();
-  logger.info('=== Weekly scan started ===');
+  const staleOnly = !forceAll;
+  logger.info(`=== Weekly scan started (forceAll: ${forceAll}, staleOnly: ${staleOnly}) ===`);
 
   try {
     const scanLog = await pool.query(
@@ -181,7 +185,7 @@ async function runWeeklyScan() {
     let nadlanResults = { total: 0, succeeded: 0, failed: 0, totalNew: 0 };
     try {
       logger.info('Step 1/9: Running nadlan.gov.il transaction scan...');
-      nadlanResults = await nadlanScraper.scanAll({ staleOnly: true, limit: 50 });
+      nadlanResults = await nadlanScraper.scanAll({ staleOnly, limit: 50 });
       logger.info(`Nadlan scan: ${nadlanResults.totalNew} new transactions from ${nadlanResults.succeeded} complexes`);
     } catch (nadlanErr) {
       logger.warn('Nadlan scan failed (non-critical)', { error: nadlanErr.message });
@@ -199,13 +203,13 @@ async function runWeeklyScan() {
 
     // Step 3: Perplexity scan
     logger.info('Step 3/9: Running Perplexity scan...');
-    const results = await scanAll({ staleOnly: true });
+    const results = await scanAll({ staleOnly });
 
     // Step 4: yad2 listing scan
     let yad2Results = { total: 0, succeeded: 0, failed: 0, totalNew: 0, totalUpdated: 0, totalPriceChanges: 0 };
     try {
       logger.info('Step 4/9: Running yad2 listing scan...');
-      yad2Results = await yad2Scraper.scanAll({ staleOnly: true, limit: 40 });
+      yad2Results = await yad2Scraper.scanAll({ staleOnly, limit: 40 });
       logger.info(`yad2 scan: ${yad2Results.totalNew} new, ${yad2Results.totalUpdated} updated, ${yad2Results.totalPriceChanges} price changes`);
     } catch (yad2Err) {
       logger.warn('yad2 scan failed (non-critical)', { error: yad2Err.message });
@@ -215,7 +219,7 @@ async function runWeeklyScan() {
     let mavatResults = { total: 0, succeeded: 0, failed: 0, statusChanges: 0, committeeApprovals: 0, upcomingHearings: 0 };
     try {
       logger.info('Step 5/9: Running mavat planning scan...');
-      mavatResults = await mavatScraper.scanAll({ staleOnly: true, limit: 30 });
+      mavatResults = await mavatScraper.scanAll({ staleOnly, limit: 30 });
       logger.info(`mavat scan: ${mavatResults.statusChanges} status changes, ${mavatResults.committeeApprovals} committee approvals`);
     } catch (mavatErr) {
       logger.warn('mavat scan failed (non-critical)', { error: mavatErr.message });
