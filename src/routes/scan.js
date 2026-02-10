@@ -11,7 +11,7 @@ const yad2Scraper = require('../services/yad2Scraper');
 const mavatScraper = require('../services/mavatScraper');
 const notificationService = require('../services/notificationService');
 
-// Lazy load services to avoid startup errors
+// Lazy load services with better error reporting
 function getCommitteeTracker() {
   try {
     return require('../services/committeeTracker');
@@ -25,7 +25,7 @@ function getClaudeOrchestrator() {
   try {
     return require('../services/claudeOrchestrator');
   } catch (e) {
-    logger.warn('Claude orchestrator not available', { error: e.message });
+    logger.error('Claude orchestrator failed to load', { error: e.message, stack: e.stack });
     return null;
   }
 }
@@ -35,14 +35,19 @@ router.post('/unified', async (req, res) => {
   try {
     const orchestrator = getClaudeOrchestrator();
     if (!orchestrator) {
-      return res.status(501).json({ error: 'Claude orchestrator not available' });
+      return res.status(501).json({ error: 'Claude orchestrator not available - check logs' });
     }
 
     const { city, limit, complexId, staleOnly } = req.body;
 
     if (complexId) {
-      const result = await orchestrator.scanComplexUnified(parseInt(complexId));
-      return res.json({ message: 'Unified scan complete', result });
+      try {
+        const result = await orchestrator.scanComplexUnified(parseInt(complexId));
+        return res.json({ message: 'Unified scan complete', result });
+      } catch (scanErr) {
+        logger.error('Unified single scan failed', { error: scanErr.message, stack: scanErr.stack });
+        return res.status(500).json({ error: scanErr.message });
+      }
     }
 
     const scanLog = await pool.query(
@@ -59,12 +64,14 @@ router.post('/unified', async (req, res) => {
 
     (async () => {
       try {
+        logger.info('Starting unified scan', { limit, city, staleOnly });
         const results = await orchestrator.scanAllUnified({
           city: city || null,
           limit: limit ? parseInt(limit) : 20,
           staleOnly: staleOnly !== false
         });
 
+        logger.info('Unified scan complete, recalculating scores', { results: results.total });
         await calculateAllSSI();
         await calculateAllIAI();
 
@@ -79,7 +86,7 @@ router.post('/unified', async (req, res) => {
           await notificationService.sendPendingAlerts();
         }
       } catch (err) {
-        logger.error('Unified scan failed', { error: err.message });
+        logger.error('Unified scan failed', { error: err.message, stack: err.stack });
         await pool.query(
           `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
           [err.message, scanId]
@@ -87,21 +94,25 @@ router.post('/unified', async (req, res) => {
       }
     })();
   } catch (err) {
-    logger.error('Error triggering unified scan', { error: err.message });
-    res.status(500).json({ error: 'Failed to trigger unified scan' });
+    logger.error('Error triggering unified scan', { error: err.message, stack: err.stack });
+    res.status(500).json({ error: `Failed to trigger unified scan: ${err.message}` });
   }
 });
 
 // GET /api/scan/unified/status - Check Claude orchestrator status
 router.get('/unified/status', (req, res) => {
-  const orchestrator = getClaudeOrchestrator();
-  res.json({
-    available: !!orchestrator,
-    claude_configured: orchestrator?.isClaudeConfigured() || false,
-    perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
-    anthropic_key: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)',
-    claude_key: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)'
-  });
+  try {
+    const orchestrator = getClaudeOrchestrator();
+    res.json({
+      available: !!orchestrator,
+      claude_configured: orchestrator?.isClaudeConfigured() || false,
+      perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
+      anthropic_key: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)',
+      claude_key: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)'
+    });
+  } catch (e) {
+    res.json({ available: false, error: e.message });
+  }
 });
 
 // POST /api/scan/run - Trigger a Perplexity scan
@@ -257,8 +268,13 @@ router.post('/mavat', async (req, res) => {
   try {
     const { city, limit, complexId, staleOnly } = req.body;
     if (complexId) {
-      const result = await mavatScraper.scanComplex(parseInt(complexId));
-      return res.json({ message: 'mavat scan complete', result });
+      try {
+        const result = await mavatScraper.scanComplex(parseInt(complexId));
+        return res.json({ message: 'mavat scan complete', result });
+      } catch (scanErr) {
+        logger.error('Mavat single scan error', { error: scanErr.message });
+        return res.status(500).json({ error: scanErr.message });
+      }
     }
 
     const scanLog = await pool.query(
