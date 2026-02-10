@@ -24,24 +24,23 @@ async function queryPerplexity(complex) {
 
   const prompt = `חפש מידע עדכני על תכנית פינוי בינוי "${complex.name}" ב${complex.city}.
 ${complex.plan_number ? `מספר תכנית: ${complex.plan_number}` : ''}
-${complex.addresses ? `כתובות: ${complex.addresses}` : ''}
 
 מצא:
 1. סטטוס התכנית (הוכרזה/בתכנון/הופקדה/אושרה/היתר/בביצוע)
-2. אישור ועדה מקומית - תאריך אם יש
-3. אישור ועדה מחוזית - תאריך אם יש
+2. אישור ועדה מקומית - תאריך
+3. אישור ועדה מחוזית - תאריך
 4. ישיבות ועדה קרובות
-5. מספר תכנית מעודכן
+5. מספר תכנית
 
 החזר JSON:
 {
-  "status": "declared|planning|pre_deposit|deposited|approved|permit|construction",
+  "status": "declared|planning|deposited|approved|permit|construction",
   "plan_number": "מספר או null",
-  "local_committee": {"approved": true/false, "date": "YYYY-MM-DD או null"},
-  "district_committee": {"approved": true/false, "date": "YYYY-MM-DD או null"},
+  "local_committee": {"approved": true/false, "date": "YYYY-MM-DD"},
+  "district_committee": {"approved": true/false, "date": "YYYY-MM-DD"},
   "upcoming_hearing": {"description": "תיאור", "date": "YYYY-MM-DD"},
   "developer": "שם היזם",
-  "sources": ["מקורות"]
+  "notes": "הערות"
 }`;
 
   try {
@@ -75,37 +74,40 @@ async function queryClaude(complex, perplexityData) {
   const apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!apiKey) return null;
 
-  const prompt = `אמת את המידע על תכנית "${complex.name}" ב${complex.city}:
+  const prompt = `אמת מידע על תכנית פינוי-בינוי "${complex.name}" ב${complex.city}:
 
-**במערכת:** סטטוס=${complex.status}, ועדה מקומית=${complex.local_committee_date || 'לא'}, מחוזית=${complex.district_committee_date || 'לא'}
+**מידע קיים:**
+- סטטוס: ${complex.status}
+- ועדה מקומית: ${complex.local_committee_date || 'לא אושר'}
+- ועדה מחוזית: ${complex.district_committee_date || 'לא אושר'}
 
-**מ-Perplexity:** ${perplexityData || 'לא זמין'}
+**מידע מ-Perplexity:**
+${perplexityData || 'לא זמין'}
 
-החזר JSON מאומת:
+אמת והחזר JSON:
 {
-  "status": "validated status",
+  "validated_status": "סטטוס מאומת",
   "status_confidence": "high|medium|low",
   "local_committee": {"approved": bool, "date": "YYYY-MM-DD", "confidence": "high|medium|low"},
   "district_committee": {"approved": bool, "date": "YYYY-MM-DD", "confidence": "high|medium|low"},
   "upcoming_hearing": "תיאור או null",
-  "developer": "יזם מאומת",
-  "conflicts": ["סתירות שנמצאו"],
-  "recommendation": "מה לעדכן"
+  "conflicts": ["סתירות שזוהו"],
+  "recommendations": ["המלצות לעדכון"]
 }`;
 
   try {
     const response = await axios.post(CLAUDE_API, {
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }],
-      system: 'אתה מומחה תכנון ובנייה. החזר JSON בלבד.'
+      system: 'אתה מומחה בתכנון ובנייה בישראל. החזר JSON בלבד.'
     }, {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json'
       },
-      timeout: 45000
+      timeout: 60000
     });
 
     return response.data.content?.[0]?.text || '';
@@ -130,7 +132,7 @@ function parseJson(content) {
 }
 
 /**
- * Normalize status to DB enum
+ * Normalize status string
  */
 function normalizeStatus(status) {
   if (!status) return null;
@@ -156,35 +158,24 @@ function parseDate(dateStr) {
 }
 
 /**
- * Create committee approval alert
+ * Create alert for committee approval
  */
 async function createCommitteeAlert(complexId, complexName, city, committeeType, date) {
-  const impactMap = {
-    'local': { min: 10, max: 20, severity: 'high' },
-    'district': { min: 15, max: 25, severity: 'high' },
-    'national': { min: 20, max: 30, severity: 'critical' }
-  };
-
-  const impact = impactMap[committeeType] || { min: 10, max: 20, severity: 'medium' };
-  const hebrewType = { 'local': 'מקומית', 'district': 'מחוזית', 'national': 'ארצית' }[committeeType];
+  const impact = committeeType === 'local' ? '10-20%' : '15-25%';
+  const title = `🎯 אישור ועדה ${committeeType === 'local' ? 'מקומית' : 'מחוזית'}: ${complexName}`;
+  const message = `${city} | תאריך: ${date} | צפי עליית מחיר: ${impact}`;
 
   await pool.query(
     `INSERT INTO alerts (complex_id, alert_type, severity, title, message, data)
-     VALUES ($1, $2, $3, $4, $5, $6)
+     VALUES ($1, $2, 'high', $3, $4, $5)
      ON CONFLICT DO NOTHING`,
-    [
-      complexId,
-      'committee_approval',
-      impact.severity,
-      `🎯 אישור ועדה ${hebrewType}: ${complexName} (${city})`,
-      `ועדה ${hebrewType} אישרה! צפי לעליית מחירים ${impact.min}-${impact.max}%`,
-      JSON.stringify({ committee: committeeType, date, expected_impact: `${impact.min}-${impact.max}%` })
-    ]
+    [complexId, 'committee_approval', title, message, 
+     JSON.stringify({ committee: committeeType, date, expected_impact: impact })]
   );
 }
 
 /**
- * Scan a single complex for planning updates
+ * Scan a single complex with both AI sources
  */
 async function scanComplex(complexId) {
   const result = await pool.query(
@@ -195,24 +186,21 @@ async function scanComplex(complexId) {
   );
 
   if (result.rows.length === 0) {
-    return { status: 'error', error: 'Complex not found' };
+    return { status: 'error', error: 'Not found' };
   }
 
   const complex = result.rows[0];
   logger.info(`mavat scan: ${complex.name} (${complex.city})`);
 
-  // Step 1: Query Perplexity
-  const perplexityRaw = await queryPerplexity(complex);
-  const perplexityData = parseJson(perplexityRaw);
-
-  // Step 2: Query Claude for validation
+  // Query both AI sources
+  const perplexityContent = await queryPerplexity(complex);
   await new Promise(r => setTimeout(r, 1000));
-  const claudeRaw = await queryClaude(complex, perplexityRaw);
-  const claudeData = parseJson(claudeRaw);
+  const claudeContent = await queryClaude(complex, perplexityContent);
 
-  // Use Claude data if available (higher confidence), else Perplexity
-  const data = claudeData || perplexityData;
-  if (!data) {
+  const perplexityData = parseJson(perplexityContent);
+  const claudeData = parseJson(claudeContent);
+
+  if (!perplexityData && !claudeData) {
     await pool.query('UPDATE complexes SET last_mavat_update = NOW() WHERE id = $1', [complexId]);
     return { status: 'no_data', complexId, name: complex.name };
   }
@@ -220,68 +208,76 @@ async function scanComplex(complexId) {
   const changes = [];
   const updates = {};
 
-  // Status update (high confidence only from Claude)
-  const newStatus = normalizeStatus(data.status || data.validated_status);
+  // Use Claude's validated data when available (higher confidence)
+  const source = claudeData || perplexityData;
+  const useClaudeValidation = !!claudeData;
+
+  // Status update (only if high confidence from Claude)
+  const newStatus = normalizeStatus(
+    claudeData?.validated_status || perplexityData?.status
+  );
   if (newStatus && newStatus !== complex.status) {
     const statusOrder = ['declared', 'planning', 'pre_deposit', 'deposited', 'approved', 'permit', 'construction'];
     const oldIdx = statusOrder.indexOf(complex.status);
     const newIdx = statusOrder.indexOf(newStatus);
 
-    if (newIdx > oldIdx || (claudeData && data.status_confidence === 'high')) {
+    if (newIdx > oldIdx || (useClaudeValidation && claudeData?.status_confidence === 'high')) {
       updates.status = newStatus;
-      changes.push({ type: 'status', old: complex.status, new: newStatus });
+      changes.push({ type: 'status_change', old: complex.status, new: newStatus });
     }
   }
 
-  // Local committee
-  const localCommittee = data.local_committee || {};
-  if (localCommittee.approved && localCommittee.date && !complex.local_committee_date) {
-    const confidence = localCommittee.confidence || (claudeData ? 'medium' : 'low');
-    if (confidence !== 'low') {
-      const date = parseDate(localCommittee.date);
-      if (date) {
-        updates.local_committee_date = date;
-        changes.push({ type: 'committee', committee: 'local', date });
-        await createCommitteeAlert(complexId, complex.name, complex.city, 'local', date);
-      }
+  // Local committee approval
+  const localCommittee = claudeData?.local_committee || perplexityData?.local_committee;
+  if (localCommittee?.approved && !complex.local_committee_date) {
+    const date = parseDate(localCommittee.date);
+    if (date && (!useClaudeValidation || localCommittee.confidence !== 'low')) {
+      updates.local_committee_date = date;
+      changes.push({ type: 'committee_approval', committee: 'local', date });
+      await createCommitteeAlert(complexId, complex.name, complex.city, 'local', date);
     }
   }
 
-  // District committee
-  const districtCommittee = data.district_committee || {};
-  if (districtCommittee.approved && districtCommittee.date && !complex.district_committee_date) {
-    const confidence = districtCommittee.confidence || (claudeData ? 'medium' : 'low');
-    if (confidence !== 'low') {
-      const date = parseDate(districtCommittee.date);
-      if (date) {
-        updates.district_committee_date = date;
-        changes.push({ type: 'committee', committee: 'district', date });
-        await createCommitteeAlert(complexId, complex.name, complex.city, 'district', date);
-      }
+  // District committee approval
+  const districtCommittee = claudeData?.district_committee || perplexityData?.district_committee;
+  if (districtCommittee?.approved && !complex.district_committee_date) {
+    const date = parseDate(districtCommittee.date);
+    if (date && (!useClaudeValidation || districtCommittee.confidence !== 'low')) {
+      updates.district_committee_date = date;
+      changes.push({ type: 'committee_approval', committee: 'district', date });
+      await createCommitteeAlert(complexId, complex.name, complex.city, 'district', date);
     }
+  }
+
+  // Plan number
+  const planNumber = perplexityData?.plan_number;
+  if (planNumber && !complex.plan_number) {
+    updates.plan_number = planNumber;
   }
 
   // Developer
-  if (data.developer && !complex.developer) {
-    updates.developer = data.developer;
+  const developer = perplexityData?.developer;
+  if (developer && !complex.developer) {
+    updates.developer = developer;
   }
 
   // Upcoming hearing
-  if (data.upcoming_hearing) {
-    const hearing = typeof data.upcoming_hearing === 'string' 
-      ? data.upcoming_hearing 
-      : data.upcoming_hearing.description;
-    if (hearing) {
-      updates.planning_notes = hearing;
-    }
+  const hearing = perplexityData?.upcoming_hearing || claudeData?.upcoming_hearing;
+  if (hearing) {
+    const hearingNote = typeof hearing === 'object' 
+      ? `ישיבה: ${hearing.description}${hearing.date ? ` (${hearing.date})` : ''}`
+      : hearing;
+    updates.planning_notes = hearingNote;
   }
 
   // Apply updates
   if (Object.keys(updates).length > 0) {
     const setClauses = Object.keys(updates).map((k, i) => `${k} = $${i + 1}`);
     const values = [...Object.values(updates), complexId];
+    
     await pool.query(
-      `UPDATE complexes SET ${setClauses.join(', ')}, last_mavat_update = NOW() WHERE id = $${values.length}`,
+      `UPDATE complexes SET ${setClauses.join(', ')}, last_mavat_update = NOW() 
+       WHERE id = $${values.length}`,
       values
     );
   } else {
@@ -296,17 +292,18 @@ async function scanComplex(complexId) {
     sources: { perplexity: !!perplexityData, claude: !!claudeData },
     changes,
     updatedFields: Object.keys(updates),
-    conflicts: data.conflicts || []
+    conflicts: claudeData?.conflicts || []
   };
 }
 
 /**
- * Scan all complexes for planning updates
+ * Scan all complexes
  */
 async function scanAll(options = {}) {
   const { city, limit, staleOnly = true } = options;
 
-  let query = `SELECT id, name, city, status FROM complexes WHERE status != 'construction'`;
+  let query = `SELECT id, name, city, status FROM complexes 
+               WHERE status NOT IN ('construction', 'unknown')`;
   const params = [];
   let idx = 1;
 
@@ -322,8 +319,8 @@ async function scanAll(options = {}) {
 
   query += ` ORDER BY CASE status 
     WHEN 'pre_deposit' THEN 1 WHEN 'deposited' THEN 2 
-    WHEN 'planning' THEN 3 WHEN 'declared' THEN 4 
-    ELSE 5 END, last_mavat_update ASC NULLS FIRST`;
+    WHEN 'planning' THEN 3 WHEN 'declared' THEN 4 ELSE 5 END,
+    last_mavat_update ASC NULLS FIRST`;
 
   if (limit) {
     query += ` LIMIT $${idx}`;
@@ -351,8 +348,8 @@ async function scanAll(options = {}) {
       if (scanResult.status === 'success') {
         results.succeeded++;
         for (const change of (scanResult.changes || [])) {
-          if (change.type === 'status') results.statusChanges++;
-          if (change.type === 'committee') results.committeeApprovals++;
+          if (change.type === 'status_change') results.statusChanges++;
+          if (change.type === 'committee_approval') results.committeeApprovals++;
         }
       } else {
         results.failed++;
@@ -367,7 +364,7 @@ async function scanAll(options = {}) {
     }
   }
 
-  logger.info(`mavat complete: ${results.succeeded}/${results.total} ok, ${results.statusChanges} status, ${results.committeeApprovals} committees`);
+  logger.info(`mavat complete: ${results.succeeded}/${results.total}, ${results.committeeApprovals} approvals`);
   return results;
 }
 
