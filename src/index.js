@@ -1,6 +1,5 @@
 require('dotenv').config();
 
-// Railway private networking uses IPv6 - ensure Node.js resolves it
 const dns = require('dns');
 dns.setDefaultResultOrder('verbatim');
 
@@ -17,7 +16,6 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Auto-migrate and seed on startup
 async function initDatabase() {
   const maxRetries = 15;
   const retryDelay = 3000;
@@ -28,58 +26,41 @@ async function initDatabase() {
       logger.info('Database connected');
       break;
     } catch (err) {
-      logger.warn(`DB connection attempt ${i + 1}/${maxRetries} failed: ${err.message}`);
-      if (i === maxRetries - 1) {
-        logger.error('Could not connect to database after all retries');
-        return false;
-      }
+      logger.warn(`DB connection attempt ${i + 1}/${maxRetries} failed`);
+      if (i === maxRetries - 1) return false;
       await new Promise(r => setTimeout(r, retryDelay));
     }
   }
 
   try {
     const tableCheck = await pool.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_name = 'complexes'
-      )
+      SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'complexes')
     `);
     
     if (!tableCheck.rows[0].exists) {
-      logger.info('Tables not found - running migration...');
-      const schemaPath = path.join(__dirname, 'db', 'schema.sql');
-      const schema = fs.readFileSync(schemaPath, 'utf8');
+      logger.info('Running migration...');
+      const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
       await pool.query(schema);
-      logger.info('Migration completed: all tables created');
-    } else {
-      logger.info('Tables already exist - skipping base migration');
+      logger.info('Migration completed');
     }
 
-    // Run incremental migrations (idempotent ALTER TABLE IF NOT EXISTS)
+    // Run incremental migrations
     try {
       const migrationsDir = path.join(__dirname, 'db', 'migrations');
       if (fs.existsSync(migrationsDir)) {
-        const migrationFiles = fs.readdirSync(migrationsDir)
-          .filter(f => f.endsWith('.sql'))
-          .sort();
-        for (const file of migrationFiles) {
-          const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-          await pool.query(sql);
-          logger.info(`Migration applied: ${file}`);
+        const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
+        for (const file of files) {
+          await pool.query(fs.readFileSync(path.join(migrationsDir, file), 'utf8'));
+          logger.info(`Migration: ${file}`);
         }
       }
-    } catch (migErr) {
-      logger.warn(`Migration warning (non-critical): ${migErr.message}`);
-    }
+    } catch (e) { logger.warn(`Migration warning: ${e.message}`); }
 
-    const countCheck = await pool.query('SELECT COUNT(*) FROM complexes');
-    if (parseInt(countCheck.rows[0].count) === 0) {
-      logger.info('No data found - running seed...');
+    const count = await pool.query('SELECT COUNT(*) FROM complexes');
+    if (parseInt(count.rows[0].count) === 0) {
       const { seedWithPool } = require('./db/seed');
       await seedWithPool(pool);
       logger.info('Seed completed');
-    } else {
-      logger.info(`Database has ${countCheck.rows[0].count} complexes - skipping seed`);
     }
     
     return true;
@@ -89,292 +70,200 @@ async function initDatabase() {
   }
 }
 
-// Middleware
 app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 100,
-  standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Too many requests, please try again later' }
-});
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use('/api/', limiter);
 
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    const duration = Date.now() - start;
     if (req.path !== '/health' && req.path !== '/debug') {
-      logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
+      logger.info(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - start}ms`);
     }
   });
   next();
 });
 
 // Routes
-const projectRoutes = require('./routes/projects');
-const opportunityRoutes = require('./routes/opportunities');
-const scanRoutes = require('./routes/scan');
-const alertRoutes = require('./routes/alerts');
+app.use('/api/projects', require('./routes/projects'));
+app.use('/api', require('./routes/opportunities'));
+app.use('/api/scan', require('./routes/scan'));
+app.use('/api/alerts', require('./routes/alerts'));
 
-app.use('/api/projects', projectRoutes);
-app.use('/api', opportunityRoutes);
-app.use('/api/scan', scanRoutes);
-app.use('/api/alerts', alertRoutes);
-
-// Weekly scheduler routes
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
-app.get('/api/scheduler', (req, res) => {
-  res.json(getSchedulerStatus());
-});
+app.get('/api/scheduler', (req, res) => res.json(getSchedulerStatus()));
 
 app.post('/api/scheduler/run', async (req, res) => {
-  const status = getSchedulerStatus();
-  if (status.isRunning) {
+  if (getSchedulerStatus().isRunning) {
     return res.status(409).json({ error: 'Scan already running' });
   }
-  res.json({ message: 'Weekly scan triggered manually', note: 'Running in background' });
-  try { await runWeeklyScan(); } catch (err) {
-    logger.error('Manual weekly scan failed', { error: err.message });
-  }
+  res.json({ message: 'Weekly scan triggered' });
+  runWeeklyScan().catch(e => logger.error('Weekly scan failed', { error: e.message }));
 });
 
-// Notification routes
 app.get('/api/notifications/status', (req, res) => {
   res.json({
     configured: notificationService.isConfigured(),
     provider: notificationService.getProvider(),
-    resend_key: process.env.RESEND_API_KEY ? `${process.env.RESEND_API_KEY.substring(0, 8)}...(set)` : '(not set)',
-    smtp_host: process.env.SMTP_HOST ? `${process.env.SMTP_HOST} (set)` : '(not set)',
-    email_from: process.env.EMAIL_FROM || 'QUANTUM <onboarding@resend.dev>',
     targets: notificationService.NOTIFICATION_EMAILS
   });
 });
 
 app.post('/api/notifications/test', async (req, res) => {
   if (!notificationService.isConfigured()) {
-    return res.status(400).json({ 
-      error: 'Email not configured. Set RESEND_API_KEY (preferred) or SMTP_HOST/USER/PASS',
-      provider: notificationService.getProvider()
-    });
-  }
-  try {
-    const testSubject = `[QUANTUM] Test notification - ${new Date().toISOString()}`;
-    const testBody = '<div dir="rtl"><h2>QUANTUM - בדיקת התראות</h2><p>אם אתה רואה הודעה זו, מערכת ההתראות פעילה!</p></div>';
-    const results = [];
-    for (const email of notificationService.NOTIFICATION_EMAILS) {
-      const result = await notificationService.sendEmail(email, testSubject, testBody);
-      results.push({ email, ...result });
-    }
-    const allSent = results.every(r => r.sent);
-    res.json({ test: allSent ? 'success' : 'partial_failure', provider: notificationService.getProvider(), results });
-  } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack });
-  }
-});
-
-app.post('/api/notifications/send', async (req, res) => {
-  if (!notificationService.isConfigured()) {
     return res.status(400).json({ error: 'Email not configured' });
   }
   try {
-    const result = await notificationService.sendPendingAlerts();
-    res.json({ message: 'Pending alerts processed', provider: notificationService.getProvider(), ...result });
+    const results = [];
+    for (const email of notificationService.NOTIFICATION_EMAILS) {
+      const r = await notificationService.sendEmail(email, '[QUANTUM] Test', '<h2>Test OK</h2>');
+      results.push({ email, ...r });
+    }
+    res.json({ test: 'success', results });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Debug endpoint
-app.get('/debug', (req, res) => {
-  const scheduler = getSchedulerStatus();
-  const emailProvider = notificationService.getProvider();
-  res.json({
-    timestamp: new Date().toISOString(),
-    build: '2026-02-10-v6-committee-tracker',
-    node_version: process.version,
-    env: {
-      DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
-      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? `${process.env.PERPLEXITY_API_KEY.substring(0, 8)}...(set)` : '(not set)',
-      RESEND_API_KEY: process.env.RESEND_API_KEY ? `${process.env.RESEND_API_KEY.substring(0, 8)}...(set)` : '(not set)',
-      EMAIL_FROM: process.env.EMAIL_FROM || 'QUANTUM <onboarding@resend.dev> (default)',
-      SMTP_HOST: process.env.SMTP_HOST || '(not set)',
-      SCAN_CRON: process.env.SCAN_CRON || '0 4 * * 0 (default)',
-      PORT: process.env.PORT || '(not set)',
-      NODE_ENV: process.env.NODE_ENV || '(not set)',
-    },
-    scheduler: {
-      enabled: scheduler.enabled,
-      cron: scheduler.cron,
-      isRunning: scheduler.isRunning,
-      lastRun: scheduler.lastRun,
-      notificationsConfigured: scheduler.notificationsConfigured
-    },
-    features: {
-      ssi_calculator: 'active',
-      iai_calculator: 'active',
-      benchmark_service: 'active',
-      nadlan_scraper: 'active',
-      yad2_scraper: 'active',
-      mavat_scraper: 'active',
-      committee_tracking: 'active (Phase 4.1)',
-      perplexity_scanner: process.env.PERPLEXITY_API_KEY ? 'active' : 'disabled',
-      notification_service: notificationService.isConfigured() 
-        ? `active (${emailProvider})` 
-        : 'disabled (set RESEND_API_KEY or SMTP vars)',
-      weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
-    },
-    weekly_scan_steps: [
-      '1. nadlan.gov.il transaction scan',
-      '2. Benchmark calculation (actual_premium)',
-      '3. Perplexity AI scan (status + listings)',
-      '4. yad2 listing scan (dedicated price tracking)',
-      '5. mavat planning scan (status updates)',
-      '6. Committee approval tracking (local/district/national)',
-      '7. SSI score calculation',
-      '8. IAI score recalculation',
-      '9. Alert generation (committee alerts = critical)',
-      '10. Email notifications (Trello cards + office digest)'
-    ],
-    alert_types: [
-      'status_change - plan status progression',
-      'committee_approval - local/district/national (CRITICAL price trigger)',
-      'upcoming_hearing - scheduled committee meetings',
-      'opportunity - IAI threshold crossed (50/70)',
-      'stressed_seller - high SSI listing found',
-      'price_drop - significant price reduction'
-    ],
-    notification_targets: notificationService.NOTIFICATION_EMAILS,
-    cwd: process.cwd(),
-  });
-});
-
-// Health check
-app.get('/health', async (req, res) => {
+app.post('/api/notifications/send', async (req, res) => {
+  if (!notificationService.isConfigured()) return res.status(400).json({ error: 'Not configured' });
   try {
-    const result = await pool.query('SELECT COUNT(*) FROM complexes');
-    const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
-    const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
-    const activeListings = await pool.query('SELECT COUNT(*) FROM listings WHERE is_active = TRUE');
-    const yad2Listings = await pool.query("SELECT COUNT(*) FROM listings WHERE source = 'yad2' AND is_active = TRUE");
-    const stressedCount = await pool.query('SELECT COUNT(*) FROM listings WHERE ssi_score >= 50 AND is_active = TRUE');
-    const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
-    const benchmarkedCount = await pool.query('SELECT COUNT(*) FROM complexes WHERE actual_premium IS NOT NULL');
-    
-    // Committee tracking stats
-    let committeeStats = { local: 0, district: 0, national: 0 };
-    try {
-      const localCommittee = await pool.query('SELECT COUNT(*) FROM complexes WHERE local_committee_date IS NOT NULL');
-      const districtCommittee = await pool.query('SELECT COUNT(*) FROM complexes WHERE district_committee_date IS NOT NULL');
-      committeeStats.local = parseInt(localCommittee.rows[0].count);
-      committeeStats.district = parseInt(districtCommittee.rows[0].count);
-      try {
-        const nationalCommittee = await pool.query('SELECT COUNT(*) FROM complexes WHERE national_committee_date IS NOT NULL');
-        committeeStats.national = parseInt(nationalCommittee.rows[0].count);
-      } catch (e) { /* national column may not exist yet */ }
-    } catch (e) { /* columns may not exist yet */ }
-    
-    const scheduler = getSchedulerStatus();
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      version: '4.1.0',
-      db: 'connected',
-      complexes: parseInt(result.rows[0].count),
-      transactions: parseInt(txCount.rows[0].count),
-      listings: {
-        total: parseInt(listingCount.rows[0].count),
-        active: parseInt(activeListings.rows[0].count),
-        yad2_active: parseInt(yad2Listings.rows[0].count),
-        stressed: parseInt(stressedCount.rows[0].count)
-      },
-      benchmarked_complexes: parseInt(benchmarkedCount.rows[0].count),
-      committee_tracked: committeeStats,
-      unread_alerts: parseInt(alertCount.rows[0].count),
-      perplexity: process.env.PERPLEXITY_API_KEY ? 'configured' : 'not_configured',
-      notifications: notificationService.isConfigured() ? `configured (${notificationService.getProvider()})` : 'not_configured',
-      scheduler: scheduler.enabled ? 'active' : 'disabled'
-    });
+    const result = await notificationService.sendPendingAlerts();
+    res.json({ message: 'Sent', ...result });
   } catch (err) {
-    res.status(503).json({
-      status: 'error', timestamp: new Date().toISOString(),
-      db: 'disconnected', error: err.message
-    });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Root
+// Check Claude orchestrator
+function isClaudeConfigured() {
+  return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
+}
+
+app.get('/debug', (req, res) => {
+  const scheduler = getSchedulerStatus();
+  res.json({
+    timestamp: new Date().toISOString(),
+    build: '2026-02-10-v7-unified-ai',
+    version: '4.3.0',
+    node_version: process.version,
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
+      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)',
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)',
+      CLAUDE_API_KEY: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)',
+      RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)'
+    },
+    features: {
+      unified_ai_scan: isClaudeConfigured() ? 'active (Perplexity + Claude)' : 'partial (Perplexity only)',
+      committee_tracking: 'active',
+      yad2_direct_api: 'active',
+      ssi_calculator: 'active',
+      iai_calculator: 'active',
+      notifications: notificationService.isConfigured() ? 'active' : 'disabled',
+      weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
+    },
+    scan_pipeline: [
+      '1. Unified AI scan (Perplexity + Claude)',
+      '2. Committee approval tracking',
+      '3. yad2 direct API + fallback',
+      '4. SSI/IAI recalculation',
+      '5. Alert generation',
+      '6. Email notifications'
+    ]
+  });
+});
+
+app.get('/health', async (req, res) => {
+  try {
+    const [complexes, tx, listings, alerts] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM complexes'),
+      pool.query('SELECT COUNT(*) FROM transactions'),
+      pool.query('SELECT COUNT(*) FROM listings WHERE is_active = TRUE'),
+      pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE')
+    ]);
+
+    let committeeStats = { local: 0, district: 0 };
+    try {
+      const c = await pool.query(`
+        SELECT 
+          COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL) as local,
+          COUNT(*) FILTER (WHERE district_committee_date IS NOT NULL) as district
+        FROM complexes
+      `);
+      committeeStats = { local: parseInt(c.rows[0].local), district: parseInt(c.rows[0].district) };
+    } catch (e) {}
+
+    res.json({
+      status: 'ok',
+      version: '4.3.0',
+      db: 'connected',
+      complexes: parseInt(complexes.rows[0].count),
+      transactions: parseInt(tx.rows[0].count),
+      active_listings: parseInt(listings.rows[0].count),
+      committee_tracked: committeeStats,
+      unread_alerts: parseInt(alerts.rows[0].count),
+      ai_sources: {
+        perplexity: !!process.env.PERPLEXITY_API_KEY,
+        claude: isClaudeConfigured()
+      },
+      notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
+    });
+  } catch (err) {
+    res.status(503).json({ status: 'error', db: 'disconnected', error: err.message });
+  }
+});
+
 app.get('/', (req, res) => {
   res.json({
-    name: 'Pinuy Binuy Investment Analyzer API',
-    version: '4.1.0',
-    phase: 'Phase 4.1 - Committee Approval Tracking',
+    name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
+    version: '4.3.0',
+    phase: 'Phase 4.3 - Unified AI (Perplexity + Claude)',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
       projects: 'GET /api/projects',
       project: 'GET /api/projects/:id',
-      transactions: 'GET /api/projects/:id/transactions',
-      listings: 'GET /api/projects/:id/listings',
-      benchmark: 'GET /api/projects/:id/benchmark',
       opportunities: 'GET /api/opportunities',
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
-      scanRun: 'POST /api/scan/run',
-      scanNadlan: 'POST /api/scan/nadlan',
-      scanYad2: 'POST /api/scan/yad2',
-      scanMavat: 'POST /api/scan/mavat',
+      scanUnified: 'POST /api/scan/unified ⭐ NEW',
+      scanUnifiedStatus: 'GET /api/scan/unified/status',
       scanCommittee: 'POST /api/scan/committee',
       scanCommitteeSummary: 'GET /api/scan/committee/summary',
+      scanYad2: 'POST /api/scan/yad2',
+      scanMavat: 'POST /api/scan/mavat',
+      scanNadlan: 'POST /api/scan/nadlan',
       scanBenchmark: 'POST /api/scan/benchmark',
       scanWeekly: 'POST /api/scan/weekly',
-      scanComplex: 'POST /api/scan/complex/:id',
-      scanSSI: 'POST /api/scan/ssi',
-      scanResults: 'GET /api/scan/results',
       alerts: 'GET /api/alerts',
-      alertMarkRead: 'PUT /api/alerts/:id/read',
-      notificationsStatus: 'GET /api/notifications/status',
-      notificationsTest: 'POST /api/notifications/test',
-      notificationsSend: 'POST /api/notifications/send',
-      scheduler: 'GET /api/scheduler',
-      schedulerRun: 'POST /api/scheduler/run'
+      scheduler: 'GET /api/scheduler'
     }
   });
 });
 
 app.use((err, req, res, _next) => {
-  logger.error(`Unhandled error: ${err.message}`, { stack: err.stack });
+  logger.error(`Error: ${err.message}`);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
+app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
 async function start() {
   const dbReady = await initDatabase();
-  if (!dbReady) {
-    logger.warn('Starting without database - some features may be unavailable');
-  }
-  
   if (dbReady) {
     const { startScheduler } = require('./jobs/weeklyScanner');
     startScheduler();
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Pinuy Binuy API v4.1 running on port ${PORT}`);
-    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
-    logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
-    logger.info(`Notifications: ${notificationService.isConfigured() ? `configured (${notificationService.getProvider()})` : 'not configured'}`);
-    logger.info('Features: SSI, IAI, Benchmark, Nadlan, yad2, mavat, Committee Tracker, Notifications, Weekly Scanner');
+    logger.info(`QUANTUM API v4.3 running on port ${PORT}`);
+    logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
+    logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
 
