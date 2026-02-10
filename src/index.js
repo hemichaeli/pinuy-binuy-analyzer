@@ -197,7 +197,7 @@ app.get('/debug', (req, res) => {
   const emailProvider = notificationService.getProvider();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-09-v5-benchmark-fix',
+    build: '2026-02-10-v6-committee-tracker',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? `${process.env.DATABASE_URL.substring(0, 20)}...(set)` : '(not set)',
@@ -223,7 +223,7 @@ app.get('/debug', (req, res) => {
       nadlan_scraper: 'active',
       yad2_scraper: 'active',
       mavat_scraper: 'active',
-      committee_tracking: 'active',
+      committee_tracking: 'active (Phase 4.1)',
       perplexity_scanner: process.env.PERPLEXITY_API_KEY ? 'active' : 'disabled',
       notification_service: notificationService.isConfigured() 
         ? `active (${emailProvider})` 
@@ -235,15 +235,17 @@ app.get('/debug', (req, res) => {
       '2. Benchmark calculation (actual_premium)',
       '3. Perplexity AI scan (status + listings)',
       '4. yad2 listing scan (dedicated price tracking)',
-      '5. mavat planning scan (committee approvals + status)',
-      '6. SSI score calculation',
-      '7. IAI score recalculation',
-      '8. Alert generation (incl. committee alerts)',
-      '9. Email notifications (Trello cards + office digest)'
+      '5. mavat planning scan (status updates)',
+      '6. Committee approval tracking (local/district/national)',
+      '7. SSI score calculation',
+      '8. IAI score recalculation',
+      '9. Alert generation (committee alerts = critical)',
+      '10. Email notifications (Trello cards + office digest)'
     ],
     alert_types: [
       'status_change - plan status progression',
-      'committee_approval - local/district committee (critical price trigger)',
+      'committee_approval - local/district/national (CRITICAL price trigger)',
+      'upcoming_hearing - scheduled committee meetings',
       'opportunity - IAI threshold crossed (50/70)',
       'stressed_seller - high SSI listing found',
       'price_drop - significant price reduction'
@@ -266,19 +268,23 @@ app.get('/health', async (req, res) => {
     const benchmarkedCount = await pool.query('SELECT COUNT(*) FROM complexes WHERE actual_premium IS NOT NULL');
     
     // Committee tracking stats
-    let committeeStats = { local: 0, district: 0 };
+    let committeeStats = { local: 0, district: 0, national: 0 };
     try {
       const localCommittee = await pool.query('SELECT COUNT(*) FROM complexes WHERE local_committee_date IS NOT NULL');
       const districtCommittee = await pool.query('SELECT COUNT(*) FROM complexes WHERE district_committee_date IS NOT NULL');
       committeeStats.local = parseInt(localCommittee.rows[0].count);
       committeeStats.district = parseInt(districtCommittee.rows[0].count);
+      try {
+        const nationalCommittee = await pool.query('SELECT COUNT(*) FROM complexes WHERE national_committee_date IS NOT NULL');
+        committeeStats.national = parseInt(nationalCommittee.rows[0].count);
+      } catch (e) { /* national column may not exist yet */ }
     } catch (e) { /* columns may not exist yet */ }
     
     const scheduler = getSchedulerStatus();
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-      version: '3.0.0',
+      version: '4.1.0',
       db: 'connected',
       complexes: parseInt(result.rows[0].count),
       transactions: parseInt(txCount.rows[0].count),
@@ -307,8 +313,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'Pinuy Binuy Investment Analyzer API',
-    version: '3.0.0',
-    phase: 'v3.0 - Full Pipeline (9-step scan + notifications)',
+    version: '4.1.0',
+    phase: 'Phase 4.1 - Committee Approval Tracking',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -324,6 +330,8 @@ app.get('/', (req, res) => {
       scanNadlan: 'POST /api/scan/nadlan',
       scanYad2: 'POST /api/scan/yad2',
       scanMavat: 'POST /api/scan/mavat',
+      scanCommittee: 'POST /api/scan/committee',
+      scanCommitteeSummary: 'GET /api/scan/committee/summary',
       scanBenchmark: 'POST /api/scan/benchmark',
       scanWeekly: 'POST /api/scan/weekly',
       scanComplex: 'POST /api/scan/complex/:id',
@@ -361,12 +369,12 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Pinuy Binuy API v3.0 running on port ${PORT}`);
+    logger.info(`Pinuy Binuy API v4.1 running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`Database: ${dbReady ? 'ready' : 'unavailable'}`);
     logger.info(`Perplexity: ${process.env.PERPLEXITY_API_KEY ? 'configured' : 'not configured'}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? `configured (${notificationService.getProvider()})` : 'not configured'}`);
-    logger.info('Features: SSI, IAI, Benchmark, Nadlan, yad2, mavat, Committee, Notifications, Weekly Scanner');
+    logger.info('Features: SSI, IAI, Benchmark, Nadlan, yad2, mavat, Committee Tracker, Notifications, Weekly Scanner');
   });
 }
 
