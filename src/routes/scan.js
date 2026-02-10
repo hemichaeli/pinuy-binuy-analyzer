@@ -11,19 +11,98 @@ const yad2Scraper = require('../services/yad2Scraper');
 const mavatScraper = require('../services/mavatScraper');
 const notificationService = require('../services/notificationService');
 
-// Lazy load committee tracker to avoid startup errors if file doesn't exist yet
-let committeeTracker = null;
+// Lazy load services to avoid startup errors
 function getCommitteeTracker() {
-  if (!committeeTracker) {
-    try {
-      committeeTracker = require('../services/committeeTracker');
-    } catch (e) {
-      logger.warn('Committee tracker not available', { error: e.message });
-      return null;
-    }
+  try {
+    return require('../services/committeeTracker');
+  } catch (e) {
+    logger.warn('Committee tracker not available', { error: e.message });
+    return null;
   }
-  return committeeTracker;
 }
+
+function getClaudeOrchestrator() {
+  try {
+    return require('../services/claudeOrchestrator');
+  } catch (e) {
+    logger.warn('Claude orchestrator not available', { error: e.message });
+    return null;
+  }
+}
+
+// POST /api/scan/unified - Unified Perplexity + Claude scan (Phase 4.3)
+router.post('/unified', async (req, res) => {
+  try {
+    const orchestrator = getClaudeOrchestrator();
+    if (!orchestrator) {
+      return res.status(501).json({ error: 'Claude orchestrator not available' });
+    }
+
+    const { city, limit, complexId, staleOnly } = req.body;
+
+    if (complexId) {
+      const result = await orchestrator.scanComplexUnified(parseInt(complexId));
+      return res.json({ message: 'Unified scan complete', result });
+    }
+
+    const scanLog = await pool.query(
+      `INSERT INTO scan_logs (scan_type, status) VALUES ('unified_ai', 'running') RETURNING *`
+    );
+    const scanId = scanLog.rows[0].id;
+
+    res.json({
+      message: 'Unified AI scan triggered (Perplexity + Claude)',
+      scan_id: scanId,
+      note: 'Claude will validate and consolidate data from multiple sources',
+      claude_configured: orchestrator.isClaudeConfigured()
+    });
+
+    (async () => {
+      try {
+        const results = await orchestrator.scanAllUnified({
+          city: city || null,
+          limit: limit ? parseInt(limit) : 20,
+          staleOnly: staleOnly !== false
+        });
+
+        await calculateAllSSI();
+        await calculateAllIAI();
+
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+            complexes_scanned = $1, status_changes = $2, summary = $3 WHERE id = $4`,
+          [results.total, results.changes,
+            `Unified AI: ${results.succeeded}/${results.total} ok, ${results.changes} changes, sources: Perplexity+Claude`, scanId]
+        );
+
+        if (results.changes > 0 && notificationService.isConfigured()) {
+          await notificationService.sendPendingAlerts();
+        }
+      } catch (err) {
+        logger.error('Unified scan failed', { error: err.message });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+          [err.message, scanId]
+        );
+      }
+    })();
+  } catch (err) {
+    logger.error('Error triggering unified scan', { error: err.message });
+    res.status(500).json({ error: 'Failed to trigger unified scan' });
+  }
+});
+
+// GET /api/scan/unified/status - Check Claude orchestrator status
+router.get('/unified/status', (req, res) => {
+  const orchestrator = getClaudeOrchestrator();
+  res.json({
+    available: !!orchestrator,
+    claude_configured: orchestrator?.isClaudeConfigured() || false,
+    perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
+    anthropic_key: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)',
+    claude_key: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)'
+  });
+});
 
 // POST /api/scan/run - Trigger a Perplexity scan
 router.post('/run', async (req, res) => {
@@ -173,7 +252,7 @@ router.post('/yad2', async (req, res) => {
   }
 });
 
-// POST /api/scan/mavat - Planning authority status scan
+// POST /api/scan/mavat
 router.post('/mavat', async (req, res) => {
   try {
     const { city, limit, complexId, staleOnly } = req.body;
@@ -198,7 +277,7 @@ router.post('/mavat', async (req, res) => {
           `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
             complexes_scanned = $1, status_changes = $2, summary = $3 WHERE id = $4`,
           [results.total, results.statusChanges,
-            `mavat: ${results.succeeded}/${results.total} ok, ${results.statusChanges} status changes, ${results.committeeApprovals} committee approvals`, scanId]
+            `mavat: ${results.succeeded}/${results.total} ok, ${results.statusChanges} status changes`, scanId]
         );
       } catch (err) {
         await pool.query(
@@ -212,7 +291,7 @@ router.post('/mavat', async (req, res) => {
   }
 });
 
-// POST /api/scan/committee - Committee approval tracking (Phase 4.1)
+// POST /api/scan/committee
 router.post('/committee', async (req, res) => {
   try {
     const tracker = getCommitteeTracker();
@@ -221,7 +300,7 @@ router.post('/committee', async (req, res) => {
     }
 
     const { city, limit, complexId, staleOnly } = req.body;
-    
+
     if (complexId) {
       const result = await tracker.trackComplex(parseInt(complexId));
       return res.json({ message: 'Committee tracking complete', result });
@@ -231,34 +310,31 @@ router.post('/committee', async (req, res) => {
       `INSERT INTO scan_logs (scan_type, status) VALUES ('committee', 'running') RETURNING *`
     );
     const scanId = scanLog.rows[0].id;
-    
-    res.json({ 
-      message: 'Committee approval tracking triggered', 
-      scan_id: scanId,
-      note: 'Scanning for local/district/national committee approvals'
+
+    res.json({
+      message: 'Committee approval tracking triggered',
+      scan_id: scanId
     });
 
     (async () => {
       try {
         const results = await tracker.trackAll({
-          city: city || null, 
-          limit: limit ? parseInt(limit) : null, 
+          city: city || null,
+          limit: limit ? parseInt(limit) : null,
           staleOnly: staleOnly !== false
         });
-        
+
         await pool.query(
           `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
             complexes_scanned = $1, status_changes = $2, summary = $3 WHERE id = $4`,
           [results.total, results.newApprovals,
-            `Committee: ${results.scanned}/${results.total} scanned, ${results.newApprovals} new approvals, ${results.upcomingHearings} upcoming hearings`, scanId]
+            `Committee: ${results.scanned}/${results.total}, ${results.newApprovals} approvals`, scanId]
         );
 
-        // Send notifications for new committee approvals
         if (results.newApprovals > 0 && notificationService.isConfigured()) {
           await notificationService.sendPendingAlerts();
         }
       } catch (err) {
-        logger.error('Committee tracking failed', { error: err.message });
         await pool.query(
           `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
           [err.message, scanId]
@@ -266,57 +342,47 @@ router.post('/committee', async (req, res) => {
       }
     })();
   } catch (err) {
-    logger.error('Error triggering committee scan', { error: err.message });
     res.status(500).json({ error: 'Failed to trigger committee scan' });
   }
 });
 
-// GET /api/scan/committee/summary - Get committee tracking summary
+// GET /api/scan/committee/summary
 router.get('/committee/summary', async (req, res) => {
   try {
-    const tracker = getCommitteeTracker();
-    if (!tracker) {
-      // Fallback to direct DB query
-      const result = await pool.query(`
-        SELECT 
-          COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL) as local_approved,
-          COUNT(*) FILTER (WHERE district_committee_date IS NOT NULL) as district_approved,
-          COUNT(*) FILTER (WHERE status = 'deposited' AND local_committee_date IS NULL) as awaiting_local,
-          COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL AND district_committee_date IS NULL AND status != 'approved') as awaiting_district
-        FROM complexes
-        WHERE status NOT IN ('unknown', 'construction')
-      `);
-      return res.json({
-        localApproved: parseInt(result.rows[0].local_approved),
-        districtApproved: parseInt(result.rows[0].district_approved),
-        awaitingLocal: parseInt(result.rows[0].awaiting_local),
-        awaitingDistrict: parseInt(result.rows[0].awaiting_district)
-      });
-    }
-
-    const summary = await tracker.getCommitteeSummary();
-    res.json(summary);
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL) as local_approved,
+        COUNT(*) FILTER (WHERE district_committee_date IS NOT NULL) as district_approved,
+        COUNT(*) FILTER (WHERE status = 'deposited' AND local_committee_date IS NULL) as awaiting_local,
+        COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL AND district_committee_date IS NULL) as awaiting_district
+      FROM complexes
+      WHERE status NOT IN ('unknown', 'construction')
+    `);
+    res.json({
+      localApproved: parseInt(result.rows[0].local_approved),
+      districtApproved: parseInt(result.rows[0].district_approved),
+      awaitingLocal: parseInt(result.rows[0].awaiting_local),
+      awaitingDistrict: parseInt(result.rows[0].awaiting_district)
+    });
   } catch (err) {
-    logger.error('Error fetching committee summary', { error: err.message });
     res.status(500).json({ error: 'Failed to fetch committee summary' });
   }
 });
 
-// POST /api/scan/weekly - Trigger full weekly scan pipeline
+// POST /api/scan/weekly
 router.post('/weekly', async (req, res) => {
   try {
     const { runWeeklyScan } = require('../jobs/weeklyScanner');
     const { forceAll } = req.body;
     res.json({
       message: 'Weekly scan triggered',
-      forceAll: !!forceAll,
-      note: forceAll ? 'Scanning ALL complexes (staleOnly bypassed)' : 'Scanning stale complexes only'
+      forceAll: !!forceAll
     });
     (async () => {
       try {
         await runWeeklyScan({ forceAll: !!forceAll });
       } catch (err) {
-        logger.error('Weekly scan trigger failed', { error: err.message });
+        logger.error('Weekly scan failed', { error: err.message });
       }
     })();
   } catch (err) {
@@ -330,61 +396,48 @@ router.post('/benchmark', async (req, res) => {
     const { city, limit, complexId, force } = req.body;
     if (complexId) {
       const result = await calculateBenchmark(parseInt(complexId));
-      if (!result) return res.json({ message: 'No benchmark data available', complex_id: complexId });
       return res.json({ message: 'Benchmark calculated', result });
     }
     res.json({ message: 'Benchmark calculation triggered' });
     (async () => {
       try {
-        await calculateAllBenchmarks({ city: city || null, limit: limit ? parseInt(limit) : null, force: !!force });
+        await calculateAllBenchmarks({ city, limit: limit ? parseInt(limit) : null, force: !!force });
         await calculateAllIAI();
-      } catch (err) { logger.error('Benchmark batch failed', { error: err.message }); }
+      } catch (err) { logger.error('Benchmark failed', { error: err.message }); }
     })();
   } catch (err) {
     res.status(500).json({ error: 'Failed to trigger benchmark' });
   }
 });
 
-// POST /api/scan/notifications - Send pending notifications manually
+// POST /api/scan/notifications
 router.post('/notifications', async (req, res) => {
   try {
     if (!notificationService.isConfigured()) {
-      return res.json({
-        message: 'Notifications not configured',
-        note: 'Set RESEND_API_KEY or SMTP_HOST, SMTP_USER, SMTP_PASS environment variables',
-        recipients: notificationService.NOTIFICATION_EMAILS
-      });
+      return res.json({ message: 'Notifications not configured' });
     }
-
     const { type } = req.body;
     if (type === 'digest') {
       const result = await notificationService.sendWeeklyDigest(null);
       return res.json({ message: 'Weekly digest sent', result });
     }
-
     const result = await notificationService.sendPendingAlerts();
-    res.json({ message: 'Pending alerts sent', result });
+    res.json({ message: 'Alerts sent', result });
   } catch (err) {
-    logger.error('Error sending notifications', { error: err.message });
     res.status(500).json({ error: 'Failed to send notifications' });
   }
 });
 
-// GET /api/scan/notifications/status - Check notification configuration
+// GET /api/scan/notifications/status
 router.get('/notifications/status', (req, res) => {
   res.json({
     configured: notificationService.isConfigured(),
     provider: notificationService.getProvider(),
-    smtp_host: process.env.SMTP_HOST ? '(set)' : '(not set)',
-    smtp_user: process.env.SMTP_USER ? '(set)' : '(not set)',
-    resend_key: process.env.RESEND_API_KEY ? '(set)' : '(not set)',
-    recipients: notificationService.NOTIFICATION_EMAILS,
-    trello_email: process.env.TRELLO_BOARD_EMAIL || 'uth_limited+c9otswetpgdfphdpoehc@boards.trello.com',
-    office_email: process.env.OFFICE_EMAIL || 'Office@u-r-quantum.com'
+    recipients: notificationService.NOTIFICATION_EMAILS
   });
 });
 
-// POST /api/scan/complex/:id - Full single complex scan
+// POST /api/scan/complex/:id
 router.post('/complex/:id', async (req, res) => {
   try {
     const complexId = parseInt(req.params.id);
@@ -392,18 +445,12 @@ router.post('/complex/:id', async (req, res) => {
     if (complexCheck.rows.length === 0) return res.status(404).json({ error: 'Complex not found' });
 
     const result = await scanComplex(complexId);
-    const listings = await pool.query('SELECT id FROM listings WHERE complex_id = $1 AND is_active = TRUE', [complexId]);
-    const ssiResults = [];
-    for (const listing of listings.rows) {
-      try { const ssi = await calculateSSI(listing.id); if (ssi) ssiResults.push(ssi); } catch (e) {}
-    }
     const iai = await calculateIAI(complexId);
 
     res.json({
       scan_result: result,
-      iai_score: iai ? iai.iai_score : null,
-      ssi_results: ssiResults,
-      message: `Scanned ${complexCheck.rows[0].name}: ${result.transactions} tx, ${result.listings} listings, ${ssiResults.length} SSI`
+      iai_score: iai?.iai_score || null,
+      message: `Scanned ${complexCheck.rows[0].name}`
     });
   } catch (err) {
     res.status(500).json({ error: `Scan failed: ${err.message}` });
@@ -416,7 +463,7 @@ router.post('/ssi', async (req, res) => {
     const results = await calculateAllSSI();
     res.json({ message: 'SSI recalculation complete', results });
   } catch (err) {
-    res.status(500).json({ error: `SSI recalculation failed: ${err.message}` });
+    res.status(500).json({ error: `SSI failed: ${err.message}` });
   }
 });
 
