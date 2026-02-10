@@ -11,6 +11,20 @@ const yad2Scraper = require('../services/yad2Scraper');
 const mavatScraper = require('../services/mavatScraper');
 const notificationService = require('../services/notificationService');
 
+// Lazy load committee tracker to avoid startup errors if file doesn't exist yet
+let committeeTracker = null;
+function getCommitteeTracker() {
+  if (!committeeTracker) {
+    try {
+      committeeTracker = require('../services/committeeTracker');
+    } catch (e) {
+      logger.warn('Committee tracker not available', { error: e.message });
+      return null;
+    }
+  }
+  return committeeTracker;
+}
+
 // POST /api/scan/run - Trigger a Perplexity scan
 router.post('/run', async (req, res) => {
   try {
@@ -198,6 +212,96 @@ router.post('/mavat', async (req, res) => {
   }
 });
 
+// POST /api/scan/committee - Committee approval tracking (Phase 4.1)
+router.post('/committee', async (req, res) => {
+  try {
+    const tracker = getCommitteeTracker();
+    if (!tracker) {
+      return res.status(501).json({ error: 'Committee tracker not available' });
+    }
+
+    const { city, limit, complexId, staleOnly } = req.body;
+    
+    if (complexId) {
+      const result = await tracker.trackComplex(parseInt(complexId));
+      return res.json({ message: 'Committee tracking complete', result });
+    }
+
+    const scanLog = await pool.query(
+      `INSERT INTO scan_logs (scan_type, status) VALUES ('committee', 'running') RETURNING *`
+    );
+    const scanId = scanLog.rows[0].id;
+    
+    res.json({ 
+      message: 'Committee approval tracking triggered', 
+      scan_id: scanId,
+      note: 'Scanning for local/district/national committee approvals'
+    });
+
+    (async () => {
+      try {
+        const results = await tracker.trackAll({
+          city: city || null, 
+          limit: limit ? parseInt(limit) : null, 
+          staleOnly: staleOnly !== false
+        });
+        
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+            complexes_scanned = $1, status_changes = $2, summary = $3 WHERE id = $4`,
+          [results.total, results.newApprovals,
+            `Committee: ${results.scanned}/${results.total} scanned, ${results.newApprovals} new approvals, ${results.upcomingHearings} upcoming hearings`, scanId]
+        );
+
+        // Send notifications for new committee approvals
+        if (results.newApprovals > 0 && notificationService.isConfigured()) {
+          await notificationService.sendPendingAlerts();
+        }
+      } catch (err) {
+        logger.error('Committee tracking failed', { error: err.message });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+          [err.message, scanId]
+        );
+      }
+    })();
+  } catch (err) {
+    logger.error('Error triggering committee scan', { error: err.message });
+    res.status(500).json({ error: 'Failed to trigger committee scan' });
+  }
+});
+
+// GET /api/scan/committee/summary - Get committee tracking summary
+router.get('/committee/summary', async (req, res) => {
+  try {
+    const tracker = getCommitteeTracker();
+    if (!tracker) {
+      // Fallback to direct DB query
+      const result = await pool.query(`
+        SELECT 
+          COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL) as local_approved,
+          COUNT(*) FILTER (WHERE district_committee_date IS NOT NULL) as district_approved,
+          COUNT(*) FILTER (WHERE status = 'deposited' AND local_committee_date IS NULL) as awaiting_local,
+          COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL AND district_committee_date IS NULL AND status != 'approved') as awaiting_district
+        FROM complexes
+        WHERE status NOT IN ('unknown', 'construction')
+      `);
+      return res.json({
+        localApproved: parseInt(result.rows[0].local_approved),
+        districtApproved: parseInt(result.rows[0].district_approved),
+        awaitingLocal: parseInt(result.rows[0].awaiting_local),
+        awaitingDistrict: parseInt(result.rows[0].awaiting_district)
+      });
+    }
+
+    const summary = await tracker.getCommitteeSummary();
+    res.json(summary);
+  } catch (err) {
+    logger.error('Error fetching committee summary', { error: err.message });
+    res.status(500).json({ error: 'Failed to fetch committee summary' });
+  }
+});
+
 // POST /api/scan/weekly - Trigger full weekly scan pipeline
 router.post('/weekly', async (req, res) => {
   try {
@@ -247,7 +351,7 @@ router.post('/notifications', async (req, res) => {
     if (!notificationService.isConfigured()) {
       return res.json({
         message: 'Notifications not configured',
-        note: 'Set SMTP_HOST, SMTP_USER, SMTP_PASS environment variables',
+        note: 'Set RESEND_API_KEY or SMTP_HOST, SMTP_USER, SMTP_PASS environment variables',
         recipients: notificationService.NOTIFICATION_EMAILS
       });
     }
@@ -270,9 +374,10 @@ router.post('/notifications', async (req, res) => {
 router.get('/notifications/status', (req, res) => {
   res.json({
     configured: notificationService.isConfigured(),
+    provider: notificationService.getProvider(),
     smtp_host: process.env.SMTP_HOST ? '(set)' : '(not set)',
     smtp_user: process.env.SMTP_USER ? '(set)' : '(not set)',
-    smtp_pass: process.env.SMTP_PASS ? '(set)' : '(not set)',
+    resend_key: process.env.RESEND_API_KEY ? '(set)' : '(not set)',
     recipients: notificationService.NOTIFICATION_EMAILS,
     trello_email: process.env.TRELLO_BOARD_EMAIL || 'uth_limited+c9otswetpgdfphdpoehc@boards.trello.com',
     office_email: process.env.OFFICE_EMAIL || 'Office@u-r-quantum.com'
