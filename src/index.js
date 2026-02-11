@@ -124,9 +124,9 @@ try {
 // Enhanced data sources routes (Phase 4.5)
 try {
   app.use('/api/enhanced', require('./routes/enhancedData'));
-  logger.info('Enhanced data routes loaded');
+  logger.info('Enhanced data routes registered: /api/enhanced/*');
 } catch (e) {
-  logger.debug('Enhanced data routes not available: ' + e.message);
+  logger.warn('Enhanced data routes not available', { error: e.message });
 }
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
@@ -198,10 +198,10 @@ function getDiscoveryInfo() {
 // Get enhanced data sources info
 function getEnhancedDataInfo() {
   const sources = {};
-  try { sources.madlan = !!require('./services/madlanService'); } catch (e) { sources.madlan = false; }
-  try { sources.urbanRenewal = !!require('./services/urbanRenewalAuthorityService'); } catch (e) { sources.urbanRenewal = false; }
-  try { sources.committee = !!require('./services/committeeProtocolService'); } catch (e) { sources.committee = false; }
-  try { sources.developer = !!require('./services/developerInfoService'); } catch (e) { sources.developer = false; }
+  try { sources.madlan = !!require('./services/madlanService'); } catch { sources.madlan = false; }
+  try { sources.urbanRenewal = !!require('./services/urbanRenewalAuthorityService'); } catch { sources.urbanRenewal = false; }
+  try { sources.committeeProtocol = !!require('./services/committeeProtocolService'); } catch { sources.committeeProtocol = false; }
+  try { sources.developerInfo = !!require('./services/developerInfoService'); } catch { sources.developerInfo = false; }
   return sources;
 }
 
@@ -230,18 +230,23 @@ app.get('/debug', (req, res) => {
       ssi_calculator: 'active',
       iai_calculator: 'active',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
-      weekly_scanner: scheduler.enabled ? 'active' : 'disabled',
-      enhanced_data_sources: Object.values(enhanced).every(v => v) ? 'active' : 'partial'
+      weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
+    },
+    enhanced_data_sources: {
+      madlan: enhanced.madlan ? 'active' : 'disabled',
+      urbanRenewalAuthority: enhanced.urbanRenewal ? 'active' : 'disabled',
+      committeeProtocols: enhanced.committeeProtocol ? 'active' : 'disabled',
+      developerInfo: enhanced.developerInfo ? 'active' : 'disabled',
+      allActive: Object.values(enhanced).every(v => v)
     },
     discovery: discovery,
-    enhanced_sources: enhanced,
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
       '5. Discovery scan (NEW complexes)',
-      '6. Enhanced data enrichment ⭐ (madlan, official, developer)',
+      '6. Enhanced data enrichment ⭐ NEW',
       '7. Alert generation',
       '8. Email notifications'
     ]
@@ -358,7 +363,7 @@ async function start() {
       logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
     }
     const enhanced = getEnhancedDataInfo();
-    logger.info(`Enhanced Sources: madlan=${enhanced.madlan}, urbanRenewal=${enhanced.urbanRenewal}, committee=${enhanced.committee}, developer=${enhanced.developer}`);
+    logger.info(`Enhanced Data: Madlan=${enhanced.madlan}, Official=${enhanced.urbanRenewal}, Committee=${enhanced.committeeProtocol}, Developer=${enhanced.developerInfo}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
