@@ -136,26 +136,6 @@ function formatPrice(price) {
 }
 
 /**
- * Get today's cities for discovery (rotating daily through all target cities)
- * Each day scans 2-3 different cities
- */
-function getTodayDiscoveryCities() {
-  const discoveryService = getDiscoveryService();
-  if (!discoveryService) return [];
-  
-  const allCities = discoveryService.ALL_TARGET_CITIES;
-  const citiesPerDay = 3; // Scan 3 cities per day
-  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
-  const startIndex = (dayOfYear * citiesPerDay) % allCities.length;
-  
-  const cities = [];
-  for (let i = 0; i < citiesPerDay; i++) {
-    cities.push(allCities[(startIndex + i) % allCities.length]);
-  }
-  return cities;
-}
-
-/**
  * Send scan status notification
  */
 async function sendScanStatusNotification(result) {
@@ -198,7 +178,7 @@ async function sendScanStatusNotification(result) {
           ${result.discovery ? `
           <tr style="background: #e8f4fd;">
             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🔍 ערים נסרקו לגילוי</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.discovery?.cities?.join(', ') || 'N/A'}</td>
+            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.discovery?.citiesScanned || 0} ערים</td>
           </tr>
           <tr style="background: #d4edda;">
             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🆕 מתחמים חדשים התגלו</strong></td>
@@ -238,7 +218,7 @@ async function sendScanStatusNotification(result) {
 
 /**
  * Run the daily scan with unified AI (Perplexity + Claude)
- * Includes daily discovery (rotates through cities)
+ * NOW SCANS ALL TARGET CITIES DAILY FOR DISCOVERY
  */
 async function runWeeklyScan(options = {}) {
   const { forceAll = false, includeDiscovery = true } = options;
@@ -323,43 +303,77 @@ async function runWeeklyScan(options = {}) {
       await calculateAllIAI();
     } catch (e) { logger.warn('IAI failed', { error: e.message }); }
 
-    // Step 7: Discovery - scan 3 cities daily (rotating)
-    let discoveryResults = { cities: [], newAdded: 0 };
+    // Step 7: Discovery - SCAN ALL TARGET CITIES DAILY
+    let discoveryResults = { citiesScanned: 0, newAdded: 0, alreadyExisted: 0 };
     if (includeDiscovery) {
       const discoveryService = getDiscoveryService();
       if (discoveryService) {
-        const todayCities = getTodayDiscoveryCities();
-        logger.info(`Step 7/8: 🔍 Discovery scan for: ${todayCities.join(', ')}`);
+        const allCities = discoveryService.ALL_TARGET_CITIES;
+        logger.info(`Step 7/8: 🔍 Discovery scan for ALL ${allCities.length} target cities...`);
         
         try {
           let totalNew = 0;
-          for (const city of todayCities) {
+          let totalExisted = 0;
+          let citiesScanned = 0;
+          
+          for (let i = 0; i < allCities.length; i++) {
+            const city = allCities[i];
+            logger.info(`  [${i + 1}/${allCities.length}] Discovering in ${city}...`);
+            
             try {
               const cityResult = await discoveryService.discoverInCity(city);
+              citiesScanned++;
+              
               if (cityResult?.discovered_complexes) {
                 for (const complex of cityResult.discovered_complexes) {
-                  if (complex.existing_units && complex.existing_units < discoveryService.MIN_HOUSING_UNITS) continue;
+                  // Skip if below minimum units
+                  if (complex.existing_units && complex.existing_units < discoveryService.MIN_HOUSING_UNITS) {
+                    continue;
+                  }
+                  
                   const newId = await discoveryService.addNewComplex(complex, city, 'discovery-daily');
                   if (newId) {
                     totalNew++;
-                    logger.info(`✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
+                    logger.info(`  ✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
+                    
+                    // Create alert for new discovery
+                    await createAlert({
+                      complexId: newId,
+                      type: 'new_complex',
+                      severity: 'high',
+                      title: `🆕 מתחם חדש התגלה: ${complex.name} (${city})`,
+                      message: `נמצא מתחם חדש: ${complex.existing_units || '?'} יח"ד קיימות, ` +
+                        `${complex.planned_units || '?'} יח"ד מתוכננות. ` +
+                        `סטטוס: ${complex.status}. יזם: ${complex.developer || 'לא ידוע'}.`,
+                      data: {
+                        addresses: complex.addresses,
+                        source: complex.source,
+                        plan_number: complex.plan_number
+                      }
+                    });
+                  } else {
+                    totalExisted++;
                   }
                 }
               }
-              // Rate limit between cities
-              await new Promise(r => setTimeout(r, 4000));
+              
+              // Rate limit between cities (3 seconds)
+              if (i < allCities.length - 1) {
+                await new Promise(r => setTimeout(r, 3000));
+              }
             } catch (cityErr) {
-              logger.warn(`Discovery failed for ${city}`, { error: cityErr.message });
+              logger.warn(`  Discovery failed for ${city}`, { error: cityErr.message });
             }
           }
           
           discoveryResults = {
-            cities: todayCities,
-            citiesScanned: todayCities.length,
-            newAdded: totalNew
+            citiesScanned,
+            totalCities: allCities.length,
+            newAdded: totalNew,
+            alreadyExisted: totalExisted
           };
           
-          logger.info(`Discovery: ${todayCities.length} cities, ${totalNew} NEW complexes!`);
+          logger.info(`Discovery complete: ${citiesScanned}/${allCities.length} cities, ${totalNew} NEW complexes!`);
         } catch (e) { 
           logger.warn('Discovery failed', { error: e.message }); 
         }
@@ -378,7 +392,7 @@ async function runWeeklyScan(options = {}) {
     const summary = `Daily scan: Unified AI ${unifiedResults.succeeded}/${unifiedResults.total} ok, ` +
       `${unifiedResults.changes} changes. Nadlan: ${nadlanResults.totalNew} tx. ` +
       `yad2: ${yad2Results.totalNew} new. ` +
-      (discoveryResults.newAdded > 0 ? `🆕 Discovery: ${discoveryResults.newAdded} new. ` : '') +
+      `Discovery: ${discoveryResults.citiesScanned} cities, ${discoveryResults.newAdded} new. ` +
       `${alertCount} alerts. ${duration}s`;
 
     lastRunResult = {
@@ -388,7 +402,7 @@ async function runWeeklyScan(options = {}) {
       benchmarks: { calculated: benchmarkResults.calculated || 0 },
       yad2: { newListings: yad2Results.totalNew || 0, updated: yad2Results.totalUpdated || 0 },
       ssi: ssiResults,
-      discovery: discoveryResults.newAdded > 0 ? discoveryResults : { cities: discoveryResults.cities, newAdded: 0 },
+      discovery: discoveryResults,
       alertsGenerated: alertCount,
       summary
     };
@@ -452,7 +466,6 @@ function stopScheduler() {
 function getSchedulerStatus() {
   const orchestrator = getClaudeOrchestrator();
   const discoveryService = getDiscoveryService();
-  const todayCities = getTodayDiscoveryCities();
   
   return {
     enabled: !!scheduledTask, 
@@ -465,9 +478,9 @@ function getSchedulerStatus() {
     claudeConfigured: orchestrator?.isClaudeConfigured() || false,
     notificationsConfigured: notificationService.isConfigured(),
     discoveryEnabled: !!discoveryService,
-    discoverySchedule: 'Daily (3 cities rotation)',
-    todayDiscoveryCities: todayCities,
-    targetRegions: discoveryService?.TARGET_REGIONS || null,
+    discoverySchedule: 'Daily - ALL cities',
+    targetCities: discoveryService?.ALL_TARGET_CITIES?.length || 0,
+    targetRegions: discoveryService?.TARGET_REGIONS ? Object.keys(discoveryService.TARGET_REGIONS) : [],
     minHousingUnits: discoveryService?.MIN_HOUSING_UNITS || 12
   };
 }
