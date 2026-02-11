@@ -131,7 +131,7 @@ router.post('/madlan/enrich/:complexId', async (req, res) => {
         UPDATE complexes SET
           madlan_avg_price_sqm = $1,
           madlan_price_trend = $2,
-          madlan_last_updated = NOW()
+          last_madlan_update = NOW()
         WHERE id = $3
       `, [
         enriched.madlanData.areaStats.avgPricePerSqm,
@@ -553,7 +553,7 @@ router.get('/enrichment-stats', async (req, res) => {
     const stats = await pool.query(`
       SELECT 
         COUNT(*) as total_complexes,
-        COUNT(*) FILTER (WHERE madlan_last_updated IS NOT NULL) as madlan_enriched,
+        COUNT(*) FILTER (WHERE last_madlan_update IS NOT NULL) as madlan_enriched,
         COUNT(*) FILTER (WHERE is_officially_declared = TRUE) as officially_declared,
         COUNT(*) FILTER (WHERE official_last_verified IS NOT NULL) as official_verified,
         COUNT(*) FILTER (WHERE developer_last_verified IS NOT NULL) as developer_verified,
@@ -566,32 +566,34 @@ router.get('/enrichment-stats', async (req, res) => {
     `);
 
     const row = stats.rows[0];
+    const total = parseInt(row.total_complexes) || 1;
+    
     res.json({
-      total: parseInt(row.total_complexes),
+      total: total,
       coverage: {
         madlan: {
-          count: parseInt(row.madlan_enriched),
-          percentage: Math.round((row.madlan_enriched / row.total_complexes) * 100)
+          count: parseInt(row.madlan_enriched) || 0,
+          percentage: Math.round(((row.madlan_enriched || 0) / total) * 100)
         },
         official: {
-          declared: parseInt(row.officially_declared),
-          verified: parseInt(row.official_verified),
-          percentage: Math.round((row.official_verified / row.total_complexes) * 100)
+          declared: parseInt(row.officially_declared) || 0,
+          verified: parseInt(row.official_verified) || 0,
+          percentage: Math.round(((row.official_verified || 0) / total) * 100)
         },
         developer: {
-          verified: parseInt(row.developer_verified),
-          highRisk: parseInt(row.high_risk_developers),
-          percentage: Math.round((row.developer_verified / row.total_complexes) * 100)
+          verified: parseInt(row.developer_verified) || 0,
+          highRisk: parseInt(row.high_risk_developers) || 0,
+          percentage: Math.round(((row.developer_verified || 0) / total) * 100)
         },
         committee: {
-          checked: parseInt(row.committee_checked),
-          withTriggers: parseInt(row.with_price_triggers),
-          percentage: Math.round((row.committee_checked / row.total_complexes) * 100)
+          checked: parseInt(row.committee_checked) || 0,
+          withTriggers: parseInt(row.with_price_triggers) || 0,
+          percentage: Math.round(((row.committee_checked || 0) / total) * 100)
         }
       },
       averages: {
         pricePerSqm: Math.round(parseFloat(row.avg_price_sqm) || 0),
-        certaintyscore: Math.round(parseFloat(row.avg_certainty) || 0)
+        certaintyScore: Math.round(parseFloat(row.avg_certainty) || 0)
       }
     });
   } catch (err) {
