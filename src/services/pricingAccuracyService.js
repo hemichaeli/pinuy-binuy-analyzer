@@ -87,7 +87,7 @@ async function calculateAccurateBenchmark(complex, pool) {
   let totalWeight = 0, weightedSum = 0;
 
   try {
-    // Source 1: Database transactions (using transaction_date, not deal_date)
+    // Source 1: Database transactions
     const dbTransactions = await pool.query(`
       SELECT AVG(price_per_sqm) as avg_price, COUNT(*) as count, MAX(transaction_date) as latest
       FROM transactions WHERE city = $1 AND transaction_date > NOW() - INTERVAL '12 months'
@@ -157,18 +157,20 @@ async function compareComplexPrices(city, pool) {
   const cityStats = await getCityPricingStats(city);
   const cityAvg = cityStats.sources.yad2?.avgPricePerSqm || null;
 
+  // Use accurate_price_sqm (new column) with fallback behavior
   const complexes = await pool.query(`
-    SELECT id, name, address, status, avg_price_sqm, iai_score
-    FROM complexes WHERE city = $1 AND avg_price_sqm IS NOT NULL
-    ORDER BY avg_price_sqm ASC
+    SELECT id, name, street, status, accurate_price_sqm, iai_score
+    FROM complexes WHERE city = $1 AND accurate_price_sqm IS NOT NULL
+    ORDER BY accurate_price_sqm ASC
   `, [city]);
 
   return {
     city, cityAvgPricePerSqm: cityAvg,
+    complexCount: complexes.rows.length,
     complexes: complexes.rows.map(c => ({
-      id: c.id, name: c.name, address: c.address, status: c.status,
-      pricePerSqm: c.avg_price_sqm, iaiScore: c.iai_score,
-      vsCity: cityAvg ? Math.round(((c.avg_price_sqm - cityAvg) / cityAvg) * 100) : null
+      id: c.id, name: c.name, street: c.street, status: c.status,
+      pricePerSqm: c.accurate_price_sqm, iaiScore: c.iai_score,
+      vsCity: cityAvg ? Math.round(((c.accurate_price_sqm - cityAvg) / cityAvg) * 100) : null
     }))
   };
 }
