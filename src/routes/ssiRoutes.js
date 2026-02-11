@@ -176,22 +176,24 @@ router.post('/scan-city', async (req, res) => {
   }
 });
 
-// GET /api/ssi/high-distress
+// GET /api/ssi/high-distress - Get complexes with high SSI scores
 router.get('/high-distress', async (req, res) => {
   try {
     const { minScore, city, limit } = req.query;
+    const threshold = parseInt(minScore) || 50;
     
-    // Get SSI from listings (max per complex) and combine with enhanced_ssi_score
+    // Use enhanced_ssi_score from complexes table
     let query = `
-      SELECT c.*, 
-        COALESCE(c.enhanced_ssi_score, (SELECT MAX(l.ssi) FROM listings l WHERE l.complex_id = c.id AND l.is_active = TRUE), 0) as effective_ssi,
+      SELECT c.id, c.name, c.city, c.address, c.status, c.iai_score,
+        c.enhanced_ssi_score,
+        c.ssi_enhancement_factors,
+        c.ssi_last_enhanced,
         COUNT(l.id) as active_listings
       FROM complexes c 
       LEFT JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
-      WHERE COALESCE(c.enhanced_ssi_score, 0) >= $1 
-         OR EXISTS (SELECT 1 FROM listings l2 WHERE l2.complex_id = c.id AND l2.is_active = TRUE AND l2.ssi >= $1)`;
+      WHERE c.enhanced_ssi_score >= $1`;
     
-    const params = [parseInt(minScore) || 50];
+    const params = [threshold];
     let paramIndex = 2;
     
     if (city) { 
@@ -199,23 +201,25 @@ router.get('/high-distress', async (req, res) => {
       params.push(city); 
     }
     
-    query += ` GROUP BY c.id ORDER BY effective_ssi DESC LIMIT $${paramIndex}`;
+    query += ` GROUP BY c.id ORDER BY c.enhanced_ssi_score DESC LIMIT $${paramIndex}`;
     params.push(parseInt(limit) || 50);
 
     const result = await pool.query(query, params);
     
     res.json({
       total: result.rows.length,
+      threshold,
       complexes: result.rows.map(c => ({
         id: c.id, 
         name: c.name, 
-        city: c.city, 
+        city: c.city,
+        address: c.address,
         enhancedSSI: c.enhanced_ssi_score,
-        effectiveSSI: parseInt(c.effective_ssi) || 0, 
         activeListings: parseInt(c.active_listings), 
         status: c.status, 
         iaiScore: c.iai_score,
-        enhancementFactors: c.ssi_enhancement_factors
+        enhancementFactors: c.ssi_enhancement_factors,
+        lastEnhanced: c.ssi_last_enhanced
       }))
     });
   } catch (err) {
