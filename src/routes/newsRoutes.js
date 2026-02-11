@@ -23,8 +23,7 @@ router.get('/status', (req, res) => {
     version: '4.5.0',
     service: 'News & Regulation Monitoring',
     available: !!service,
-    feeds: service?.RSS_FEEDS ? Object.keys(service.RSS_FEEDS) : [],
-    keywordCategories: service?.RELEVANT_KEYWORDS ? Object.keys(service.RELEVANT_KEYWORDS) : [],
+    rssFeedsConfigured: service ? Object.keys(service.RSS_FEEDS).length : 0,
     perplexityConfigured: !!process.env.PERPLEXITY_API_KEY
   });
 });
@@ -57,12 +56,12 @@ router.get('/search/complex/:id', async (req, res) => {
     if (complexResult.rows.length === 0) return res.status(404).json({ error: 'Complex not found' });
 
     const { name, city } = complexResult.rows[0];
-    const newsResults = await service.searchNewsForComplex(name, city);
+    const result = await service.searchNewsForComplex(name, city);
 
     await pool.query(`UPDATE complexes SET last_news_check = NOW(), news_sentiment = $1, has_negative_news = $2 WHERE id = $3`,
-      [newsResults.overallSentiment || 'unknown', newsResults.articles?.some(a => a.sentiment === 'negative') || false, complexId]);
+      [result.overallSentiment || 'unknown', result.articles?.some(a => a.sentiment === 'negative') || false, complexId]);
 
-    res.json(newsResults);
+    res.json(result);
   } catch (err) {
     logger.error('Complex news search failed', { error: err.message });
     res.status(500).json({ error: err.message });
@@ -77,8 +76,8 @@ router.post('/search/developer', async (req, res) => {
   try {
     const { developerName } = req.body;
     if (!developerName) return res.status(400).json({ error: 'Developer name required' });
-    const results = await service.searchNewsForDeveloper(developerName);
-    res.json(results);
+    const result = await service.searchNewsForDeveloper(developerName);
+    res.json(result);
   } catch (err) {
     logger.error('Developer news search failed', { error: err.message });
     res.status(500).json({ error: err.message });
@@ -91,8 +90,8 @@ router.get('/regulation', async (req, res) => {
   if (!service) return res.status(503).json({ error: 'News service not available' });
 
   try {
-    const updates = await service.getRegulationUpdates();
-    res.json(updates);
+    const result = await service.getRegulationUpdates();
+    res.json(result);
   } catch (err) {
     logger.error('Regulation fetch failed', { error: err.message });
     res.status(500).json({ error: err.message });
@@ -105,10 +104,9 @@ router.get('/tama38', async (req, res) => {
   if (!service) return res.status(503).json({ error: 'News service not available' });
 
   try {
-    const status = await service.checkTama38Updates();
-    res.json(status);
+    const result = await service.checkTama38Updates();
+    res.json(result);
   } catch (err) {
-    logger.error('Tama38 check failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -119,10 +117,9 @@ router.get('/pinuy-binuy-law', async (req, res) => {
   if (!service) return res.status(503).json({ error: 'News service not available' });
 
   try {
-    const lawInfo = await service.checkPinuyBinuyLaw();
-    res.json(lawInfo);
+    const result = await service.checkPinuyBinuyLaw();
+    res.json(result);
   } catch (err) {
-    logger.error('Pinuy Binuy law check failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -133,10 +130,9 @@ router.get('/tax-changes', async (req, res) => {
   if (!service) return res.status(503).json({ error: 'News service not available' });
 
   try {
-    const taxInfo = await service.checkTaxChanges();
-    res.json(taxInfo);
+    const result = await service.checkTaxChanges();
+    res.json(result);
   } catch (err) {
-    logger.error('Tax changes check failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -168,8 +164,7 @@ router.post('/scan', async (req, res) => {
     res.json({ message: 'Daily news scan started', note: 'Running in background' });
     (async () => {
       try {
-        const results = await service.runDailyNewsScan(pool);
-        logger.info('Manual news scan complete', results);
+        await service.runDailyNewsScan(pool);
       } catch (err) {
         logger.error('Background news scan failed', { error: err.message });
       }
@@ -182,11 +177,10 @@ router.post('/scan', async (req, res) => {
 // GET /api/news/alerts
 router.get('/alerts', async (req, res) => {
   try {
-    const { limit, type, unreadOnly } = req.query;
-    let query = `SELECT * FROM alerts WHERE alert_type LIKE 'news%' OR alert_type IN ('negative_news', 'developer_warning')`;
+    const { type, limit, unreadOnly } = req.query;
+    let query = `SELECT * FROM alerts WHERE alert_type LIKE 'news%' OR alert_type IN ('developer_warning', 'negative_news')`;
     const params = [];
     let paramIndex = 1;
-
     if (type) { query += ` AND alert_type = $${paramIndex++}`; params.push(type); }
     if (unreadOnly === 'true') { query += ` AND is_read = FALSE`; }
     query += ` ORDER BY created_at DESC LIMIT $${paramIndex}`;
