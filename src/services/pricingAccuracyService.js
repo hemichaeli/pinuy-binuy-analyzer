@@ -1,6 +1,6 @@
 /**
  * Pricing Accuracy Service - Phase 4.5
- * מקורות: yad2 מכירות בפועל, מדד המחירים של הלמ"ס, נתוני בנק ישראל
+ * מקורות: Yad2 sold prices, CBS index, BOI mortgage stats
  */
 
 const { logger } = require('./logger');
@@ -9,10 +9,22 @@ const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 const PERPLEXITY_URL = 'https://api.perplexity.ai/chat/completions';
 
 const CBS_REGIONS = {
-  'תל אביב': 'tel_aviv', 'רמת גן': 'gush_dan', 'גבעתיים': 'gush_dan', 'בני ברק': 'gush_dan',
-  'פתח תקווה': 'center', 'ראשון לציון': 'center', 'חולון': 'center', 'בת ים': 'center',
-  'הרצליה': 'sharon', 'רעננה': 'sharon', 'כפר סבא': 'sharon', 'נתניה': 'sharon',
-  'ירושלים': 'jerusalem', 'חיפה': 'haifa', 'קריית ים': 'haifa', 'קריית ביאליק': 'haifa'
+  'תל אביב': 'תל אביב',
+  'רמת גן': 'גוש דן',
+  'גבעתיים': 'גוש דן',
+  'בני ברק': 'גוש דן',
+  'חולון': 'גוש דן',
+  'בת ים': 'גוש דן',
+  'פתח תקווה': 'מרכז',
+  'ראשון לציון': 'מרכז',
+  'רחובות': 'מרכז',
+  'נתניה': 'שרון',
+  'הרצליה': 'שרון',
+  'רעננה': 'שרון',
+  'כפר סבא': 'שרון',
+  'ירושלים': 'ירושלים',
+  'חיפה': 'חיפה',
+  'קריות': 'חיפה'
 };
 
 async function searchWithPerplexity(query, context = '') {
@@ -37,11 +49,11 @@ async function searchWithPerplexity(query, context = '') {
 }
 
 async function getYad2SoldPrices(city, street = null, rooms = null) {
-  logger.info('Fetching Yad2 sold prices', { city, street, rooms });
+  logger.info('Getting Yad2 sold prices', { city, street, rooms });
   const locationFilter = street ? `ברחוב ${street} ב${city}` : `ב${city}`;
   const roomsFilter = rooms ? `${rooms} חדרים` : '';
-  const query = `מחירי דירות שנמכרו בפועל ${locationFilter} ${roomsFilter} בחודשים האחרונים. החזר JSON: {"averagePrice": number, "pricePerSqm": number, "sampleSize": number, "priceRange": {"min": number, "max": number}, "recentSales": []}`;
-  const result = await searchWithPerplexity(query, 'התמקד במחירי מכירה בפועל, לא מחירי מבוקש');
+  const query = `מחירי דירות שנמכרו לאחרונה ${locationFilter} ${roomsFilter}. החזר JSON: {"avgPricePerSqm": number, "transactions": [{"price": 0, "sqm": 0, "rooms": 0, "date": ""}], "priceRange": {"min": 0, "max": 0}}`;
+  const result = await searchWithPerplexity(query, 'התמקד בעסקאות מהחודשים האחרונים');
   try {
     const jsonMatch = result?.match(/\{[\s\S]*\}/);
     if (jsonMatch) return { source: 'yad2_sold', ...JSON.parse(jsonMatch[0]) };
@@ -50,9 +62,9 @@ async function getYad2SoldPrices(city, street = null, rooms = null) {
 }
 
 async function getCBSPriceIndex(city) {
-  logger.info('Fetching CBS price index', { city });
-  const region = CBS_REGIONS[city] || 'national';
-  const query = `מדד מחירי הדירות של הלמ"ס לאזור ${city}. החזר JSON: {"indexValue": number, "quarterlyChange": number, "yearlyChange": number, "trend": "rising|falling|stable", "lastUpdate": ""}`;
+  logger.info('Getting CBS price index', { city });
+  const region = CBS_REGIONS[city] || city;
+  const query = `מדד מחירי הדירות של הלמ"ס באזור ${region}? החזר JSON: {"indexValue": number, "quarterlyChange": number, "yearlyChange": number, "trend": "rising|falling|stable"}`;
   const result = await searchWithPerplexity(query, 'מידע מהלשכה המרכזית לסטטיסטיקה');
   try {
     const jsonMatch = result?.match(/\{[\s\S]*\}/);
@@ -62,9 +74,10 @@ async function getCBSPriceIndex(city) {
 }
 
 async function getBOIMortgageStats(city = null) {
-  logger.info('Fetching BOI mortgage stats', { city });
-  const query = `נתוני משכנתאות מבנק ישראל${city ? ` לאזור ${city}` : ''}. החזר JSON: {"avgLTV": number, "avgInterestRate": number, "creditVolume": number, "defaultRate": number, "trend": "expanding|contracting|stable"}`;
-  const result = await searchWithPerplexity(query, 'נתונים עדכניים מבנק ישראל');
+  logger.info('Getting BOI mortgage stats', { city });
+  const locationFilter = city ? `באזור ${city}` : 'בישראל';
+  const query = `נתוני משכנתאות מבנק ישראל ${locationFilter}? החזר JSON: {"avgLTV": number, "avgInterestRate": number, "creditVolume": number, "defaultRate": number, "trend": "expanding|contracting|stable"}`;
+  const result = await searchWithPerplexity(query, 'מידע מבנק ישראל');
   try {
     const jsonMatch = result?.match(/\{[\s\S]*\}/);
     if (jsonMatch) return { source: 'boi_mortgage', ...JSON.parse(jsonMatch[0]) };
@@ -73,134 +86,142 @@ async function getBOIMortgageStats(city = null) {
 }
 
 async function calculateAccurateBenchmark(complex, pool) {
-  logger.info('Calculating accurate benchmark', { complexId: complex.id, city: complex.city });
+  logger.info('Calculating accurate benchmark', { complexId: complex.id });
   const results = {
-    complexId: complex.id, complexName: complex.name, city: complex.city,
-    sources: [], estimatedPricePerSqm: 0, confidenceScore: 0, priceTrend: 'unknown', timestamp: new Date().toISOString()
+    complexId: complex.id, complexName: complex.name, city: complex.city, sources: [],
+    estimatedPricePerSqm: 0, confidenceScore: 0, priceTrend: 'unknown', timestamp: new Date().toISOString()
   };
 
   try {
     // Source 1: Database transactions (weight 0.4)
     const dbTransactions = await pool.query(`
       SELECT AVG(price_per_sqm) as avg_price, COUNT(*) as count, MAX(transaction_date) as latest
-      FROM transactions WHERE city = $1 AND transaction_date > NOW() - INTERVAL '12 months'
-    `, [complex.city]);
-
+      FROM transactions WHERE complex_id = $1 AND transaction_date > NOW() - INTERVAL '2 years'
+    `, [complex.id]);
     if (dbTransactions.rows[0]?.avg_price) {
-      results.sources.push({
-        name: 'nadlan_db', weight: 0.4, pricePerSqm: parseFloat(dbTransactions.rows[0].avg_price),
-        sampleSize: parseInt(dbTransactions.rows[0].count), latestDate: dbTransactions.rows[0].latest
-      });
+      results.sources.push({ name: 'nadlan_db', avgPrice: parseFloat(dbTransactions.rows[0].avg_price), count: parseInt(dbTransactions.rows[0].count), weight: 0.4 });
     }
 
     // Source 2: Yad2 sold prices (weight 0.3)
-    const yad2Prices = await getYad2SoldPrices(complex.city, complex.street);
-    if (yad2Prices.pricePerSqm) {
-      results.sources.push({ name: 'yad2_sold', weight: 0.3, pricePerSqm: yad2Prices.pricePerSqm, sampleSize: yad2Prices.sampleSize || 5 });
+    const yad2Data = await getYad2SoldPrices(complex.city, complex.street);
+    if (yad2Data.avgPricePerSqm) {
+      results.sources.push({ name: 'yad2_sold', avgPrice: yad2Data.avgPricePerSqm, weight: 0.3 });
     }
 
     // Source 3: CBS index (weight 0.2)
-    const cbsIndex = await getCBSPriceIndex(complex.city);
-    if (cbsIndex.indexValue) {
-      const basePrice = 45000; // Base price per sqm for index 100
-      const indexedPrice = basePrice * (cbsIndex.indexValue / 100);
-      results.sources.push({ name: 'cbs_index', weight: 0.2, pricePerSqm: indexedPrice, indexValue: cbsIndex.indexValue, trend: cbsIndex.trend });
-      results.priceTrend = cbsIndex.trend || 'unknown';
+    const cbsData = await getCBSPriceIndex(complex.city);
+    if (cbsData.indexValue) {
+      results.sources.push({ name: 'cbs_index', indexValue: cbsData.indexValue, trend: cbsData.trend, weight: 0.2 });
+      results.priceTrend = cbsData.trend || 'unknown';
     }
 
     // Source 4: BOI mortgage context (weight 0.1)
-    const boiStats = await getBOIMortgageStats(complex.city);
-    if (boiStats.avgLTV) {
-      results.sources.push({ name: 'boi_mortgage', weight: 0.1, avgLTV: boiStats.avgLTV, avgInterestRate: boiStats.avgInterestRate, marketTrend: boiStats.trend });
+    const boiData = await getBOIMortgageStats(complex.city);
+    if (boiData.avgLTV) {
+      results.sources.push({ name: 'boi_mortgage', avgLTV: boiData.avgLTV, trend: boiData.trend, weight: 0.1 });
     }
 
     // Calculate weighted average
-    let totalWeight = 0, weightedSum = 0;
+    let weightedSum = 0, totalWeight = 0;
     for (const source of results.sources) {
-      if (source.pricePerSqm && source.weight) {
-        weightedSum += source.pricePerSqm * source.weight;
+      if (source.avgPrice) {
+        weightedSum += source.avgPrice * source.weight;
         totalWeight += source.weight;
       }
     }
-
     if (totalWeight > 0) {
       results.estimatedPricePerSqm = Math.round(weightedSum / totalWeight);
-      results.confidenceScore = Math.min(100, Math.round((totalWeight / 1.0) * 100 * (results.sources.length / 4)));
-
-      // Calculate premium price based on project status
-      const premiumMultiplier = complex.status === 'construction' ? 1.4 : complex.status === 'approved' ? 1.35 : complex.status === 'planning' ? 1.3 : 1.2;
-      results.estimatedPremiumPrice = Math.round(results.estimatedPricePerSqm * premiumMultiplier);
+      results.confidenceScore = Math.min(Math.round(totalWeight * 100), 100);
     }
 
-    logger.info('Benchmark calculated', { complexId: complex.id, pricePerSqm: results.estimatedPricePerSqm, confidence: results.confidenceScore });
+    // Calculate premium price based on project status
+    const premiumMultipliers = { 'declared': 1.20, 'approved_local': 1.25, 'approved_district': 1.30, 'permit': 1.35, 'construction': 1.40 };
+    const multiplier = premiumMultipliers[complex.status] || 1.25;
+    results.estimatedPremiumPrice = Math.round(results.estimatedPricePerSqm * multiplier);
+    results.premiumPercentage = Math.round((multiplier - 1) * 100);
 
+    logger.info('Benchmark calculated', { complexId: complex.id, estimatedPrice: results.estimatedPricePerSqm, confidence: results.confidenceScore });
   } catch (err) {
     logger.error('Benchmark calculation failed', { error: err.message, complexId: complex.id });
     results.error = err.message;
   }
-
   return results;
 }
 
 async function getCityPricingStats(city) {
   logger.info('Getting city pricing stats', { city });
-  const stats = { city, timestamp: new Date().toISOString(), sources: {} };
-  stats.sources.yad2 = await getYad2SoldPrices(city);
-  stats.sources.cbs = await getCBSPriceIndex(city);
-  stats.sources.boi = await getBOIMortgageStats(city);
-  return stats;
+  const results = { city, timestamp: new Date().toISOString(), sources: {} };
+  try {
+    results.sources.yad2 = await getYad2SoldPrices(city);
+    results.sources.cbs = await getCBSPriceIndex(city);
+    results.sources.boi = await getBOIMortgageStats(city);
+    if (results.sources.yad2?.avgPricePerSqm) results.avgPricePerSqm = results.sources.yad2.avgPricePerSqm;
+    if (results.sources.cbs?.trend) results.priceTrend = results.sources.cbs.trend;
+  } catch (err) {
+    logger.error('City pricing stats failed', { error: err.message, city });
+    results.error = err.message;
+  }
+  return results;
 }
 
 async function compareComplexPrices(city, pool) {
   logger.info('Comparing complex prices', { city });
-  const complexes = await pool.query(`SELECT id, name, address, status, accurate_price_sqm, price_confidence_score FROM complexes WHERE city = $1 AND accurate_price_sqm IS NOT NULL ORDER BY accurate_price_sqm DESC`, [city]);
-  const cityAvg = complexes.rows.length > 0 ? complexes.rows.reduce((sum, c) => sum + (c.accurate_price_sqm || 0), 0) / complexes.rows.length : 0;
-  return {
-    city, totalComplexes: complexes.rows.length, cityAveragePrice: Math.round(cityAvg),
-    complexes: complexes.rows.map(c => ({
-      id: c.id, name: c.name, status: c.status, pricePerSqm: c.accurate_price_sqm,
-      vsAverage: cityAvg > 0 ? Math.round(((c.accurate_price_sqm - cityAvg) / cityAvg) * 100) : 0, confidenceScore: c.price_confidence_score
-    }))
-  };
+  try {
+    const cityStats = await getCityPricingStats(city);
+    const cityAvg = cityStats.avgPricePerSqm || 0;
+    const complexes = await pool.query(`
+      SELECT c.*, AVG(t.price_per_sqm) as avg_transaction_price, COUNT(t.id) as transaction_count
+      FROM complexes c LEFT JOIN transactions t ON t.complex_id = c.id AND t.transaction_date > NOW() - INTERVAL '2 years'
+      WHERE c.city = $1 GROUP BY c.id ORDER BY avg_transaction_price DESC NULLS LAST LIMIT 50
+    `, [city]);
+    return {
+      city, cityAvgPricePerSqm: cityAvg, priceTrend: cityStats.priceTrend,
+      complexes: complexes.rows.map(c => ({
+        id: c.id, name: c.name, avgPrice: c.avg_transaction_price ? Math.round(parseFloat(c.avg_transaction_price)) : null,
+        transactionCount: parseInt(c.transaction_count), vsCity: c.avg_transaction_price && cityAvg ? Math.round(((parseFloat(c.avg_transaction_price) / cityAvg) - 1) * 100) : null,
+        status: c.status, iaiScore: c.iai_score
+      }))
+    };
+  } catch (err) {
+    logger.error('Price comparison failed', { error: err.message, city });
+    return { city, error: err.message };
+  }
 }
 
 async function batchUpdatePricing(pool, options = {}) {
   logger.info('Starting batch pricing update', options);
-  const { city, limit, staleOnly } = options;
-  let query = `SELECT * FROM complexes WHERE 1=1`;
-  const params = [];
-  let paramIndex = 1;
-  if (city) { query += ` AND city = $${paramIndex++}`; params.push(city); }
-  if (staleOnly) { query += ` AND (price_last_updated IS NULL OR price_last_updated < NOW() - INTERVAL '7 days')`; }
-  query += ` ORDER BY iai_score DESC NULLS LAST LIMIT $${paramIndex}`;
-  params.push(parseInt(limit) || 50);
+  const results = { updated: 0, failed: 0, cities: [] };
+  try {
+    let query = 'SELECT DISTINCT city FROM complexes WHERE city IS NOT NULL';
+    const params = [];
+    if (options.city) { query = 'SELECT DISTINCT city FROM complexes WHERE city = $1'; params.push(options.city); }
+    query += ' LIMIT 20';
+    const cities = await pool.query(query, params);
 
-  const complexes = await pool.query(query, params);
-  const results = { total: complexes.rows.length, updated: 0, errors: 0 };
-
-  for (const complex of complexes.rows) {
-    try {
-      const benchmark = await calculateAccurateBenchmark(complex, pool);
-      if (benchmark.estimatedPricePerSqm > 0) {
-        await pool.query(`
-          UPDATE complexes SET accurate_price_sqm = $1, price_confidence_score = $2, price_trend = $3,
-            estimated_premium_price = $4, price_last_updated = NOW(), price_sources = $5 WHERE id = $6
-        `, [benchmark.estimatedPricePerSqm, benchmark.confidenceScore, benchmark.priceTrend,
-            benchmark.estimatedPremiumPrice, JSON.stringify(benchmark.sources), complex.id]);
-        results.updated++;
+    for (const row of cities.rows) {
+      try {
+        const cityStats = await getCityPricingStats(row.city);
+        if (cityStats.avgPricePerSqm) {
+          await pool.query(`UPDATE complexes SET city_avg_price_sqm = $1, price_trend = $2, price_last_updated = NOW() WHERE city = $3`,
+            [cityStats.avgPricePerSqm, cityStats.priceTrend || 'unknown', row.city]);
+          results.cities.push({ city: row.city, avgPrice: cityStats.avgPricePerSqm, trend: cityStats.priceTrend });
+          results.updated++;
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (e) {
+        logger.warn(`Pricing update failed for ${row.city}`, { error: e.message });
+        results.failed++;
       }
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (err) {
-      logger.warn(`Pricing update failed for ${complex.name}`, { error: err.message });
-      results.errors++;
     }
+    logger.info('Batch pricing update complete', results);
+  } catch (err) {
+    logger.error('Batch pricing update failed', { error: err.message });
+    results.error = err.message;
   }
-
-  logger.info('Batch pricing update complete', results);
   return results;
 }
 
 module.exports = {
-  getYad2SoldPrices, getCBSPriceIndex, getBOIMortgageStats,
-  calculateAccurateBenchmark, getCityPricingStats, compareComplexPrices, batchUpdatePricing, CBS_REGIONS
+  getYad2SoldPrices, getCBSPriceIndex, getBOIMortgageStats, calculateAccurateBenchmark,
+  getCityPricingStats, compareComplexPrices, batchUpdatePricing, CBS_REGIONS
 };
