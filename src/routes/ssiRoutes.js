@@ -180,9 +180,9 @@ router.post('/scan-city', async (req, res) => {
 router.get('/high-distress', async (req, res) => {
   try {
     const { minScore, city, limit } = req.query;
-    let query = `SELECT c.*, COALESCE(c.enhanced_ssi_score, c.ssi_score) as effective_ssi, COUNT(l.id) as active_listings
+    let query = `SELECT c.*, COALESCE(c.enhanced_ssi_score, c.seller_stress_index) as effective_ssi, COUNT(l.id) as active_listings
       FROM complexes c LEFT JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
-      WHERE COALESCE(c.enhanced_ssi_score, c.ssi_score) >= $1`;
+      WHERE COALESCE(c.enhanced_ssi_score, c.seller_stress_index) >= $1`;
     const params = [parseInt(minScore) || 50];
     let paramIndex = 2;
     if (city) { query += ` AND c.city = $${paramIndex++}`; params.push(city); }
@@ -193,7 +193,7 @@ router.get('/high-distress', async (req, res) => {
     res.json({
       total: result.rows.length,
       complexes: result.rows.map(c => ({
-        id: c.id, name: c.name, city: c.city, baseSSI: c.ssi_score, enhancedSSI: c.enhanced_ssi_score,
+        id: c.id, name: c.name, city: c.city, baseSSI: c.seller_stress_index, enhancedSSI: c.enhanced_ssi_score,
         effectiveSSI: c.effective_ssi, activeListings: parseInt(c.active_listings), status: c.status, iaiScore: c.iai_score
       }))
     });
@@ -218,7 +218,7 @@ router.post('/enhance-all', async (req, res) => {
         const params = [];
         let paramIndex = 1;
         if (city) { query += ` AND c.city = $${paramIndex++}`; params.push(city); }
-        query += ` ORDER BY c.ssi_score DESC NULLS LAST LIMIT $${paramIndex}`;
+        query += ` ORDER BY c.seller_stress_index DESC NULLS LAST LIMIT $${paramIndex}`;
         params.push(parseInt(limit) || 50);
 
         const complexes = await pool.query(query, params);
