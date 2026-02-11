@@ -247,7 +247,62 @@ try { app.use('/api/news', require('./routes/newsRoutes')); logger.info('News mo
 try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('Pricing accuracy routes loaded'); } catch (e) { logger.warn('Pricing routes not available', { error: e.message }); }
 
 // Phase 4.6: Government Data APIs (data.gov.il)
-try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded (data.gov.il)'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
+let govRoutesLoaded = false;
+let govRoutesError = null;
+try { 
+  const govRoutes = require('./routes/governmentDataRoutes');
+  app.use('/api/gov', govRoutes); 
+  logger.info('Government data routes loaded (data.gov.il)'); 
+  govRoutesLoaded = true;
+} catch (e) { 
+  govRoutesError = e.message;
+  logger.warn('Government data routes not available', { error: e.message }); 
+}
+
+// Direct government data endpoints (bypass routes for testing)
+const GovernmentDataService = require('./services/governmentDataService');
+const govService = new GovernmentDataService();
+
+app.get('/api/gov-direct/status', async (req, res) => {
+  try {
+    const summary = await govService.getDataSummary();
+    res.json({ 
+      success: true, 
+      routesLoaded: govRoutesLoaded, 
+      routesError: govRoutesError,
+      data: summary 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/gov-direct/liens', async (req, res) => {
+  try {
+    const result = await govService.getLiensStatistics();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/gov-direct/inheritance', async (req, res) => {
+  try {
+    const result = await govService.getRecentInheritanceActivity(10);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/gov-direct/receivership', async (req, res) => {
+  try {
+    const result = await govService.searchReceivershipNews();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
@@ -307,6 +362,8 @@ function getEnhancedDataInfo() {
   sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
   sources.extendedActive = sources.distressedSeller && sources.newsMonitor && sources.pricingAccuracy;
   sources.govDataActive = sources.governmentData;
+  sources.govRoutesLoaded = govRoutesLoaded;
+  sources.govRoutesError = govRoutesError;
   return sources;
 }
 
@@ -317,8 +374,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v15-gov-data-apis',
-    version: '4.6.0',
+    build: '2026-02-11-v16-gov-data-debug',
+    version: '4.6.1',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -338,6 +395,7 @@ app.get('/debug', (req, res) => {
       news_monitoring: enhancedSources.newsMonitor ? 'active ⭐' : 'disabled',
       pricing_accuracy: enhancedSources.pricingAccuracy ? 'active ⭐' : 'disabled',
       government_data: enhancedSources.governmentData ? 'active 🏛️' : 'disabled',
+      government_routes: govRoutesLoaded ? 'loaded 🏛️' : `error: ${govRoutesError}`,
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
@@ -386,7 +444,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.6.0',
+      version: '4.6.1',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -397,6 +455,7 @@ app.get('/health', async (req, res) => {
       ai_sources: { perplexity: !!process.env.PERPLEXITY_API_KEY, claude: isClaudeConfigured() },
       enhanced_sources: enhancedSources,
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
+      government_routes: govRoutesLoaded ? 'loaded' : 'error',
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
   } catch (err) {
@@ -407,7 +466,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.6.0',
+    version: '4.6.1',
     phase: 'Phase 4.6 - Government Data APIs',
     endpoints: {
       health: 'GET /health',
@@ -462,7 +521,11 @@ app.get('/', (req, res) => {
       govInheritanceRecent: 'GET /api/gov/inheritance/recent 🏛️',
       govReceivershipNews: 'GET /api/gov/receivership/news 🏛️',
       govMortgageRates: 'GET /api/gov/mortgage-rates 🏛️',
-      govQuery: 'GET /api/gov/query/:resource 🏛️'
+      govQuery: 'GET /api/gov/query/:resource 🏛️',
+      govDirectStatus: 'GET /api/gov-direct/status 🔧',
+      govDirectLiens: 'GET /api/gov-direct/liens 🔧',
+      govDirectInheritance: 'GET /api/gov-direct/inheritance 🔧',
+      govDirectReceivership: 'GET /api/gov-direct/receivership 🔧'
     }
   });
 });
@@ -482,14 +545,14 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.6.0 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.6.1 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
     const enhanced = getEnhancedDataInfo();
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
-    logger.info(`Government Data: ${enhanced.governmentData ? 'active (data.gov.il)' : 'disabled'}`);
+    logger.info(`Government Data: service=${enhanced.governmentData ? 'active' : 'disabled'}, routes=${govRoutesLoaded ? 'loaded' : 'ERROR: ' + govRoutesError}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
