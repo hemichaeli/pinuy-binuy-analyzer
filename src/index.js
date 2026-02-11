@@ -18,13 +18,8 @@ const PORT = process.env.PORT || 3000;
 
 async function runAutoMigrations() {
   try {
-    // Add discovery_source column for tracking where complexes were discovered
     await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS discovery_source TEXT DEFAULT NULL`);
-    
-    // Add declaration_date column for official declaration date
     await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS declaration_date DATE DEFAULT NULL`);
-    
-    // Ensure created_at has default
     await pool.query(`ALTER TABLE complexes ALTER COLUMN created_at SET DEFAULT NOW()`);
     
     // Phase 4.5: Enhanced data source columns
@@ -51,16 +46,11 @@ async function runAutoMigrations() {
     ];
     
     for (const sql of phase45Columns) {
-      try {
-        await pool.query(sql);
-      } catch (e) {
-        // Ignore - column might already exist
-      }
+      try { await pool.query(sql); } catch (e) {}
     }
     
     logger.info('Auto migrations completed (including Phase 4.5 columns)');
   } catch (e) {
-    // Ignore errors - columns may already exist or other benign issues
     logger.debug(`Migration note: ${e.message}`);
   }
 }
@@ -82,9 +72,7 @@ async function initDatabase() {
   }
 
   try {
-    const tableCheck = await pool.query(`
-      SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'complexes')
-    `);
+    const tableCheck = await pool.query(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'complexes')`);
     
     if (!tableCheck.rows[0].exists) {
       logger.info('Running initial schema migration...');
@@ -93,10 +81,8 @@ async function initDatabase() {
       logger.info('Initial migration completed');
     }
 
-    // Run auto migrations (new columns, etc.)
     await runAutoMigrations();
 
-    // Run SQL file migrations
     try {
       const migrationsDir = path.join(__dirname, 'db', 'migrations');
       if (fs.existsSync(migrationsDir)) {
@@ -139,51 +125,43 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes
+// Core Routes
 app.use('/api/projects', require('./routes/projects'));
 app.use('/api', require('./routes/opportunities'));
 app.use('/api/scan', require('./routes/scan'));
 app.use('/api/alerts', require('./routes/alerts'));
 
-// Admin routes (optional - may not exist in older versions)
-try {
-  app.use('/api/admin', require('./routes/admin'));
-} catch (e) {
-  logger.debug('Admin routes not available');
-}
+// Admin routes
+try { app.use('/api/admin', require('./routes/admin')); } catch (e) { logger.debug('Admin routes not available'); }
 
 // Enhanced Data Sources routes (Phase 4.5)
-try {
-  app.use('/api/enhanced', require('./routes/enhancedData'));
-  logger.info('Enhanced data routes loaded');
-} catch (e) {
-  logger.warn('Enhanced data routes not available', { error: e.message });
-}
+try { app.use('/api/enhanced', require('./routes/enhancedData')); logger.info('Enhanced data routes loaded'); } catch (e) { logger.warn('Enhanced data routes not available', { error: e.message }); }
+
+// Phase 4.5 Extended: SSI Enhancement routes
+try { app.use('/api/ssi', require('./routes/ssiRoutes')); logger.info('SSI enhancement routes loaded'); } catch (e) { logger.warn('SSI routes not available', { error: e.message }); }
+
+// Phase 4.5 Extended: News & Regulation routes
+try { app.use('/api/news', require('./routes/newsRoutes')); logger.info('News monitoring routes loaded'); } catch (e) { logger.warn('News routes not available', { error: e.message }); }
+
+// Phase 4.5 Extended: Pricing Accuracy routes
+try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('Pricing accuracy routes loaded'); } catch (e) { logger.warn('Pricing routes not available', { error: e.message }); }
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
 app.get('/api/scheduler', (req, res) => res.json(getSchedulerStatus()));
 
 app.post('/api/scheduler/run', async (req, res) => {
-  if (getSchedulerStatus().isRunning) {
-    return res.status(409).json({ error: 'Scan already running' });
-  }
+  if (getSchedulerStatus().isRunning) return res.status(409).json({ error: 'Scan already running' });
   res.json({ message: 'Weekly scan triggered' });
   runWeeklyScan().catch(e => logger.error('Weekly scan failed', { error: e.message }));
 });
 
 app.get('/api/notifications/status', (req, res) => {
-  res.json({
-    configured: notificationService.isConfigured(),
-    provider: notificationService.getProvider(),
-    targets: notificationService.NOTIFICATION_EMAILS
-  });
+  res.json({ configured: notificationService.isConfigured(), provider: notificationService.getProvider(), targets: notificationService.NOTIFICATION_EMAILS });
 });
 
 app.post('/api/notifications/test', async (req, res) => {
-  if (!notificationService.isConfigured()) {
-    return res.status(400).json({ error: 'Email not configured' });
-  }
+  if (!notificationService.isConfigured()) return res.status(400).json({ error: 'Email not configured' });
   try {
     const results = [];
     for (const email of notificationService.NOTIFICATION_EMAILS) {
@@ -191,9 +169,7 @@ app.post('/api/notifications/test', async (req, res) => {
       results.push({ email, ...r });
     }
     res.json({ test: 'success', results });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/notifications/send', async (req, res) => {
@@ -201,39 +177,30 @@ app.post('/api/notifications/send', async (req, res) => {
   try {
     const result = await notificationService.sendPendingAlerts();
     res.json({ message: 'Sent', ...result });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Check Claude orchestrator
-function isClaudeConfigured() {
-  return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
-}
+function isClaudeConfigured() { return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY); }
 
-// Get discovery service info
 function getDiscoveryInfo() {
   try {
     const discovery = require('./services/discoveryService');
-    return {
-      available: true,
-      cities: discovery.ALL_TARGET_CITIES?.length || 0,
-      regions: Object.keys(discovery.TARGET_REGIONS || {}),
-      minUnits: discovery.MIN_HOUSING_UNITS || 12
-    };
-  } catch (e) {
-    return { available: false };
-  }
+    return { available: true, cities: discovery.ALL_TARGET_CITIES?.length || 0, regions: Object.keys(discovery.TARGET_REGIONS || {}), minUnits: discovery.MIN_HOUSING_UNITS || 12 };
+  } catch (e) { return { available: false }; }
 }
 
-// Get enhanced data sources info
 function getEnhancedDataInfo() {
   const sources = {};
   try { require('./services/madlanService'); sources.madlan = 'active'; } catch (e) { sources.madlan = false; }
   try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewalAuthority = 'active'; } catch (e) { sources.urbanRenewalAuthority = false; }
   try { require('./services/committeeProtocolService'); sources.committeeProtocols = 'active'; } catch (e) { sources.committeeProtocols = false; }
   try { require('./services/developerInfoService'); sources.developerInfo = 'active'; } catch (e) { sources.developerInfo = false; }
+  // Phase 4.5 Extended
+  try { require('./services/distressedSellerService'); sources.distressedSeller = 'active'; } catch (e) { sources.distressedSeller = false; }
+  try { require('./services/newsMonitorService'); sources.newsMonitor = 'active'; } catch (e) { sources.newsMonitor = false; }
+  try { require('./services/pricingAccuracyService'); sources.pricingAccuracy = 'active'; } catch (e) { sources.pricingAccuracy = false; }
   sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
+  sources.extendedActive = sources.distressedSeller && sources.newsMonitor && sources.pricingAccuracy;
   return sources;
 }
 
@@ -244,8 +211,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v12-enhanced-routes-fix',
-    version: '4.5.0',
+    build: '2026-02-11-v13-phase45-extended',
+    version: '4.5.1',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -260,7 +227,10 @@ app.get('/debug', (req, res) => {
       committee_tracking: 'active',
       yad2_direct_api: 'active',
       ssi_calculator: 'active',
+      ssi_enhanced: enhancedSources.distressedSeller ? 'active ⭐' : 'disabled',
       iai_calculator: 'active',
+      news_monitoring: enhancedSources.newsMonitor ? 'active ⭐' : 'disabled',
+      pricing_accuracy: enhancedSources.pricingAccuracy ? 'active ⭐' : 'disabled',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
@@ -272,9 +242,12 @@ app.get('/debug', (req, res) => {
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
       '5. Discovery scan (NEW complexes)',
-      '6. Enhanced data enrichment ⭐ NEW',
-      '7. Alert generation',
-      '8. Email notifications'
+      '6. Enhanced data enrichment',
+      '7. SSI distressed seller enhancement ⭐',
+      '8. News & regulation monitoring ⭐',
+      '9. Pricing accuracy update ⭐',
+      '10. Alert generation',
+      '11. Email notifications'
     ]
   });
 });
@@ -290,12 +263,7 @@ app.get('/health', async (req, res) => {
 
     let committeeStats = { local: 0, district: 0 };
     try {
-      const c = await pool.query(`
-        SELECT 
-          COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL) as local,
-          COUNT(*) FILTER (WHERE district_committee_date IS NOT NULL) as district
-        FROM complexes
-      `);
+      const c = await pool.query(`SELECT COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL) as local, COUNT(*) FILTER (WHERE district_committee_date IS NOT NULL) as district FROM complexes`);
       committeeStats = { local: parseInt(c.rows[0].local), district: parseInt(c.rows[0].district) };
     } catch (e) {}
 
@@ -304,7 +272,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.5.0',
+      version: '4.5.1',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -312,10 +280,7 @@ app.get('/health', async (req, res) => {
       committee_tracked: committeeStats,
       unread_alerts: parseInt(alerts.rows[0].count),
       discovery_cities: discovery.cities || 0,
-      ai_sources: {
-        perplexity: !!process.env.PERPLEXITY_API_KEY,
-        claude: isClaudeConfigured()
-      },
+      ai_sources: { perplexity: !!process.env.PERPLEXITY_API_KEY, claude: isClaudeConfigured() },
       enhanced_sources: enhancedSources,
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
@@ -327,8 +292,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.5.0',
-    phase: 'Phase 4.5 - Enhanced Data Sources',
+    version: '4.5.1',
+    phase: 'Phase 4.5 Extended - SSI, News, Pricing',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -337,32 +302,50 @@ app.get('/', (req, res) => {
       opportunities: 'GET /api/opportunities',
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
+      // Core scans
       scanUnified: 'POST /api/scan/unified',
       scanDiscovery: 'POST /api/scan/discovery',
-      scanDiscoveryStatus: 'GET /api/scan/discovery/status',
-      scanDiscoveryRecent: 'GET /api/scan/discovery/recent',
       scanCommittee: 'POST /api/scan/committee',
       scanYad2: 'POST /api/scan/yad2',
-      scanMavat: 'POST /api/scan/mavat',
-      scanNadlan: 'POST /api/scan/nadlan',
-      scanBenchmark: 'POST /api/scan/benchmark',
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
       scheduler: 'GET /api/scheduler',
-      // Enhanced Data Sources (Phase 4.5)
-      enhancedStatus: 'GET /api/enhanced/status ⭐',
-      madlanArea: 'GET /api/enhanced/madlan/area/:city',
+      // Enhanced Data Sources
+      enhancedStatus: 'GET /api/enhanced/status',
       madlanEnrich: 'POST /api/enhanced/madlan/enrich/:complexId',
-      officialList: 'GET /api/enhanced/official/list',
       officialVerify: 'POST /api/enhanced/official/verify/:complexId',
-      officialSync: 'POST /api/enhanced/official/sync',
-      committeeUpcoming: 'GET /api/enhanced/committee/upcoming',
-      committeeTriggers: 'POST /api/enhanced/committee/triggers/:complexId',
-      developerVerify: 'POST /api/enhanced/developer/verify',
       developerCheck: 'POST /api/enhanced/developer/check/:complexId',
-      developerRiskReport: 'GET /api/enhanced/developer/risk-report',
       enrichAll: 'POST /api/enhanced/enrich-all',
-      enrichmentStats: 'GET /api/enhanced/enrichment-stats'
+      // Phase 4.5 Extended: SSI Enhancement ⭐
+      ssiStatus: 'GET /api/ssi/status ⭐',
+      ssiEnhance: 'POST /api/ssi/enhance/:complexId ⭐',
+      ssiReceivership: 'GET /api/ssi/receivership/:city ⭐',
+      ssiCheckOwner: 'POST /api/ssi/check-owner ⭐',
+      ssiCheckProperty: 'POST /api/ssi/check-property ⭐',
+      ssiScanCity: 'POST /api/ssi/scan-city ⭐',
+      ssiHighDistress: 'GET /api/ssi/high-distress ⭐',
+      ssiEnhanceAll: 'POST /api/ssi/enhance-all ⭐',
+      // Phase 4.5 Extended: News Monitoring ⭐
+      newsStatus: 'GET /api/news/status ⭐',
+      newsRss: 'GET /api/news/rss ⭐',
+      newsComplex: 'GET /api/news/search/complex/:id ⭐',
+      newsDeveloper: 'POST /api/news/search/developer ⭐',
+      newsRegulation: 'GET /api/news/regulation ⭐',
+      newsTama38: 'GET /api/news/tama38 ⭐',
+      newsPinuyBinuyLaw: 'GET /api/news/pinuy-binuy-law ⭐',
+      newsTaxChanges: 'GET /api/news/tax-changes ⭐',
+      newsScan: 'POST /api/news/scan ⭐',
+      newsAlerts: 'GET /api/news/alerts ⭐',
+      // Phase 4.5 Extended: Pricing Accuracy ⭐
+      pricingStatus: 'GET /api/pricing/status ⭐',
+      pricingCity: 'GET /api/pricing/city/:city ⭐',
+      pricingBenchmark: 'POST /api/pricing/benchmark/:complexId ⭐',
+      pricingSold: 'GET /api/pricing/sold/:city ⭐',
+      pricingIndex: 'GET /api/pricing/index/:city ⭐',
+      pricingMortgage: 'GET /api/pricing/mortgage ⭐',
+      pricingCompare: 'GET /api/pricing/compare/:city ⭐',
+      pricingBatch: 'POST /api/pricing/batch ⭐',
+      pricingTopOpportunities: 'GET /api/pricing/top-opportunities ⭐'
     }
   });
 });
@@ -382,14 +365,13 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.5.0 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.5.1 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
-    if (discovery.available) {
-      logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
-    }
+    if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
     const enhanced = getEnhancedDataInfo();
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
+    logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
