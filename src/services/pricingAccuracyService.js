@@ -87,10 +87,10 @@ async function calculateAccurateBenchmark(complex, pool) {
   let totalWeight = 0, weightedSum = 0;
 
   try {
-    // Source 1: Database transactions
+    // Source 1: Database transactions (using transaction_date, not deal_date)
     const dbTransactions = await pool.query(`
-      SELECT AVG(price_per_sqm) as avg_price, COUNT(*) as count, MAX(deal_date) as latest
-      FROM transactions WHERE city = $1 AND deal_date > NOW() - INTERVAL '12 months'
+      SELECT AVG(price_per_sqm) as avg_price, COUNT(*) as count, MAX(transaction_date) as latest
+      FROM transactions WHERE city = $1 AND transaction_date > NOW() - INTERVAL '12 months'
     `, [complex.city]);
 
     if (dbTransactions.rows[0]?.avg_price) {
