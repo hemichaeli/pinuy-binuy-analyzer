@@ -121,12 +121,12 @@ try {
   logger.debug('Admin routes not available');
 }
 
-// Enhanced data sources routes (Phase 4.5)
+// Enhanced Data Sources routes (Phase 4.5)
 try {
   app.use('/api/enhanced', require('./routes/enhancedData'));
-  logger.info('Enhanced data sources routes loaded');
+  logger.info('Enhanced data routes loaded');
 } catch (e) {
-  logger.debug('Enhanced data routes not available: ' + e.message);
+  logger.warn('Enhanced data routes not available', { error: e.message });
 }
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
@@ -197,33 +197,22 @@ function getDiscoveryInfo() {
 
 // Get enhanced data sources info
 function getEnhancedDataInfo() {
-  const sources = {
-    madlan: false,
-    urbanRenewal: false,
-    committee: false,
-    developer: false
-  };
-  
-  try { require('./services/madlanService'); sources.madlan = true; } catch (e) {}
-  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewal = true; } catch (e) {}
-  try { require('./services/committeeProtocolService'); sources.committee = true; } catch (e) {}
-  try { require('./services/developerInfoService'); sources.developer = true; } catch (e) {}
-  
-  return {
-    available: Object.values(sources).some(v => v),
-    sources,
-    allActive: Object.values(sources).every(v => v)
-  };
+  const sources = {};
+  try { require('./services/madlanService'); sources.madlan = true; } catch (e) { sources.madlan = false; }
+  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewal = true; } catch (e) { sources.urbanRenewal = false; }
+  try { require('./services/committeeProtocolService'); sources.committee = true; } catch (e) { sources.committee = false; }
+  try { require('./services/developerInfoService'); sources.developer = true; } catch (e) { sources.developer = false; }
+  return sources;
 }
 
 app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   const discovery = getDiscoveryInfo();
-  const enhanced = getEnhancedDataInfo();
+  const enhancedSources = getEnhancedDataInfo();
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v10-enhanced-data',
+    build: '2026-02-11-v10-enhanced-sources',
     version: '4.5.0',
     node_version: process.version,
     env: {
@@ -242,17 +231,22 @@ app.get('/debug', (req, res) => {
       iai_calculator: 'active',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled',
-      enhanced_data_sources: enhanced.allActive ? 'all active' : 'partial'
+      enhanced_sources: enhancedSources
     },
     discovery: discovery,
-    enhanced_data: enhanced,
+    enhanced_data_sources: {
+      madlan: enhancedSources.madlan ? 'active' : 'not loaded',
+      urban_renewal_authority: enhancedSources.urbanRenewal ? 'active' : 'not loaded',
+      committee_protocols: enhancedSources.committee ? 'active' : 'not loaded',
+      developer_registry: enhancedSources.developer ? 'active' : 'not loaded'
+    },
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
       '5. Discovery scan (NEW complexes)',
-      '6. Enhanced data enrichment ⭐ NEW',
+      '6. Enhanced data enrichment (Phase 4.5) ⭐',
       '7. Alert generation',
       '8. Email notifications'
     ]
@@ -280,7 +274,7 @@ app.get('/health', async (req, res) => {
     } catch (e) {}
 
     const discovery = getDiscoveryInfo();
-    const enhanced = getEnhancedDataInfo();
+    const enhancedSources = getEnhancedDataInfo();
 
     res.json({
       status: 'ok',
@@ -296,7 +290,7 @@ app.get('/health', async (req, res) => {
         perplexity: !!process.env.PERPLEXITY_API_KEY,
         claude: isClaudeConfigured()
       },
-      enhanced_sources: enhanced.sources,
+      enhanced_sources: enhancedSources,
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
   } catch (err) {
@@ -331,13 +325,18 @@ app.get('/', (req, res) => {
       scheduler: 'GET /api/scheduler',
       // Enhanced Data Sources (Phase 4.5)
       enhancedStatus: 'GET /api/enhanced/status ⭐',
-      enhancedMadlan: 'GET /api/enhanced/madlan/area/:city',
-      enhancedOfficial: 'GET /api/enhanced/official/list',
-      enhancedOfficialVerify: 'POST /api/enhanced/official/verify/:complexId',
-      enhancedCommittee: 'GET /api/enhanced/committee/upcoming',
-      enhancedDeveloper: 'POST /api/enhanced/developer/verify',
-      enhancedEnrichAll: 'POST /api/enhanced/enrich-all',
-      enhancedStats: 'GET /api/enhanced/enrichment-stats'
+      madlanArea: 'GET /api/enhanced/madlan/area/:city',
+      madlanEnrich: 'POST /api/enhanced/madlan/enrich/:complexId',
+      officialList: 'GET /api/enhanced/official/list',
+      officialVerify: 'POST /api/enhanced/official/verify/:complexId',
+      officialSync: 'POST /api/enhanced/official/sync',
+      committeeUpcoming: 'GET /api/enhanced/committee/upcoming',
+      committeeTriggers: 'POST /api/enhanced/committee/triggers/:complexId',
+      developerVerify: 'POST /api/enhanced/developer/verify',
+      developerCheck: 'POST /api/enhanced/developer/check/:complexId',
+      developerRiskReport: 'GET /api/enhanced/developer/risk-report',
+      enrichAll: 'POST /api/enhanced/enrich-all',
+      enrichmentStats: 'GET /api/enhanced/enrichment-stats'
     }
   });
 });
@@ -364,7 +363,7 @@ async function start() {
       logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
     }
     const enhanced = getEnhancedDataInfo();
-    logger.info(`Enhanced Data: ${Object.entries(enhanced.sources).filter(([k,v]) => v).map(([k]) => k).join(', ') || 'none'}`);
+    logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewal}, Committee=${enhanced.committee}, Developer=${enhanced.developer}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
