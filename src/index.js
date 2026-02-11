@@ -20,6 +20,7 @@ async function runAutoMigrations() {
   try {
     await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS discovery_source TEXT DEFAULT NULL`);
     await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS declaration_date DATE DEFAULT NULL`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS address TEXT DEFAULT NULL`);
     await pool.query(`ALTER TABLE complexes ALTER COLUMN created_at SET DEFAULT NOW()`);
     
     // Phase 4.5: Enhanced data source columns
@@ -45,11 +46,110 @@ async function runAutoMigrations() {
       'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_last_verified TIMESTAMP'
     ];
     
-    for (const sql of phase45Columns) {
+    // Phase 4.5 Extended: SSI Enhancement columns
+    const ssiColumns = [
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS enhanced_ssi_score INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS ssi_enhancement_factors JSONB',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS ssi_last_enhanced TIMESTAMP',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_enforcement_cases BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_bankruptcy_proceedings BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_property_liens BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_receivership BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_inheritance_property BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS distress_indicators JSONB'
+    ];
+
+    // Phase 4.5 Extended: Pricing Accuracy columns
+    const pricingColumns = [
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS accurate_price_sqm INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_confidence_score INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trend VARCHAR(20)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS estimated_premium_price INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_last_updated TIMESTAMP',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_sources TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS city_avg_price_sqm INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_vs_city_avg DECIMAL(5,2)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS cbs_price_index DECIMAL(8,2)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS yearly_price_change DECIMAL(5,2)'
+    ];
+
+    // Phase 4.5 Extended: News & Regulation columns
+    const newsColumns = [
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_news_check TIMESTAMP',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS news_sentiment VARCHAR(20)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_negative_news BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS news_summary TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_news_sentiment VARCHAR(20)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_reputation_score INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_red_flags JSONB'
+    ];
+
+    const allColumns = [...phase45Columns, ...ssiColumns, ...pricingColumns, ...newsColumns];
+    
+    for (const sql of allColumns) {
+      try { await pool.query(sql); } catch (e) {}
+    }
+
+    // Create new tables for Phase 4.5 Extended
+    const tables = [
+      `CREATE TABLE IF NOT EXISTS news_alerts (
+        id SERIAL PRIMARY KEY,
+        complex_id INTEGER REFERENCES complexes(id),
+        alert_type VARCHAR(50) NOT NULL,
+        title VARCHAR(500) NOT NULL,
+        description TEXT,
+        source VARCHAR(100),
+        source_url TEXT,
+        sentiment VARCHAR(20),
+        severity VARCHAR(20) DEFAULT 'medium',
+        is_read BOOLEAN DEFAULT FALSE,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS distressed_sellers (
+        id SERIAL PRIMARY KEY,
+        complex_id INTEGER REFERENCES complexes(id),
+        owner_name VARCHAR(200),
+        distress_type VARCHAR(50) NOT NULL,
+        distress_score INTEGER,
+        source VARCHAR(100),
+        details JSONB,
+        verified BOOLEAN DEFAULT FALSE,
+        verified_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS price_history (
+        id SERIAL PRIMARY KEY,
+        complex_id INTEGER REFERENCES complexes(id),
+        city VARCHAR(100),
+        price_per_sqm INTEGER,
+        source VARCHAR(50),
+        confidence_score INTEGER,
+        sample_size INTEGER,
+        metadata JSONB,
+        recorded_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS regulation_updates (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(500) NOT NULL,
+        description TEXT,
+        update_type VARCHAR(50),
+        impact VARCHAR(20),
+        effective_date DATE,
+        source VARCHAR(200),
+        source_url TEXT,
+        affected_areas JSONB,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      )`
+    ];
+
+    for (const sql of tables) {
       try { await pool.query(sql); } catch (e) {}
     }
     
-    logger.info('Auto migrations completed (including Phase 4.5 columns)');
+    logger.info('Auto migrations completed (including Phase 4.5 Extended: SSI, News, Pricing)');
   } catch (e) {
     logger.debug(`Migration note: ${e.message}`);
   }
@@ -211,8 +311,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v13-phase45-extended',
-    version: '4.5.1',
+    build: '2026-02-11-v14-phase45-migrations',
+    version: '4.5.2',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -272,7 +372,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.5.1',
+      version: '4.5.2',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -292,7 +392,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.5.1',
+    version: '4.5.2',
     phase: 'Phase 4.5 Extended - SSI, News, Pricing',
     endpoints: {
       health: 'GET /health',
@@ -302,7 +402,6 @@ app.get('/', (req, res) => {
       opportunities: 'GET /api/opportunities',
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
-      // Core scans
       scanUnified: 'POST /api/scan/unified',
       scanDiscovery: 'POST /api/scan/discovery',
       scanCommittee: 'POST /api/scan/committee',
@@ -310,13 +409,11 @@ app.get('/', (req, res) => {
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
       scheduler: 'GET /api/scheduler',
-      // Enhanced Data Sources
       enhancedStatus: 'GET /api/enhanced/status',
       madlanEnrich: 'POST /api/enhanced/madlan/enrich/:complexId',
       officialVerify: 'POST /api/enhanced/official/verify/:complexId',
       developerCheck: 'POST /api/enhanced/developer/check/:complexId',
       enrichAll: 'POST /api/enhanced/enrich-all',
-      // Phase 4.5 Extended: SSI Enhancement ⭐
       ssiStatus: 'GET /api/ssi/status ⭐',
       ssiEnhance: 'POST /api/ssi/enhance/:complexId ⭐',
       ssiReceivership: 'GET /api/ssi/receivership/:city ⭐',
@@ -325,7 +422,6 @@ app.get('/', (req, res) => {
       ssiScanCity: 'POST /api/ssi/scan-city ⭐',
       ssiHighDistress: 'GET /api/ssi/high-distress ⭐',
       ssiEnhanceAll: 'POST /api/ssi/enhance-all ⭐',
-      // Phase 4.5 Extended: News Monitoring ⭐
       newsStatus: 'GET /api/news/status ⭐',
       newsRss: 'GET /api/news/rss ⭐',
       newsComplex: 'GET /api/news/search/complex/:id ⭐',
@@ -336,7 +432,6 @@ app.get('/', (req, res) => {
       newsTaxChanges: 'GET /api/news/tax-changes ⭐',
       newsScan: 'POST /api/news/scan ⭐',
       newsAlerts: 'GET /api/news/alerts ⭐',
-      // Phase 4.5 Extended: Pricing Accuracy ⭐
       pricingStatus: 'GET /api/pricing/status ⭐',
       pricingCity: 'GET /api/pricing/city/:city ⭐',
       pricingBenchmark: 'POST /api/pricing/benchmark/:complexId ⭐',
@@ -365,7 +460,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.5.1 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.5.2 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
