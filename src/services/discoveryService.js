@@ -5,6 +5,8 @@
  * - Minimum 12 housing units (updated per 2024 law - was 24)
  * - Specific regions (Gush Dan, Sharon, Center, Jerusalem, Haifa)
  * - Any planning status
+ * 
+ * Version: 1.1.0 (2026-02-11) - Added slug generation fix
  */
 
 const pool = require('../db/pool');
@@ -27,9 +29,10 @@ const MIN_HOUSING_UNITS = 12;
 
 /**
  * Generate a URL-friendly slug from Hebrew name and city
+ * IMPORTANT: This must generate a valid slug for database insertion
  */
 function generateSlug(name, city) {
-  // Transliteration map for common Hebrew characters
+  // Transliteration map for Hebrew characters
   const hebrewMap = {
     'א': 'a', 'ב': 'b', 'ג': 'g', 'ד': 'd', 'ה': 'h', 'ו': 'v', 'ז': 'z',
     'ח': 'ch', 'ט': 't', 'י': 'y', 'כ': 'k', 'ך': 'k', 'ל': 'l', 'מ': 'm',
@@ -38,17 +41,18 @@ function generateSlug(name, city) {
   };
 
   const transliterate = (text) => {
+    if (!text) return '';
     return text.split('').map(char => hebrewMap[char] || char).join('');
   };
 
-  const cleanName = transliterate(name)
+  const cleanName = transliterate(name || 'unknown')
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .substring(0, 50);
 
-  const cleanCity = transliterate(city)
+  const cleanCity = transliterate(city || 'unknown')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
     .substring(0, 20);
@@ -56,14 +60,16 @@ function generateSlug(name, city) {
   // Add timestamp for uniqueness
   const timestamp = Date.now().toString(36);
 
-  return `${cleanCity}-${cleanName}-${timestamp}`;
+  const slug = `${cleanCity}-${cleanName}-${timestamp}`.replace(/-+/g, '-');
+  logger.debug(`Generated slug: ${slug} for ${name} in ${city}`);
+  return slug;
 }
 
 /**
  * Build Perplexity prompt for discovering new complexes in a city
  */
 function buildDiscoveryPrompt(city) {
-  return `חפש מתחמי פינוי בינוי והתחדשות עירונית חדשים ב${city}.
+  return `חפש מתחמי פינוי בינוי והתחדשות עירונית ב${city}.
 
 אני מחפש מתחמים שעונים לקריטריונים:
 - מינימום ${MIN_HOUSING_UNITS} יחידות דיור קיימות (לפי תיקון חוק 2024)
@@ -122,6 +128,7 @@ async function discoverInCity(city) {
   const prompt = buildDiscoveryPrompt(city);
 
   try {
+    logger.info(`Discovering complexes in ${city}...`);
     const response = await axios.post('https://api.perplexity.ai/chat/completions', {
       model: 'sonar',
       messages: [
@@ -139,7 +146,9 @@ async function discoverInCity(city) {
     });
 
     const content = response.data.choices[0].message.content;
-    return parseDiscoveryResponse(content);
+    const parsed = parseDiscoveryResponse(content);
+    logger.info(`Discovery for ${city}: found ${parsed?.discovered_complexes?.length || 0} complexes`);
+    return parsed;
   } catch (err) {
     logger.error(`Discovery failed for ${city}`, { error: err.message });
     return null;
@@ -165,6 +174,7 @@ function parseDiscoveryResponse(text) {
         return JSON.parse(objectMatch[0]);
       } catch (e3) {}
     }
+    logger.warn('Could not parse discovery response');
     return null;
   }
 }
@@ -201,6 +211,8 @@ async function addNewComplex(complex, city, source = 'discovery') {
   const status = statusMap[complex.status] || 'declared';
   const slug = generateSlug(complex.name, city);
 
+  logger.info(`Adding new complex: ${complex.name} (${city}) with slug: ${slug}`);
+
   try {
     const result = await pool.query(
       `INSERT INTO complexes 
@@ -222,14 +234,14 @@ async function addNewComplex(complex, city, source = 'discovery') {
       ]
     );
 
-    logger.info(`Added new complex: ${complex.name} (${city}) with slug: ${slug}`);
+    logger.info(`Successfully added complex ID: ${result.rows[0].id}`);
     return result.rows[0].id;
   } catch (err) {
     if (err.code === '23505') { // Unique violation
       logger.debug(`Complex already exists: ${complex.name} in ${city}`);
       return null;
     }
-    logger.error(`Failed to add complex: ${complex.name}`, { error: err.message });
+    logger.error(`Failed to add complex: ${complex.name}`, { error: err.message, code: err.code });
     throw err;
   }
 }
@@ -259,6 +271,7 @@ async function createDiscoveryAlert(complexId, complex, city) {
         })
       ]
     );
+    logger.info(`Created discovery alert for complex ${complexId}`);
   } catch (err) {
     logger.warn('Failed to create discovery alert', { error: err.message });
   }
@@ -310,6 +323,7 @@ async function discoverAll(options = {}) {
       for (const complex of complexes) {
         // Skip if below minimum units
         if (complex.existing_units && complex.existing_units < MIN_HOUSING_UNITS) {
+          logger.debug(`Skipping ${complex.name}: only ${complex.existing_units} units`);
           continue;
         }
 
@@ -321,16 +335,20 @@ async function discoverAll(options = {}) {
         }
 
         // Add new complex
-        const newId = await addNewComplex(complex, city, 'discovery-perplexity');
-        if (newId) {
-          added++;
-          results.total_discovered++;
-          results.new_added++;
+        try {
+          const newId = await addNewComplex(complex, city, 'discovery-perplexity');
+          if (newId) {
+            added++;
+            results.total_discovered++;
+            results.new_added++;
 
-          // Create alert for new discovery
-          await createDiscoveryAlert(newId, complex, city);
-          
-          logger.info(`✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
+            // Create alert for new discovery
+            await createDiscoveryAlert(newId, complex, city);
+            
+            logger.info(`✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
+          }
+        } catch (addErr) {
+          logger.error(`Failed to add ${complex.name}`, { error: addErr.message });
         }
       }
 
