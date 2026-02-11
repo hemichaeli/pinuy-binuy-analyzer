@@ -136,12 +136,23 @@ function formatPrice(price) {
 }
 
 /**
- * Check if today is a discovery day (Sundays - weekly discovery)
+ * Get today's cities for discovery (rotating daily through all target cities)
+ * Each day scans 2-3 different cities
  */
-function isDiscoveryDay() {
-  const today = new Date();
-  // Run discovery on Sundays (day 0)
-  return today.getDay() === 0;
+function getTodayDiscoveryCities() {
+  const discoveryService = getDiscoveryService();
+  if (!discoveryService) return [];
+  
+  const allCities = discoveryService.ALL_TARGET_CITIES;
+  const citiesPerDay = 3; // Scan 3 cities per day
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+  const startIndex = (dayOfYear * citiesPerDay) % allCities.length;
+  
+  const cities = [];
+  for (let i = 0; i < citiesPerDay; i++) {
+    cities.push(allCities[(startIndex + i) % allCities.length]);
+  }
+  return cities;
 }
 
 /**
@@ -186,6 +197,10 @@ async function sendScanStatusNotification(result) {
           </tr>
           ${result.discovery ? `
           <tr style="background: #e8f4fd;">
+            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🔍 ערים נסרקו לגילוי</strong></td>
+            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.discovery?.cities?.join(', ') || 'N/A'}</td>
+          </tr>
+          <tr style="background: #d4edda;">
             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🆕 מתחמים חדשים התגלו</strong></td>
             <td style="padding: 8px; border: 1px solid #dee2e6;">${result.discovery?.newAdded || 0}</td>
           </tr>
@@ -223,9 +238,10 @@ async function sendScanStatusNotification(result) {
 
 /**
  * Run the daily scan with unified AI (Perplexity + Claude)
+ * Includes daily discovery (rotates through cities)
  */
 async function runWeeklyScan(options = {}) {
-  const { forceAll = false, includeDiscovery = null } = options;
+  const { forceAll = false, includeDiscovery = true } = options;
   if (isRunning) {
     logger.warn('Scan already running, skipping');
     return null;
@@ -235,10 +251,7 @@ async function runWeeklyScan(options = {}) {
   const startTime = Date.now();
   const staleOnly = !forceAll;
   
-  // Discovery runs on Sundays or when explicitly requested
-  const runDiscovery = includeDiscovery !== null ? includeDiscovery : isDiscoveryDay();
-  
-  logger.info(`=== Daily scan started (forceAll: ${forceAll}, discovery: ${runDiscovery}) ===`);
+  logger.info(`=== Daily scan started (forceAll: ${forceAll}, discovery: ${includeDiscovery}) ===`);
 
   try {
     const scanLog = await pool.query(
@@ -310,29 +323,51 @@ async function runWeeklyScan(options = {}) {
       await calculateAllIAI();
     } catch (e) { logger.warn('IAI failed', { error: e.message }); }
 
-    // Step 7: Discovery (weekly - Sundays)
-    let discoveryResults = { citiesScanned: 0, newAdded: 0 };
-    if (runDiscovery) {
+    // Step 7: Discovery - scan 3 cities daily (rotating)
+    let discoveryResults = { cities: [], newAdded: 0 };
+    if (includeDiscovery) {
       const discoveryService = getDiscoveryService();
       if (discoveryService) {
+        const todayCities = getTodayDiscoveryCities();
+        logger.info(`Step 7/8: 🔍 Discovery scan for: ${todayCities.join(', ')}`);
+        
         try {
-          logger.info('Step 7/8: 🔍 Running discovery scan for NEW complexes...');
-          const discovery = await discoveryService.discoverAll({ limit: 10 }); // Limit cities per run
+          let totalNew = 0;
+          for (const city of todayCities) {
+            try {
+              const cityResult = await discoveryService.discoverInCity(city);
+              if (cityResult?.discovered_complexes) {
+                for (const complex of cityResult.discovered_complexes) {
+                  if (complex.existing_units && complex.existing_units < discoveryService.MIN_HOUSING_UNITS) continue;
+                  const newId = await discoveryService.addNewComplex(complex, city, 'discovery-daily');
+                  if (newId) {
+                    totalNew++;
+                    logger.info(`✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
+                  }
+                }
+              }
+              // Rate limit between cities
+              await new Promise(r => setTimeout(r, 4000));
+            } catch (cityErr) {
+              logger.warn(`Discovery failed for ${city}`, { error: cityErr.message });
+            }
+          }
+          
           discoveryResults = {
-            citiesScanned: discovery.cities_scanned,
-            totalDiscovered: discovery.total_discovered,
-            newAdded: discovery.new_added,
-            alreadyExisted: discovery.already_existed
+            cities: todayCities,
+            citiesScanned: todayCities.length,
+            newAdded: totalNew
           };
-          logger.info(`Discovery: ${discovery.cities_scanned} cities, ${discovery.new_added} NEW complexes added!`);
+          
+          logger.info(`Discovery: ${todayCities.length} cities, ${totalNew} NEW complexes!`);
         } catch (e) { 
           logger.warn('Discovery failed', { error: e.message }); 
         }
       } else {
-        logger.info('Step 7/8: Discovery service not available, skipping');
+        logger.info('Step 7/8: Discovery service not available');
       }
     } else {
-      logger.info('Step 7/8: Discovery skipped (runs on Sundays)');
+      logger.info('Step 7/8: Discovery disabled');
     }
 
     // Step 8: Generate alerts
@@ -353,7 +388,7 @@ async function runWeeklyScan(options = {}) {
       benchmarks: { calculated: benchmarkResults.calculated || 0 },
       yad2: { newListings: yad2Results.totalNew || 0, updated: yad2Results.totalUpdated || 0 },
       ssi: ssiResults,
-      discovery: discoveryResults.newAdded > 0 ? discoveryResults : null,
+      discovery: discoveryResults.newAdded > 0 ? discoveryResults : { cities: discoveryResults.cities, newAdded: 0 },
       alertsGenerated: alertCount,
       summary
     };
@@ -417,6 +452,8 @@ function stopScheduler() {
 function getSchedulerStatus() {
   const orchestrator = getClaudeOrchestrator();
   const discoveryService = getDiscoveryService();
+  const todayCities = getTodayDiscoveryCities();
+  
   return {
     enabled: !!scheduledTask, 
     cron: DAILY_CRON, 
@@ -428,8 +465,10 @@ function getSchedulerStatus() {
     claudeConfigured: orchestrator?.isClaudeConfigured() || false,
     notificationsConfigured: notificationService.isConfigured(),
     discoveryEnabled: !!discoveryService,
-    discoverySchedule: 'Weekly on Sundays',
-    targetRegions: discoveryService?.TARGET_REGIONS || null
+    discoverySchedule: 'Daily (3 cities rotation)',
+    todayDiscoveryCities: todayCities,
+    targetRegions: discoveryService?.TARGET_REGIONS || null,
+    minHousingUnits: discoveryService?.MIN_HOUSING_UNITS || 12
   };
 }
 
