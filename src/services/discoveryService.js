@@ -2,7 +2,8 @@
  * Discovery Service - Find NEW Pinuy-Binuy complexes
  * 
  * Searches for urban renewal projects that match our criteria:
- * - Minimum 12 housing units (per updated law)
+ * - Minimum 24 housing units for Pinuy-Binuy (per law)
+ * - Minimum 4 housing units for TAMA 38/2 (building-level)
  * - Specific regions (Gush Dan, Sharon, Center, Jerusalem, Haifa)
  * - Any planning status
  */
@@ -22,19 +23,27 @@ const TARGET_REGIONS = {
 // All target cities flat list
 const ALL_TARGET_CITIES = Object.values(TARGET_REGIONS).flat();
 
-// Minimum housing units per law (updated 2024)
-const MIN_HOUSING_UNITS = 12;
+// Minimum housing units per project type (per Israeli law)
+const MIN_UNITS = {
+  PINUY_BINUY: 24,      // פינוי בינוי - מתחם שלם
+  TAMA_38_2: 4,         // תמ"א 38/2 או חלופת שקד - בניין בודד
+  VATMAL: 500           // ותמ"ל - מתחמים גדולים
+};
+
+// Default: We're looking for Pinuy-Binuy opportunities
+const MIN_HOUSING_UNITS = MIN_UNITS.PINUY_BINUY;
 
 /**
  * Build Perplexity prompt for discovering new complexes in a city
  */
 function buildDiscoveryPrompt(city) {
-  return `חפש מתחמי פינוי בינוי והתחדשות עירונית חדשים ב${city} שלא הייתי מכיר.
+  return `חפש מתחמי פינוי בינוי והתחדשות עירונית חדשים ב${city}.
 
 אני מחפש מתחמים שעונים לקריטריונים:
-- מינימום ${MIN_HOUSING_UNITS} יחידות דיור קיימות
+- מינימום ${MIN_HOUSING_UNITS} יחידות דיור קיימות (לפי חוק פינוי בינוי)
 - בכל שלב תכנוני (הוכרז, בתכנון, הופקד, אושר, בביצוע)
-- פרויקטים שהוכרזו או קודמו ב-2023-2025
+- פרויקטים שהוכרזו או קודמו ב-2023-2026
+- עדיפות למתחמים שהוכרזו רשמית ע"י הרשות להתחדשות עירונית
 
 החזר JSON בלבד (ללא טקסט נוסף) בפורמט:
 
@@ -48,9 +57,10 @@ function buildDiscoveryPrompt(city) {
       "planned_units": 0,
       "developer": "שם היזם או null",
       "status": "הוכרז/בתכנון/הופקד/אושר/בביצוע",
+      "project_type": "פינוי בינוי/תמא 38-2/חלופת שקד",
       "plan_number": "מספר תוכנית אם ידוע",
+      "declaration_date": "YYYY-MM-DD או null",
       "source": "מקור המידע",
-      "last_update": "YYYY-MM-DD או null",
       "notes": "הערות נוספות"
     }
   ],
@@ -60,9 +70,9 @@ function buildDiscoveryPrompt(city) {
 
 חפש במקורות:
 - mavat.iplan.gov.il (מנהל התכנון)
-- הרשות להתחדשות עירונית
-- אתרי חדשות נדל"ן (גלובס, כלכליסט, דה-מרקר)
-- אתרי הרשויות המקומיות
+- הרשות הממשלתית להתחדשות עירונית
+- אתר העירייה/רשות מקומית
+- אתרי חדשות נדל"ן (גלובס, כלכליסט, דה-מרקר, ynet נדל"ן)
 
 החזר JSON בלבד.`;
 }
@@ -70,7 +80,7 @@ function buildDiscoveryPrompt(city) {
 const DISCOVERY_SYSTEM_PROMPT = `You are an Israeli real estate research assistant specializing in finding Pinuy-Binuy (urban renewal) projects.
 Return ONLY valid JSON. No explanations, no markdown, no text before or after.
 Search for projects that are publicly announced or in planning stages.
-Be thorough - find projects from official planning sources and news.
+Focus on official sources: the Urban Renewal Authority, mavat.iplan.gov.il, and municipal websites.
 All text should be in Hebrew.
 If you can't find any new complexes, return an empty array for discovered_complexes.`;
 
@@ -211,11 +221,14 @@ async function createDiscoveryAlert(complexId, complex, city) {
         `🆕 מתחם חדש התגלה: ${complex.name} (${city})`,
         `נמצא מתחם חדש: ${complex.existing_units || '?'} יח"ד קיימות, ` +
         `${complex.planned_units || '?'} יח"ד מתוכננות. ` +
-        `סטטוס: ${complex.status}. יזם: ${complex.developer || 'לא ידוע'}.`,
+        `סטטוס: ${complex.status}. יזם: ${complex.developer || 'לא ידוע'}. ` +
+        `סוג: ${complex.project_type || 'פינוי בינוי'}.`,
         JSON.stringify({
           addresses: complex.addresses,
           source: complex.source,
-          plan_number: complex.plan_number
+          plan_number: complex.plan_number,
+          project_type: complex.project_type,
+          declaration_date: complex.declaration_date
         })
       ]
     );
@@ -228,7 +241,11 @@ async function createDiscoveryAlert(complexId, complex, city) {
  * Run discovery scan for all target cities
  */
 async function discoverAll(options = {}) {
-  const { region = null, limit = null } = options;
+  const { 
+    region = null, 
+    limit = null,
+    minUnits = MIN_HOUSING_UNITS 
+  } = options;
   
   let cities = ALL_TARGET_CITIES;
   
@@ -240,13 +257,14 @@ async function discoverAll(options = {}) {
     cities = cities.slice(0, limit);
   }
 
-  logger.info(`Starting discovery scan for ${cities.length} cities`);
+  logger.info(`Starting discovery scan for ${cities.length} cities (min ${minUnits} units)`);
 
   const results = {
     cities_scanned: 0,
     total_discovered: 0,
     new_added: 0,
     already_existed: 0,
+    skipped_too_small: 0,
     details: []
   };
 
@@ -266,10 +284,12 @@ async function discoverAll(options = {}) {
       const complexes = discovered.discovered_complexes;
       let added = 0;
       let existed = 0;
+      let tooSmall = 0;
 
       for (const complex of complexes) {
         // Skip if below minimum units
-        if (complex.existing_units && complex.existing_units < MIN_HOUSING_UNITS) {
+        if (complex.existing_units && complex.existing_units < minUnits) {
+          tooSmall++;
           continue;
         }
 
@@ -295,11 +315,13 @@ async function discoverAll(options = {}) {
       }
 
       results.already_existed += existed;
+      results.skipped_too_small += tooSmall;
       results.details.push({
         city,
         found: complexes.length,
         added,
         existed,
+        tooSmall,
         error: null
       });
 
@@ -317,7 +339,8 @@ async function discoverAll(options = {}) {
   logger.info('Discovery scan completed', {
     cities: results.cities_scanned,
     discovered: results.total_discovered,
-    new: results.new_added
+    new: results.new_added,
+    tooSmall: results.skipped_too_small
   });
 
   return results;
@@ -340,5 +363,6 @@ module.exports = {
   addNewComplex,
   TARGET_REGIONS,
   ALL_TARGET_CITIES,
+  MIN_UNITS,
   MIN_HOUSING_UNITS
 };
