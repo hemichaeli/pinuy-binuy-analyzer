@@ -214,6 +214,7 @@ function getEnhancedDataStatus() {
     require('./services/developerInfoService');
     sources.developerInfo = true;
   } catch (e) { sources.developerInfo = false; }
+  sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
   return sources;
 }
 
@@ -224,8 +225,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v10-enhanced-data',
-    version: '4.5.0',
+    build: '2026-02-11-v11-enhanced-fix',
+    version: '4.5.1',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -246,19 +247,14 @@ app.get('/debug', (req, res) => {
       enhanced_data: enhanced
     },
     discovery: discovery,
-    enhanced_data_sources: {
-      madlan: enhanced.madlan ? 'active' : 'not loaded',
-      urbanRenewalAuthority: enhanced.urbanRenewalAuthority ? 'active' : 'not loaded',
-      committeeProtocols: enhanced.committeeProtocols ? 'active' : 'not loaded',
-      developerInfo: enhanced.developerInfo ? 'active' : 'not loaded'
-    },
+    enhanced_data_sources: enhanced,
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
       '5. Discovery scan (NEW complexes)',
-      '6. Enhanced data enrichment ⭐ (madlan, official, developer)',
+      '6. Enhanced data enrichment ⭐ NEW',
       '7. Alert generation',
       '8. Email notifications'
     ]
@@ -290,7 +286,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.5.0',
+      version: '4.5.1',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -313,7 +309,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.5.0',
+    version: '4.5.1',
     phase: 'Phase 4.5 - Enhanced Data Sources',
     endpoints: {
       health: 'GET /health',
@@ -360,7 +356,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.5.0 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.5.1 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) {
