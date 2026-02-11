@@ -21,15 +21,10 @@ router.get('/status', (req, res) => {
   const service = getPricingService();
   res.json({
     version: '4.5.0',
-    service: 'Pricing Accuracy Enhancement',
+    service: 'Pricing Accuracy - Multi-Source Pricing',
     available: !!service,
-    sources: [
-      { name: 'nadlan_db', description: 'עסקאות ממאגר רשות המיסים', weight: 0.4 },
-      { name: 'yad2_sold', description: 'מחירי מכירה בפועל מ-yad2', weight: 0.3 },
-      { name: 'cbs_index', description: 'מדד מחירי דירות - הלמ"ס', weight: 0.2 },
-      { name: 'boi_mortgage', description: 'נתוני משכנתאות - בנק ישראל', weight: 0.1 }
-    ],
-    regions: service?.CBS_REGIONS ? Object.keys(service.CBS_REGIONS) : [],
+    sources: ['nadlan_db', 'yad2_sold', 'cbs_index', 'boi_mortgage'],
+    regionsConfigured: service ? Object.keys(service.CBS_REGIONS).length : 0,
     perplexityConfigured: !!process.env.PERPLEXITY_API_KEY
   });
 });
@@ -41,10 +36,10 @@ router.get('/city/:city', async (req, res) => {
 
   try {
     const { city } = req.params;
-    const stats = await service.getCityPricingStats(city);
-    res.json(stats);
+    const result = await service.getCityPricingStats(city);
+    res.json(result);
   } catch (err) {
-    logger.error('City pricing stats failed', { error: err.message });
+    logger.error('City pricing failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -61,10 +56,13 @@ router.post('/benchmark/:complexId', async (req, res) => {
 
     const benchmark = await service.calculateAccurateBenchmark(complexResult.rows[0], pool);
 
+    // Update database
     if (benchmark.estimatedPricePerSqm > 0) {
       await pool.query(`
-        UPDATE complexes SET accurate_price_sqm = $1, price_confidence_score = $2, price_trend = $3,
-          estimated_premium_price = $4, price_last_updated = NOW(), price_sources = $5 WHERE id = $6
+        UPDATE complexes SET 
+          accurate_price_sqm = $1, price_confidence_score = $2, price_trend = $3,
+          estimated_premium_price = $4, price_last_updated = NOW(), price_sources = $5
+        WHERE id = $6
       `, [benchmark.estimatedPricePerSqm, benchmark.confidenceScore, benchmark.priceTrend,
           benchmark.estimatedPremiumPrice, JSON.stringify(benchmark.sources), complexId]);
     }
@@ -84,10 +82,10 @@ router.get('/sold/:city', async (req, res) => {
   try {
     const { city } = req.params;
     const { street, rooms } = req.query;
-    const prices = await service.getYad2SoldPrices(city, street || null, rooms ? parseInt(rooms) : null);
-    res.json(prices);
+    const result = await service.getYad2SoldPrices(city, street || null, rooms ? parseInt(rooms) : null);
+    res.json(result);
   } catch (err) {
-    logger.error('Yad2 sold prices failed', { error: err.message });
+    logger.error('Sold prices fetch failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -99,10 +97,10 @@ router.get('/index/:city', async (req, res) => {
 
   try {
     const { city } = req.params;
-    const index = await service.getCBSPriceIndex(city);
-    res.json(index);
+    const result = await service.getCBSPriceIndex(city);
+    res.json(result);
   } catch (err) {
-    logger.error('CBS index failed', { error: err.message });
+    logger.error('CBS index fetch failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
@@ -114,8 +112,8 @@ router.get('/mortgage', async (req, res) => {
 
   try {
     const { city } = req.query;
-    const stats = await service.getBOIMortgageStats(city || null);
-    res.json(stats);
+    const result = await service.getBOIMortgageStats(city || null);
+    res.json(result);
   } catch (err) {
     logger.error('BOI mortgage stats failed', { error: err.message });
     res.status(500).json({ error: err.message });
@@ -129,8 +127,8 @@ router.get('/compare/:city', async (req, res) => {
 
   try {
     const { city } = req.params;
-    const comparison = await service.compareComplexPrices(city, pool);
-    res.json(comparison);
+    const result = await service.compareComplexPrices(city, pool);
+    res.json(result);
   } catch (err) {
     logger.error('Price comparison failed', { error: err.message });
     res.status(500).json({ error: err.message });
@@ -143,13 +141,12 @@ router.post('/batch', async (req, res) => {
   if (!service) return res.status(503).json({ error: 'Pricing service not available' });
 
   try {
-    const { city, limit, staleOnly } = req.body;
-    res.json({ message: 'Batch pricing update started', params: { city, limit, staleOnly }, note: 'Running in background' });
+    const { city, staleOnly } = req.body;
+    res.json({ message: 'Batch pricing update started', params: { city, staleOnly }, note: 'Running in background' });
 
     (async () => {
       try {
-        const results = await service.batchUpdatePricing(pool, { city, limit, staleOnly });
-        logger.info('Batch pricing complete', results);
+        await service.batchUpdatePricing(pool, { city, staleOnly });
       } catch (err) {
         logger.error('Background batch pricing failed', { error: err.message });
       }
@@ -165,29 +162,28 @@ router.get('/top-opportunities', async (req, res) => {
     const { city, limit } = req.query;
     let query = `
       SELECT c.*, 
-        (c.estimated_premium_price - c.accurate_price_sqm) as potential_gain,
-        CASE WHEN c.accurate_price_sqm > 0 THEN 
-          ROUND(((c.estimated_premium_price - c.accurate_price_sqm)::numeric / c.accurate_price_sqm) * 100, 1)
-        ELSE 0 END as potential_gain_pct
+        COALESCE(c.accurate_price_sqm, c.city_avg_price_sqm) as current_price,
+        c.estimated_premium_price,
+        CASE WHEN c.accurate_price_sqm > 0 AND c.estimated_premium_price > 0 
+          THEN ROUND(((c.estimated_premium_price::float / c.accurate_price_sqm) - 1) * 100)
+          ELSE NULL END as potential_return
       FROM complexes c
-      WHERE c.accurate_price_sqm > 0 AND c.estimated_premium_price > 0
+      WHERE c.estimated_premium_price > 0 AND c.accurate_price_sqm > 0
     `;
     const params = [];
     let paramIndex = 1;
-
     if (city) { query += ` AND c.city = $${paramIndex++}`; params.push(city); }
-    query += ` ORDER BY potential_gain_pct DESC LIMIT $${paramIndex}`;
+    query += ` ORDER BY potential_return DESC NULLS LAST LIMIT $${paramIndex}`;
     params.push(parseInt(limit) || 20);
 
     const result = await pool.query(query, params);
-
     res.json({
       total: result.rows.length,
       opportunities: result.rows.map(c => ({
         id: c.id, name: c.name, city: c.city, status: c.status,
-        currentPrice: c.accurate_price_sqm, premiumPrice: c.estimated_premium_price,
-        potentialGain: c.potential_gain, potentialGainPct: parseFloat(c.potential_gain_pct),
-        confidenceScore: c.price_confidence_score, iaiScore: c.iai_score
+        currentPriceSqm: c.current_price, estimatedPremiumSqm: c.estimated_premium_price,
+        potentialReturn: c.potential_return, priceConfidence: c.price_confidence_score,
+        iaiScore: c.iai_score, ssiScore: c.ssi_score
       }))
     });
   } catch (err) {
