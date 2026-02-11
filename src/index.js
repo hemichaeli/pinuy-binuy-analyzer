@@ -246,6 +246,9 @@ try { app.use('/api/news', require('./routes/newsRoutes')); logger.info('News mo
 // Phase 4.5 Extended: Pricing Accuracy routes
 try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('Pricing accuracy routes loaded'); } catch (e) { logger.warn('Pricing routes not available', { error: e.message }); }
 
+// Phase 4.6: Government Data API routes (data.gov.il integration)
+try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded (data.gov.il)'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
+
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
 app.get('/api/scheduler', (req, res) => res.json(getSchedulerStatus()));
@@ -299,8 +302,11 @@ function getEnhancedDataInfo() {
   try { require('./services/distressedSellerService'); sources.distressedSeller = 'active'; } catch (e) { sources.distressedSeller = false; }
   try { require('./services/newsMonitorService'); sources.newsMonitor = 'active'; } catch (e) { sources.newsMonitor = false; }
   try { require('./services/pricingAccuracyService'); sources.pricingAccuracy = 'active'; } catch (e) { sources.pricingAccuracy = false; }
+  // Phase 4.6: Government Data
+  try { require('./services/governmentDataService'); sources.governmentData = 'active'; } catch (e) { sources.governmentData = false; }
   sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
   sources.extendedActive = sources.distressedSeller && sources.newsMonitor && sources.pricingAccuracy;
+  sources.govDataActive = sources.governmentData;
   return sources;
 }
 
@@ -311,8 +317,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v14-phase45-migrations',
-    version: '4.5.2',
+    build: '2026-02-11-v15-gov-data-api',
+    version: '4.6.0',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -331,8 +337,15 @@ app.get('/debug', (req, res) => {
       iai_calculator: 'active',
       news_monitoring: enhancedSources.newsMonitor ? 'active ⭐' : 'disabled',
       pricing_accuracy: enhancedSources.pricingAccuracy ? 'active ⭐' : 'disabled',
+      government_data: enhancedSources.governmentData ? 'active 🏛️' : 'disabled',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
+    },
+    government_data_sources: {
+      mashkonot: 'רשם המשכונות - 8M+ records',
+      yerusha: 'רשם הירושות - 1.2M+ records',
+      boi_mortgage: 'ריביות משכנתאות בנק ישראל',
+      news_receivership: 'חדשות כינוס נכסים (RSS)'
     },
     discovery: discovery,
     enhanced_data_sources: enhancedSources,
@@ -346,8 +359,9 @@ app.get('/debug', (req, res) => {
       '7. SSI distressed seller enhancement ⭐',
       '8. News & regulation monitoring ⭐',
       '9. Pricing accuracy update ⭐',
-      '10. Alert generation',
-      '11. Email notifications'
+      '10. Government data integration 🏛️',
+      '11. Alert generation',
+      '12. Email notifications'
     ]
   });
 });
@@ -372,7 +386,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.5.2',
+      version: '4.6.0',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -382,6 +396,7 @@ app.get('/health', async (req, res) => {
       discovery_cities: discovery.cities || 0,
       ai_sources: { perplexity: !!process.env.PERPLEXITY_API_KEY, claude: isClaudeConfigured() },
       enhanced_sources: enhancedSources,
+      government_data: enhancedSources.governmentData ? 'active' : 'disabled',
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
   } catch (err) {
@@ -392,8 +407,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.5.2',
-    phase: 'Phase 4.5 Extended - SSI, News, Pricing',
+    version: '4.6.0',
+    phase: 'Phase 4.6 - Government Data API Integration',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -440,7 +455,14 @@ app.get('/', (req, res) => {
       pricingMortgage: 'GET /api/pricing/mortgage ⭐',
       pricingCompare: 'GET /api/pricing/compare/:city ⭐',
       pricingBatch: 'POST /api/pricing/batch ⭐',
-      pricingTopOpportunities: 'GET /api/pricing/top-opportunities ⭐'
+      pricingTopOpportunities: 'GET /api/pricing/top-opportunities ⭐',
+      govStatus: 'GET /api/gov/status 🏛️',
+      govLiensStats: 'GET /api/gov/liens/stats 🏛️',
+      govInheritanceDistrict: 'GET /api/gov/inheritance/district/:district? 🏛️',
+      govInheritanceRecent: 'GET /api/gov/inheritance/recent 🏛️',
+      govReceivershipNews: 'GET /api/gov/receivership/news 🏛️',
+      govMortgageRates: 'GET /api/gov/mortgage-rates 🏛️',
+      govQuery: 'GET /api/gov/query/:resource 🏛️'
     }
   });
 });
@@ -460,13 +482,14 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.5.2 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.6.0 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
     const enhanced = getEnhancedDataInfo();
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
+    logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE (data.gov.il)' : 'disabled'}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
