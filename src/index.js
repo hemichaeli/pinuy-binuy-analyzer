@@ -27,7 +27,28 @@ async function runAutoMigrations() {
     // Ensure created_at has default
     await pool.query(`ALTER TABLE complexes ALTER COLUMN created_at SET DEFAULT NOW()`);
     
-    logger.info('Auto migrations completed');
+    // Phase 4.5 - Enhanced data source columns
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_avg_price_sqm INTEGER`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_price_trend DECIMAL(5,2)`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_madlan_update TIMESTAMP`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_officially_declared BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_track VARCHAR(50)`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_declaration_date DATE`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_plan_number VARCHAR(100)`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_certainty_score INTEGER`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_last_verified TIMESTAMP`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS committee_last_checked TIMESTAMP`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_detected BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_decision TEXT`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_date DATE`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_impact VARCHAR(50)`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_company_number VARCHAR(50)`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_status VARCHAR(50)`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_score INTEGER`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_level VARCHAR(50)`);
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_last_verified TIMESTAMP`);
+    
+    logger.info('Auto migrations completed (including Phase 4.5 columns)');
   } catch (e) {
     // Ignore errors - columns may already exist or other benign issues
     logger.debug(`Migration note: ${e.message}`);
@@ -212,7 +233,7 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v10-enhanced-sources',
+    build: '2026-02-11-v11-phase45-complete',
     version: '4.5.0',
     node_version: process.version,
     env: {
@@ -336,7 +357,8 @@ app.get('/', (req, res) => {
       developerCheck: 'POST /api/enhanced/developer/check/:complexId',
       developerRiskReport: 'GET /api/enhanced/developer/risk-report',
       enrichAll: 'POST /api/enhanced/enrich-all',
-      enrichmentStats: 'GET /api/enhanced/enrichment-stats'
+      enrichmentStats: 'GET /api/enhanced/enrichment-stats',
+      runMigration: 'POST /api/enhanced/run-migration'
     }
   });
 });
