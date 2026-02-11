@@ -176,46 +176,25 @@ router.post('/scan-city', async (req, res) => {
   }
 });
 
-// GET /api/ssi/high-distress - Find complexes with high SSI scores
+// GET /api/ssi/high-distress
 router.get('/high-distress', async (req, res) => {
   try {
     const { minScore, city, limit } = req.query;
-    const minSSI = parseInt(minScore) || 50;
-    
-    // Query complexes with SSI from listings (MAX SSI from active listings)
-    let query = `
-      SELECT c.id, c.name, c.city, c.status, c.iai_score, c.enhanced_ssi_score,
-        MAX(l.ssi) as listing_ssi,
-        COALESCE(c.enhanced_ssi_score, MAX(l.ssi), 0) as effective_ssi,
-        COUNT(l.id) as active_listings
-      FROM complexes c
-      LEFT JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
-      GROUP BY c.id
-      HAVING COALESCE(c.enhanced_ssi_score, MAX(l.ssi), 0) >= $1
-    `;
-    const params = [minSSI];
+    let query = `SELECT c.*, COALESCE(c.enhanced_ssi_score, c.ssi_score) as effective_ssi, COUNT(l.id) as active_listings
+      FROM complexes c LEFT JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
+      WHERE COALESCE(c.enhanced_ssi_score, c.ssi_score) >= $1`;
+    const params = [parseInt(minScore) || 50];
     let paramIndex = 2;
-    
-    if (city) { 
-      query = query.replace('GROUP BY c.id', `WHERE c.city = $${paramIndex++} GROUP BY c.id`);
-      params.splice(0, 0, city);
-      params[params.length - 1] = minSSI;
-    }
-    
-    query += ` ORDER BY effective_ssi DESC LIMIT $${paramIndex}`;
+    if (city) { query += ` AND c.city = $${paramIndex++}`; params.push(city); }
+    query += ` GROUP BY c.id ORDER BY effective_ssi DESC LIMIT $${paramIndex}`;
     params.push(parseInt(limit) || 50);
 
     const result = await pool.query(query, params);
     res.json({
       total: result.rows.length,
       complexes: result.rows.map(c => ({
-        id: c.id, name: c.name, city: c.city, 
-        listingSSI: c.listing_ssi, 
-        enhancedSSI: c.enhanced_ssi_score,
-        effectiveSSI: parseInt(c.effective_ssi) || 0, 
-        activeListings: parseInt(c.active_listings), 
-        status: c.status, 
-        iaiScore: c.iai_score
+        id: c.id, name: c.name, city: c.city, baseSSI: c.ssi_score, enhancedSSI: c.enhanced_ssi_score,
+        effectiveSSI: c.effective_ssi, activeListings: parseInt(c.active_listings), status: c.status, iaiScore: c.iai_score
       }))
     });
   } catch (err) {
@@ -235,20 +214,11 @@ router.post('/enhance-all', async (req, res) => {
 
     (async () => {
       try {
-        // Get complexes with active listings, ordered by max listing SSI
-        let query = `
-          SELECT c.*, MAX(l.ssi) as max_listing_ssi
-          FROM complexes c
-          INNER JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
-          GROUP BY c.id
-        `;
+        let query = `SELECT c.* FROM complexes c WHERE EXISTS (SELECT 1 FROM listings l WHERE l.complex_id = c.id AND l.is_active = TRUE)`;
         const params = [];
         let paramIndex = 1;
-        if (city) { 
-          query = query.replace('GROUP BY c.id', `WHERE c.city = $${paramIndex++} GROUP BY c.id`);
-          params.push(city); 
-        }
-        query += ` ORDER BY max_listing_ssi DESC NULLS LAST LIMIT $${paramIndex}`;
+        if (city) { query += ` AND c.city = $${paramIndex++}`; params.push(city); }
+        query += ` ORDER BY c.ssi_score DESC NULLS LAST LIMIT $${paramIndex}`;
         params.push(parseInt(limit) || 50);
 
         const complexes = await pool.query(query, params);
