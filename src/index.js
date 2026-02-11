@@ -121,12 +121,12 @@ try {
   logger.debug('Admin routes not available');
 }
 
-// Enhanced data routes (Phase 4.5)
+// Enhanced data sources routes (Phase 4.5)
 try {
   app.use('/api/enhanced', require('./routes/enhancedData'));
-  logger.info('Enhanced data routes loaded (Phase 4.5)');
+  logger.info('Enhanced data sources routes loaded');
 } catch (e) {
-  logger.warn('Enhanced data routes not available: ' + e.message);
+  logger.debug('Enhanced data routes not available: ' + e.message);
 }
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
@@ -195,38 +195,36 @@ function getDiscoveryInfo() {
   }
 }
 
-// Get enhanced data sources status
-function getEnhancedDataStatus() {
-  const sources = {};
-  try {
-    require('./services/madlanService');
-    sources.madlan = true;
-  } catch (e) { sources.madlan = false; }
-  try {
-    require('./services/urbanRenewalAuthorityService');
-    sources.urbanRenewalAuthority = true;
-  } catch (e) { sources.urbanRenewalAuthority = false; }
-  try {
-    require('./services/committeeProtocolService');
-    sources.committeeProtocols = true;
-  } catch (e) { sources.committeeProtocols = false; }
-  try {
-    require('./services/developerInfoService');
-    sources.developerInfo = true;
-  } catch (e) { sources.developerInfo = false; }
-  sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
-  return sources;
+// Get enhanced data sources info
+function getEnhancedDataInfo() {
+  const sources = {
+    madlan: false,
+    urbanRenewal: false,
+    committee: false,
+    developer: false
+  };
+  
+  try { require('./services/madlanService'); sources.madlan = true; } catch (e) {}
+  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewal = true; } catch (e) {}
+  try { require('./services/committeeProtocolService'); sources.committee = true; } catch (e) {}
+  try { require('./services/developerInfoService'); sources.developer = true; } catch (e) {}
+  
+  return {
+    available: Object.values(sources).some(v => v),
+    sources,
+    allActive: Object.values(sources).every(v => v)
+  };
 }
 
 app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   const discovery = getDiscoveryInfo();
-  const enhanced = getEnhancedDataStatus();
+  const enhanced = getEnhancedDataInfo();
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v11-enhanced-fix',
-    version: '4.5.1',
+    build: '2026-02-11-v10-enhanced-data',
+    version: '4.5.0',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -244,10 +242,10 @@ app.get('/debug', (req, res) => {
       iai_calculator: 'active',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled',
-      enhanced_data: enhanced
+      enhanced_data_sources: enhanced.allActive ? 'all active' : 'partial'
     },
     discovery: discovery,
-    enhanced_data_sources: enhanced,
+    enhanced_data: enhanced,
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
@@ -282,11 +280,11 @@ app.get('/health', async (req, res) => {
     } catch (e) {}
 
     const discovery = getDiscoveryInfo();
-    const enhanced = getEnhancedDataStatus();
+    const enhanced = getEnhancedDataInfo();
 
     res.json({
       status: 'ok',
-      version: '4.5.1',
+      version: '4.5.0',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -298,7 +296,7 @@ app.get('/health', async (req, res) => {
         perplexity: !!process.env.PERPLEXITY_API_KEY,
         claude: isClaudeConfigured()
       },
-      enhanced_sources: enhanced,
+      enhanced_sources: enhanced.sources,
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
   } catch (err) {
@@ -309,7 +307,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.5.1',
+    version: '4.5.0',
     phase: 'Phase 4.5 - Enhanced Data Sources',
     endpoints: {
       health: 'GET /health',
@@ -331,12 +329,15 @@ app.get('/', (req, res) => {
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
       scheduler: 'GET /api/scheduler',
+      // Enhanced Data Sources (Phase 4.5)
       enhancedStatus: 'GET /api/enhanced/status ⭐',
-      enhancedMadlan: 'GET /api/enhanced/madlan/area/:city ⭐',
-      enhancedOfficial: 'GET /api/enhanced/official/list ⭐',
-      enhancedCommittee: 'GET /api/enhanced/committee/upcoming ⭐',
-      enhancedDeveloper: 'POST /api/enhanced/developer/verify ⭐',
-      enhancedEnrichAll: 'POST /api/enhanced/enrich-all ⭐'
+      enhancedMadlan: 'GET /api/enhanced/madlan/area/:city',
+      enhancedOfficial: 'GET /api/enhanced/official/list',
+      enhancedOfficialVerify: 'POST /api/enhanced/official/verify/:complexId',
+      enhancedCommittee: 'GET /api/enhanced/committee/upcoming',
+      enhancedDeveloper: 'POST /api/enhanced/developer/verify',
+      enhancedEnrichAll: 'POST /api/enhanced/enrich-all',
+      enhancedStats: 'GET /api/enhanced/enrichment-stats'
     }
   });
 });
@@ -356,14 +357,14 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.5.1 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.5.0 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) {
       logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
     }
-    const enhanced = getEnhancedDataStatus();
-    logger.info(`Enhanced Data: madlan=${enhanced.madlan}, official=${enhanced.urbanRenewalAuthority}, committee=${enhanced.committeeProtocols}, developer=${enhanced.developerInfo}`);
+    const enhanced = getEnhancedDataInfo();
+    logger.info(`Enhanced Data: ${Object.entries(enhanced.sources).filter(([k,v]) => v).map(([k]) => k).join(', ') || 'none'}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
