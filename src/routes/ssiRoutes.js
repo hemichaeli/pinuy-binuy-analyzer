@@ -176,20 +176,24 @@ router.post('/scan-city', async (req, res) => {
   }
 });
 
-// GET /api/ssi/high-distress
+// GET /api/ssi/high-distress - Get complexes with high SSI scores
 router.get('/high-distress', async (req, res) => {
   try {
     const { minScore, city, limit } = req.query;
+    const threshold = parseInt(minScore) || 50;
     
-    // Get high SSI complexes based on enhanced_ssi_score or ssi_score
+    // Use enhanced_ssi_score from complexes table
     let query = `
-      SELECT c.*, 
-        COALESCE(c.enhanced_ssi_score, c.ssi_score, 0) as effective_ssi,
-        (SELECT COUNT(*) FROM listings l WHERE l.complex_id = c.id AND l.is_active = TRUE) as active_listings
+      SELECT c.id, c.name, c.city, c.addresses, c.status, c.iai_score,
+        c.enhanced_ssi_score,
+        c.ssi_enhancement_factors,
+        c.ssi_last_enhanced,
+        COUNT(l.id) as active_listings
       FROM complexes c 
-      WHERE COALESCE(c.enhanced_ssi_score, c.ssi_score, 0) >= $1`;
+      LEFT JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
+      WHERE c.enhanced_ssi_score >= $1`;
     
-    const params = [parseInt(minScore) || 50];
+    const params = [threshold];
     let paramIndex = 2;
     
     if (city) { 
@@ -197,23 +201,25 @@ router.get('/high-distress', async (req, res) => {
       params.push(city); 
     }
     
-    query += ` ORDER BY effective_ssi DESC LIMIT $${paramIndex}`;
+    query += ` GROUP BY c.id ORDER BY c.enhanced_ssi_score DESC LIMIT $${paramIndex}`;
     params.push(parseInt(limit) || 50);
 
     const result = await pool.query(query, params);
     
     res.json({
       total: result.rows.length,
+      threshold,
       complexes: result.rows.map(c => ({
         id: c.id, 
         name: c.name, 
-        city: c.city, 
+        city: c.city,
+        addresses: c.addresses,
         enhancedSSI: c.enhanced_ssi_score,
-        effectiveSSI: parseInt(c.effective_ssi) || 0, 
         activeListings: parseInt(c.active_listings), 
         status: c.status, 
         iaiScore: c.iai_score,
-        enhancementFactors: c.ssi_enhancement_factors
+        enhancementFactors: c.ssi_enhancement_factors,
+        lastEnhanced: c.ssi_last_enhanced
       }))
     });
   } catch (err) {
