@@ -16,6 +16,24 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+async function runAutoMigrations() {
+  try {
+    // Add discovery_source column for tracking where complexes were discovered
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS discovery_source TEXT DEFAULT NULL`);
+    
+    // Add declaration_date column for official declaration date
+    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS declaration_date DATE DEFAULT NULL`);
+    
+    // Ensure created_at has default
+    await pool.query(`ALTER TABLE complexes ALTER COLUMN created_at SET DEFAULT NOW()`);
+    
+    logger.info('Auto migrations completed');
+  } catch (e) {
+    // Ignore errors - columns may already exist or other benign issues
+    logger.debug(`Migration note: ${e.message}`);
+  }
+}
+
 async function initDatabase() {
   const maxRetries = 15;
   const retryDelay = 3000;
@@ -38,13 +56,16 @@ async function initDatabase() {
     `);
     
     if (!tableCheck.rows[0].exists) {
-      logger.info('Running migration...');
+      logger.info('Running initial schema migration...');
       const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
       await pool.query(schema);
-      logger.info('Migration completed');
+      logger.info('Initial migration completed');
     }
 
-    // Run incremental migrations
+    // Run auto migrations (new columns, etc.)
+    await runAutoMigrations();
+
+    // Run SQL file migrations
     try {
       const migrationsDir = path.join(__dirname, 'db', 'migrations');
       if (fs.existsSync(migrationsDir)) {
@@ -92,7 +113,13 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api', require('./routes/opportunities'));
 app.use('/api/scan', require('./routes/scan'));
 app.use('/api/alerts', require('./routes/alerts'));
-app.use('/api/admin', require('./routes/admin'));
+
+// Admin routes (optional - may not exist in older versions)
+try {
+  app.use('/api/admin', require('./routes/admin'));
+} catch (e) {
+  logger.debug('Admin routes not available');
+}
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
@@ -145,12 +172,29 @@ function isClaudeConfigured() {
   return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
 }
 
+// Get discovery service info
+function getDiscoveryInfo() {
+  try {
+    const discovery = require('./services/discoveryService');
+    return {
+      available: true,
+      cities: discovery.ALL_TARGET_CITIES?.length || 0,
+      regions: Object.keys(discovery.TARGET_REGIONS || {}),
+      minUnits: discovery.MIN_HOUSING_UNITS || 12
+    };
+  } catch (e) {
+    return { available: false };
+  }
+}
+
 app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
+  const discovery = getDiscoveryInfo();
+  
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v8-discovery',
-    version: '4.4.0',
+    build: '2026-02-11-v9-discovery-fix',
+    version: '4.4.1',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -161,7 +205,7 @@ app.get('/debug', (req, res) => {
     },
     features: {
       unified_ai_scan: isClaudeConfigured() ? 'active (Perplexity + Claude)' : 'partial (Perplexity only)',
-      discovery: 'active (35 target cities)',
+      discovery: discovery.available ? `active (${discovery.cities} cities)` : 'loading',
       committee_tracking: 'active',
       yad2_direct_api: 'active',
       ssi_calculator: 'active',
@@ -169,12 +213,13 @@ app.get('/debug', (req, res) => {
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
+    discovery: discovery,
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
-      '5. Discovery scan (NEW complexes)',
+      '5. Discovery scan (NEW complexes) ⭐',
       '6. Alert generation',
       '7. Email notifications'
     ]
@@ -201,15 +246,18 @@ app.get('/health', async (req, res) => {
       committeeStats = { local: parseInt(c.rows[0].local), district: parseInt(c.rows[0].district) };
     } catch (e) {}
 
+    const discovery = getDiscoveryInfo();
+
     res.json({
       status: 'ok',
-      version: '4.4.0',
+      version: '4.4.1',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
       active_listings: parseInt(listings.rows[0].count),
       committee_tracked: committeeStats,
       unread_alerts: parseInt(alerts.rows[0].count),
+      discovery_cities: discovery.cities || 0,
       ai_sources: {
         perplexity: !!process.env.PERPLEXITY_API_KEY,
         claude: isClaudeConfigured()
@@ -224,7 +272,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.4.0',
+    version: '4.4.1',
     phase: 'Phase 4.4 - Discovery + Unified AI',
     endpoints: {
       health: 'GET /health',
@@ -235,7 +283,7 @@ app.get('/', (req, res) => {
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
       scanUnified: 'POST /api/scan/unified',
-      scanDiscovery: 'POST /api/scan/discovery ⭐ NEW',
+      scanDiscovery: 'POST /api/scan/discovery ⭐',
       scanDiscoveryStatus: 'GET /api/scan/discovery/status',
       scanDiscoveryRecent: 'GET /api/scan/discovery/recent',
       scanCommittee: 'POST /api/scan/committee',
@@ -245,10 +293,7 @@ app.get('/', (req, res) => {
       scanBenchmark: 'POST /api/scan/benchmark',
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
-      scheduler: 'GET /api/scheduler',
-      adminMigrate: 'POST /api/admin/migrate ⭐ NEW',
-      adminDbStructure: 'GET /api/admin/db-structure',
-      adminStats: 'GET /api/admin/stats'
+      scheduler: 'GET /api/scheduler'
     }
   });
 });
@@ -268,9 +313,12 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.4 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.4.1 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
-    logger.info(`Discovery: 35 target cities, min ${12} units`);
+    const discovery = getDiscoveryInfo();
+    if (discovery.available) {
+      logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
+    }
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
