@@ -121,7 +121,7 @@ try {
   logger.debug('Admin routes not available');
 }
 
-// Enhanced Data Sources routes (Phase 4.5)
+// Enhanced data sources routes (Phase 4.5)
 try {
   app.use('/api/enhanced', require('./routes/enhancedData'));
   logger.info('Enhanced data routes loaded');
@@ -195,25 +195,14 @@ function getDiscoveryInfo() {
   }
 }
 
-// Get enhanced data services info
+// Get enhanced data sources info
 function getEnhancedDataInfo() {
-  const services = {};
-  const serviceNames = ['madlanService', 'urbanRenewalAuthorityService', 'committeeProtocolService', 'developerInfoService'];
-  
-  for (const name of serviceNames) {
-    try {
-      require(`./services/${name}`);
-      services[name.replace('Service', '')] = true;
-    } catch (e) {
-      services[name.replace('Service', '')] = false;
-    }
-  }
-  
-  return {
-    available: Object.values(services).some(v => v),
-    allAvailable: Object.values(services).every(v => v),
-    services
-  };
+  const sources = {};
+  try { sources.madlan = !!require('./services/madlanService'); } catch (e) { sources.madlan = false; }
+  try { sources.urbanRenewal = !!require('./services/urbanRenewalAuthorityService'); } catch (e) { sources.urbanRenewal = false; }
+  try { sources.committee = !!require('./services/committeeProtocolService'); } catch (e) { sources.committee = false; }
+  try { sources.developer = !!require('./services/developerInfoService'); } catch (e) { sources.developer = false; }
+  return sources;
 }
 
 app.get('/debug', (req, res) => {
@@ -242,19 +231,19 @@ app.get('/debug', (req, res) => {
       iai_calculator: 'active',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled',
-      enhanced_data: enhanced.allAvailable ? 'active (4 sources)' : enhanced.available ? 'partial' : 'disabled'
+      enhanced_data_sources: Object.values(enhanced).every(v => v) ? 'active' : 'partial'
     },
     discovery: discovery,
-    enhanced_data_sources: enhanced,
+    enhanced_sources: enhanced,
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
       '5. Discovery scan (NEW complexes)',
-      '6. Alert generation',
-      '7. Email notifications',
-      '8. Enhanced data enrichment (madlan, official, committee, developer) ⭐'
+      '6. Enhanced data enrichment ⭐ (madlan, official, developer)',
+      '7. Alert generation',
+      '8. Email notifications'
     ]
   });
 });
@@ -296,7 +285,7 @@ app.get('/health', async (req, res) => {
         perplexity: !!process.env.PERPLEXITY_API_KEY,
         claude: isClaudeConfigured()
       },
-      enhanced_data: enhanced.allAvailable ? 'all_active' : enhanced.available ? 'partial' : 'disabled',
+      enhanced_sources: enhanced,
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
   } catch (err) {
@@ -369,7 +358,7 @@ async function start() {
       logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
     }
     const enhanced = getEnhancedDataInfo();
-    logger.info(`Enhanced Data: ${enhanced.allAvailable ? 'all 4 sources active' : enhanced.available ? 'partial' : 'disabled'}`);
+    logger.info(`Enhanced Sources: madlan=${enhanced.madlan}, urbanRenewal=${enhanced.urbanRenewal}, committee=${enhanced.committee}, developer=${enhanced.developer}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
