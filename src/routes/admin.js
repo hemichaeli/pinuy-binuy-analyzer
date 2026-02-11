@@ -2,60 +2,46 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
-const fs = require('fs');
-const path = require('path');
 
-/**
- * POST /api/admin/migrate
- * Run database migrations
- */
+// POST /api/admin/migrate - Run pending migrations
 router.post('/migrate', async (req, res) => {
   try {
-    const { specific } = req.body;
-    const migrationsDir = path.join(__dirname, '../db/migrations');
+    const migrations = [];
     
-    let migrations = [];
-    
-    if (specific) {
-      // Run specific migration
-      migrations = [specific];
-    } else {
-      // Run all migrations
-      migrations = fs.readdirSync(migrationsDir)
-        .filter(f => f.endsWith('.sql'))
-        .sort();
-    }
-    
-    const results = [];
-    
-    for (const file of migrations) {
-      const filePath = path.join(migrationsDir, file);
-      
-      if (!fs.existsSync(filePath)) {
-        results.push({ file, status: 'not_found' });
-        continue;
-      }
-      
-      const sql = fs.readFileSync(filePath, 'utf8');
-      
-      try {
-        await pool.query(sql);
-        results.push({ file, status: 'success' });
-        logger.info(`Migration applied: ${file}`);
-      } catch (err) {
-        // Ignore "already exists" errors
-        if (err.message.includes('already exists') || err.message.includes('duplicate')) {
-          results.push({ file, status: 'already_applied' });
-        } else {
-          results.push({ file, status: 'error', error: err.message });
-          logger.error(`Migration failed: ${file}`, { error: err.message });
-        }
+    // Add discovery_source column
+    try {
+      await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS discovery_source TEXT DEFAULT NULL`);
+      migrations.push('discovery_source column added');
+    } catch (e) {
+      if (!e.message.includes('already exists')) {
+        migrations.push(`discovery_source: ${e.message}`);
       }
     }
-    
-    res.json({
-      message: 'Migrations complete',
-      results
+
+    // Add created_at column if missing
+    try {
+      await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()`);
+      migrations.push('created_at column ensured');
+    } catch (e) {
+      if (!e.message.includes('already exists')) {
+        migrations.push(`created_at: ${e.message}`);
+      }
+    }
+
+    // Add declaration_date column
+    try {
+      await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS declaration_date DATE DEFAULT NULL`);
+      migrations.push('declaration_date column added');
+    } catch (e) {
+      if (!e.message.includes('already exists')) {
+        migrations.push(`declaration_date: ${e.message}`);
+      }
+    }
+
+    res.json({ 
+      message: 'Migrations completed', 
+      migrations,
+      timestamp: new Date().toISOString()
     });
   } catch (err) {
     logger.error('Migration failed', { error: err.message });
@@ -63,97 +49,41 @@ router.post('/migrate', async (req, res) => {
   }
 });
 
-/**
- * GET /api/admin/db-structure
- * Show database table structure
- */
-router.get('/db-structure', async (req, res) => {
+// GET /api/admin/schema - View table schema
+router.get('/schema/:table', async (req, res) => {
   try {
-    const { table } = req.query;
-    
-    if (table) {
-      const columns = await pool.query(`
-        SELECT column_name, data_type, is_nullable, column_default
-        FROM information_schema.columns
-        WHERE table_name = $1
-        ORDER BY ordinal_position
-      `, [table]);
-      
-      res.json({
-        table,
-        columns: columns.rows
-      });
-    } else {
-      const tables = await pool.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public'
-        ORDER BY table_name
-      `);
-      
-      res.json({
-        tables: tables.rows.map(r => r.table_name)
-      });
-    }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /api/admin/run-sql
- * Run arbitrary SQL (use with caution!)
- */
-router.post('/run-sql', async (req, res) => {
-  try {
-    const { sql } = req.body;
-    
-    if (!sql) {
-      return res.status(400).json({ error: 'SQL required' });
-    }
-    
-    // Only allow safe operations
-    const normalizedSql = sql.trim().toUpperCase();
-    if (normalizedSql.startsWith('DROP') || normalizedSql.startsWith('TRUNCATE')) {
-      return res.status(403).json({ error: 'Destructive operations not allowed' });
-    }
-    
-    const result = await pool.query(sql);
+    const { table } = req.params;
+    const result = await pool.query(`
+      SELECT column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+      WHERE table_name = $1
+      ORDER BY ordinal_position
+    `, [table]);
     
     res.json({
-      rowCount: result.rowCount,
-      rows: result.rows?.slice(0, 100) // Limit results
+      table,
+      columns: result.rows
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-/**
- * GET /api/admin/stats
- * Get comprehensive system statistics
- */
-router.get('/stats', async (req, res) => {
+// POST /api/admin/sql - Execute SQL (DANGEROUS - for dev only)
+router.post('/sql', async (req, res) => {
   try {
-    const [complexes, transactions, listings, alerts, scans] = await Promise.all([
-      pool.query('SELECT COUNT(*) as count FROM complexes'),
-      pool.query('SELECT COUNT(*) as count FROM transactions'),
-      pool.query('SELECT COUNT(*) as count FROM listings'),
-      pool.query('SELECT COUNT(*) as count FROM alerts'),
-      pool.query('SELECT COUNT(*) as count FROM scan_logs')
-    ]);
+    const { query, params } = req.body;
     
-    const discoveredComplexes = await pool.query(
-      `SELECT COUNT(*) as count FROM complexes WHERE discovery_source IS NOT NULL`
-    ).catch(() => ({ rows: [{ count: 0 }] }));
+    // Only allow SELECT, ALTER, CREATE INDEX
+    const allowed = /^(SELECT|ALTER|CREATE INDEX|UPDATE complexes SET)/i;
+    if (!allowed.test(query.trim())) {
+      return res.status(403).json({ error: 'Only SELECT, ALTER, and CREATE INDEX queries allowed' });
+    }
     
+    const result = await pool.query(query, params || []);
     res.json({
-      complexes: parseInt(complexes.rows[0].count),
-      transactions: parseInt(transactions.rows[0].count),
-      listings: parseInt(listings.rows[0].count),
-      alerts: parseInt(alerts.rows[0].count),
-      scans: parseInt(scans.rows[0].count),
-      discoveredComplexes: parseInt(discoveredComplexes.rows[0].count)
+      rowCount: result.rowCount,
+      rows: result.rows?.slice(0, 100) // Limit response
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
