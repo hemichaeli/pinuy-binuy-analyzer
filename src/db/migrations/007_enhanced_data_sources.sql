@@ -19,8 +19,13 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS building_year INTEGER;
 -- 2. URBAN RENEWAL AUTHORITY - Official declarations
 -- =====================================================
 
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_officially_declared BOOLEAN DEFAULT FALSE;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_track VARCHAR(50); -- 'tax' or 'local_authority'
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_declaration_date DATE;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_plan_number VARCHAR(100);
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_certainty_score INTEGER;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_last_verified TIMESTAMP;
 ALTER TABLE complexes ADD COLUMN IF NOT EXISTS declaration_track VARCHAR(50); -- 'tax' or 'local_authority'
-ALTER TABLE complexes ADD COLUMN IF NOT EXISTS declaration_date DATE;
 ALTER TABLE complexes ADD COLUMN IF NOT EXISTS declaration_number VARCHAR(100);
 ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_existing_units INTEGER;
 ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_planned_units INTEGER;
@@ -46,6 +51,11 @@ ALTER TABLE complexes ADD COLUMN IF NOT EXISTS deposit_date DATE;
 ALTER TABLE complexes ADD COLUMN IF NOT EXISTS approval_date DATE;
 ALTER TABLE complexes ADD COLUMN IF NOT EXISTS permit_expected VARCHAR(20);
 ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_update TIMESTAMP;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS committee_last_checked TIMESTAMP;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_detected BOOLEAN DEFAULT FALSE;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_decision TEXT;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_date DATE;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_impact VARCHAR(50);
 
 -- Committee decisions table
 CREATE TABLE IF NOT EXISTS committee_decisions (
@@ -84,6 +94,13 @@ CREATE INDEX IF NOT EXISTS idx_upcoming_hearings_date ON upcoming_hearings(heari
 -- =====================================================
 -- 4. DEVELOPERS - Company intelligence
 -- =====================================================
+
+-- Add developer tracking columns to complexes
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_company_number VARCHAR(50);
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_status VARCHAR(50);
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_score INTEGER;
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_level VARCHAR(50);
+ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_last_verified TIMESTAMP;
 
 CREATE TABLE IF NOT EXISTS developers (
     id SERIAL PRIMARY KEY,
@@ -162,6 +179,8 @@ CREATE INDEX IF NOT EXISTS idx_complexes_official_sync ON complexes(last_officia
 CREATE INDEX IF NOT EXISTS idx_complexes_committee_update ON complexes(last_committee_update);
 CREATE INDEX IF NOT EXISTS idx_complexes_madlan_update ON complexes(last_madlan_update);
 CREATE INDEX IF NOT EXISTS idx_complexes_developer_id ON complexes(developer_id);
+CREATE INDEX IF NOT EXISTS idx_complexes_price_trigger ON complexes(price_trigger_detected);
+CREATE INDEX IF NOT EXISTS idx_complexes_official_declared ON complexes(is_officially_declared);
 
 -- =====================================================
 -- COMMENTS
