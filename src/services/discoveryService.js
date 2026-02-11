@@ -2,8 +2,7 @@
  * Discovery Service - Find NEW Pinuy-Binuy complexes
  * 
  * Searches for urban renewal projects that match our criteria:
- * - Minimum 24 housing units for Pinuy-Binuy (per law)
- * - Minimum 4 housing units for TAMA 38/2 (building-level)
+ * - Minimum 12 housing units (updated per 2024 law - was 24)
  * - Specific regions (Gush Dan, Sharon, Center, Jerusalem, Haifa)
  * - Any planning status
  */
@@ -23,15 +22,8 @@ const TARGET_REGIONS = {
 // All target cities flat list
 const ALL_TARGET_CITIES = Object.values(TARGET_REGIONS).flat();
 
-// Minimum housing units per project type (per Israeli law)
-const MIN_UNITS = {
-  PINUY_BINUY: 24,      // פינוי בינוי - מתחם שלם
-  TAMA_38_2: 4,         // תמ"א 38/2 או חלופת שקד - בניין בודד
-  VATMAL: 500           // ותמ"ל - מתחמים גדולים
-};
-
-// Default: We're looking for Pinuy-Binuy opportunities
-const MIN_HOUSING_UNITS = MIN_UNITS.PINUY_BINUY;
+// Minimum housing units per 2024 law amendment (reduced from 24 to 12)
+const MIN_HOUSING_UNITS = 12;
 
 /**
  * Build Perplexity prompt for discovering new complexes in a city
@@ -40,7 +32,7 @@ function buildDiscoveryPrompt(city) {
   return `חפש מתחמי פינוי בינוי והתחדשות עירונית חדשים ב${city}.
 
 אני מחפש מתחמים שעונים לקריטריונים:
-- מינימום ${MIN_HOUSING_UNITS} יחידות דיור קיימות (לפי חוק פינוי בינוי)
+- מינימום ${MIN_HOUSING_UNITS} יחידות דיור קיימות (לפי תיקון חוק 2024)
 - בכל שלב תכנוני (הוכרז, בתכנון, הופקד, אושר, בביצוע)
 - פרויקטים שהוכרזו או קודמו ב-2023-2026
 - עדיפות למתחמים שהוכרזו רשמית ע"י הרשות להתחדשות עירונית
@@ -57,7 +49,6 @@ function buildDiscoveryPrompt(city) {
       "planned_units": 0,
       "developer": "שם היזם או null",
       "status": "הוכרז/בתכנון/הופקד/אושר/בביצוע",
-      "project_type": "פינוי בינוי/תמא 38-2/חלופת שקד",
       "plan_number": "מספר תוכנית אם ידוע",
       "declaration_date": "YYYY-MM-DD או null",
       "source": "מקור המידע",
@@ -221,13 +212,11 @@ async function createDiscoveryAlert(complexId, complex, city) {
         `🆕 מתחם חדש התגלה: ${complex.name} (${city})`,
         `נמצא מתחם חדש: ${complex.existing_units || '?'} יח"ד קיימות, ` +
         `${complex.planned_units || '?'} יח"ד מתוכננות. ` +
-        `סטטוס: ${complex.status}. יזם: ${complex.developer || 'לא ידוע'}. ` +
-        `סוג: ${complex.project_type || 'פינוי בינוי'}.`,
+        `סטטוס: ${complex.status}. יזם: ${complex.developer || 'לא ידוע'}.`,
         JSON.stringify({
           addresses: complex.addresses,
           source: complex.source,
           plan_number: complex.plan_number,
-          project_type: complex.project_type,
           declaration_date: complex.declaration_date
         })
       ]
@@ -241,11 +230,7 @@ async function createDiscoveryAlert(complexId, complex, city) {
  * Run discovery scan for all target cities
  */
 async function discoverAll(options = {}) {
-  const { 
-    region = null, 
-    limit = null,
-    minUnits = MIN_HOUSING_UNITS 
-  } = options;
+  const { region = null, limit = null } = options;
   
   let cities = ALL_TARGET_CITIES;
   
@@ -257,14 +242,13 @@ async function discoverAll(options = {}) {
     cities = cities.slice(0, limit);
   }
 
-  logger.info(`Starting discovery scan for ${cities.length} cities (min ${minUnits} units)`);
+  logger.info(`Starting discovery scan for ${cities.length} cities (min ${MIN_HOUSING_UNITS} units)`);
 
   const results = {
     cities_scanned: 0,
     total_discovered: 0,
     new_added: 0,
     already_existed: 0,
-    skipped_too_small: 0,
     details: []
   };
 
@@ -284,12 +268,10 @@ async function discoverAll(options = {}) {
       const complexes = discovered.discovered_complexes;
       let added = 0;
       let existed = 0;
-      let tooSmall = 0;
 
       for (const complex of complexes) {
         // Skip if below minimum units
-        if (complex.existing_units && complex.existing_units < minUnits) {
-          tooSmall++;
+        if (complex.existing_units && complex.existing_units < MIN_HOUSING_UNITS) {
           continue;
         }
 
@@ -315,13 +297,11 @@ async function discoverAll(options = {}) {
       }
 
       results.already_existed += existed;
-      results.skipped_too_small += tooSmall;
       results.details.push({
         city,
         found: complexes.length,
         added,
         existed,
-        tooSmall,
         error: null
       });
 
@@ -339,8 +319,7 @@ async function discoverAll(options = {}) {
   logger.info('Discovery scan completed', {
     cities: results.cities_scanned,
     discovered: results.total_discovered,
-    new: results.new_added,
-    tooSmall: results.skipped_too_small
+    new: results.new_added
   });
 
   return results;
@@ -363,6 +342,5 @@ module.exports = {
   addNewComplex,
   TARGET_REGIONS,
   ALL_TARGET_CITIES,
-  MIN_UNITS,
   MIN_HOUSING_UNITS
 };
