@@ -121,6 +121,14 @@ try {
   logger.debug('Admin routes not available');
 }
 
+// Enhanced Data Sources routes (Phase 4.5)
+try {
+  app.use('/api/enhanced', require('./routes/enhancedData'));
+  logger.info('Enhanced data routes loaded');
+} catch (e) {
+  logger.debug('Enhanced data routes not available: ' + e.message);
+}
+
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
 app.get('/api/scheduler', (req, res) => res.json(getSchedulerStatus()));
@@ -187,14 +195,36 @@ function getDiscoveryInfo() {
   }
 }
 
+// Get enhanced data services info
+function getEnhancedDataInfo() {
+  const services = {};
+  const serviceNames = ['madlanService', 'urbanRenewalAuthorityService', 'committeeProtocolService', 'developerInfoService'];
+  
+  for (const name of serviceNames) {
+    try {
+      require(`./services/${name}`);
+      services[name.replace('Service', '')] = true;
+    } catch (e) {
+      services[name.replace('Service', '')] = false;
+    }
+  }
+  
+  return {
+    available: Object.values(services).some(v => v),
+    allAvailable: Object.values(services).every(v => v),
+    services
+  };
+}
+
 app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   const discovery = getDiscoveryInfo();
+  const enhanced = getEnhancedDataInfo();
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v9-discovery-fix',
-    version: '4.4.1',
+    build: '2026-02-11-v10-enhanced-data',
+    version: '4.5.0',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -211,17 +241,20 @@ app.get('/debug', (req, res) => {
       ssi_calculator: 'active',
       iai_calculator: 'active',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
-      weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
+      weekly_scanner: scheduler.enabled ? 'active' : 'disabled',
+      enhanced_data: enhanced.allAvailable ? 'active (4 sources)' : enhanced.available ? 'partial' : 'disabled'
     },
     discovery: discovery,
+    enhanced_data_sources: enhanced,
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
-      '5. Discovery scan (NEW complexes) ⭐',
+      '5. Discovery scan (NEW complexes)',
       '6. Alert generation',
-      '7. Email notifications'
+      '7. Email notifications',
+      '8. Enhanced data enrichment (madlan, official, committee, developer) ⭐'
     ]
   });
 });
@@ -247,10 +280,11 @@ app.get('/health', async (req, res) => {
     } catch (e) {}
 
     const discovery = getDiscoveryInfo();
+    const enhanced = getEnhancedDataInfo();
 
     res.json({
       status: 'ok',
-      version: '4.4.1',
+      version: '4.5.0',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -262,6 +296,7 @@ app.get('/health', async (req, res) => {
         perplexity: !!process.env.PERPLEXITY_API_KEY,
         claude: isClaudeConfigured()
       },
+      enhanced_data: enhanced.allAvailable ? 'all_active' : enhanced.available ? 'partial' : 'disabled',
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
   } catch (err) {
@@ -272,8 +307,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.4.1',
-    phase: 'Phase 4.4 - Discovery + Unified AI',
+    version: '4.5.0',
+    phase: 'Phase 4.5 - Enhanced Data Sources',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -283,7 +318,7 @@ app.get('/', (req, res) => {
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
       scanUnified: 'POST /api/scan/unified',
-      scanDiscovery: 'POST /api/scan/discovery ⭐',
+      scanDiscovery: 'POST /api/scan/discovery',
       scanDiscoveryStatus: 'GET /api/scan/discovery/status',
       scanDiscoveryRecent: 'GET /api/scan/discovery/recent',
       scanCommittee: 'POST /api/scan/committee',
@@ -293,7 +328,21 @@ app.get('/', (req, res) => {
       scanBenchmark: 'POST /api/scan/benchmark',
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
-      scheduler: 'GET /api/scheduler'
+      scheduler: 'GET /api/scheduler',
+      // Enhanced Data Sources (Phase 4.5)
+      enhancedStatus: 'GET /api/enhanced/status ⭐',
+      madlanArea: 'GET /api/enhanced/madlan/area/:city',
+      madlanEnrich: 'POST /api/enhanced/madlan/enrich/:complexId',
+      officialList: 'GET /api/enhanced/official/list',
+      officialVerify: 'POST /api/enhanced/official/verify/:complexId',
+      officialSync: 'POST /api/enhanced/official/sync',
+      committeeUpcoming: 'GET /api/enhanced/committee/upcoming',
+      committeeTriggers: 'POST /api/enhanced/committee/triggers/:complexId',
+      developerVerify: 'POST /api/enhanced/developer/verify',
+      developerCheck: 'POST /api/enhanced/developer/check/:complexId',
+      developerRiskReport: 'GET /api/enhanced/developer/risk-report',
+      enrichAll: 'POST /api/enhanced/enrich-all',
+      enrichmentStats: 'GET /api/enhanced/enrichment-stats'
     }
   });
 });
@@ -313,12 +362,14 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.4.1 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.5.0 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) {
       logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
     }
+    const enhanced = getEnhancedDataInfo();
+    logger.info(`Enhanced Data: ${enhanced.allAvailable ? 'all 4 sources active' : enhanced.available ? 'partial' : 'disabled'}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
