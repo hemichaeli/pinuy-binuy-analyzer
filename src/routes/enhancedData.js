@@ -131,7 +131,7 @@ router.post('/madlan/enrich/:complexId', async (req, res) => {
         UPDATE complexes SET
           madlan_avg_price_sqm = $1,
           madlan_price_trend = $2,
-          last_madlan_update = NOW()
+          madlan_last_updated = NOW()
         WHERE id = $3
       `, [
         enriched.madlanData.areaStats.avgPricePerSqm,
@@ -547,175 +547,55 @@ router.post('/enrich-all', async (req, res) => {
 /**
  * GET /api/enhanced/enrichment-stats
  * Get statistics on data enrichment coverage
- * Note: Uses dynamic column detection to handle migration state
  */
 router.get('/enrichment-stats', async (req, res) => {
   try {
-    // First check which columns exist
-    const columnCheck = await pool.query(`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'complexes' 
-      AND column_name IN (
-        'last_madlan_update', 'is_officially_declared', 'official_last_verified',
-        'developer_last_verified', 'committee_last_checked', 'price_trigger_detected',
-        'developer_risk_score', 'madlan_avg_price_sqm', 'official_certainty_score'
-      )
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_complexes,
+        COUNT(*) FILTER (WHERE madlan_last_updated IS NOT NULL) as madlan_enriched,
+        COUNT(*) FILTER (WHERE is_officially_declared = TRUE) as officially_declared,
+        COUNT(*) FILTER (WHERE official_last_verified IS NOT NULL) as official_verified,
+        COUNT(*) FILTER (WHERE developer_last_verified IS NOT NULL) as developer_verified,
+        COUNT(*) FILTER (WHERE committee_last_checked IS NOT NULL) as committee_checked,
+        COUNT(*) FILTER (WHERE price_trigger_detected = TRUE) as with_price_triggers,
+        COUNT(*) FILTER (WHERE developer_risk_score >= 75) as high_risk_developers,
+        AVG(madlan_avg_price_sqm) FILTER (WHERE madlan_avg_price_sqm IS NOT NULL) as avg_price_sqm,
+        AVG(official_certainty_score) FILTER (WHERE official_certainty_score IS NOT NULL) as avg_certainty
+      FROM complexes
     `);
-    
-    const existingColumns = columnCheck.rows.map(r => r.column_name);
-    
-    // Get basic count
-    const basicStats = await pool.query('SELECT COUNT(*) as total_complexes FROM complexes');
-    const total = parseInt(basicStats.rows[0].total_complexes);
-    
-    // Build dynamic stats query based on available columns
-    const stats = {
-      total,
-      coverage: {
-        madlan: { count: 0, percentage: 0 },
-        official: { declared: 0, verified: 0, percentage: 0 },
-        developer: { verified: 0, highRisk: 0, percentage: 0 },
-        committee: { checked: 0, withTriggers: 0, percentage: 0 }
-      },
-      averages: { pricePerSqm: 0, certaintyscore: 0 },
-      migrationStatus: {
-        columnsAvailable: existingColumns.length,
-        columnsExpected: 9,
-        migrationComplete: existingColumns.length >= 9
-      }
-    };
-    
-    // If migration has run, get full stats
-    if (existingColumns.length > 0) {
-      const queries = [];
-      
-      if (existingColumns.includes('last_madlan_update')) {
-        queries.push(pool.query(`SELECT COUNT(*) as c FROM complexes WHERE last_madlan_update IS NOT NULL`));
-      }
-      if (existingColumns.includes('is_officially_declared')) {
-        queries.push(pool.query(`SELECT COUNT(*) as c FROM complexes WHERE is_officially_declared = TRUE`));
-      }
-      if (existingColumns.includes('official_last_verified')) {
-        queries.push(pool.query(`SELECT COUNT(*) as c FROM complexes WHERE official_last_verified IS NOT NULL`));
-      }
-      if (existingColumns.includes('developer_last_verified')) {
-        queries.push(pool.query(`SELECT COUNT(*) as c FROM complexes WHERE developer_last_verified IS NOT NULL`));
-      }
-      if (existingColumns.includes('committee_last_checked')) {
-        queries.push(pool.query(`SELECT COUNT(*) as c FROM complexes WHERE committee_last_checked IS NOT NULL`));
-      }
-      if (existingColumns.includes('price_trigger_detected')) {
-        queries.push(pool.query(`SELECT COUNT(*) as c FROM complexes WHERE price_trigger_detected = TRUE`));
-      }
-      if (existingColumns.includes('developer_risk_score')) {
-        queries.push(pool.query(`SELECT COUNT(*) as c FROM complexes WHERE developer_risk_score >= 75`));
-      }
-      if (existingColumns.includes('madlan_avg_price_sqm')) {
-        queries.push(pool.query(`SELECT AVG(madlan_avg_price_sqm) as avg FROM complexes WHERE madlan_avg_price_sqm IS NOT NULL`));
-      }
-      if (existingColumns.includes('official_certainty_score')) {
-        queries.push(pool.query(`SELECT AVG(official_certainty_score) as avg FROM complexes WHERE official_certainty_score IS NOT NULL`));
-      }
-      
-      const results = await Promise.all(queries);
-      let idx = 0;
-      
-      if (existingColumns.includes('last_madlan_update')) {
-        stats.coverage.madlan.count = parseInt(results[idx++].rows[0].c);
-        stats.coverage.madlan.percentage = Math.round((stats.coverage.madlan.count / total) * 100);
-      }
-      if (existingColumns.includes('is_officially_declared')) {
-        stats.coverage.official.declared = parseInt(results[idx++].rows[0].c);
-      }
-      if (existingColumns.includes('official_last_verified')) {
-        stats.coverage.official.verified = parseInt(results[idx++].rows[0].c);
-        stats.coverage.official.percentage = Math.round((stats.coverage.official.verified / total) * 100);
-      }
-      if (existingColumns.includes('developer_last_verified')) {
-        stats.coverage.developer.verified = parseInt(results[idx++].rows[0].c);
-        stats.coverage.developer.percentage = Math.round((stats.coverage.developer.verified / total) * 100);
-      }
-      if (existingColumns.includes('committee_last_checked')) {
-        stats.coverage.committee.checked = parseInt(results[idx++].rows[0].c);
-        stats.coverage.committee.percentage = Math.round((stats.coverage.committee.checked / total) * 100);
-      }
-      if (existingColumns.includes('price_trigger_detected')) {
-        stats.coverage.committee.withTriggers = parseInt(results[idx++].rows[0].c);
-      }
-      if (existingColumns.includes('developer_risk_score')) {
-        stats.coverage.developer.highRisk = parseInt(results[idx++].rows[0].c);
-      }
-      if (existingColumns.includes('madlan_avg_price_sqm')) {
-        stats.averages.pricePerSqm = Math.round(parseFloat(results[idx++].rows[0].avg) || 0);
-      }
-      if (existingColumns.includes('official_certainty_score')) {
-        stats.averages.certaintyscore = Math.round(parseFloat(results[idx++].rows[0].avg) || 0);
-      }
-    }
 
-    res.json(stats);
-  } catch (err) {
-    logger.error('Enrichment stats error', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/**
- * POST /api/enhanced/run-migration
- * Manually trigger migration 007 if needed
- */
-router.post('/run-migration', async (req, res) => {
-  try {
-    // Run essential column additions
-    const migrations = [
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_avg_price_sqm INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_price_trend DECIMAL(5,2)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_madlan_update TIMESTAMP',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_officially_declared BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_track VARCHAR(50)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_declaration_date DATE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_plan_number VARCHAR(100)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_certainty_score INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_last_verified TIMESTAMP',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS committee_last_checked TIMESTAMP',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_detected BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_decision TEXT',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_date DATE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_impact VARCHAR(50)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_company_number VARCHAR(50)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_status VARCHAR(50)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_score INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_level VARCHAR(50)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_last_verified TIMESTAMP'
-    ];
-    
-    let success = 0;
-    let failed = 0;
-    
-    for (const sql of migrations) {
-      try {
-        await pool.query(sql);
-        success++;
-      } catch (e) {
-        // Column already exists - that's fine
-        if (!e.message.includes('already exists')) {
-          logger.warn('Migration step failed', { sql, error: e.message });
-          failed++;
-        } else {
-          success++;
-        }
-      }
-    }
-    
+    const row = stats.rows[0];
     res.json({
-      message: 'Migration complete',
-      success,
-      failed,
-      total: migrations.length
+      total: parseInt(row.total_complexes),
+      coverage: {
+        madlan: {
+          count: parseInt(row.madlan_enriched),
+          percentage: Math.round((row.madlan_enriched / row.total_complexes) * 100)
+        },
+        official: {
+          declared: parseInt(row.officially_declared),
+          verified: parseInt(row.official_verified),
+          percentage: Math.round((row.official_verified / row.total_complexes) * 100)
+        },
+        developer: {
+          verified: parseInt(row.developer_verified),
+          highRisk: parseInt(row.high_risk_developers),
+          percentage: Math.round((row.developer_verified / row.total_complexes) * 100)
+        },
+        committee: {
+          checked: parseInt(row.committee_checked),
+          withTriggers: parseInt(row.with_price_triggers),
+          percentage: Math.round((row.committee_checked / row.total_complexes) * 100)
+        }
+      },
+      averages: {
+        pricePerSqm: Math.round(parseFloat(row.avg_price_sqm) || 0),
+        certaintyscore: Math.round(parseFloat(row.avg_certainty) || 0)
+      }
     });
   } catch (err) {
-    logger.error('Migration failed', { error: err.message });
+    logger.error('Enrichment stats error', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
