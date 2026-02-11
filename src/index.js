@@ -27,26 +27,36 @@ async function runAutoMigrations() {
     // Ensure created_at has default
     await pool.query(`ALTER TABLE complexes ALTER COLUMN created_at SET DEFAULT NOW()`);
     
-    // Phase 4.5 - Enhanced data source columns
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_avg_price_sqm INTEGER`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_price_trend DECIMAL(5,2)`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_madlan_update TIMESTAMP`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_officially_declared BOOLEAN DEFAULT FALSE`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_track VARCHAR(50)`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_declaration_date DATE`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_plan_number VARCHAR(100)`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_certainty_score INTEGER`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_last_verified TIMESTAMP`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS committee_last_checked TIMESTAMP`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_detected BOOLEAN DEFAULT FALSE`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_decision TEXT`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_date DATE`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_impact VARCHAR(50)`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_company_number VARCHAR(50)`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_status VARCHAR(50)`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_score INTEGER`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_level VARCHAR(50)`);
-    await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_last_verified TIMESTAMP`);
+    // Phase 4.5: Enhanced data source columns
+    const phase45Columns = [
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_avg_price_sqm INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_price_trend DECIMAL(5,2)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_madlan_update TIMESTAMP',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_officially_declared BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_track VARCHAR(50)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_declaration_date DATE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_plan_number VARCHAR(100)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_certainty_score INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS official_last_verified TIMESTAMP',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS committee_last_checked TIMESTAMP',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_detected BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_decision TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_committee_date DATE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trigger_impact VARCHAR(50)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_company_number VARCHAR(50)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_status VARCHAR(50)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_score INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_risk_level VARCHAR(50)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_last_verified TIMESTAMP'
+    ];
+    
+    for (const sql of phase45Columns) {
+      try {
+        await pool.query(sql);
+      } catch (e) {
+        // Ignore - column might already exist
+      }
+    }
     
     logger.info('Auto migrations completed (including Phase 4.5 columns)');
   } catch (e) {
@@ -221,8 +231,9 @@ function getEnhancedDataInfo() {
   const sources = {};
   try { require('./services/madlanService'); sources.madlan = true; } catch (e) { sources.madlan = false; }
   try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewal = true; } catch (e) { sources.urbanRenewal = false; }
-  try { require('./services/committeeProtocolService'); sources.committee = true; } catch (e) { sources.committee = false; }
-  try { require('./services/developerInfoService'); sources.developer = true; } catch (e) { sources.developer = false; }
+  try { require('./services/committeeProtocolService'); sources.committeeProtocol = true; } catch (e) { sources.committeeProtocol = false; }
+  try { require('./services/developerInfoService'); sources.developerInfo = true; } catch (e) { sources.developerInfo = false; }
+  sources.allActive = sources.madlan && sources.urbanRenewal && sources.committeeProtocol && sources.developerInfo;
   return sources;
 }
 
@@ -233,7 +244,7 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v11-phase45-complete',
+    build: '2026-02-11-v11-auto-migration',
     version: '4.5.0',
     node_version: process.version,
     env: {
@@ -251,23 +262,17 @@ app.get('/debug', (req, res) => {
       ssi_calculator: 'active',
       iai_calculator: 'active',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
-      weekly_scanner: scheduler.enabled ? 'active' : 'disabled',
-      enhanced_sources: enhancedSources
+      weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
     discovery: discovery,
-    enhanced_data_sources: {
-      madlan: enhancedSources.madlan ? 'active' : 'not loaded',
-      urban_renewal_authority: enhancedSources.urbanRenewal ? 'active' : 'not loaded',
-      committee_protocols: enhancedSources.committee ? 'active' : 'not loaded',
-      developer_registry: enhancedSources.developer ? 'active' : 'not loaded'
-    },
+    enhanced_data_sources: enhancedSources,
     scan_pipeline: [
       '1. Unified AI scan (Perplexity + Claude)',
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
       '5. Discovery scan (NEW complexes)',
-      '6. Enhanced data enrichment (Phase 4.5) ⭐',
+      '6. Enhanced data enrichment ⭐ NEW',
       '7. Alert generation',
       '8. Email notifications'
     ]
@@ -357,8 +362,7 @@ app.get('/', (req, res) => {
       developerCheck: 'POST /api/enhanced/developer/check/:complexId',
       developerRiskReport: 'GET /api/enhanced/developer/risk-report',
       enrichAll: 'POST /api/enhanced/enrich-all',
-      enrichmentStats: 'GET /api/enhanced/enrichment-stats',
-      runMigration: 'POST /api/enhanced/run-migration'
+      enrichmentStats: 'GET /api/enhanced/enrichment-stats'
     }
   });
 });
@@ -385,7 +389,7 @@ async function start() {
       logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
     }
     const enhanced = getEnhancedDataInfo();
-    logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewal}, Committee=${enhanced.committee}, Developer=${enhanced.developer}`);
+    logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewal}, Committee=${enhanced.committeeProtocol}, Developer=${enhanced.developerInfo}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
