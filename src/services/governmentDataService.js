@@ -6,9 +6,8 @@
  * Data Sources:
  * - רשם המשכונות (Liens Registry) - 8M+ records
  * - רשם הירושות (Inheritance Registry) - 1.2M+ records  
- * - חדלות פירעון (Insolvency) - bankruptcy data
- * - Bank of Israel mortgage rates
- * - News RSS for receivership
+ * - חדלות פירעון (Insolvency Database)
+ * - News RSS for receivership monitoring
  */
 
 const axios = require('axios');
@@ -19,10 +18,10 @@ const INSOLVENCY_BASE = 'https://insolvency.justice.gov.il';
 
 // Resource IDs from data.gov.il
 const RESOURCE_IDS = {
-  mashkonot: 'e7266a9c-fed6-40e4-a28e-8cddc9f44842',     // רשם המשכונות - 8M+ records
-  yerusha: '7691b4a2-fe1d-44ec-9f1b-9f2f0a15381b',       // רשם הירושות - 1.2M+ records
-  boiFixedRate: '8900966f-b1e0-4fcf-942b-0d31cb6a4ca9',  // ריבית קבועה
-  boiCpiLinked: '96ba107d-cc15-41cf-b223-5bb592e14666'   // ריבית צמודה
+  mashkonot: 'e7266a9c-fed6-40e4-a28e-8cddc9f44842',  // רשם המשכונות - 8M+ records
+  yerusha: '7691b4a2-fe1d-44ec-9f1b-9f2f0a15381b',    // רשם הירושות - 1.2M+ records
+  boiFixedRate: '8900966f-b1e0-4fcf-942b-0d31cb6a4ca9', // ריבית קבועה
+  boiCpiLinked: '96ba107d-cc15-41cf-b223-5bb592e14666'  // ריבית צמודה
 };
 
 // News RSS sources for receivership monitoring
@@ -34,11 +33,11 @@ const NEWS_SOURCES = {
 };
 
 /**
- * Generic query to data.gov.il datastore
+ * Query data.gov.il datastore
  */
 async function queryDatastore(resourceId, options = {}) {
   try {
-    const { q, filters, limit = 100, offset = 0 } = options;
+    const { limit = 100, offset = 0, filters = {}, q = null } = options;
     
     const params = {
       resource_id: resourceId,
@@ -46,12 +45,12 @@ async function queryDatastore(resourceId, options = {}) {
       offset
     };
     
-    if (q) {
-      params.q = q;
+    if (Object.keys(filters).length > 0) {
+      params.filters = JSON.stringify(filters);
     }
     
-    if (filters && Object.keys(filters).length > 0) {
-      params.filters = JSON.stringify(filters);
+    if (q) {
+      params.q = q;
     }
     
     const response = await axios.get(`${DATA_GOV_BASE}/datastore_search`, {
@@ -75,223 +74,116 @@ async function queryDatastore(resourceId, options = {}) {
 }
 
 /**
- * Search data.gov.il resource
+ * Search data.gov.il with free text
  */
 async function searchDataGovIL(resourceId, options = {}) {
   return queryDatastore(resourceId, options);
 }
 
 /**
- * Test connectivity to all government data sources
- */
-async function testGovernmentConnectivity() {
-  const results = {};
-  
-  // Test data.gov.il mashkonot
-  try {
-    const mashkonot = await queryDatastore(RESOURCE_IDS.mashkonot, { limit: 1 });
-    results.mashkonot = {
-      status: mashkonot.success ? 'connected' : 'error',
-      totalRecords: mashkonot.total || 0,
-      source: 'data.gov.il - רשם המשכונות'
-    };
-  } catch (e) {
-    results.mashkonot = { status: 'error', error: e.message };
-  }
-  
-  // Test data.gov.il yerusha
-  try {
-    const yerusha = await queryDatastore(RESOURCE_IDS.yerusha, { limit: 1 });
-    results.yerusha = {
-      status: yerusha.success ? 'connected' : 'error',
-      totalRecords: yerusha.total || 0,
-      source: 'data.gov.il - רשם הירושות'
-    };
-  } catch (e) {
-    results.yerusha = { status: 'error', error: e.message };
-  }
-  
-  // Test insolvency (might fail due to SSL)
-  results.insolvency = {
-    status: 'available',
-    note: 'Requires web scraping - SSL handshake issues from server',
-    source: 'insolvency.justice.gov.il'
-  };
-  
-  // Test news RSS
-  let newsWorking = 0;
-  for (const [name, url] of Object.entries(NEWS_SOURCES)) {
-    try {
-      await axios.get(url, { timeout: 5000 });
-      newsWorking++;
-    } catch (e) {}
-  }
-  results.newsRss = {
-    status: newsWorking > 0 ? 'connected' : 'error',
-    sourcesAvailable: newsWorking,
-    totalSources: Object.keys(NEWS_SOURCES).length
-  };
-  
-  return {
-    timestamp: new Date().toISOString(),
-    sources: results,
-    summary: {
-      mashkonot: results.mashkonot.status === 'connected',
-      yerusha: results.yerusha.status === 'connected',
-      insolvency: true, // Available but needs scraping
-      news: newsWorking > 0
-    }
-  };
-}
-
-/**
  * Search liens registry (רשם המשכונות)
- * Note: Dataset doesn't contain names - only registration metadata
  */
 async function searchLiensRegistry(term, options = {}) {
-  const result = await queryDatastore(RESOURCE_IDS.mashkonot, {
-    q: term,
-    limit: options.limit || 50
-  });
+  const { limit = 50 } = options;
   
-  if (result.success) {
+  try {
+    const result = await queryDatastore(RESOURCE_IDS.mashkonot, {
+      q: term,
+      limit
+    });
+    
     return {
-      success: true,
+      success: result.success,
       source: 'data.gov.il - רשם המשכונות',
-      note: 'Dataset contains registration metadata only (dates, status). Personal identifiers not included in public data.',
       searchTerm: term,
-      recordsFound: result.records.length,
-      totalInDatabase: result.total,
-      records: result.records,
-      fields: result.fields?.map(f => f.id) || []
+      totalMatches: result.total || 0,
+      recordsReturned: result.records?.length || 0,
+      records: result.records || [],
+      note: 'Registry contains registration metadata only, not owner names'
     };
+  } catch (error) {
+    return { success: false, error: error.message };
   }
-  return result;
 }
 
 /**
  * Search inheritance registry (רשם הירושות)
- * Note: Dataset contains request metadata, not personal names
  */
 async function searchInheritanceRegistry(term, options = {}) {
-  const result = await queryDatastore(RESOURCE_IDS.yerusha, {
-    q: term,
-    limit: options.limit || 30
-  });
+  const { limit = 30 } = options;
   
-  if (result.success) {
-    // Analyze by district and status
-    const byDistrict = {};
-    const byStatus = {};
-    
-    for (const record of result.records) {
-      const district = (record['מחוז'] || 'לא ידוע').trim();
-      const status = (record['סטטוס בקשה'] || 'לא ידוע').trim();
-      byDistrict[district] = (byDistrict[district] || 0) + 1;
-      byStatus[status] = (byStatus[status] || 0) + 1;
-    }
+  try {
+    const result = await queryDatastore(RESOURCE_IDS.yerusha, {
+      q: term,
+      limit
+    });
     
     return {
-      success: true,
+      success: result.success,
       source: 'data.gov.il - רשם הירושות',
-      note: 'Dataset contains request metadata. Personal names not in public data.',
       searchTerm: term,
-      recordsFound: result.records.length,
-      totalInDatabase: result.total,
-      analysis: { byDistrict, byStatus },
-      records: result.records,
-      fields: result.fields?.map(f => f.id) || []
+      totalMatches: result.total || 0,
+      recordsReturned: result.records?.length || 0,
+      records: result.records || [],
+      note: 'Registry contains request metadata only, not beneficiary names'
     };
+  } catch (error) {
+    return { success: false, error: error.message };
   }
-  return result;
 }
 
 /**
- * Search bankruptcy registry (חדלות פירעון)
- * Note: Public website available but requires scraping
+ * Search bankruptcy/insolvency registry (חדלות פירעון)
+ * Note: The official site has SSL issues, so we use alternative approach
  */
 async function searchBankruptcyRegistry(term, type = 'individual') {
-  // The insolvency.justice.gov.il website requires web scraping
-  // SSL issues prevent direct access from server
-  return {
-    success: true,
-    source: 'insolvency.justice.gov.il',
-    status: 'manual_check_required',
-    note: 'Bankruptcy database available at insolvency.justice.gov.il but requires browser-based access due to SSL configuration.',
-    searchTerm: term,
-    type: type,
-    manualUrl: `${INSOLVENCY_BASE}/poshtim/main/tikim/wfrmlisttikim.aspx`,
-    recommendation: 'Use news RSS monitoring for receivership/bankruptcy announcements'
-  };
+  try {
+    // The insolvency.justice.gov.il has SSL issues
+    // We return information about how to access it
+    return {
+      success: true,
+      source: 'insolvency.justice.gov.il',
+      searchTerm: term,
+      type,
+      note: 'Bankruptcy database requires manual access due to SSL configuration',
+      manualUrl: `${INSOLVENCY_BASE}/poshtim/main/tikim/wfrmlisttikim.aspx`,
+      instructions: [
+        'Navigate to the URL above',
+        'Enter search term in the form',
+        'Results show active insolvency cases'
+      ],
+      alternatives: [
+        'Monitor RSS news feeds for bankruptcy announcements',
+        'Use commercial services like govo.co.il'
+      ]
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 /**
- * Comprehensive government check for an entity
- */
-async function comprehensiveGovernmentCheck(entity) {
-  const { name, idNumber, companyNumber, address, city } = entity;
-  
-  const results = {
-    entity: { name, idNumber, companyNumber, address, city },
-    timestamp: new Date().toISOString(),
-    checks: {}
-  };
-  
-  // Check liens
-  if (name) {
-    results.checks.liens = await searchLiensRegistry(name, { limit: 10 });
-  }
-  
-  // Check inheritance
-  if (name || city) {
-    const searchTerm = city || name;
-    results.checks.inheritance = await searchInheritanceRegistry(searchTerm, { limit: 10 });
-  }
-  
-  // Check bankruptcy
-  if (name) {
-    results.checks.bankruptcy = await searchBankruptcyRegistry(name, companyNumber ? 'company' : 'individual');
-  }
-  
-  // Check news for receivership
-  results.checks.receivership = await monitorReceivershipAnnouncements({ 
-    searchTerm: name,
-    city 
-  });
-  
-  // Calculate distress indicators
-  results.distressIndicators = {
-    hasLiensRecords: results.checks.liens?.recordsFound > 0,
-    hasInheritanceRecords: results.checks.inheritance?.recordsFound > 0,
-    bankruptcyCheckRequired: true,
-    receivershipMentions: results.checks.receivership?.mentions?.length > 0
-  };
-  
-  return results;
-}
-
-/**
- * Monitor receivership announcements from news RSS
+ * Monitor receivership announcements via RSS
  */
 async function monitorReceivershipAnnouncements(options = {}) {
-  const { city, searchTerm, dateFrom, dateTo } = options;
+  const { city, searchTerm } = options;
   
   const keywords = [
     'כינוס נכסים',
     'כונס נכסים',
     'מכירה בהוצאה לפועל',
     'מימוש משכנתא',
-    'דירות מכונס',
-    'הוצאה לפועל',
-    'פשיטת רגל',
-    'חדלות פירעון'
+    'דירות מכונס'
   ];
   
-  const mentions = [];
+  if (city) keywords.push(city);
+  if (searchTerm) keywords.push(searchTerm);
+  
+  const results = [];
   
   for (const [source, url] of Object.entries(NEWS_SOURCES)) {
     try {
-      const response = await axios.get(url, { 
+      const response = await axios.get(url, {
         timeout: 10000,
         headers: { 'User-Agent': 'QUANTUM-Bot/2.0' }
       });
@@ -300,19 +192,12 @@ async function monitorReceivershipAnnouncements(options = {}) {
       
       for (const keyword of keywords) {
         if (content.includes(keyword)) {
-          // Check if city or search term is mentioned
-          const isRelevant = !city || content.includes(city) || 
-                            !searchTerm || content.includes(searchTerm);
-          
-          if (isRelevant) {
-            mentions.push({
-              source,
-              keyword,
-              city: city || null,
-              searchTerm: searchTerm || null,
-              timestamp: new Date().toISOString()
-            });
-          }
+          results.push({
+            source,
+            keyword,
+            found: true,
+            timestamp: new Date().toISOString()
+          });
         }
       }
     } catch (error) {
@@ -322,13 +207,163 @@ async function monitorReceivershipAnnouncements(options = {}) {
   
   return {
     success: true,
-    source: 'News RSS Monitoring',
+    source: 'RSS News Monitoring',
+    filters: { city, searchTerm },
+    keywordsChecked: keywords,
+    matches: results,
     sourcesChecked: Object.keys(NEWS_SOURCES).length,
-    keywords: keywords,
-    filters: { city, searchTerm, dateFrom, dateTo },
-    mentions: mentions,
-    mentionCount: mentions.length,
     timestamp: new Date().toISOString()
+  };
+}
+
+/**
+ * Test connectivity to all government data sources
+ */
+async function testGovernmentConnectivity() {
+  const results = {
+    timestamp: new Date().toISOString(),
+    sources: {}
+  };
+  
+  // Test data.gov.il - Mashkonot
+  try {
+    const mashkonot = await queryDatastore(RESOURCE_IDS.mashkonot, { limit: 1 });
+    results.sources.mashkonot = {
+      name: 'רשם המשכונות',
+      status: mashkonot.success ? 'connected' : 'error',
+      totalRecords: mashkonot.total || 0,
+      error: mashkonot.error
+    };
+  } catch (e) {
+    results.sources.mashkonot = { status: 'error', error: e.message };
+  }
+  
+  // Test data.gov.il - Yerusha
+  try {
+    const yerusha = await queryDatastore(RESOURCE_IDS.yerusha, { limit: 1 });
+    results.sources.yerusha = {
+      name: 'רשם הירושות',
+      status: yerusha.success ? 'connected' : 'error',
+      totalRecords: yerusha.total || 0,
+      error: yerusha.error
+    };
+  } catch (e) {
+    results.sources.yerusha = { status: 'error', error: e.message };
+  }
+  
+  // Test insolvency (will likely fail due to SSL)
+  try {
+    await axios.get(INSOLVENCY_BASE, { timeout: 5000 });
+    results.sources.insolvency = { name: 'חדלות פירעון', status: 'connected' };
+  } catch (e) {
+    results.sources.insolvency = {
+      name: 'חדלות פירעון',
+      status: 'ssl_error',
+      note: 'Requires browser access',
+      manualUrl: `${INSOLVENCY_BASE}/poshtim/main/tikim/wfrmlisttikim.aspx`
+    };
+  }
+  
+  // Test news RSS
+  let rssWorking = 0;
+  for (const [name, url] of Object.entries(NEWS_SOURCES)) {
+    try {
+      await axios.get(url, { timeout: 5000 });
+      rssWorking++;
+    } catch (e) {}
+  }
+  results.sources.newsRss = {
+    name: 'RSS News Feeds',
+    status: rssWorking > 0 ? 'connected' : 'error',
+    workingSources: rssWorking,
+    totalSources: Object.keys(NEWS_SOURCES).length
+  };
+  
+  return results;
+}
+
+/**
+ * Comprehensive government check for an entity
+ */
+async function comprehensiveGovernmentCheck(entity) {
+  const { name, idNumber, companyNumber, address, city } = entity;
+  
+  const results = {
+    entity,
+    timestamp: new Date().toISOString(),
+    checks: {}
+  };
+  
+  // Search liens registry
+  if (name || companyNumber) {
+    const searchTerm = companyNumber || name;
+    results.checks.liens = await searchLiensRegistry(searchTerm, { limit: 20 });
+  }
+  
+  // Search inheritance registry
+  if (name) {
+    results.checks.inheritance = await searchInheritanceRegistry(name, { limit: 20 });
+  }
+  
+  // Search bankruptcy
+  if (name || companyNumber) {
+    results.checks.bankruptcy = await searchBankruptcyRegistry(name || companyNumber);
+  }
+  
+  // Monitor receivership
+  if (city || address) {
+    results.checks.receivership = await monitorReceivershipAnnouncements({
+      city,
+      searchTerm: address
+    });
+  }
+  
+  // Calculate overall risk score
+  let riskScore = 0;
+  let riskFactors = [];
+  
+  if (results.checks.liens?.totalMatches > 0) {
+    riskScore += 15;
+    riskFactors.push('liens_found');
+  }
+  
+  if (results.checks.inheritance?.totalMatches > 0) {
+    riskScore += 10;
+    riskFactors.push('inheritance_cases');
+  }
+  
+  if (results.checks.receivership?.matches?.length > 0) {
+    riskScore += 30;
+    riskFactors.push('receivership_news');
+  }
+  
+  results.riskAssessment = {
+    score: riskScore,
+    level: riskScore >= 30 ? 'high' : riskScore >= 15 ? 'medium' : 'low',
+    factors: riskFactors
+  };
+  
+  return results;
+}
+
+/**
+ * Get data summary from all sources
+ */
+async function getDataSummary() {
+  const connectivity = await testGovernmentConnectivity();
+  
+  return {
+    timestamp: new Date().toISOString(),
+    version: '2.0.0',
+    connectivity: connectivity.sources,
+    availableResources: RESOURCE_IDS,
+    newsSources: Object.keys(NEWS_SOURCES),
+    capabilities: {
+      liensSearch: 'Full-text search on 8M+ liens records',
+      inheritanceSearch: 'Full-text search on 1.2M+ inheritance cases',
+      bankruptcyInfo: 'Manual access info (SSL issues)',
+      receivershipMonitoring: 'Real-time RSS monitoring for כינוס נכסים'
+    }
   };
 }
 
@@ -338,17 +373,20 @@ async function monitorReceivershipAnnouncements(options = {}) {
 async function getAvailableDatasets() {
   try {
     const response = await axios.get(`${DATA_GOV_BASE}/package_search`, {
-      params: { q: 'משפטים', rows: 100 },
+      params: {
+        q: 'משפטים OR נדל"ן OR מקרקעין',
+        rows: 100
+      },
       timeout: 30000
     });
     
     if (response.data.success) {
       return response.data.result.results.map(pkg => ({
-        id: pkg.id,
         name: pkg.name,
         title: pkg.title,
+        organization: pkg.organization?.title,
         resources: pkg.resources?.length || 0,
-        organization: pkg.organization?.title || 'N/A'
+        lastModified: pkg.metadata_modified
       }));
     }
     return [];
@@ -358,25 +396,9 @@ async function getAvailableDatasets() {
   }
 }
 
-/**
- * Get comprehensive data summary
- */
-async function getDataSummary() {
-  const connectivity = await testGovernmentConnectivity();
-  const receivership = await monitorReceivershipAnnouncements({});
-  
-  return {
-    timestamp: new Date().toISOString(),
-    version: '2.0.0',
-    connectivity: connectivity.summary,
-    sources: connectivity.sources,
-    receivershipAlerts: receivership.mentionCount,
-    availableResources: Object.keys(RESOURCE_IDS)
-  };
-}
-
+// Export all functions and constants
 module.exports = {
-  // Constants (exposed for routes)
+  // Constants
   DATA_GOV_BASE,
   INSOLVENCY_BASE,
   RESOURCE_IDS,
@@ -385,18 +407,18 @@ module.exports = {
   // Core functions
   queryDatastore,
   searchDataGovIL,
-  testGovernmentConnectivity,
   
   // Search functions
   searchLiensRegistry,
   searchInheritanceRegistry,
   searchBankruptcyRegistry,
   
-  // Monitoring functions
-  comprehensiveGovernmentCheck,
+  // Monitoring
   monitorReceivershipAnnouncements,
   
   // Utility functions
-  getAvailableDatasets,
-  getDataSummary
+  testGovernmentConnectivity,
+  comprehensiveGovernmentCheck,
+  getDataSummary,
+  getAvailableDatasets
 };
