@@ -26,6 +26,40 @@ const ALL_TARGET_CITIES = Object.values(TARGET_REGIONS).flat();
 const MIN_HOUSING_UNITS = 12;
 
 /**
+ * Generate a URL-friendly slug from Hebrew name and city
+ */
+function generateSlug(name, city) {
+  // Transliteration map for common Hebrew characters
+  const hebrewMap = {
+    'א': 'a', 'ב': 'b', 'ג': 'g', 'ד': 'd', 'ה': 'h', 'ו': 'v', 'ז': 'z',
+    'ח': 'ch', 'ט': 't', 'י': 'y', 'כ': 'k', 'ך': 'k', 'ל': 'l', 'מ': 'm',
+    'ם': 'm', 'נ': 'n', 'ן': 'n', 'ס': 's', 'ע': 'a', 'פ': 'p', 'ף': 'p',
+    'צ': 'tz', 'ץ': 'tz', 'ק': 'k', 'ר': 'r', 'ש': 'sh', 'ת': 't'
+  };
+
+  const transliterate = (text) => {
+    return text.split('').map(char => hebrewMap[char] || char).join('');
+  };
+
+  const cleanName = transliterate(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 50);
+
+  const cleanCity = transliterate(city)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .substring(0, 20);
+
+  // Add timestamp for uniqueness
+  const timestamp = Date.now().toString(36);
+
+  return `${cleanCity}-${cleanName}-${timestamp}`;
+}
+
+/**
  * Build Perplexity prompt for discovering new complexes in a city
  */
 function buildDiscoveryPrompt(city) {
@@ -165,16 +199,18 @@ async function addNewComplex(complex, city, source = 'discovery') {
   };
 
   const status = statusMap[complex.status] || 'declared';
+  const slug = generateSlug(complex.name, city);
 
   try {
     const result = await pool.query(
       `INSERT INTO complexes 
-       (name, city, addresses, existing_units, planned_units, developer, 
+       (name, slug, city, addresses, existing_units, planned_units, developer, 
         status, plan_number, discovery_source, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
        RETURNING id`,
       [
         complex.name,
+        slug,
         city,
         complex.addresses || null,
         complex.existing_units || null,
@@ -186,12 +222,14 @@ async function addNewComplex(complex, city, source = 'discovery') {
       ]
     );
 
+    logger.info(`Added new complex: ${complex.name} (${city}) with slug: ${slug}`);
     return result.rows[0].id;
   } catch (err) {
     if (err.code === '23505') { // Unique violation
       logger.debug(`Complex already exists: ${complex.name} in ${city}`);
       return null;
     }
+    logger.error(`Failed to add complex: ${complex.name}`, { error: err.message });
     throw err;
   }
 }
@@ -340,6 +378,7 @@ module.exports = {
   discoverInCity,
   discoverRegion,
   addNewComplex,
+  generateSlug,
   TARGET_REGIONS,
   ALL_TARGET_CITIES,
   MIN_HOUSING_UNITS
