@@ -246,7 +246,7 @@ try { app.use('/api/news', require('./routes/newsRoutes')); logger.info('News mo
 // Phase 4.5 Extended: Pricing Accuracy routes
 try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('Pricing accuracy routes loaded'); } catch (e) { logger.warn('Pricing routes not available', { error: e.message }); }
 
-// Phase 4.6: Government Data API routes (data.gov.il integration)
+// Phase 4.6: Government Data APIs (data.gov.il)
 try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded (data.gov.il)'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
@@ -317,7 +317,7 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v15-gov-data-api',
+    build: '2026-02-11-v15-gov-data-apis',
     version: '4.6.0',
     node_version: process.version,
     env: {
@@ -342,10 +342,10 @@ app.get('/debug', (req, res) => {
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
     government_data_sources: {
-      mashkonot: 'רשם המשכונות - 8M+ records',
-      yerusha: 'רשם הירושות - 1.2M+ records',
-      boi_mortgage: 'ריביות משכנתאות בנק ישראל',
-      news_receivership: 'חדשות כינוס נכסים (RSS)'
+      mashkonot: 'data.gov.il - רשם המשכונות (8M+ records)',
+      yerusha: 'data.gov.il - רשם הירושות (1.2M+ records)',
+      boi_rates: 'בנק ישראל - ריביות משכנתאות',
+      receivership_news: 'RSS feeds - כינוס נכסים'
     },
     discovery: discovery,
     enhanced_data_sources: enhancedSources,
@@ -408,7 +408,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
     version: '4.6.0',
-    phase: 'Phase 4.6 - Government Data API Integration',
+    phase: 'Phase 4.6 - Government Data APIs',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -457,7 +457,7 @@ app.get('/', (req, res) => {
       pricingBatch: 'POST /api/pricing/batch ⭐',
       pricingTopOpportunities: 'GET /api/pricing/top-opportunities ⭐',
       govStatus: 'GET /api/gov/status 🏛️',
-      govLiensStats: 'GET /api/gov/liens/stats 🏛️',
+      govLiens: 'GET /api/gov/liens/stats 🏛️',
       govInheritanceDistrict: 'GET /api/gov/inheritance/district/:district? 🏛️',
       govInheritanceRecent: 'GET /api/gov/inheritance/recent 🏛️',
       govReceivershipNews: 'GET /api/gov/receivership/news 🏛️',
@@ -489,7 +489,7 @@ async function start() {
     const enhanced = getEnhancedDataInfo();
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
-    logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE (data.gov.il)' : 'disabled'}`);
+    logger.info(`Government Data: ${enhanced.governmentData ? 'active (data.gov.il)' : 'disabled'}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
