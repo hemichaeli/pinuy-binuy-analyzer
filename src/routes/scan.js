@@ -30,6 +30,173 @@ function getClaudeOrchestrator() {
   }
 }
 
+function getDiscoveryService() {
+  try {
+    return require('../services/discoveryService');
+  } catch (e) {
+    logger.warn('Discovery service not available', { error: e.message });
+    return null;
+  }
+}
+
+// POST /api/scan/discovery - Discover NEW complexes in target cities
+router.post('/discovery', async (req, res) => {
+  try {
+    const discovery = getDiscoveryService();
+    if (!discovery) {
+      return res.status(501).json({ error: 'Discovery service not available' });
+    }
+
+    const { region, city, limit } = req.body;
+
+    // Single city discovery
+    if (city) {
+      const scanLog = await pool.query(
+        `INSERT INTO scan_logs (scan_type, status) VALUES ('discovery_city', 'running') RETURNING *`
+      );
+      const scanId = scanLog.rows[0].id;
+
+      res.json({
+        message: `Discovery scan triggered for ${city}`,
+        scan_id: scanId,
+        target_regions: discovery.TARGET_REGIONS,
+        min_units: discovery.MIN_HOUSING_UNITS
+      });
+
+      (async () => {
+        try {
+          const result = await discovery.discoverInCity(city);
+          const newCount = result?.discovered_complexes?.length || 0;
+
+          // Process discovered complexes
+          let added = 0;
+          if (result?.discovered_complexes) {
+            for (const complex of result.discovered_complexes) {
+              if (complex.existing_units && complex.existing_units < discovery.MIN_HOUSING_UNITS) continue;
+              const newId = await discovery.addNewComplex(complex, city, 'discovery-manual');
+              if (newId) added++;
+            }
+          }
+
+          await pool.query(
+            `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+              complexes_scanned = $1, summary = $2 WHERE id = $3`,
+            [newCount, `Discovery ${city}: found ${newCount}, added ${added} new complexes`, scanId]
+          );
+
+          if (added > 0) {
+            await calculateAllIAI();
+            if (notificationService.isConfigured()) {
+              await notificationService.sendPendingAlerts();
+            }
+          }
+        } catch (err) {
+          logger.error(`Discovery failed for ${city}`, { error: err.message });
+          await pool.query(
+            `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+            [err.message, scanId]
+          );
+        }
+      })();
+
+      return;
+    }
+
+    // Region or full discovery
+    const scanLog = await pool.query(
+      `INSERT INTO scan_logs (scan_type, status) VALUES ('discovery_full', 'running') RETURNING *`
+    );
+    const scanId = scanLog.rows[0].id;
+
+    const targetCities = region && discovery.TARGET_REGIONS[region]
+      ? discovery.TARGET_REGIONS[region]
+      : discovery.ALL_TARGET_CITIES;
+
+    res.json({
+      message: region ? `Discovery scan triggered for ${region}` : 'Full discovery scan triggered',
+      scan_id: scanId,
+      cities_to_scan: targetCities.length,
+      region: region || 'all',
+      min_units: discovery.MIN_HOUSING_UNITS
+    });
+
+    (async () => {
+      try {
+        const results = await discovery.discoverAll({
+          region: region || null,
+          limit: limit ? parseInt(limit) : null
+        });
+
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+            complexes_scanned = $1, summary = $2 WHERE id = $3`,
+          [results.cities_scanned,
+            `Discovery: ${results.cities_scanned} cities, found ${results.total_discovered}, added ${results.new_added} new`,
+            scanId]
+        );
+
+        if (results.new_added > 0) {
+          await calculateAllIAI();
+          if (notificationService.isConfigured()) {
+            await notificationService.sendPendingAlerts();
+          }
+        }
+      } catch (err) {
+        logger.error('Discovery scan failed', { error: err.message });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+          [err.message, scanId]
+        );
+      }
+    })();
+  } catch (err) {
+    logger.error('Error triggering discovery', { error: err.message });
+    res.status(500).json({ error: `Failed to trigger discovery: ${err.message}` });
+  }
+});
+
+// GET /api/scan/discovery/status - Get discovery configuration
+router.get('/discovery/status', (req, res) => {
+  try {
+    const discovery = getDiscoveryService();
+    if (!discovery) {
+      return res.json({ available: false, error: 'Discovery service not loaded' });
+    }
+
+    res.json({
+      available: true,
+      min_housing_units: discovery.MIN_HOUSING_UNITS,
+      target_regions: discovery.TARGET_REGIONS,
+      total_target_cities: discovery.ALL_TARGET_CITIES.length,
+      perplexity_configured: !!process.env.PERPLEXITY_API_KEY
+    });
+  } catch (err) {
+    res.json({ available: false, error: err.message });
+  }
+});
+
+// GET /api/scan/discovery/recent - Get recently discovered complexes
+router.get('/discovery/recent', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const result = await pool.query(`
+      SELECT c.*, 
+        (SELECT COUNT(*) FROM alerts a WHERE a.complex_id = c.id AND a.alert_type = 'new_complex') as discovery_alerts
+      FROM complexes c
+      WHERE c.discovery_source IS NOT NULL
+      ORDER BY c.created_at DESC
+      LIMIT $1
+    `, [limit]);
+
+    res.json({
+      discovered_complexes: result.rows,
+      total: result.rows.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch discovered complexes' });
+  }
+});
+
 // POST /api/scan/unified - Unified Perplexity + Claude scan (Phase 4.3)
 router.post('/unified', async (req, res) => {
   try {
@@ -389,14 +556,15 @@ router.get('/committee/summary', async (req, res) => {
 router.post('/weekly', async (req, res) => {
   try {
     const { runWeeklyScan } = require('../jobs/weeklyScanner');
-    const { forceAll } = req.body;
+    const { forceAll, includeDiscovery } = req.body;
     res.json({
       message: 'Weekly scan triggered',
-      forceAll: !!forceAll
+      forceAll: !!forceAll,
+      includeDiscovery: includeDiscovery !== false
     });
     (async () => {
       try {
-        await runWeeklyScan({ forceAll: !!forceAll });
+        await runWeeklyScan({ forceAll: !!forceAll, includeDiscovery: includeDiscovery !== false });
       } catch (err) {
         logger.error('Weekly scan failed', { error: err.message });
       }
