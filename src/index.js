@@ -229,11 +229,11 @@ function getDiscoveryInfo() {
 // Get enhanced data sources info
 function getEnhancedDataInfo() {
   const sources = {};
-  try { require('./services/madlanService'); sources.madlan = true; } catch (e) { sources.madlan = false; }
-  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewal = true; } catch (e) { sources.urbanRenewal = false; }
-  try { require('./services/committeeProtocolService'); sources.committeeProtocol = true; } catch (e) { sources.committeeProtocol = false; }
-  try { require('./services/developerInfoService'); sources.developerInfo = true; } catch (e) { sources.developerInfo = false; }
-  sources.allActive = sources.madlan && sources.urbanRenewal && sources.committeeProtocol && sources.developerInfo;
+  try { require('./services/madlanService'); sources.madlan = 'active'; } catch (e) { sources.madlan = false; }
+  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewalAuthority = 'active'; } catch (e) { sources.urbanRenewalAuthority = false; }
+  try { require('./services/committeeProtocolService'); sources.committeeProtocols = 'active'; } catch (e) { sources.committeeProtocols = false; }
+  try { require('./services/developerInfoService'); sources.developerInfo = 'active'; } catch (e) { sources.developerInfo = false; }
+  sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
   return sources;
 }
 
@@ -244,7 +244,7 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-11-v11-auto-migration',
+    build: '2026-02-11-v12-enhanced-routes-fix',
     version: '4.5.0',
     node_version: process.version,
     env: {
@@ -389,7 +389,7 @@ async function start() {
       logger.info(`Discovery: ${discovery.cities} target cities, min ${discovery.minUnits} units`);
     }
     const enhanced = getEnhancedDataInfo();
-    logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewal}, Committee=${enhanced.committeeProtocol}, Developer=${enhanced.developerInfo}`);
+    logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
