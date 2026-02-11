@@ -92,6 +92,7 @@ app.use('/api/projects', require('./routes/projects'));
 app.use('/api', require('./routes/opportunities'));
 app.use('/api/scan', require('./routes/scan'));
 app.use('/api/alerts', require('./routes/alerts'));
+app.use('/api/admin', require('./routes/admin'));
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
@@ -148,8 +149,8 @@ app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-10-v7-unified-ai',
-    version: '4.3.0',
+    build: '2026-02-11-v8-discovery',
+    version: '4.4.0',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -160,6 +161,7 @@ app.get('/debug', (req, res) => {
     },
     features: {
       unified_ai_scan: isClaudeConfigured() ? 'active (Perplexity + Claude)' : 'partial (Perplexity only)',
+      discovery: 'active (35 target cities)',
       committee_tracking: 'active',
       yad2_direct_api: 'active',
       ssi_calculator: 'active',
@@ -172,8 +174,9 @@ app.get('/debug', (req, res) => {
       '2. Committee approval tracking',
       '3. yad2 direct API + fallback',
       '4. SSI/IAI recalculation',
-      '5. Alert generation',
-      '6. Email notifications'
+      '5. Discovery scan (NEW complexes)',
+      '6. Alert generation',
+      '7. Email notifications'
     ]
   });
 });
@@ -200,7 +203,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.3.0',
+      version: '4.4.0',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -221,8 +224,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.3.0',
-    phase: 'Phase 4.3 - Unified AI (Perplexity + Claude)',
+    version: '4.4.0',
+    phase: 'Phase 4.4 - Discovery + Unified AI',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -231,17 +234,21 @@ app.get('/', (req, res) => {
       opportunities: 'GET /api/opportunities',
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
-      scanUnified: 'POST /api/scan/unified ⭐ NEW',
-      scanUnifiedStatus: 'GET /api/scan/unified/status',
+      scanUnified: 'POST /api/scan/unified',
+      scanDiscovery: 'POST /api/scan/discovery ⭐ NEW',
+      scanDiscoveryStatus: 'GET /api/scan/discovery/status',
+      scanDiscoveryRecent: 'GET /api/scan/discovery/recent',
       scanCommittee: 'POST /api/scan/committee',
-      scanCommitteeSummary: 'GET /api/scan/committee/summary',
       scanYad2: 'POST /api/scan/yad2',
       scanMavat: 'POST /api/scan/mavat',
       scanNadlan: 'POST /api/scan/nadlan',
       scanBenchmark: 'POST /api/scan/benchmark',
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
-      scheduler: 'GET /api/scheduler'
+      scheduler: 'GET /api/scheduler',
+      adminMigrate: 'POST /api/admin/migrate ⭐ NEW',
+      adminDbStructure: 'GET /api/admin/db-structure',
+      adminStats: 'GET /api/admin/stats'
     }
   });
 });
@@ -261,8 +268,9 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.3 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.4 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
+    logger.info(`Discovery: 35 target cities, min ${12} units`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
