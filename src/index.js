@@ -247,7 +247,7 @@ try { app.use('/api/news', require('./routes/newsRoutes')); logger.info('News mo
 try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('Pricing accuracy routes loaded'); } catch (e) { logger.warn('Pricing routes not available', { error: e.message }); }
 
 // Phase 4.5.3: Government Data API routes (data.gov.il integration)
-try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded ⭐'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
+try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
@@ -298,11 +298,9 @@ function getEnhancedDataInfo() {
   try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewalAuthority = 'active'; } catch (e) { sources.urbanRenewalAuthority = false; }
   try { require('./services/committeeProtocolService'); sources.committeeProtocols = 'active'; } catch (e) { sources.committeeProtocols = false; }
   try { require('./services/developerInfoService'); sources.developerInfo = 'active'; } catch (e) { sources.developerInfo = false; }
-  // Phase 4.5 Extended
   try { require('./services/distressedSellerService'); sources.distressedSeller = 'active'; } catch (e) { sources.distressedSeller = false; }
   try { require('./services/newsMonitorService'); sources.newsMonitor = 'active'; } catch (e) { sources.newsMonitor = false; }
   try { require('./services/pricingAccuracyService'); sources.pricingAccuracy = 'active'; } catch (e) { sources.pricingAccuracy = false; }
-  // Phase 4.5.3: Government Data
   try { require('./services/governmentDataService'); sources.governmentData = 'active'; } catch (e) { sources.governmentData = false; }
   sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
   sources.extendedActive = sources.distressedSeller && sources.newsMonitor && sources.pricingAccuracy;
@@ -317,8 +315,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v15-gov-data-api',
-    version: '4.5.3',
+    build: '2026-02-12-v20-gov-data-final',
+    version: '4.6.3',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -333,36 +331,22 @@ app.get('/debug', (req, res) => {
       committee_tracking: 'active',
       yad2_direct_api: 'active',
       ssi_calculator: 'active',
-      ssi_enhanced: enhancedSources.distressedSeller ? 'active ⭐' : 'disabled',
+      ssi_enhanced: enhancedSources.distressedSeller ? 'active' : 'disabled',
       iai_calculator: 'active',
-      news_monitoring: enhancedSources.newsMonitor ? 'active ⭐' : 'disabled',
-      pricing_accuracy: enhancedSources.pricingAccuracy ? 'active ⭐' : 'disabled',
-      government_data: enhancedSources.governmentData ? 'active ⭐⭐' : 'disabled',
+      news_monitoring: enhancedSources.newsMonitor ? 'active' : 'disabled',
+      pricing_accuracy: enhancedSources.pricingAccuracy ? 'active' : 'disabled',
+      government_data: enhancedSources.governmentData ? 'active' : 'disabled',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
     government_data_sources: {
-      liens_registry: 'רשם המשכונות - 8M+ records',
-      inheritance_registry: 'רשם הירושות - 1.2M+ records',
-      boi_mortgage_rates: 'בנק ישראל - ריביות משכנתאות',
-      receivership_news: 'חדשות כינוס נכסים'
+      liens_registry: 'data.gov.il - 8M+ records',
+      inheritance_registry: 'data.gov.il - 1.2M+ records',
+      boi_mortgage_rates: 'Bank of Israel',
+      receivership_news: 'RSS News Monitoring'
     },
     discovery: discovery,
-    enhanced_data_sources: enhancedSources,
-    scan_pipeline: [
-      '1. Unified AI scan (Perplexity + Claude)',
-      '2. Committee approval tracking',
-      '3. yad2 direct API + fallback',
-      '4. SSI/IAI recalculation',
-      '5. Discovery scan (NEW complexes)',
-      '6. Enhanced data enrichment',
-      '7. SSI distressed seller enhancement ⭐',
-      '8. News & regulation monitoring ⭐',
-      '9. Pricing accuracy update ⭐',
-      '10. Government data integration ⭐⭐',
-      '11. Alert generation',
-      '12. Email notifications'
-    ]
+    enhanced_data_sources: enhancedSources
   });
 });
 
@@ -386,7 +370,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.5.3',
+      version: '4.6.3',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -407,13 +391,12 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.5.3',
-    phase: 'Phase 4.5.3 - Government Data API Integration',
+    version: '4.6.3',
+    phase: 'Phase 4.6 - Government Data API Integration',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
       projects: 'GET /api/projects',
-      project: 'GET /api/projects/:id',
       opportunities: 'GET /api/opportunities',
       stressedSellers: 'GET /api/stressed-sellers',
       dashboard: 'GET /api/dashboard',
@@ -424,45 +407,14 @@ app.get('/', (req, res) => {
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
       scheduler: 'GET /api/scheduler',
-      enhancedStatus: 'GET /api/enhanced/status',
-      madlanEnrich: 'POST /api/enhanced/madlan/enrich/:complexId',
-      officialVerify: 'POST /api/enhanced/official/verify/:complexId',
-      developerCheck: 'POST /api/enhanced/developer/check/:complexId',
-      enrichAll: 'POST /api/enhanced/enrich-all',
-      ssiStatus: 'GET /api/ssi/status ⭐',
-      ssiEnhance: 'POST /api/ssi/enhance/:complexId ⭐',
-      ssiReceivership: 'GET /api/ssi/receivership/:city ⭐',
-      ssiCheckOwner: 'POST /api/ssi/check-owner ⭐',
-      ssiCheckProperty: 'POST /api/ssi/check-property ⭐',
-      ssiScanCity: 'POST /api/ssi/scan-city ⭐',
-      ssiHighDistress: 'GET /api/ssi/high-distress ⭐',
-      ssiEnhanceAll: 'POST /api/ssi/enhance-all ⭐',
-      newsStatus: 'GET /api/news/status ⭐',
-      newsRss: 'GET /api/news/rss ⭐',
-      newsComplex: 'GET /api/news/search/complex/:id ⭐',
-      newsDeveloper: 'POST /api/news/search/developer ⭐',
-      newsRegulation: 'GET /api/news/regulation ⭐',
-      newsTama38: 'GET /api/news/tama38 ⭐',
-      newsPinuyBinuyLaw: 'GET /api/news/pinuy-binuy-law ⭐',
-      newsTaxChanges: 'GET /api/news/tax-changes ⭐',
-      newsScan: 'POST /api/news/scan ⭐',
-      newsAlerts: 'GET /api/news/alerts ⭐',
-      pricingStatus: 'GET /api/pricing/status ⭐',
-      pricingCity: 'GET /api/pricing/city/:city ⭐',
-      pricingBenchmark: 'POST /api/pricing/benchmark/:complexId ⭐',
-      pricingSold: 'GET /api/pricing/sold/:city ⭐',
-      pricingIndex: 'GET /api/pricing/index/:city ⭐',
-      pricingMortgage: 'GET /api/pricing/mortgage ⭐',
-      pricingCompare: 'GET /api/pricing/compare/:city ⭐',
-      pricingBatch: 'POST /api/pricing/batch ⭐',
-      pricingTopOpportunities: 'GET /api/pricing/top-opportunities ⭐',
-      govStatus: 'GET /api/gov/status ⭐⭐',
-      govLiensStats: 'GET /api/gov/liens/stats ⭐⭐',
-      govInheritanceDistrict: 'GET /api/gov/inheritance/district/:district ⭐⭐',
-      govInheritanceRecent: 'GET /api/gov/inheritance/recent ⭐⭐',
-      govReceivershipNews: 'GET /api/gov/receivership/news ⭐⭐',
-      govMortgageRates: 'GET /api/gov/mortgage-rates ⭐⭐',
-      govQuery: 'GET /api/gov/query/:resource ⭐⭐'
+      ssiStatus: 'GET /api/ssi/status',
+      newsStatus: 'GET /api/news/status',
+      pricingStatus: 'GET /api/pricing/status',
+      govStatus: 'GET /api/gov/status',
+      govInfo: 'GET /api/gov/info',
+      govLiensStats: 'GET /api/gov/liens/stats',
+      govInheritanceStats: 'GET /api/gov/inheritance/stats',
+      govReceivership: 'GET /api/gov/receivership'
     }
   });
 });
@@ -482,14 +434,14 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.5.3 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.6.3 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
     const enhanced = getEnhancedDataInfo();
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
-    logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE - data.gov.il integrated ⭐⭐' : 'disabled'}`);
+    logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE - data.gov.il integrated' : 'disabled'}`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
