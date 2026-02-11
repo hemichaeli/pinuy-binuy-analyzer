@@ -100,8 +100,8 @@ async function calculateAccurateBenchmark(complex, pool) {
       totalWeight += weights.nadlan_db;
     }
 
-    // Source 2: Yad2 sold prices
-    const yad2Data = await getYad2SoldPrices(complex.city, complex.street);
+    // Source 2: Yad2 sold prices (use addresses field)
+    const yad2Data = await getYad2SoldPrices(complex.city, complex.addresses);
     if (yad2Data.avgPricePerSqm) {
       results.sources.push({ source: 'yad2_sold', pricePerSqm: yad2Data.avgPricePerSqm, sampleSize: yad2Data.sampleSize, weight: weights.yad2_sold });
       weightedSum += yad2Data.avgPricePerSqm * weights.yad2_sold;
@@ -127,7 +127,7 @@ async function calculateAccurateBenchmark(complex, pool) {
       results.confidenceScore = Math.round((totalWeight / (weights.nadlan_db + weights.yad2_sold)) * 100);
 
       // Calculate premium price based on project status
-      const premiumMultipliers = { 'הוכרז': 1.20, 'בתכנון': 1.25, 'מאושר': 1.30, 'בבנייה': 1.40 };
+      const premiumMultipliers = { 'הוכרז': 1.20, 'בתכנון': 1.25, 'מאושר': 1.30, 'בבנייה': 1.40, 'construction': 1.40 };
       const multiplier = premiumMultipliers[complex.status] || 1.25;
       results.estimatedPremiumPrice = Math.round(results.weightedPricePerSqm * multiplier);
     }
@@ -157,9 +157,9 @@ async function compareComplexPrices(city, pool) {
   const cityStats = await getCityPricingStats(city);
   const cityAvg = cityStats.sources.yad2?.avgPricePerSqm || null;
 
-  // Use accurate_price_sqm (new column) with fallback behavior
+  // Use accurate_price_sqm and addresses columns
   const complexes = await pool.query(`
-    SELECT id, name, street, status, accurate_price_sqm, iai_score
+    SELECT id, name, addresses, status, accurate_price_sqm, iai_score
     FROM complexes WHERE city = $1 AND accurate_price_sqm IS NOT NULL
     ORDER BY accurate_price_sqm ASC
   `, [city]);
@@ -168,7 +168,7 @@ async function compareComplexPrices(city, pool) {
     city, cityAvgPricePerSqm: cityAvg,
     complexCount: complexes.rows.length,
     complexes: complexes.rows.map(c => ({
-      id: c.id, name: c.name, street: c.street, status: c.status,
+      id: c.id, name: c.name, addresses: c.addresses, status: c.status,
       pricePerSqm: c.accurate_price_sqm, iaiScore: c.iai_score,
       vsCity: cityAvg ? Math.round(((c.accurate_price_sqm - cityAvg) / cityAvg) * 100) : null
     }))
