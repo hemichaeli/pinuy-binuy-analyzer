@@ -570,28 +570,28 @@ router.get('/enrichment-stats', async (req, res) => {
       total: parseInt(row.total_complexes),
       coverage: {
         madlan: {
-          count: parseInt(row.madlan_enriched),
-          percentage: Math.round((row.madlan_enriched / row.total_complexes) * 100)
+          count: parseInt(row.madlan_enriched || 0),
+          percentage: Math.round(((row.madlan_enriched || 0) / row.total_complexes) * 100)
         },
         official: {
-          declared: parseInt(row.officially_declared),
-          verified: parseInt(row.official_verified),
-          percentage: Math.round((row.official_verified / row.total_complexes) * 100)
+          declared: parseInt(row.officially_declared || 0),
+          verified: parseInt(row.official_verified || 0),
+          percentage: Math.round(((row.official_verified || 0) / row.total_complexes) * 100)
         },
         developer: {
-          verified: parseInt(row.developer_verified),
-          highRisk: parseInt(row.high_risk_developers),
-          percentage: Math.round((row.developer_verified / row.total_complexes) * 100)
+          verified: parseInt(row.developer_verified || 0),
+          highRisk: parseInt(row.high_risk_developers || 0),
+          percentage: Math.round(((row.developer_verified || 0) / row.total_complexes) * 100)
         },
         committee: {
-          checked: parseInt(row.committee_checked),
-          withTriggers: parseInt(row.with_price_triggers),
-          percentage: Math.round((row.committee_checked / row.total_complexes) * 100)
+          checked: parseInt(row.committee_checked || 0),
+          withTriggers: parseInt(row.with_price_triggers || 0),
+          percentage: Math.round(((row.committee_checked || 0) / row.total_complexes) * 100)
         }
       },
       averages: {
         pricePerSqm: Math.round(parseFloat(row.avg_price_sqm) || 0),
-        certaintyscore: Math.round(parseFloat(row.avg_certainty) || 0)
+        certaintyScore: Math.round(parseFloat(row.avg_certainty) || 0)
       }
     });
   } catch (err) {
