@@ -17,11 +17,20 @@ let isRunning = false;
 let lastRunResult = null;
 let scheduledTask = null;
 
-// Lazy load Claude orchestrator
+// Lazy load services
 function getClaudeOrchestrator() {
   try {
     return require('../services/claudeOrchestrator');
   } catch (e) {
+    return null;
+  }
+}
+
+function getDiscoveryService() {
+  try {
+    return require('../services/discoveryService');
+  } catch (e) {
+    logger.debug('Discovery service not available', { error: e.message });
     return null;
   }
 }
@@ -127,6 +136,15 @@ function formatPrice(price) {
 }
 
 /**
+ * Check if today is a discovery day (Sundays - weekly discovery)
+ */
+function isDiscoveryDay() {
+  const today = new Date();
+  // Run discovery on Sundays (day 0)
+  return today.getDay() === 0;
+}
+
+/**
  * Send scan status notification
  */
 async function sendScanStatusNotification(result) {
@@ -166,6 +184,12 @@ async function sendScanStatusNotification(result) {
             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>מודעות חדשות</strong></td>
             <td style="padding: 8px; border: 1px solid #dee2e6;">${result.yad2?.newListings || 0}</td>
           </tr>
+          ${result.discovery ? `
+          <tr style="background: #e8f4fd;">
+            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🆕 מתחמים חדשים התגלו</strong></td>
+            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.discovery?.newAdded || 0}</td>
+          </tr>
+          ` : ''}
           <tr style="background: #f8f9fa;">
             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>התראות נוצרו</strong></td>
             <td style="padding: 8px; border: 1px solid #dee2e6;">${result.alertsGenerated || 0}</td>
@@ -201,7 +225,7 @@ async function sendScanStatusNotification(result) {
  * Run the daily scan with unified AI (Perplexity + Claude)
  */
 async function runWeeklyScan(options = {}) {
-  const { forceAll = false } = options;
+  const { forceAll = false, includeDiscovery = null } = options;
   if (isRunning) {
     logger.warn('Scan already running, skipping');
     return null;
@@ -210,7 +234,11 @@ async function runWeeklyScan(options = {}) {
   isRunning = true;
   const startTime = Date.now();
   const staleOnly = !forceAll;
-  logger.info(`=== Daily scan started (forceAll: ${forceAll}) ===`);
+  
+  // Discovery runs on Sundays or when explicitly requested
+  const runDiscovery = includeDiscovery !== null ? includeDiscovery : isDiscoveryDay();
+  
+  logger.info(`=== Daily scan started (forceAll: ${forceAll}, discovery: ${runDiscovery}) ===`);
 
   try {
     const scanLog = await pool.query(
@@ -224,7 +252,7 @@ async function runWeeklyScan(options = {}) {
     const orchestrator = getClaudeOrchestrator();
     if (orchestrator) {
       try {
-        logger.info('Step 1/7: Running Unified AI scan (Perplexity + Claude)...');
+        logger.info('Step 1/8: Running Unified AI scan (Perplexity + Claude)...');
         unifiedResults = await orchestrator.scanAllUnified({ staleOnly, limit: 129 });
         logger.info(`Unified AI: ${unifiedResults.succeeded}/${unifiedResults.total} ok, ${unifiedResults.changes} changes`);
       } catch (unifiedErr) {
@@ -239,7 +267,7 @@ async function runWeeklyScan(options = {}) {
         };
       }
     } else {
-      logger.info('Step 1/7: Running Perplexity scan (Claude not available)...');
+      logger.info('Step 1/8: Running Perplexity scan (Claude not available)...');
       const results = await scanAll({ staleOnly });
       unifiedResults = { 
         total: results.total, scanned: results.scanned, 
@@ -251,45 +279,72 @@ async function runWeeklyScan(options = {}) {
     // Step 2: Nadlan transactions
     let nadlanResults = { totalNew: 0 };
     try {
-      logger.info('Step 2/7: Running nadlan.gov.il scan...');
+      logger.info('Step 2/8: Running nadlan.gov.il scan...');
       nadlanResults = await nadlanScraper.scanAll({ staleOnly, limit: 50 });
     } catch (e) { logger.warn('Nadlan failed', { error: e.message }); }
 
     // Step 3: Benchmarks
     let benchmarkResults = { calculated: 0 };
     try {
-      logger.info('Step 3/7: Calculating benchmarks...');
+      logger.info('Step 3/8: Calculating benchmarks...');
       benchmarkResults = await calculateAllBenchmarks({ limit: 50 });
     } catch (e) { logger.warn('Benchmark failed', { error: e.message }); }
 
     // Step 4: yad2 listings
     let yad2Results = { totalNew: 0, totalUpdated: 0, totalPriceChanges: 0 };
     try {
-      logger.info('Step 4/7: Running yad2 scan...');
+      logger.info('Step 4/8: Running yad2 scan...');
       yad2Results = await yad2Scraper.scanAll({ staleOnly, limit: 50 });
     } catch (e) { logger.warn('yad2 failed', { error: e.message }); }
 
     // Step 5: SSI calculation
     let ssiResults = { stressed: 0, very_stressed: 0 };
     try {
-      logger.info('Step 5/7: Calculating SSI scores...');
+      logger.info('Step 5/8: Calculating SSI scores...');
       ssiResults = await calculateAllSSI();
     } catch (e) { logger.warn('SSI failed', { error: e.message }); }
 
     // Step 6: IAI recalculation
     try {
-      logger.info('Step 6/7: Recalculating IAI scores...');
+      logger.info('Step 6/8: Recalculating IAI scores...');
       await calculateAllIAI();
     } catch (e) { logger.warn('IAI failed', { error: e.message }); }
 
-    // Step 7: Generate alerts
-    logger.info('Step 7/7: Generating alerts...');
+    // Step 7: Discovery (weekly - Sundays)
+    let discoveryResults = { citiesScanned: 0, newAdded: 0 };
+    if (runDiscovery) {
+      const discoveryService = getDiscoveryService();
+      if (discoveryService) {
+        try {
+          logger.info('Step 7/8: 🔍 Running discovery scan for NEW complexes...');
+          const discovery = await discoveryService.discoverAll({ limit: 10 }); // Limit cities per run
+          discoveryResults = {
+            citiesScanned: discovery.cities_scanned,
+            totalDiscovered: discovery.total_discovered,
+            newAdded: discovery.new_added,
+            alreadyExisted: discovery.already_existed
+          };
+          logger.info(`Discovery: ${discovery.cities_scanned} cities, ${discovery.new_added} NEW complexes added!`);
+        } catch (e) { 
+          logger.warn('Discovery failed', { error: e.message }); 
+        }
+      } else {
+        logger.info('Step 7/8: Discovery service not available, skipping');
+      }
+    } else {
+      logger.info('Step 7/8: Discovery skipped (runs on Sundays)');
+    }
+
+    // Step 8: Generate alerts
+    logger.info('Step 8/8: Generating alerts...');
     const alertCount = await generateAlerts(beforeSnapshot);
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     const summary = `Daily scan: Unified AI ${unifiedResults.succeeded}/${unifiedResults.total} ok, ` +
       `${unifiedResults.changes} changes. Nadlan: ${nadlanResults.totalNew} tx. ` +
-      `yad2: ${yad2Results.totalNew} new. ${alertCount} alerts. ${duration}s`;
+      `yad2: ${yad2Results.totalNew} new. ` +
+      (discoveryResults.newAdded > 0 ? `🆕 Discovery: ${discoveryResults.newAdded} new. ` : '') +
+      `${alertCount} alerts. ${duration}s`;
 
     lastRunResult = {
       scanId, completedAt: new Date().toISOString(), duration: `${duration}s`,
@@ -298,6 +353,7 @@ async function runWeeklyScan(options = {}) {
       benchmarks: { calculated: benchmarkResults.calculated || 0 },
       yad2: { newListings: yad2Results.totalNew || 0, updated: yad2Results.totalUpdated || 0 },
       ssi: ssiResults,
+      discovery: discoveryResults.newAdded > 0 ? discoveryResults : null,
       alertsGenerated: alertCount,
       summary
     };
@@ -311,7 +367,7 @@ async function runWeeklyScan(options = {}) {
       [unifiedResults.scanned || unifiedResults.total,
         nadlanResults.totalNew || 0,
         yad2Results.totalNew || 0,
-        unifiedResults.changes || 0,
+        (unifiedResults.changes || 0) + (discoveryResults.newAdded || 0),
         alertCount, summary, scanId]
     );
 
@@ -360,6 +416,7 @@ function stopScheduler() {
 
 function getSchedulerStatus() {
   const orchestrator = getClaudeOrchestrator();
+  const discoveryService = getDiscoveryService();
   return {
     enabled: !!scheduledTask, 
     cron: DAILY_CRON, 
@@ -369,7 +426,10 @@ function getSchedulerStatus() {
     lastRun: lastRunResult, 
     perplexityConfigured: !!process.env.PERPLEXITY_API_KEY,
     claudeConfigured: orchestrator?.isClaudeConfigured() || false,
-    notificationsConfigured: notificationService.isConfigured()
+    notificationsConfigured: notificationService.isConfigured(),
+    discoveryEnabled: !!discoveryService,
+    discoverySchedule: 'Weekly on Sundays',
+    targetRegions: discoveryService?.TARGET_REGIONS || null
   };
 }
 
