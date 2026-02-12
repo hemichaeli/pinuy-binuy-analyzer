@@ -325,8 +325,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.7.1-kones-debug',
-    version: '4.7.1',
+    build: '2026-02-12-v4.7.2-kones-fix',
+    version: '4.7.2',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -384,7 +384,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.7.1',
+      version: '4.7.2',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -406,7 +406,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.7.1',
+    version: '4.7.2',
     phase: 'Phase 4.7 - KonesIsrael Receivership Integration',
     endpoints: {
       health: 'GET /health',
@@ -449,7 +449,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.7.1 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.7.2 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
