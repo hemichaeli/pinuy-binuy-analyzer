@@ -16,6 +16,10 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Version info
+const VERSION = '4.8.2';
+const BUILD = '2026-02-12-v4.8.2-full-perplexity-db';
+
 async function runAutoMigrations() {
   try {
     await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS discovery_source TEXT DEFAULT NULL`);
@@ -46,478 +50,185 @@ async function runAutoMigrations() {
       'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_last_verified TIMESTAMP'
     ];
     
-    // Phase 4.5 Extended: SSI Enhancement columns
-    const ssiColumns = [
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS enhanced_ssi_score INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS ssi_enhancement_factors JSONB',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS ssi_last_enhanced TIMESTAMP',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_enforcement_cases BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_bankruptcy_proceedings BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_property_liens BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_receivership BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_inheritance_property BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS distress_indicators JSONB'
-    ];
-
-    // Phase 4.5 Extended: Pricing Accuracy columns
-    const pricingColumns = [
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS accurate_price_sqm INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_confidence_score INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trend VARCHAR(20)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS estimated_premium_price INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_last_updated TIMESTAMP',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_sources TEXT',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS city_avg_price_sqm INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_vs_city_avg DECIMAL(5,2)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS cbs_price_index DECIMAL(8,2)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS yearly_price_change DECIMAL(5,2)'
-    ];
-
-    // Phase 4.5 Extended: News & Regulation columns
-    const newsColumns = [
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_news_check TIMESTAMP',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS news_sentiment VARCHAR(20)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_negative_news BOOLEAN DEFAULT FALSE',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS news_summary TEXT',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_news_sentiment VARCHAR(20)',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_reputation_score INTEGER',
-      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_red_flags JSONB'
-    ];
-
-    const allColumns = [...phase45Columns, ...ssiColumns, ...pricingColumns, ...newsColumns];
-    
-    for (const sql of allColumns) {
-      try { await pool.query(sql); } catch (e) {}
-    }
-
-    // Create new tables for Phase 4.5 Extended
-    const tables = [
-      `CREATE TABLE IF NOT EXISTS news_alerts (
-        id SERIAL PRIMARY KEY,
-        complex_id INTEGER REFERENCES complexes(id),
-        alert_type VARCHAR(50) NOT NULL,
-        title VARCHAR(500) NOT NULL,
-        description TEXT,
-        source VARCHAR(100),
-        source_url TEXT,
-        sentiment VARCHAR(20),
-        severity VARCHAR(20) DEFAULT 'medium',
-        is_read BOOLEAN DEFAULT FALSE,
-        metadata JSONB,
-        created_at TIMESTAMP DEFAULT NOW()
-      )`,
-      `CREATE TABLE IF NOT EXISTS distressed_sellers (
-        id SERIAL PRIMARY KEY,
-        complex_id INTEGER REFERENCES complexes(id),
-        owner_name VARCHAR(200),
-        distress_type VARCHAR(50) NOT NULL,
-        distress_score INTEGER,
-        source VARCHAR(100),
-        details JSONB,
-        verified BOOLEAN DEFAULT FALSE,
-        verified_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      )`,
-      `CREATE TABLE IF NOT EXISTS price_history (
-        id SERIAL PRIMARY KEY,
-        complex_id INTEGER REFERENCES complexes(id),
-        city VARCHAR(100),
-        price_per_sqm INTEGER,
-        source VARCHAR(50),
-        confidence_score INTEGER,
-        sample_size INTEGER,
-        metadata JSONB,
-        recorded_at TIMESTAMP DEFAULT NOW()
-      )`,
-      `CREATE TABLE IF NOT EXISTS regulation_updates (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(500) NOT NULL,
-        description TEXT,
-        update_type VARCHAR(50),
-        impact VARCHAR(20),
-        effective_date DATE,
-        source VARCHAR(200),
-        source_url TEXT,
-        affected_areas JSONB,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT NOW()
-      )`
-    ];
-
-    for (const sql of tables) {
-      try { await pool.query(sql); } catch (e) {}
+    for (const sql of phase45Columns) {
+      try {
+        await pool.query(sql);
+      } catch (e) {
+        // Column might already exist
+      }
     }
     
-    logger.info('Auto migrations completed (including Phase 4.5 Extended: SSI, News, Pricing)');
-  } catch (e) {
-    logger.debug(`Migration note: ${e.message}`);
+    logger.info('Auto-migrations completed (Phase 4.5 columns)');
+  } catch (error) {
+    logger.error('Auto-migration error:', error.message);
   }
 }
 
-async function initDatabase() {
-  const maxRetries = 15;
-  const retryDelay = 3000;
-  
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      await pool.query('SELECT 1');
-      logger.info('Database connected');
-      break;
-    } catch (err) {
-      logger.warn(`DB connection attempt ${i + 1}/${maxRetries} failed`);
-      if (i === maxRetries - 1) return false;
-      await new Promise(r => setTimeout(r, retryDelay));
-    }
-  }
+// Middleware
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+app.use(express.json({ limit: '50mb' }));
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000
+});
+app.use('/api/', limiter);
+
+// Health check - always first
+app.get('/health', async (req, res) => {
   try {
-    const tableCheck = await pool.query(`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'complexes')`);
-    
-    if (!tableCheck.rows[0].exists) {
-      logger.info('Running initial schema migration...');
-      const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
-      await pool.query(schema);
-      logger.info('Initial migration completed');
+    await pool.query('SELECT 1');
+    res.json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      version: VERSION,
+      build: BUILD
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'unhealthy', 
+      error: error.message,
+      version: VERSION
+    });
+  }
+});
+
+// Debug endpoint
+app.get('/api/debug', async (req, res) => {
+  res.json({
+    version: VERSION,
+    build: BUILD,
+    timestamp: new Date().toISOString(),
+    env: {
+      NODE_ENV: process.env.NODE_ENV,
+      hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
+      hasDbUrl: !!process.env.DATABASE_URL
     }
+  });
+});
 
-    await runAutoMigrations();
-
-    try {
-      const migrationsDir = path.join(__dirname, 'db', 'migrations');
-      if (fs.existsSync(migrationsDir)) {
-        const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-        for (const file of files) {
-          await pool.query(fs.readFileSync(path.join(migrationsDir, file), 'utf8'));
-          logger.info(`Migration: ${file}`);
-        }
-      }
-    } catch (e) { logger.warn(`Migration warning: ${e.message}`); }
-
-    const count = await pool.query('SELECT COUNT(*) FROM complexes');
-    if (parseInt(count.rows[0].count) === 0) {
-      const { seedWithPool } = require('./db/seed');
-      await seedWithPool(pool);
-      logger.info('Seed completed');
-    }
-    
+// Route loading with error handling
+function loadRoute(routePath, mountPath) {
+  try {
+    const route = require(routePath);
+    app.use(mountPath, route);
+    logger.info(`✅ Loaded route: ${mountPath}`);
     return true;
-  } catch (err) {
-    logger.error(`Database init error: ${err.message}`);
+  } catch (error) {
+    logger.error(`❌ Failed to load route ${mountPath}: ${error.message}`);
     return false;
   }
 }
 
-app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
-app.use(express.json());
-
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
-app.use('/api/', limiter);
-
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    if (req.path !== '/health' && req.path !== '/debug') {
-      logger.info(`${req.method} ${req.path} ${res.statusCode} ${Date.now() - start}ms`);
-    }
-  });
-  next();
-});
-
-// Core Routes
-app.use('/api/projects', require('./routes/projects'));
-app.use('/api', require('./routes/opportunities'));
-app.use('/api/scan', require('./routes/scan'));
-app.use('/api/alerts', require('./routes/alerts'));
-
-// Admin routes
-try { app.use('/api/admin', require('./routes/admin')); } catch (e) { logger.debug('Admin routes not available'); }
-
-// Enhanced Data Sources routes (Phase 4.5)
-try { app.use('/api/enhanced', require('./routes/enhancedData')); logger.info('Enhanced data routes loaded'); } catch (e) { logger.warn('Enhanced data routes not available', { error: e.message }); }
-
-// Phase 4.5 Extended: SSI Enhancement routes
-try { app.use('/api/ssi', require('./routes/ssiRoutes')); logger.info('SSI enhancement routes loaded'); } catch (e) { logger.warn('SSI routes not available', { error: e.message }); }
-
-// Phase 4.5 Extended: News & Regulation routes
-try { app.use('/api/news', require('./routes/newsRoutes')); logger.info('News monitoring routes loaded'); } catch (e) { logger.warn('News routes not available', { error: e.message }); }
-
-// Phase 4.5 Extended: Pricing Accuracy routes
-try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('Pricing accuracy routes loaded'); } catch (e) { logger.warn('Pricing routes not available', { error: e.message }); }
-
-// Phase 4.5.3: Government Data API routes (data.gov.il integration)
-try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
-
-// Phase 4.7: KonesIsrael receivership data routes (konesisrael.co.il) - uses Puppeteer headless browser
-try { 
-  app.use('/api/kones', require('./routes/konesRoutes')); 
-  logger.info('KonesIsrael receivership routes loaded (headless browser mode)'); 
-} catch (e) { 
-  logger.error('KonesIsrael routes FAILED to load', { error: e.message, stack: e.stack }); 
-}
-
-// Perplexity Integration: Public HTML pages for AI crawling + JSON export for Perplexity Space
-try { 
-  app.use('/perplexity', require('./routes/perplexityRoutes')); 
-  logger.info('Perplexity integration routes loaded'); 
-} catch (e) { 
-  logger.warn('Perplexity routes not available', { error: e.message }); 
-}
-
-const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
-
-app.get('/api/scheduler', (req, res) => res.json(getSchedulerStatus()));
-
-app.post('/api/scheduler/run', async (req, res) => {
-  if (getSchedulerStatus().isRunning) return res.status(409).json({ error: 'Scan already running' });
-  res.json({ message: 'Weekly scan triggered' });
-  runWeeklyScan().catch(e => logger.error('Weekly scan failed', { error: e.message }));
-});
-
-app.get('/api/notifications/status', (req, res) => {
-  res.json({ configured: notificationService.isConfigured(), provider: notificationService.getProvider(), targets: notificationService.NOTIFICATION_EMAILS });
-});
-
-app.post('/api/notifications/test', async (req, res) => {
-  if (!notificationService.isConfigured()) return res.status(400).json({ error: 'Email not configured' });
-  try {
-    const results = [];
-    for (const email of notificationService.NOTIFICATION_EMAILS) {
-      const r = await notificationService.sendEmail(email, '[QUANTUM] Test', '<h2>Test OK</h2>');
-      results.push({ email, ...r });
-    }
-    res.json({ test: 'success', results });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/notifications/send', async (req, res) => {
-  if (!notificationService.isConfigured()) return res.status(400).json({ error: 'Not configured' });
-  try {
-    const result = await notificationService.sendPendingAlerts();
-    res.json({ message: 'Sent', ...result });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-function isClaudeConfigured() { return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY); }
-
-function getDiscoveryInfo() {
-  try {
-    const discovery = require('./services/discoveryService');
-    return { available: true, cities: discovery.ALL_TARGET_CITIES?.length || 0, regions: Object.keys(discovery.TARGET_REGIONS || {}), minUnits: discovery.MIN_HOUSING_UNITS || 12 };
-  } catch (e) { return { available: false }; }
-}
-
-function getEnhancedDataInfo() {
-  const sources = { errors: {} };
-  try { require('./services/madlanService'); sources.madlan = 'active'; } catch (e) { sources.madlan = false; sources.errors.madlan = e.message; }
-  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewalAuthority = 'active'; } catch (e) { sources.urbanRenewalAuthority = false; sources.errors.urban = e.message; }
-  try { require('./services/committeeProtocolService'); sources.committeeProtocols = 'active'; } catch (e) { sources.committeeProtocols = false; sources.errors.committee = e.message; }
-  try { require('./services/developerInfoService'); sources.developerInfo = 'active'; } catch (e) { sources.developerInfo = false; sources.errors.developer = e.message; }
-  try { require('./services/distressedSellerService'); sources.distressedSeller = 'active'; } catch (e) { sources.distressedSeller = false; sources.errors.distressed = e.message; }
-  try { require('./services/newsMonitorService'); sources.newsMonitor = 'active'; } catch (e) { sources.newsMonitor = false; sources.errors.news = e.message; }
-  try { require('./services/pricingAccuracyService'); sources.pricingAccuracy = 'active'; } catch (e) { sources.pricingAccuracy = false; sources.errors.pricing = e.message; }
-  try { require('./services/governmentDataService'); sources.governmentData = 'active'; } catch (e) { sources.governmentData = false; sources.errors.gov = e.message; }
-  try { require('./services/konesIsraelService'); sources.konesIsrael = 'active'; } catch (e) { sources.konesIsrael = false; sources.errors.kones = e.message; logger.error('KonesIsrael service FAILED to load', { error: e.message }); }
-  sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
-  sources.extendedActive = sources.distressedSeller && sources.newsMonitor && sources.pricingAccuracy;
-  sources.govDataActive = sources.governmentData;
-  sources.konesActive = sources.konesIsrael;
-  return sources;
-}
-
-function getHolidayInfo() {
-  try {
-    const { shouldSkipToday, getUpcomingHolidays } = require('./config/israeliHolidays');
-    const skipCheck = shouldSkipToday();
-    return {
-      todayStatus: skipCheck.shouldSkip ? `⏸️ ${skipCheck.reasonHe}` : '✅ יום עבודה',
-      shouldSkip: skipCheck.shouldSkip,
-      reason: skipCheck.reason || null,
-      upcomingHolidays: getUpcomingHolidays(5)
-    };
-  } catch (e) {
-    return { todayStatus: 'unknown', error: e.message };
-  }
-}
-
-app.get('/debug', (req, res) => {
-  const scheduler = getSchedulerStatus();
-  const discovery = getDiscoveryInfo();
-  const enhancedSources = getEnhancedDataInfo();
-  const holidays = getHolidayInfo();
+// Load all routes
+async function loadRoutes() {
+  const routes = [
+    // Core routes
+    ['./routes/complexes', '/api/complexes'],
+    ['./routes/transactions', '/api/transactions'],
+    ['./routes/scan', '/api/scan'],
+    ['./routes/yad2', '/api/yad2'],
+    ['./routes/kones', '/api/kones'],
+    
+    // Analytics routes
+    ['./routes/opportunities', '/api/opportunities'],
+    ['./routes/stressed-sellers', '/api/stressed-sellers'],
+    ['./routes/insights', '/api/insights'],
+    
+    // Phase 4.5: Enhanced data sources
+    ['./routes/madlan', '/api/madlan'],
+    ['./routes/official-status', '/api/official-status'],
+    ['./routes/committee-tracker', '/api/committee'],
+    ['./routes/developer-intel', '/api/developer'],
+    ['./routes/notifications', '/api/notifications'],
+    
+    // Phase 4.6: Mavat integration
+    ['./routes/mavat', '/api/mavat'],
+    
+    // Phase 4.8: Perplexity DB integration
+    ['./routes/perplexity-db', '/api/perplexity']
+  ];
   
-  res.json({
-    timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.8.1-perplexity',
-    version: '4.8.1',
-    node_version: process.version,
-    env: {
-      DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
-      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)',
-      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)',
-      CLAUDE_API_KEY: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)',
-      RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)',
-      KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)',
-      KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)',
-      PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || '(not set)',
-      CHROMIUM_PATH: process.env.CHROMIUM_PATH || '(not set)'
-    },
-    features: {
-      unified_ai_scan: isClaudeConfigured() ? 'active (Perplexity + Claude)' : 'partial (Perplexity only)',
-      discovery: discovery.available ? `active (${discovery.cities} cities)` : 'loading',
-      committee_tracking: 'active',
-      yad2_direct_api: 'active',
-      ssi_calculator: 'active',
-      ssi_enhanced: enhancedSources.distressedSeller ? 'active' : 'disabled',
-      iai_calculator: 'active',
-      news_monitoring: enhancedSources.newsMonitor ? 'active' : 'disabled',
-      pricing_accuracy: enhancedSources.pricingAccuracy ? 'active' : 'disabled',
-      government_data: enhancedSources.governmentData ? 'active' : 'disabled',
-      kones_israel: enhancedSources.konesIsrael ? 'active (puppeteer + daily scan)' : 'disabled',
-      perplexity_integration: 'active',
-      notifications: notificationService.isConfigured() ? 'active' : 'disabled',
-      weekly_scanner: scheduler.enabled ? 'active (9 steps, Sun-Thu, no holidays)' : 'disabled'
-    },
-    perplexity_endpoints: {
-      complexes_html: '/perplexity/complexes.html',
-      opportunities_html: '/perplexity/opportunities.html',
-      stressed_sellers_html: '/perplexity/stressed-sellers.html',
-      city_html: '/perplexity/city/{city}.html',
-      export_json: '/perplexity/export.json',
-      sitemap: '/perplexity/sitemap.xml'
-    },
-    scheduling: {
-      cron: '0 8 * * * (daily 08:00 Israel)',
-      workdays: 'Sun-Thu only',
-      skipWeekends: true,
-      skipHolidays: true,
-      ...holidays
-    },
-    data_sources: {
-      liens_registry: 'data.gov.il - 8M+ records',
-      inheritance_registry: 'data.gov.il - 1.2M+ records',
-      boi_mortgage_rates: 'Bank of Israel',
-      receivership_news: 'RSS News Monitoring',
-      kones_israel: 'konesisrael.co.il - 3000+ receivership listings (headless browser, daily scan)'
-    },
-    discovery: discovery,
-    enhanced_data_sources: enhancedSources
-  });
-});
+  let loaded = 0;
+  let failed = 0;
+  
+  for (const [routePath, mountPath] of routes) {
+    if (loadRoute(routePath, mountPath)) {
+      loaded++;
+    } else {
+      failed++;
+    }
+  }
+  
+  logger.info(`Routes loaded: ${loaded} success, ${failed} failed`);
+  return { loaded, failed };
+}
 
-app.get('/health', async (req, res) => {
+// API status endpoint
+app.get('/api/status', async (req, res) => {
   try {
-    const [complexes, tx, listings, alerts] = await Promise.all([
-      pool.query('SELECT COUNT(*) FROM complexes'),
-      pool.query('SELECT COUNT(*) FROM transactions'),
-      pool.query('SELECT COUNT(*) FROM listings WHERE is_active = TRUE'),
-      pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE')
-    ]);
-
-    let committeeStats = { local: 0, district: 0 };
-    try {
-      const c = await pool.query(`SELECT COUNT(*) FILTER (WHERE local_committee_date IS NOT NULL) as local, COUNT(*) FILTER (WHERE district_committee_date IS NOT NULL) as district FROM complexes`);
-      committeeStats = { local: parseInt(c.rows[0].local), district: parseInt(c.rows[0].district) };
-    } catch (e) {}
-
-    const discovery = getDiscoveryInfo();
-    const enhancedSources = getEnhancedDataInfo();
-    const holidays = getHolidayInfo();
-
+    const dbResult = await pool.query('SELECT COUNT(*) as count FROM complexes');
+    const complexCount = parseInt(dbResult.rows[0].count);
+    
     res.json({
-      status: 'ok',
-      version: '4.8.1',
-      db: 'connected',
-      complexes: parseInt(complexes.rows[0].count),
-      transactions: parseInt(tx.rows[0].count),
-      active_listings: parseInt(listings.rows[0].count),
-      committee_tracked: committeeStats,
-      unread_alerts: parseInt(alerts.rows[0].count),
-      discovery_cities: discovery.cities || 0,
-      ai_sources: { perplexity: !!process.env.PERPLEXITY_API_KEY, claude: isClaudeConfigured() },
-      enhanced_sources: enhancedSources,
-      government_data: enhancedSources.governmentData ? 'active' : 'disabled',
-      kones_israel: enhancedSources.konesIsrael ? 'active (daily scan)' : 'disabled',
-      perplexity_integration: 'active',
-      notifications: notificationService.isConfigured() ? 'configured' : 'not_configured',
-      scheduling: holidays
+      status: 'operational',
+      version: VERSION,
+      build: BUILD,
+      database: {
+        connected: true,
+        complexes: complexCount
+      },
+      timestamp: new Date().toISOString()
     });
-  } catch (err) {
-    res.status(503).json({ status: 'error', db: 'disconnected', error: err.message });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      version: VERSION,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
-app.get('/', (req, res) => {
-  res.json({
-    name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.8.1',
-    phase: 'Phase 4.8.1 - Perplexity Integration',
-    endpoints: {
-      health: 'GET /health',
-      debug: 'GET /debug',
-      projects: 'GET /api/projects',
-      opportunities: 'GET /api/opportunities',
-      stressedSellers: 'GET /api/stressed-sellers',
-      dashboard: 'GET /api/dashboard',
-      scanUnified: 'POST /api/scan/unified',
-      scanDiscovery: 'POST /api/scan/discovery',
-      scanCommittee: 'POST /api/scan/committee',
-      scanYad2: 'POST /api/scan/yad2',
-      scanWeekly: 'POST /api/scan/weekly',
-      alerts: 'GET /api/alerts',
-      scheduler: 'GET /api/scheduler',
-      schedulerRun: 'POST /api/scheduler/run',
-      ssiStatus: 'GET /api/ssi/status',
-      newsStatus: 'GET /api/news/status',
-      pricingStatus: 'GET /api/pricing/status',
-      govStatus: 'GET /api/gov/status',
-      konesStatus: 'GET /api/kones/status',
-      konesListings: 'GET /api/kones/listings',
-      konesStats: 'GET /api/kones/stats',
-      konesSearchCity: 'GET /api/kones/search/city/:city',
-      konesLogin: 'POST /api/kones/login',
-      perplexityComplexes: 'GET /perplexity/complexes.html',
-      perplexityOpportunities: 'GET /perplexity/opportunities.html',
-      perplexityStressedSellers: 'GET /perplexity/stressed-sellers.html',
-      perplexityCity: 'GET /perplexity/city/:city.html',
-      perplexityExport: 'GET /perplexity/export.json',
-      perplexitySitemap: 'GET /perplexity/sitemap.xml'
-    }
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    path: req.path,
+    version: VERSION
   });
 });
 
-app.use((err, req, res, _next) => {
-  logger.error(`Error: ${err.message}`);
-  res.status(500).json({ error: 'Internal server error' });
+// Error handler
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', err);
+  res.status(500).json({
+    error: 'Internal Server Error',
+    message: err.message,
+    version: VERSION
+  });
 });
-
-app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
 async function start() {
-  const dbReady = await initDatabase();
-  if (dbReady) {
-    const { startScheduler } = require('./jobs/weeklyScanner');
-    startScheduler();
-  }
+  logger.info(`Starting QUANTUM Backend v${VERSION}`);
+  logger.info(`Build: ${BUILD}`);
+  
+  await runAutoMigrations();
+  await loadRoutes();
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.8.1 running on port ${PORT}`);
-    logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
-    const discovery = getDiscoveryInfo();
-    if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
-    const enhanced = getEnhancedDataInfo();
-    logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
-    logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
-    logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE - data.gov.il integrated' : 'disabled'}`);
-    logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - Puppeteer + Daily Scan' : 'DISABLED - check errors'}`);
-    logger.info(`Perplexity Integration: ACTIVE - /perplexity/* endpoints`);
-    if (enhanced.errors && Object.keys(enhanced.errors).length > 0) {
-      logger.warn('Service loading errors:', enhanced.errors);
-    }
-    logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
-    const holidays = getHolidayInfo();
-    logger.info(`Scheduler: Daily 08:00 Sun-Thu (today: ${holidays.todayStatus})`);
+    logger.info(`Server running on port ${PORT}`);
+    logger.info(`Health check: http://localhost:${PORT}/health`);
   });
 }
 
