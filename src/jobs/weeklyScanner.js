@@ -9,12 +9,14 @@ const yad2Scraper = require('../services/yad2Scraper');
 const mavatScraper = require('../services/mavatScraper');
 const notificationService = require('../services/notificationService');
 const { logger } = require('../services/logger');
+const { shouldSkipToday, getUpcomingHolidays } = require('../config/israeliHolidays');
 
 // Daily scan at 8:00 AM Israel time
 const DAILY_CRON = process.env.SCAN_CRON || '0 8 * * *';
 
 let isRunning = false;
 let lastRunResult = null;
+let lastSkipResult = null;
 let scheduledTask = null;
 
 // Lazy load services
@@ -41,6 +43,69 @@ function getKonesIsraelService() {
   } catch (e) {
     logger.debug('KonesIsrael service not available', { error: e.message });
     return null;
+  }
+}
+
+/**
+ * Send notification that today's scan was skipped
+ */
+async function sendSkipNotification(skipInfo) {
+  if (!notificationService.isConfigured()) {
+    logger.info('Skip notification not sent - no email provider configured');
+    return;
+  }
+
+  const now = new Date();
+  const israelTime = now.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
+  
+  const subject = `⏸️ [QUANTUM] סריקה יומית דולגה - ${skipInfo.reasonHe}`;
+  
+  const html = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #f59e0b;">⏸️ הסריקה היומית דולגה</h2>
+      
+      <div style="background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="margin: 0 0 8px; font-size: 16px;"><strong>סיבה:</strong> ${skipInfo.reasonHe}</p>
+        <p style="margin: 0; color: #92400e;"><strong>זמן:</strong> ${israelTime}</p>
+      </div>
+      
+      <h3 style="color: #374151;">📅 חגים קרובים</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="background: #f3f4f6;">
+            <th style="padding: 6px 8px; text-align: right; border: 1px solid #e5e7eb;">תאריך</th>
+            <th style="padding: 6px 8px; text-align: right; border: 1px solid #e5e7eb;">חג</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${getUpcomingHolidays(7).map(h => `
+            <tr>
+              <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${h.date}</td>
+              <td style="padding: 6px 8px; border: 1px solid #e5e7eb;">${h.name} (${h.nameEn})</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      
+      <p style="margin: 16px 0 0; color: #6b7280; font-size: 12px;">
+        הסריקה הבאה תרוץ ביום עבודה הקרוב (ראשון-חמישי, לא חג) בשעה 08:00.<br>
+        ניתן להריץ סריקה ידנית: <code>POST /api/scheduler/run</code>
+      </p>
+      
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+      <p style="font-size: 11px; color: #9ca3af; text-align: center;">
+        QUANTUM v4.8.0 - Pinuy Binuy Investment Analyzer
+      </p>
+    </div>
+  `;
+
+  try {
+    for (const email of notificationService.NOTIFICATION_EMAILS) {
+      await notificationService.sendEmail(email, subject, html);
+    }
+    logger.info(`Skip notification sent: ${skipInfo.reason}`);
+  } catch (err) {
+    logger.warn('Failed to send skip notification', { error: err.message });
   }
 }
 
@@ -216,8 +281,8 @@ async function sendScanStatusNotification(result) {
       
       <hr style="margin: 20px 0;">
       <p style="color: #6c757d; font-size: 12px;">
-        QUANTUM - Pinuy Binuy Investment Analyzer v4.7.5<br>
-        סריקה אוטומטית יומית ב-08:00
+        QUANTUM - Pinuy Binuy Investment Analyzer v4.8.0<br>
+        סריקה אוטומטית יומית ב-08:00 (ראשון-חמישי, לא בחגים)
       </p>
     </div>
   `;
@@ -235,7 +300,7 @@ async function sendScanStatusNotification(result) {
 /**
  * Run the daily scan with unified AI (Perplexity + Claude)
  * NOW SCANS ALL TARGET CITIES DAILY FOR DISCOVERY
- * v4.7.5: Includes KonesIsrael receivership data
+ * v4.8.0: Includes KonesIsrael + Weekend/Holiday skip
  */
 async function runWeeklyScan(options = {}) {
   const { forceAll = false, includeDiscovery = true } = options;
@@ -580,10 +645,26 @@ function startScheduler() {
     return;
   }
   scheduledTask = cron.schedule(DAILY_CRON, async () => {
+    // Check if today should be skipped (weekend or holiday)
+    const skipCheck = shouldSkipToday();
+    
+    if (skipCheck.shouldSkip) {
+      logger.info(`⏸️ Daily scan SKIPPED: ${skipCheck.reason}`);
+      lastSkipResult = {
+        skippedAt: new Date().toISOString(),
+        reason: skipCheck.reason,
+        reasonHe: skipCheck.reasonHe
+      };
+      
+      // Send skip notification
+      await sendSkipNotification(skipCheck);
+      return;
+    }
+    
     logger.info(`Daily scan triggered: ${DAILY_CRON}`);
     await runWeeklyScan();
   }, { timezone: 'Asia/Jerusalem' });
-  logger.info(`Daily scanner scheduled: ${DAILY_CRON} (08:00 Israel time)`);
+  logger.info(`Daily scanner scheduled: ${DAILY_CRON} (08:00 Israel time, Sun-Thu, no holidays)`);
 }
 
 function stopScheduler() {
@@ -594,14 +675,23 @@ function getSchedulerStatus() {
   const orchestrator = getClaudeOrchestrator();
   const discoveryService = getDiscoveryService();
   const konesService = getKonesIsraelService();
+  const todaySkipCheck = shouldSkipToday();
+  const upcoming = getUpcomingHolidays(5);
   
   return {
     enabled: !!scheduledTask, 
     cron: DAILY_CRON, 
-    schedule: 'Daily at 08:00 Israel time',
+    schedule: 'Daily at 08:00 Israel time (Sun-Thu, no holidays)',
     timezone: 'Asia/Jerusalem',
+    skipWeekends: true,
+    skipHolidays: true,
+    todayStatus: todaySkipCheck.shouldSkip 
+      ? `⏸️ SKIP: ${todaySkipCheck.reasonHe}` 
+      : '✅ Active - will run',
+    upcomingHolidays: upcoming,
     isRunning, 
-    lastRun: lastRunResult, 
+    lastRun: lastRunResult,
+    lastSkip: lastSkipResult,
     perplexityConfigured: !!process.env.PERPLEXITY_API_KEY,
     claudeConfigured: orchestrator?.isClaudeConfigured() || false,
     notificationsConfigured: notificationService.isConfigured(),
