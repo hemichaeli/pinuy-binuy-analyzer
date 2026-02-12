@@ -325,8 +325,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.7.4-chromium-fix',
-    version: '4.7.4',
+    build: '2026-02-12-v4.7.5-kones-scan',
+    version: '4.7.5',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -350,16 +350,16 @@ app.get('/debug', (req, res) => {
       news_monitoring: enhancedSources.newsMonitor ? 'active' : 'disabled',
       pricing_accuracy: enhancedSources.pricingAccuracy ? 'active' : 'disabled',
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
-      kones_israel: enhancedSources.konesIsrael ? 'active (puppeteer)' : 'disabled',
+      kones_israel: enhancedSources.konesIsrael ? 'active (puppeteer + daily scan)' : 'disabled',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
-      weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
+      weekly_scanner: scheduler.enabled ? 'active (9 steps)' : 'disabled'
     },
     data_sources: {
       liens_registry: 'data.gov.il - 8M+ records',
       inheritance_registry: 'data.gov.il - 1.2M+ records',
       boi_mortgage_rates: 'Bank of Israel',
       receivership_news: 'RSS News Monitoring',
-      kones_israel: 'konesisrael.co.il - 3000+ receivership listings (headless browser)'
+      kones_israel: 'konesisrael.co.il - 3000+ receivership listings (headless browser, daily scan)'
     },
     discovery: discovery,
     enhanced_data_sources: enhancedSources
@@ -386,7 +386,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.7.4',
+      version: '4.7.5',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -397,7 +397,7 @@ app.get('/health', async (req, res) => {
       ai_sources: { perplexity: !!process.env.PERPLEXITY_API_KEY, claude: isClaudeConfigured() },
       enhanced_sources: enhancedSources,
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
-      kones_israel: enhancedSources.konesIsrael ? 'active' : 'disabled',
+      kones_israel: enhancedSources.konesIsrael ? 'active (daily scan)' : 'disabled',
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
     });
   } catch (err) {
@@ -408,8 +408,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.7.4',
-    phase: 'Phase 4.7 - KonesIsrael Receivership Integration (Puppeteer)',
+    version: '4.7.5',
+    phase: 'Phase 4.7.5 - KonesIsrael in Daily Scan + Puppeteer',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -424,6 +424,7 @@ app.get('/', (req, res) => {
       scanWeekly: 'POST /api/scan/weekly',
       alerts: 'GET /api/alerts',
       scheduler: 'GET /api/scheduler',
+      schedulerRun: 'POST /api/scheduler/run',
       ssiStatus: 'GET /api/ssi/status',
       newsStatus: 'GET /api/news/status',
       pricingStatus: 'GET /api/pricing/status',
@@ -452,7 +453,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.7.4 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.7.5 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
@@ -460,7 +461,7 @@ async function start() {
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
     logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE - data.gov.il integrated' : 'disabled'}`);
-    logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - Puppeteer headless browser' : 'DISABLED - check errors'}`);
+    logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - Puppeteer + Daily Scan' : 'DISABLED - check errors'}`);
     if (enhanced.errors && Object.keys(enhanced.errors).length > 0) {
       logger.warn('Service loading errors:', enhanced.errors);
     }
