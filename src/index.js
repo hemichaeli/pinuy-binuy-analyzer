@@ -318,15 +318,31 @@ function getEnhancedDataInfo() {
   return sources;
 }
 
+function getHolidayInfo() {
+  try {
+    const { shouldSkipToday, getUpcomingHolidays } = require('./config/israeliHolidays');
+    const skipCheck = shouldSkipToday();
+    return {
+      todayStatus: skipCheck.shouldSkip ? `⏸️ ${skipCheck.reasonHe}` : '✅ יום עבודה',
+      shouldSkip: skipCheck.shouldSkip,
+      reason: skipCheck.reason || null,
+      upcomingHolidays: getUpcomingHolidays(5)
+    };
+  } catch (e) {
+    return { todayStatus: 'unknown', error: e.message };
+  }
+}
+
 app.get('/debug', (req, res) => {
   const scheduler = getSchedulerStatus();
   const discovery = getDiscoveryInfo();
   const enhancedSources = getEnhancedDataInfo();
+  const holidays = getHolidayInfo();
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.7.5-kones-scan',
-    version: '4.7.5',
+    build: '2026-02-12-v4.8.0-holiday-scheduler',
+    version: '4.8.0',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -352,7 +368,14 @@ app.get('/debug', (req, res) => {
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
       kones_israel: enhancedSources.konesIsrael ? 'active (puppeteer + daily scan)' : 'disabled',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
-      weekly_scanner: scheduler.enabled ? 'active (9 steps)' : 'disabled'
+      weekly_scanner: scheduler.enabled ? 'active (9 steps, Sun-Thu, no holidays)' : 'disabled'
+    },
+    scheduling: {
+      cron: '0 8 * * * (daily 08:00 Israel)',
+      workdays: 'Sun-Thu only',
+      skipWeekends: true,
+      skipHolidays: true,
+      ...holidays
     },
     data_sources: {
       liens_registry: 'data.gov.il - 8M+ records',
@@ -383,10 +406,11 @@ app.get('/health', async (req, res) => {
 
     const discovery = getDiscoveryInfo();
     const enhancedSources = getEnhancedDataInfo();
+    const holidays = getHolidayInfo();
 
     res.json({
       status: 'ok',
-      version: '4.7.5',
+      version: '4.8.0',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -398,7 +422,8 @@ app.get('/health', async (req, res) => {
       enhanced_sources: enhancedSources,
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
       kones_israel: enhancedSources.konesIsrael ? 'active (daily scan)' : 'disabled',
-      notifications: notificationService.isConfigured() ? 'configured' : 'not_configured'
+      notifications: notificationService.isConfigured() ? 'configured' : 'not_configured',
+      scheduling: holidays
     });
   } catch (err) {
     res.status(503).json({ status: 'error', db: 'disconnected', error: err.message });
@@ -408,8 +433,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.7.5',
-    phase: 'Phase 4.7.5 - KonesIsrael in Daily Scan + Puppeteer',
+    version: '4.8.0',
+    phase: 'Phase 4.8.0 - Israeli Holiday Scheduler + KonesIsrael Puppeteer',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -453,7 +478,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.7.5 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.8.0 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
@@ -466,6 +491,8 @@ async function start() {
       logger.warn('Service loading errors:', enhanced.errors);
     }
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
+    const holidays = getHolidayInfo();
+    logger.info(`Scheduler: Daily 08:00 Sun-Thu (today: ${holidays.todayStatus})`);
   });
 }
 
