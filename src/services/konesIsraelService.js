@@ -1,320 +1,455 @@
 /**
- * KonesIsrael Receivership Scraper Service
- * Integrates with konesisrael.co.il to identify distressed properties in urban renewal areas
+ * KonesIsrael Service - Receivership Property Data Integration
+ * Source: konesisrael.co.il
  * 
- * Key value for SSI: Receivership (כינוס נכסים) has weight of 30 in SSI calculation
- * This service provides DIRECT data instead of relying on Perplexity AI searches
+ * Provides access to properties being sold by receivers (כונס נכסים)
+ * Key SSI indicator: Properties in receivership are distressed sales by definition
  */
 
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { logger } = require('./logger');
 
-// KonesIsrael credentials (environment variables)
-const KONES_EMAIL = process.env.KONES_EMAIL || '';
-const KONES_PASSWORD = process.env.KONES_PASSWORD || '';
-
-// Target cities for QUANTUM (Pinuy-Binuy focus areas)
-const TARGET_CITIES = [
-  // Gush Dan
-  'תל אביב', 'רמת גן', 'גבעתיים', 'בני ברק', 'בת ים', 'חולון', 'אור יהודה', 'קרית אונו', 'יהוד',
-  // Sharon
-  'הרצליה', 'רעננה', 'כפר סבא', 'הוד השרון', 'רמת השרון', 'נתניה', 'רמה"ש',
-  // Center
-  'פתח תקווה', 'ראש העין', 'לוד', 'רמלה', 'נס ציונה', 'ראשון לציון', 'רחובות',
-  // Jerusalem Area
-  'ירושלים', 'מבשרת ציון', 'בית שמש', 'מעלה אדומים',
-  // Haifa Area
-  'חיפה', 'קרית ים', 'קרית מוצקין', 'קרית ביאליק', 'קרית אתא', 'נשר'
-];
-
-// Property types of interest for urban renewal
-const RELEVANT_PROPERTY_TYPES = ['דירה', 'דירת גן', 'פנטהאוז', 'דופלקס', 'חד משפחתי', 'דו משפחתי'];
-
 class KonesIsraelService {
   constructor() {
-    this.sessionCookie = null;
-    this.lastFetch = null;
-    this.cachedListings = [];
-    this.cacheExpiry = 6 * 60 * 60 * 1000; // 6 hours cache
+    this.baseUrl = 'https://konesisrael.co.il';
+    this.realEstateUrl = `${this.baseUrl}/%D7%A0%D7%93%D7%9C%D7%9F-%D7%9E%D7%9B%D7%95%D7%A0%D7%A1-%D7%A0%D7%9B%D7%A1%D7%99%D7%9D/`;
+    this.loginUrl = `${this.baseUrl}/wp-login.php`;
+    
+    // Credentials from environment
+    this.credentials = {
+      email: process.env.KONES_EMAIL || '',
+      password: process.env.KONES_PASSWORD || ''
+    };
+    
+    // Property type mapping
+    this.propertyTypes = {
+      'דירה': 'apartment',
+      'דירת גן': 'garden_apartment',
+      'פנטהאוז': 'penthouse',
+      'דופלקס': 'duplex',
+      'בית פרטי': 'house',
+      'חד משפחתי': 'single_family',
+      'דו משפחתי': 'duplex_house',
+      'מגרש': 'land',
+      'חנות': 'store',
+      'מבנה מסחרי': 'commercial',
+      'יחידה': 'unit'
+    };
+    
+    // Region mapping
+    this.regions = {
+      'מרכז': 'center',
+      'דרום': 'south',
+      'צפון': 'north',
+      'ירושלים': 'jerusalem',
+      'יהודה ושומרון': 'judea_samaria'
+    };
+    
+    // Cache for listings
+    this.listingsCache = {
+      data: null,
+      timestamp: null,
+      ttl: 4 * 60 * 60 * 1000 // 4 hours cache
+    };
+    
+    this.session = null;
   }
 
   /**
-   * Login to KonesIsrael website
+   * Check if credentials are configured
+   */
+  isConfigured() {
+    return !!(this.credentials.email && this.credentials.password);
+  }
+
+  /**
+   * Login to KonesIsrael (if credentials provided)
    */
   async login() {
-    if (!KONES_EMAIL || !KONES_PASSWORD) {
-      logger.warn('KonesIsrael credentials not configured');
+    if (!this.isConfigured()) {
+      logger.info('KonesIsrael: No credentials configured, using public access');
       return false;
     }
 
     try {
-      // First get the login page to extract any CSRF tokens
-      const loginPageResponse = await axios.get('https://konesisrael.co.il/אזור-אישי/', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-
-      // Perform login
-      const loginResponse = await axios.post('https://konesisrael.co.il/wp-login.php', 
+      // Create session with cookies
+      const response = await axios.post(this.loginUrl, 
         new URLSearchParams({
-          'log': KONES_EMAIL,
-          'pwd': KONES_PASSWORD,
+          'log': this.credentials.email,
+          'pwd': this.credentials.password,
           'wp-submit': 'התחבר',
-          'redirect_to': 'https://konesisrael.co.il/אזור-אישי/',
+          'redirect_to': this.baseUrl,
           'testcookie': '1'
         }).toString(),
         {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Cookie': loginPageResponse.headers['set-cookie']?.join('; ') || ''
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
           },
           maxRedirects: 0,
-          validateStatus: (status) => status >= 200 && status < 400
+          validateStatus: status => status >= 200 && status < 400
         }
       );
 
-      // Extract session cookies
-      const cookies = loginResponse.headers['set-cookie'];
-      if (cookies) {
-        this.sessionCookie = cookies.join('; ');
-        logger.info('KonesIsrael login successful');
+      if (response.headers['set-cookie']) {
+        this.session = response.headers['set-cookie'].join('; ');
+        logger.info('KonesIsrael: Login successful');
         return true;
       }
-
-      logger.warn('KonesIsrael login may have failed - no session cookie');
-      return false;
-
     } catch (error) {
-      logger.error('KonesIsrael login error:', { error: error.message });
-      return false;
+      logger.warn(`KonesIsrael: Login failed - ${error.message}`);
     }
+    
+    return false;
   }
 
   /**
-   * Fetch receivership real estate listings
-   * The public page shows basic info; logged-in users see full details
+   * Fetch and parse receivership listings from KonesIsrael
    */
-  async fetchReceivershipListings(forceRefresh = false) {
+  async fetchListings(forceRefresh = false) {
     // Check cache
-    if (!forceRefresh && this.cachedListings.length > 0 && 
-        this.lastFetch && (Date.now() - this.lastFetch < this.cacheExpiry)) {
-      logger.info('Using cached KonesIsrael listings', { count: this.cachedListings.length });
-      return this.cachedListings;
+    if (!forceRefresh && this.listingsCache.data && 
+        Date.now() - this.listingsCache.timestamp < this.listingsCache.ttl) {
+      logger.info('KonesIsrael: Returning cached listings');
+      return this.listingsCache.data;
     }
 
     try {
-      logger.info('Fetching KonesIsrael receivership listings...');
+      logger.info('KonesIsrael: Fetching fresh listings...');
       
-      const response = await axios.get('https://konesisrael.co.il/%D7%A0%D7%93%D7%9C%D7%9F-%D7%9E%D7%9B%D7%95%D7%A0%D7%A1-%D7%A0%D7%9B%D7%A1%D7%99%D7%9D/', {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Cookie': this.sessionCookie || ''
-        },
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7'
+      };
+      
+      if (this.session) {
+        headers['Cookie'] = this.session;
+      }
+
+      const response = await axios.get(this.realEstateUrl, {
+        headers,
         timeout: 30000
       });
 
-      const $ = cheerio.load(response.data);
-      const listings = [];
-
-      // Parse the table rows
-      $('table tbody tr').each((index, element) => {
-        try {
-          const row = $(element);
-          const cells = row.find('td');
-          
-          if (cells.length >= 10) {
-            const listing = {
-              date: $(cells[0]).text().trim(),
-              propertyType: $(cells[2]).text().trim(),
-              area: $(cells[3]).text().trim(),
-              city: $(cells[4]).text().trim(),
-              address: $(cells[5]).text().trim(),
-              submissionDate: $(cells[6]).text().trim(),
-              daysRemaining: $(cells[7]).text().trim(),
-              gushHelka: $(cells[8]).text().trim(),
-              contactName: $(cells[9]).text().trim(),
-              contactEmail: $(cells[10])?.text()?.trim() || '',
-              contactPhone: $(cells[11])?.text()?.trim() || '',
-              details: $(cells[13])?.text()?.trim() || '',
-              source: 'konesisrael.co.il',
-              type: 'receivership',
-              fetchedAt: new Date().toISOString()
-            };
-
-            // Filter for relevant properties
-            if (this.isRelevantListing(listing)) {
-              listings.push(listing);
-            }
-          }
-        } catch (e) {
-          // Skip malformed rows
-        }
-      });
-
-      this.cachedListings = listings;
-      this.lastFetch = Date.now();
+      const listings = this.parseListingsPage(response.data);
       
-      logger.info('KonesIsrael listings fetched', { 
-        total: listings.length,
-        targetCities: listings.filter(l => TARGET_CITIES.includes(l.city)).length
-      });
-
+      // Update cache
+      this.listingsCache.data = listings;
+      this.listingsCache.timestamp = Date.now();
+      
+      logger.info(`KonesIsrael: Fetched ${listings.length} receivership listings`);
       return listings;
-
+      
     } catch (error) {
-      logger.error('Error fetching KonesIsrael listings:', { error: error.message });
-      return this.cachedListings; // Return cached data on error
+      logger.error(`KonesIsrael: Fetch failed - ${error.message}`);
+      
+      // Return cached data if available
+      if (this.listingsCache.data) {
+        return this.listingsCache.data;
+      }
+      
+      throw error;
     }
   }
 
   /**
-   * Check if a listing is relevant for our urban renewal focus
+   * Parse the HTML page and extract listing data
    */
-  isRelevantListing(listing) {
-    // Check if in target cities
-    const inTargetCity = TARGET_CITIES.some(city => 
-      listing.city?.includes(city) || listing.address?.includes(city)
-    );
-
-    // Check if relevant property type
-    const relevantType = RELEVANT_PROPERTY_TYPES.some(type => 
-      listing.propertyType?.includes(type)
-    );
-
-    return inTargetCity || relevantType;
+  parseListingsPage(html) {
+    const $ = cheerio.load(html);
+    const listings = [];
+    
+    // Parse table rows
+    $('table tbody tr').each((index, row) => {
+      try {
+        const cells = $(row).find('td');
+        if (cells.length < 10) return;
+        
+        const listing = {
+          id: `kones_${Date.now()}_${index}`,
+          source: 'konesisrael',
+          datePosted: this.parseDate($(cells[0]).text().trim()),
+          propertyType: $(cells[2]).text().trim(),
+          propertyTypeEn: this.propertyTypes[$(cells[2]).text().trim()] || 'other',
+          region: $(cells[3]).text().trim(),
+          regionEn: this.regions[$(cells[3]).text().trim()] || 'unknown',
+          city: $(cells[4]).text().trim(),
+          address: $(cells[5]).text().trim(),
+          submissionDeadline: this.parseDate($(cells[6]).text().trim()),
+          daysUntilDeadline: parseInt($(cells[7]).text().trim()) || null,
+          gushHelka: $(cells[8]).text().trim(),
+          contactPerson: $(cells[9]).text().trim(),
+          email: this.extractEmail($(row).html()),
+          phone: this.extractPhone($(row).html()),
+          details: this.extractDetails($(row).html()),
+          url: this.extractUrl($(row)),
+          isReceivership: true, // All listings on this site are receivership
+          ssiContribution: 30 // Maximum receivership weight
+        };
+        
+        // Parse gush/helka into structured format
+        if (listing.gushHelka) {
+          const parsed = this.parseGushHelka(listing.gushHelka);
+          listing.gush = parsed.gush;
+          listing.helka = parsed.helka;
+          listing.tatHelka = parsed.tatHelka;
+        }
+        
+        listings.push(listing);
+      } catch (err) {
+        logger.debug(`KonesIsrael: Error parsing row ${index}: ${err.message}`);
+      }
+    });
+    
+    return listings;
   }
 
   /**
-   * Search for receivership properties in a specific city
+   * Parse Hebrew date format to ISO
+   */
+  parseDate(dateStr) {
+    if (!dateStr) return null;
+    
+    // Format: DD/MM/YYYY or timestamp
+    const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (match) {
+      return `${match[3]}-${match[2]}-${match[1]}`;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract email from HTML
+   */
+  extractEmail(html) {
+    const match = html.match(/mailto:([^\s"'>]+)/);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Extract phone from HTML
+   */
+  extractPhone(html) {
+    const match = html.match(/(\d{2,3}[-\s]?\d{3,4}[-\s]?\d{3,4})/);
+    return match ? match[1].replace(/\s/g, '') : null;
+  }
+
+  /**
+   * Extract property details
+   */
+  extractDetails(html) {
+    const $ = cheerio.load(html);
+    // Look for the details column content
+    const detailsMatch = html.match(/פרטים:([^<]+)/);
+    return detailsMatch ? detailsMatch[1].trim() : null;
+  }
+
+  /**
+   * Extract listing URL
+   */
+  extractUrl($row) {
+    const link = $row.find('a[href*="apartments"]').first();
+    return link.attr('href') || null;
+  }
+
+  /**
+   * Parse gush/helka/tat format
+   */
+  parseGushHelka(str) {
+    const result = { gush: null, helka: null, tatHelka: null };
+    
+    // Format: "גוש 1234 חלקה 56 תת חלקה 7"
+    const gushMatch = str.match(/גוש\s*(\d+)/);
+    const helkaMatch = str.match(/חלקה\s*(\d+)/);
+    const tatMatch = str.match(/תת\s*חלקה?\s*(\d+)/);
+    
+    if (gushMatch) result.gush = parseInt(gushMatch[1]);
+    if (helkaMatch) result.helka = parseInt(helkaMatch[1]);
+    if (tatMatch) result.tatHelka = parseInt(tatMatch[1]);
+    
+    return result;
+  }
+
+  /**
+   * Search listings by city
    */
   async searchByCity(city) {
-    const allListings = await this.fetchReceivershipListings();
-    return allListings.filter(listing => 
-      listing.city?.includes(city) || 
-      listing.address?.includes(city)
+    const listings = await this.fetchListings();
+    
+    return listings.filter(l => 
+      l.city && l.city.includes(city)
     );
   }
 
   /**
-   * Search for receivership properties by address/street
+   * Search listings by region
    */
-  async searchByAddress(address) {
-    const allListings = await this.fetchReceivershipListings();
-    const searchTerms = address.toLowerCase().split(/\s+/);
+  async searchByRegion(region) {
+    const listings = await this.fetchListings();
     
-    return allListings.filter(listing => {
-      const listingAddress = (listing.address || '').toLowerCase();
-      const listingCity = (listing.city || '').toLowerCase();
-      const combined = `${listingAddress} ${listingCity}`;
+    return listings.filter(l => 
+      l.region === region || l.regionEn === region
+    );
+  }
+
+  /**
+   * Search by gush/helka
+   */
+  async searchByGushHelka(gush, helka = null) {
+    const listings = await this.fetchListings();
+    
+    return listings.filter(l => {
+      if (l.gush !== gush) return false;
+      if (helka && l.helka !== helka) return false;
+      return true;
+    });
+  }
+
+  /**
+   * Check if a specific address appears in receivership listings
+   */
+  async checkAddress(city, street) {
+    const listings = await this.fetchListings();
+    
+    const normalizedStreet = street.toLowerCase().replace(/\s+/g, ' ');
+    const normalizedCity = city.toLowerCase();
+    
+    return listings.filter(l => {
+      const listingCity = (l.city || '').toLowerCase();
+      const listingAddress = (l.address || '').toLowerCase().replace(/\s+/g, ' ');
       
-      return searchTerms.some(term => combined.includes(term));
+      return listingCity.includes(normalizedCity) && 
+             listingAddress.includes(normalizedStreet);
     });
   }
 
   /**
-   * Search by gush/helka (block/parcel)
+   * Match listings with QUANTUM complexes
    */
-  async searchByGushHelka(gush, helka) {
-    const allListings = await this.fetchReceivershipListings();
-    const searchPattern = `גוש ${gush}`;
+  async matchWithComplexes(complexes) {
+    const listings = await this.fetchListings();
+    const matches = [];
     
-    return allListings.filter(listing => {
-      const gushHelka = (listing.gushHelka || '').toLowerCase();
-      return gushHelka.includes(searchPattern.toLowerCase()) &&
-             (!helka || gushHelka.includes(`חלקה ${helka}`));
-    });
+    for (const complex of complexes) {
+      const city = complex.city;
+      const street = complex.street || complex.address || '';
+      
+      const matchingListings = listings.filter(l => {
+        if (!l.city || !city) return false;
+        
+        const cityMatch = l.city.includes(city) || city.includes(l.city);
+        if (!cityMatch) return false;
+        
+        // If we have street info, also check that
+        if (street && l.address) {
+          return l.address.includes(street) || street.includes(l.address);
+        }
+        
+        return cityMatch;
+      });
+      
+      if (matchingListings.length > 0) {
+        matches.push({
+          complexId: complex.id,
+          complexName: complex.name || `${city} - ${street}`,
+          matchedListings: matchingListings.length,
+          listings: matchingListings,
+          ssiBoost: 30 // Receivership indicator
+        });
+      }
+    }
+    
+    return matches;
   }
 
   /**
-   * Cross-reference with QUANTUM complexes to identify receivership overlap
-   * This is the key integration point for SSI enhancement
-   */
-  async findReceivershipInComplex(complex) {
-    if (!complex?.city || !complex?.address) {
-      return { found: false, matches: [] };
-    }
-
-    const matches = await this.searchByAddress(`${complex.address} ${complex.city}`);
-    
-    // Also try gush/helka if available
-    if (complex.gush && matches.length === 0) {
-      const gushMatches = await this.searchByGushHelka(complex.gush, complex.helka);
-      matches.push(...gushMatches);
-    }
-
-    return {
-      found: matches.length > 0,
-      matches: matches,
-      count: matches.length,
-      isReceivership: matches.length > 0,
-      receivershipScore: Math.min(matches.length * 10, 30), // Max 30 (SSI weight for receivership)
-      details: matches.map(m => ({
-        type: m.propertyType,
-        address: m.address,
-        attorney: m.contactName,
-        phone: m.contactPhone,
-        deadline: m.submissionDate
-      }))
-    };
-  }
-
-  /**
-   * Get statistics about current receivership listings
+   * Get statistics about current listings
    */
   async getStatistics() {
-    const listings = await this.fetchReceivershipListings();
+    const listings = await this.fetchListings();
     
     const stats = {
       total: listings.length,
+      byPropertyType: {},
+      byRegion: {},
       byCity: {},
-      byType: {},
-      byArea: {},
-      inTargetCities: 0,
-      recentListings: listings.filter(l => {
-        const days = parseInt(l.daysRemaining) || 999;
-        return days <= 14; // Within 2 weeks deadline
-      }).length
+      upcomingDeadlines: [],
+      urgentDeadlines: [] // Within 7 days
     };
-
-    listings.forEach(listing => {
-      // Count by city
-      stats.byCity[listing.city] = (stats.byCity[listing.city] || 0) + 1;
+    
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    
+    for (const listing of listings) {
+      // By property type
+      const type = listing.propertyType || 'אחר';
+      stats.byPropertyType[type] = (stats.byPropertyType[type] || 0) + 1;
       
-      // Count by type
-      stats.byType[listing.propertyType] = (stats.byType[listing.propertyType] || 0) + 1;
+      // By region
+      const region = listing.region || 'לא ידוע';
+      stats.byRegion[region] = (stats.byRegion[region] || 0) + 1;
       
-      // Count by area
-      stats.byArea[listing.area] = (stats.byArea[listing.area] || 0) + 1;
-
-      // Count target cities
-      if (TARGET_CITIES.includes(listing.city)) {
-        stats.inTargetCities++;
+      // By city
+      const city = listing.city || 'לא ידוע';
+      stats.byCity[city] = (stats.byCity[city] || 0) + 1;
+      
+      // Check deadlines
+      if (listing.submissionDeadline) {
+        const deadline = new Date(listing.submissionDeadline);
+        if (deadline > now) {
+          stats.upcomingDeadlines.push({
+            ...listing,
+            deadline: listing.submissionDeadline,
+            daysLeft: Math.ceil((deadline - now) / (24 * 60 * 60 * 1000))
+          });
+          
+          if (deadline <= sevenDaysFromNow) {
+            stats.urgentDeadlines.push(listing);
+          }
+        }
       }
-    });
-
+    }
+    
+    // Sort upcoming deadlines
+    stats.upcomingDeadlines.sort((a, b) => 
+      new Date(a.deadline) - new Date(b.deadline)
+    );
+    stats.upcomingDeadlines = stats.upcomingDeadlines.slice(0, 20);
+    
     return stats;
   }
 
   /**
    * Get service status
    */
-  getStatus() {
-    return {
-      service: 'konesIsrael',
-      type: 'receivership',
-      configured: !!(KONES_EMAIL && KONES_PASSWORD),
-      authenticated: !!this.sessionCookie,
-      cacheStatus: {
-        hasCache: this.cachedListings.length > 0,
-        cacheAge: this.lastFetch ? Date.now() - this.lastFetch : null,
-        listingCount: this.cachedListings.length
-      },
-      ssiWeight: 30,
-      description: 'KonesIsrael.co.il - Receivership real estate database'
-    };
+  async getStatus() {
+    try {
+      const stats = await this.getStatistics();
+      
+      return {
+        status: 'connected',
+        configured: this.isConfigured(),
+        authenticated: !!this.session,
+        source: 'konesisrael.co.il',
+        totalListings: stats.total,
+        cacheAge: this.listingsCache.timestamp 
+          ? Math.round((Date.now() - this.listingsCache.timestamp) / 60000) + ' minutes'
+          : 'no cache',
+        urgentDeadlines: stats.urgentDeadlines.length,
+        propertyTypes: Object.keys(stats.byPropertyType).length,
+        regions: Object.keys(stats.byRegion).length,
+        cities: Object.keys(stats.byCity).length
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        error: error.message,
+        configured: this.isConfigured()
+      };
+    }
   }
 }
 
