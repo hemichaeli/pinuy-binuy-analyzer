@@ -257,6 +257,14 @@ try {
   logger.error('KonesIsrael routes FAILED to load', { error: e.message, stack: e.stack }); 
 }
 
+// Perplexity Integration: Public HTML pages for AI crawling + JSON export for Perplexity Space
+try { 
+  app.use('/perplexity', require('./routes/perplexityRoutes')); 
+  logger.info('Perplexity integration routes loaded'); 
+} catch (e) { 
+  logger.warn('Perplexity routes not available', { error: e.message }); 
+}
+
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
 app.get('/api/scheduler', (req, res) => res.json(getSchedulerStatus()));
@@ -341,8 +349,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.8.0-holiday-scheduler',
-    version: '4.8.0',
+    build: '2026-02-12-v4.8.1-perplexity',
+    version: '4.8.1',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -367,8 +375,17 @@ app.get('/debug', (req, res) => {
       pricing_accuracy: enhancedSources.pricingAccuracy ? 'active' : 'disabled',
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
       kones_israel: enhancedSources.konesIsrael ? 'active (puppeteer + daily scan)' : 'disabled',
+      perplexity_integration: 'active',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active (9 steps, Sun-Thu, no holidays)' : 'disabled'
+    },
+    perplexity_endpoints: {
+      complexes_html: '/perplexity/complexes.html',
+      opportunities_html: '/perplexity/opportunities.html',
+      stressed_sellers_html: '/perplexity/stressed-sellers.html',
+      city_html: '/perplexity/city/{city}.html',
+      export_json: '/perplexity/export.json',
+      sitemap: '/perplexity/sitemap.xml'
     },
     scheduling: {
       cron: '0 8 * * * (daily 08:00 Israel)',
@@ -410,7 +427,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.8.0',
+      version: '4.8.1',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -422,6 +439,7 @@ app.get('/health', async (req, res) => {
       enhanced_sources: enhancedSources,
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
       kones_israel: enhancedSources.konesIsrael ? 'active (daily scan)' : 'disabled',
+      perplexity_integration: 'active',
       notifications: notificationService.isConfigured() ? 'configured' : 'not_configured',
       scheduling: holidays
     });
@@ -433,8 +451,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.8.0',
-    phase: 'Phase 4.8.0 - Israeli Holiday Scheduler + KonesIsrael Puppeteer',
+    version: '4.8.1',
+    phase: 'Phase 4.8.1 - Perplexity Integration',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -458,7 +476,13 @@ app.get('/', (req, res) => {
       konesListings: 'GET /api/kones/listings',
       konesStats: 'GET /api/kones/stats',
       konesSearchCity: 'GET /api/kones/search/city/:city',
-      konesLogin: 'POST /api/kones/login'
+      konesLogin: 'POST /api/kones/login',
+      perplexityComplexes: 'GET /perplexity/complexes.html',
+      perplexityOpportunities: 'GET /perplexity/opportunities.html',
+      perplexityStressedSellers: 'GET /perplexity/stressed-sellers.html',
+      perplexityCity: 'GET /perplexity/city/:city.html',
+      perplexityExport: 'GET /perplexity/export.json',
+      perplexitySitemap: 'GET /perplexity/sitemap.xml'
     }
   });
 });
@@ -478,7 +502,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.8.0 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.8.1 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
@@ -487,6 +511,7 @@ async function start() {
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
     logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE - data.gov.il integrated' : 'disabled'}`);
     logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - Puppeteer + Daily Scan' : 'DISABLED - check errors'}`);
+    logger.info(`Perplexity Integration: ACTIVE - /perplexity/* endpoints`);
     if (enhanced.errors && Object.keys(enhanced.errors).length > 0) {
       logger.warn('Service loading errors:', enhanced.errors);
     }
