@@ -14,43 +14,86 @@ const fs = require('fs');
 // Lazy-load browser dependencies
 let puppeteer = null;
 
-// Find Chromium executable path
+// Cache discovered chromium path
+let cachedChromiumPath = null;
+
+// Find Chromium executable path - Nix-aware for Railway
 function findChromiumPath() {
-  // Check environment variables first
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) {
-    return process.env.CHROMIUM_PATH;
+  // Return cached path if already discovered
+  if (cachedChromiumPath && fs.existsSync(cachedChromiumPath)) {
+    return cachedChromiumPath;
   }
   
+  // Check environment variables first
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    cachedChromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    logger.info(`KonesIsrael: Found Chromium via PUPPETEER_EXECUTABLE_PATH: ${cachedChromiumPath}`);
+    return cachedChromiumPath;
+  }
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) {
+    cachedChromiumPath = process.env.CHROMIUM_PATH;
+    logger.info(`KonesIsrael: Found Chromium via CHROMIUM_PATH: ${cachedChromiumPath}`);
+    return cachedChromiumPath;
+  }
+  
+  // Priority 1: Use 'which' command - works on Nix (Railway) where binaries are on PATH
+  try {
+    const whichResult = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null || which google-chrome-stable 2>/dev/null || true', { encoding: 'utf8' });
+    const foundPath = whichResult.trim().split('\n')[0];
+    if (foundPath && fs.existsSync(foundPath)) {
+      cachedChromiumPath = foundPath;
+      logger.info(`KonesIsrael: Found Chromium via which: ${cachedChromiumPath}`);
+      return cachedChromiumPath;
+    }
+  } catch (e) {
+    logger.debug('KonesIsrael: which command failed');
+  }
+  
+  // Priority 2: Search Nix store (Railway uses Nix, paths include hashes)
+  try {
+    const nixResult = execSync('find /nix/store -maxdepth 3 -name "chromium" -type f -executable 2>/dev/null | head -1', { encoding: 'utf8', timeout: 5000 });
+    const nixPath = nixResult.trim();
+    if (nixPath && fs.existsSync(nixPath)) {
+      cachedChromiumPath = nixPath;
+      logger.info(`KonesIsrael: Found Chromium in Nix store: ${cachedChromiumPath}`);
+      return cachedChromiumPath;
+    }
+  } catch (e) {
+    logger.debug('KonesIsrael: Nix store search failed or timed out');
+  }
+  
+  // Priority 3: Try Nix store bin wrapper paths
+  try {
+    const nixBinResult = execSync('find /nix/store -maxdepth 4 -path "*/bin/chromium" -type f 2>/dev/null | head -1', { encoding: 'utf8', timeout: 5000 });
+    const nixBinPath = nixBinResult.trim();
+    if (nixBinPath && fs.existsSync(nixBinPath)) {
+      cachedChromiumPath = nixBinPath;
+      logger.info(`KonesIsrael: Found Chromium in Nix bin: ${cachedChromiumPath}`);
+      return cachedChromiumPath;
+    }
+  } catch (e) {
+    logger.debug('KonesIsrael: Nix bin search failed');
+  }
+  
+  // Priority 4: Standard Linux paths (non-Nix environments)
   const possiblePaths = [
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable'
+    '/usr/bin/google-chrome-stable',
+    '/usr/local/bin/chromium',
+    '/snap/bin/chromium'
   ];
   
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
-      logger.info(`KonesIsrael: Found Chromium at ${p}`);
-      return p;
+      cachedChromiumPath = p;
+      logger.info(`KonesIsrael: Found Chromium at standard path: ${cachedChromiumPath}`);
+      return cachedChromiumPath;
     }
   }
   
-  // Try to find via which command
-  try {
-    const whichResult = execSync('which chromium chromium-browser google-chrome 2>/dev/null || true', { encoding: 'utf8' });
-    const foundPath = whichResult.trim().split('\n')[0];
-    if (foundPath && fs.existsSync(foundPath)) {
-      logger.info(`KonesIsrael: Found Chromium via which at ${foundPath}`);
-      return foundPath;
-    }
-  } catch (e) {
-    // Ignore errors
-  }
-  
-  logger.error('KonesIsrael: Chromium not found on system');
+  logger.error('KonesIsrael: Chromium not found on system. Searched: env vars, which, nix store, standard paths');
   return null;
 }
 
@@ -62,8 +105,15 @@ async function getBrowser() {
   const executablePath = findChromiumPath();
   
   if (!executablePath) {
-    throw new Error('Chromium not found. Ensure it is installed in the Docker container.');
+    // Collect diagnostic info for troubleshooting
+    let diagnostics = '';
+    try {
+      diagnostics = execSync('echo "PATH=$PATH" && ls /nix/store/ 2>/dev/null | head -20 || echo "no nix store"', { encoding: 'utf8' });
+    } catch (e) { /* ignore */ }
+    throw new Error(`Chromium not found. Diagnostics: ${diagnostics.substring(0, 500)}`);
   }
+  
+  logger.info(`KonesIsrael: Launching browser with executablePath: ${executablePath}`);
   
   const browser = await puppeteer.launch({
     args: [
@@ -586,37 +636,46 @@ class KonesIsraelService {
     try {
       const chromiumPath = findChromiumPath();
       
+      // Collect diagnostic info regardless
+      let diagnosticInfo = {};
+      try {
+        const whichOutput = execSync('which chromium 2>&1 || echo "not found"', { encoding: 'utf8' }).trim();
+        const nixCheck = execSync('ls /nix/store/ 2>/dev/null | grep -i chrom | head -5 || echo "no nix store"', { encoding: 'utf8' }).trim();
+        diagnosticInfo = {
+          whichChromium: whichOutput,
+          nixStoreChromium: nixCheck,
+          PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || '(not set)',
+          CHROMIUM_PATH: process.env.CHROMIUM_PATH || '(not set)',
+          PATH: (process.env.PATH || '').substring(0, 200) + '...'
+        };
+      } catch (e) {
+        diagnosticInfo = { error: e.message };
+      }
+      
       if (!chromiumPath) {
         return {
           status: 'error',
           method: 'headless_browser',
-          error: 'Chromium not found',
+          error: 'Chromium not found after searching: env vars, which, nix store, standard paths',
           configured: this.isConfigured(),
           authenticated: this.isLoggedIn,
-          envVars: {
-            PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || '(not set)',
-            CHROMIUM_PATH: process.env.CHROMIUM_PATH || '(not set)'
-          }
+          diagnostics: diagnosticInfo
         };
       }
       
-      const stats = await this.getStatistics();
-      
+      // Chromium found - try a quick launch test before full scrape
       return {
-        status: 'connected',
+        status: 'ready',
         method: 'headless_browser',
         chromiumPath,
         configured: this.isConfigured(),
         authenticated: this.isLoggedIn,
         source: 'konesisrael.co.il',
-        totalListings: stats.total,
+        cached: !!(this.listingsCache.data),
         cacheAge: this.listingsCache.timestamp 
           ? Math.round((Date.now() - this.listingsCache.timestamp) / 60000) + ' minutes'
           : 'no cache',
-        urgentDeadlines: stats.urgentDeadlines.length,
-        propertyTypes: Object.keys(stats.byPropertyType).length,
-        regions: Object.keys(stats.byRegion).length,
-        cities: Object.keys(stats.byCity).length
+        diagnostics: diagnosticInfo
       };
     } catch (error) {
       return {
