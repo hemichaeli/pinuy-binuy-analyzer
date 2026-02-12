@@ -9,50 +9,48 @@
 
 const { logger } = require('./logger');
 const { execSync } = require('child_process');
+const fs = require('fs');
 
 // Lazy-load browser dependencies
 let puppeteer = null;
 
 // Find Chromium executable path
 function findChromiumPath() {
+  // Check environment variables first
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  if (process.env.CHROMIUM_PATH && fs.existsSync(process.env.CHROMIUM_PATH)) {
+    return process.env.CHROMIUM_PATH;
+  }
+  
   const possiblePaths = [
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    process.env.CHROMIUM_PATH
+    '/usr/bin/google-chrome-stable'
   ];
   
-  // Try to find chromium via which command
-  try {
-    const whichResult = execSync('which chromium chromium-browser google-chrome 2>/dev/null || true', { encoding: 'utf8' });
-    const foundPath = whichResult.trim().split('\n')[0];
-    if (foundPath) {
-      possiblePaths.unshift(foundPath);
-    }
-  } catch (e) {
-    // Ignore errors
-  }
-  
-  // Try nix store paths
-  try {
-    const nixPaths = execSync('find /nix/store -name "chromium" -type f -executable 2>/dev/null | head -1 || true', { encoding: 'utf8' });
-    if (nixPaths.trim()) {
-      possiblePaths.unshift(nixPaths.trim());
-    }
-  } catch (e) {
-    // Ignore errors
-  }
-  
-  const fs = require('fs');
   for (const p of possiblePaths) {
-    if (p && fs.existsSync(p)) {
+    if (fs.existsSync(p)) {
       logger.info(`KonesIsrael: Found Chromium at ${p}`);
       return p;
     }
   }
   
+  // Try to find via which command
+  try {
+    const whichResult = execSync('which chromium chromium-browser google-chrome 2>/dev/null || true', { encoding: 'utf8' });
+    const foundPath = whichResult.trim().split('\n')[0];
+    if (foundPath && fs.existsSync(foundPath)) {
+      logger.info(`KonesIsrael: Found Chromium via which at ${foundPath}`);
+      return foundPath;
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+  
+  logger.error('KonesIsrael: Chromium not found on system');
   return null;
 }
 
@@ -61,32 +59,12 @@ async function getBrowser() {
     puppeteer = require('puppeteer-core');
   }
   
-  let executablePath = findChromiumPath();
+  const executablePath = findChromiumPath();
   
-  // If no system chromium, try @sparticuz/chromium
   if (!executablePath) {
-    try {
-      const chromium = require('@sparticuz/chromium');
-      chromium.setHeadlessMode = true;
-      chromium.setGraphicsMode = false;
-      executablePath = await chromium.executablePath();
-      
-      const browser = await puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath,
-        headless: chromium.headless,
-        ignoreHTTPSErrors: true
-      });
-      
-      return browser;
-    } catch (e) {
-      logger.error(`KonesIsrael: @sparticuz/chromium failed: ${e.message}`);
-      throw new Error(`No Chromium found. Tried system paths and @sparticuz/chromium. Error: ${e.message}`);
-    }
+    throw new Error('Chromium not found. Ensure it is installed in the Docker container.');
   }
   
-  // Use system Chromium
   const browser = await puppeteer.launch({
     args: [
       '--no-sandbox',
@@ -216,7 +194,7 @@ class KonesIsraelService {
         page.click('#wp-submit')
       ]);
       
-      // Check if login was successful by looking for login error or logged-in state
+      // Check if login was successful
       const currentUrl = page.url();
       const pageContent = await page.content();
       
@@ -277,10 +255,15 @@ class KonesIsraelService {
         timeout: 60000 
       });
       
-      // Wait for table to load
-      await page.waitForSelector('table', { timeout: 30000 }).catch(() => {
-        logger.warn('KonesIsrael: Table not found, page may require login');
-      });
+      // Wait for content to load
+      await page.waitForSelector('body', { timeout: 10000 });
+      
+      // Try to wait for table
+      try {
+        await page.waitForSelector('table', { timeout: 10000 });
+      } catch (e) {
+        logger.warn('KonesIsrael: Table not found immediately, checking page content...');
+      }
       
       // Get page HTML
       const html = await page.content();
@@ -364,9 +347,8 @@ class KonesIsraelService {
     rows.each((index, row) => {
       try {
         const cells = $(row).find('td');
-        if (cells.length < 5) return; // Skip header or invalid rows
+        if (cells.length < 5) return;
         
-        // Extract data based on table structure
         const listing = {
           id: `kones_${Date.now()}_${index}`,
           source: 'konesisrael',
@@ -386,7 +368,6 @@ class KonesIsraelService {
           ssiContribution: 30
         };
         
-        // Parse gush/helka
         if (listing.gushHelka) {
           const parsed = this.parseGushHelka(listing.gushHelka);
           listing.gush = parsed.gush;
@@ -394,7 +375,6 @@ class KonesIsraelService {
           listing.tatHelka = parsed.tatHelka;
         }
         
-        // Only add if we have meaningful data
         if (listing.city || listing.address || listing.propertyType) {
           listings.push(listing);
         }
@@ -403,11 +383,9 @@ class KonesIsraelService {
       }
     });
     
-    // If no table data, try to extract from other page elements
     if (listings.length === 0) {
       logger.info('KonesIsrael: No table data found, checking for alternative formats...');
       
-      // Look for listing cards or other formats
       $('.property-item, .listing-item, article.property').each((index, item) => {
         try {
           const listing = {
@@ -433,9 +411,6 @@ class KonesIsraelService {
     return listings;
   }
 
-  /**
-   * Parse Hebrew date format to ISO
-   */
   parseDate(dateStr) {
     if (!dateStr) return null;
     
@@ -450,9 +425,6 @@ class KonesIsraelService {
     return null;
   }
 
-  /**
-   * Extract email from HTML
-   */
   extractEmail(html) {
     if (!html) return null;
     const match = html.match(/mailto:([^\s"'>]+)/);
@@ -462,18 +434,12 @@ class KonesIsraelService {
     return emailMatch ? emailMatch[0] : null;
   }
 
-  /**
-   * Extract phone from HTML
-   */
   extractPhone(html) {
     if (!html) return null;
     const match = html.match(/(?:tel:|href="tel:)?(\d{2,3}[-\s]?\d{3,4}[-\s]?\d{3,4})/);
     return match ? match[1].replace(/[\s-]/g, '') : null;
   }
 
-  /**
-   * Extract listing URL
-   */
   extractUrl($row) {
     const link = $row.find('a[href]').first();
     const href = link.attr('href');
@@ -483,9 +449,6 @@ class KonesIsraelService {
     return null;
   }
 
-  /**
-   * Parse gush/helka format
-   */
   parseGushHelka(str) {
     const result = { gush: null, helka: null, tatHelka: null };
     if (!str) return result;
@@ -501,25 +464,16 @@ class KonesIsraelService {
     return result;
   }
 
-  /**
-   * Search listings by city
-   */
   async searchByCity(city) {
     const listings = await this.fetchWithLogin();
     return listings.filter(l => l.city && l.city.includes(city));
   }
 
-  /**
-   * Search listings by region
-   */
   async searchByRegion(region) {
     const listings = await this.fetchWithLogin();
     return listings.filter(l => l.region === region || l.regionEn === region);
   }
 
-  /**
-   * Search by gush/helka
-   */
   async searchByGushHelka(gush, helka = null) {
     const listings = await this.fetchWithLogin();
     return listings.filter(l => {
@@ -529,9 +483,6 @@ class KonesIsraelService {
     });
   }
 
-  /**
-   * Check if address appears in receivership listings
-   */
   async checkAddress(city, street) {
     const listings = await this.fetchWithLogin();
     
@@ -547,9 +498,6 @@ class KonesIsraelService {
     });
   }
 
-  /**
-   * Match listings with QUANTUM complexes
-   */
   async matchWithComplexes(complexes) {
     const listings = await this.fetchWithLogin();
     const matches = [];
@@ -585,9 +533,6 @@ class KonesIsraelService {
     return matches;
   }
 
-  /**
-   * Get statistics about current listings
-   */
   async getStatistics() {
     const listings = await this.fetchWithLogin();
     
@@ -637,27 +582,20 @@ class KonesIsraelService {
     return stats;
   }
 
-  /**
-   * Get service status
-   */
   async getStatus() {
     try {
-      // First check if chromium is available
       const chromiumPath = findChromiumPath();
       
       if (!chromiumPath) {
         return {
           status: 'error',
           method: 'headless_browser',
-          error: 'Chromium not found on system',
+          error: 'Chromium not found',
           configured: this.isConfigured(),
           authenticated: this.isLoggedIn,
-          chromiumPaths: {
-            checked: ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'],
-            envVars: {
-              PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || '(not set)',
-              CHROMIUM_PATH: process.env.CHROMIUM_PATH || '(not set)'
-            }
+          envVars: {
+            PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || '(not set)',
+            CHROMIUM_PATH: process.env.CHROMIUM_PATH || '(not set)'
           }
         };
       }
@@ -692,7 +630,6 @@ class KonesIsraelService {
   }
 }
 
-// Singleton instance
 const konesIsraelService = new KonesIsraelService();
 
 module.exports = konesIsraelService;
