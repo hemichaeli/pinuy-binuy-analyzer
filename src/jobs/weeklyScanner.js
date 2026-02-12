@@ -35,6 +35,15 @@ function getDiscoveryService() {
   }
 }
 
+function getKonesIsraelService() {
+  try {
+    return require('../services/konesIsraelService');
+  } catch (e) {
+    logger.debug('KonesIsrael service not available', { error: e.message });
+    return null;
+  }
+}
+
 async function snapshotStatuses() {
   const result = await pool.query(
     'SELECT id, status, iai_score, actual_premium, local_committee_date, district_committee_date FROM complexes'
@@ -175,6 +184,12 @@ async function sendScanStatusNotification(result) {
             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>מודעות חדשות</strong></td>
             <td style="padding: 8px; border: 1px solid #dee2e6;">${result.yad2?.newListings || 0}</td>
           </tr>
+          ${result.konesIsrael ? `
+          <tr style="background: #fff3e0;">
+            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🏛️ כונס נכסים (KonesIsrael)</strong></td>
+            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.konesIsrael.totalListings || 0} מודעות, ${result.konesIsrael.matchedComplexes || 0} התאמות למתחמים</td>
+          </tr>
+          ` : ''}
           ${result.discovery ? `
           <tr style="background: #e8f4fd;">
             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🔍 ערים נסרקו לגילוי</strong></td>
@@ -195,12 +210,13 @@ async function sendScanStatusNotification(result) {
         <ul>
           <li>Perplexity: ${result.unified?.sources?.perplexity ? '✅' : '❌'}</li>
           <li>Claude: ${result.unified?.sources?.claude ? '✅' : '⚠️ לא מוגדר'}</li>
+          <li>KonesIsrael: ${result.konesIsrael ? '✅' : '⚠️ לא זמין'}</li>
         </ul>
       ` : ''}
       
       <hr style="margin: 20px 0;">
       <p style="color: #6c757d; font-size: 12px;">
-        QUANTUM - Pinuy Binuy Investment Analyzer<br>
+        QUANTUM - Pinuy Binuy Investment Analyzer v4.7.5<br>
         סריקה אוטומטית יומית ב-08:00
       </p>
     </div>
@@ -219,6 +235,7 @@ async function sendScanStatusNotification(result) {
 /**
  * Run the daily scan with unified AI (Perplexity + Claude)
  * NOW SCANS ALL TARGET CITIES DAILY FOR DISCOVERY
+ * v4.7.5: Includes KonesIsrael receivership data
  */
 async function runWeeklyScan(options = {}) {
   const { forceAll = false, includeDiscovery = true } = options;
@@ -245,7 +262,7 @@ async function runWeeklyScan(options = {}) {
     const orchestrator = getClaudeOrchestrator();
     if (orchestrator) {
       try {
-        logger.info('Step 1/8: Running Unified AI scan (Perplexity + Claude)...');
+        logger.info('Step 1/9: Running Unified AI scan (Perplexity + Claude)...');
         unifiedResults = await orchestrator.scanAllUnified({ staleOnly, limit: 129 });
         logger.info(`Unified AI: ${unifiedResults.succeeded}/${unifiedResults.total} ok, ${unifiedResults.changes} changes`);
       } catch (unifiedErr) {
@@ -260,7 +277,7 @@ async function runWeeklyScan(options = {}) {
         };
       }
     } else {
-      logger.info('Step 1/8: Running Perplexity scan (Claude not available)...');
+      logger.info('Step 1/9: Running Perplexity scan (Claude not available)...');
       const results = await scanAll({ staleOnly });
       unifiedResults = { 
         total: results.total, scanned: results.scanned, 
@@ -272,34 +289,34 @@ async function runWeeklyScan(options = {}) {
     // Step 2: Nadlan transactions
     let nadlanResults = { totalNew: 0 };
     try {
-      logger.info('Step 2/8: Running nadlan.gov.il scan...');
+      logger.info('Step 2/9: Running nadlan.gov.il scan...');
       nadlanResults = await nadlanScraper.scanAll({ staleOnly, limit: 50 });
     } catch (e) { logger.warn('Nadlan failed', { error: e.message }); }
 
     // Step 3: Benchmarks
     let benchmarkResults = { calculated: 0 };
     try {
-      logger.info('Step 3/8: Calculating benchmarks...');
+      logger.info('Step 3/9: Calculating benchmarks...');
       benchmarkResults = await calculateAllBenchmarks({ limit: 50 });
     } catch (e) { logger.warn('Benchmark failed', { error: e.message }); }
 
     // Step 4: yad2 listings
     let yad2Results = { totalNew: 0, totalUpdated: 0, totalPriceChanges: 0 };
     try {
-      logger.info('Step 4/8: Running yad2 scan...');
+      logger.info('Step 4/9: Running yad2 scan...');
       yad2Results = await yad2Scraper.scanAll({ staleOnly, limit: 50 });
     } catch (e) { logger.warn('yad2 failed', { error: e.message }); }
 
     // Step 5: SSI calculation
     let ssiResults = { stressed: 0, very_stressed: 0 };
     try {
-      logger.info('Step 5/8: Calculating SSI scores...');
+      logger.info('Step 5/9: Calculating SSI scores...');
       ssiResults = await calculateAllSSI();
     } catch (e) { logger.warn('SSI failed', { error: e.message }); }
 
     // Step 6: IAI recalculation
     try {
-      logger.info('Step 6/8: Recalculating IAI scores...');
+      logger.info('Step 6/9: Recalculating IAI scores...');
       await calculateAllIAI();
     } catch (e) { logger.warn('IAI failed', { error: e.message }); }
 
@@ -309,7 +326,7 @@ async function runWeeklyScan(options = {}) {
       const discoveryService = getDiscoveryService();
       if (discoveryService) {
         const allCities = discoveryService.ALL_TARGET_CITIES;
-        logger.info(`Step 7/8: 🔍 Discovery scan for ALL ${allCities.length} target cities...`);
+        logger.info(`Step 7/9: 🔍 Discovery scan for ALL ${allCities.length} target cities...`);
         
         try {
           let totalNew = 0;
@@ -378,20 +395,129 @@ async function runWeeklyScan(options = {}) {
           logger.warn('Discovery failed', { error: e.message }); 
         }
       } else {
-        logger.info('Step 7/8: Discovery service not available');
+        logger.info('Step 7/9: Discovery service not available');
       }
     } else {
-      logger.info('Step 7/8: Discovery disabled');
+      logger.info('Step 7/9: Discovery disabled');
     }
 
-    // Step 8: Generate alerts
-    logger.info('Step 8/8: Generating alerts...');
+    // Step 8: KonesIsrael receivership data scan
+    let konesResults = { totalListings: 0, matchedComplexes: 0, ssiUpdated: 0, errors: null };
+    const konesService = getKonesIsraelService();
+    if (konesService) {
+      try {
+        logger.info('Step 8/9: 🏛️ Scanning KonesIsrael receivership listings...');
+        
+        // Fetch listings via headless browser
+        const listings = await konesService.fetchWithLogin(true);
+        konesResults.totalListings = listings.length;
+        logger.info(`KonesIsrael: Fetched ${listings.length} receivership listings`);
+        
+        if (listings.length > 0) {
+          // Match with existing complexes
+          const complexes = await pool.query('SELECT id, name, city, street, address FROM complexes');
+          const matches = await konesService.matchWithComplexes(complexes.rows);
+          konesResults.matchedComplexes = matches.length;
+          
+          logger.info(`KonesIsrael: ${matches.length} matches found with existing complexes`);
+          
+          // Update SSI for matched complexes (receivership = +30 SSI)
+          for (const match of matches) {
+            try {
+              await pool.query(
+                `UPDATE complexes SET 
+                  is_receivership = TRUE, 
+                  has_property_liens = TRUE,
+                  distress_indicators = COALESCE(distress_indicators, '{}'::jsonb) || $1::jsonb,
+                  ssi_last_enhanced = NOW()
+                WHERE id = $2`,
+                [
+                  JSON.stringify({
+                    kones_israel: {
+                      matched_listings: match.matchedListings,
+                      last_scan: new Date().toISOString(),
+                      listings: match.listings.slice(0, 5).map(l => ({
+                        city: l.city,
+                        address: l.address,
+                        type: l.propertyType,
+                        deadline: l.submissionDeadline
+                      }))
+                    }
+                  }),
+                  match.complexId
+                ]
+              );
+              konesResults.ssiUpdated++;
+              
+              // Create alert for receivership match
+              await createAlert({
+                complexId: match.complexId,
+                type: 'stressed_seller',
+                severity: 'high',
+                title: `🏛️ כונס נכסים: ${match.complexName}`,
+                message: `נמצאו ${match.matchedListings} נכסים בכינוס נכסים במתחם. SSI +30 נקודות.`,
+                data: {
+                  source: 'konesisrael',
+                  matched_listings: match.matchedListings,
+                  ssi_boost: 30
+                }
+              });
+            } catch (updateErr) {
+              logger.warn(`KonesIsrael: Failed to update complex ${match.complexId}`, { error: updateErr.message });
+            }
+          }
+          
+          // Store listings summary in distressed_sellers table
+          for (const listing of listings.slice(0, 100)) {
+            try {
+              const existingCheck = await pool.query(
+                `SELECT id FROM distressed_sellers WHERE source = 'konesisrael' AND details->>'address' = $1 AND details->>'city' = $2`,
+                [listing.address || '', listing.city || '']
+              );
+              
+              if (existingCheck.rows.length === 0) {
+                await pool.query(
+                  `INSERT INTO distressed_sellers (complex_id, distress_type, distress_score, source, details) 
+                   VALUES ($1, 'receivership', 30, 'konesisrael', $2)`,
+                  [
+                    null, // Will be linked if matched
+                    JSON.stringify({
+                      city: listing.city,
+                      address: listing.address,
+                      propertyType: listing.propertyType,
+                      region: listing.region,
+                      deadline: listing.submissionDeadline,
+                      contactPerson: listing.contactPerson,
+                      gush: listing.gush,
+                      helka: listing.helka
+                    })
+                  ]
+                );
+              }
+            } catch (insertErr) {
+              // Skip duplicate or error
+            }
+          }
+          
+          logger.info(`KonesIsrael: Updated ${konesResults.ssiUpdated} complexes with receivership data`);
+        }
+      } catch (e) {
+        konesResults.errors = e.message;
+        logger.warn('KonesIsrael scan failed', { error: e.message });
+      }
+    } else {
+      logger.info('Step 8/9: KonesIsrael service not available');
+    }
+
+    // Step 9: Generate alerts
+    logger.info('Step 9/9: Generating alerts...');
     const alertCount = await generateAlerts(beforeSnapshot);
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     const summary = `Daily scan: Unified AI ${unifiedResults.succeeded}/${unifiedResults.total} ok, ` +
       `${unifiedResults.changes} changes. Nadlan: ${nadlanResults.totalNew} tx. ` +
       `yad2: ${yad2Results.totalNew} new. ` +
+      `KonesIsrael: ${konesResults.totalListings} listings, ${konesResults.matchedComplexes} matches. ` +
       `Discovery: ${discoveryResults.citiesScanned} cities, ${discoveryResults.newAdded} new. ` +
       `${alertCount} alerts. ${duration}s`;
 
@@ -402,6 +528,7 @@ async function runWeeklyScan(options = {}) {
       benchmarks: { calculated: benchmarkResults.calculated || 0 },
       yad2: { newListings: yad2Results.totalNew || 0, updated: yad2Results.totalUpdated || 0 },
       ssi: ssiResults,
+      konesIsrael: konesResults,
       discovery: discoveryResults,
       alertsGenerated: alertCount,
       summary
@@ -415,7 +542,7 @@ async function runWeeklyScan(options = {}) {
        WHERE id = $7`,
       [unifiedResults.scanned || unifiedResults.total,
         nadlanResults.totalNew || 0,
-        yad2Results.totalNew || 0,
+        (yad2Results.totalNew || 0) + (konesResults.totalListings || 0),
         (unifiedResults.changes || 0) + (discoveryResults.newAdded || 0),
         alertCount, summary, scanId]
     );
@@ -466,6 +593,7 @@ function stopScheduler() {
 function getSchedulerStatus() {
   const orchestrator = getClaudeOrchestrator();
   const discoveryService = getDiscoveryService();
+  const konesService = getKonesIsraelService();
   
   return {
     enabled: !!scheduledTask, 
@@ -481,7 +609,9 @@ function getSchedulerStatus() {
     discoverySchedule: 'Daily - ALL cities',
     targetCities: discoveryService?.ALL_TARGET_CITIES?.length || 0,
     targetRegions: discoveryService?.TARGET_REGIONS ? Object.keys(discoveryService.TARGET_REGIONS) : [],
-    minHousingUnits: discoveryService?.MIN_HOUSING_UNITS || 12
+    minHousingUnits: discoveryService?.MIN_HOUSING_UNITS || 12,
+    konesIsraelEnabled: !!konesService,
+    konesIsraelConfigured: konesService?.isConfigured() || false
   };
 }
 
