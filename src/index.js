@@ -7,8 +7,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const fs = require('fs');
-const path = require('path');
 const { logger } = require('./services/logger');
 const pool = require('./db/pool');
 const notificationService = require('./services/notificationService');
@@ -16,9 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Version info
-const VERSION = '4.8.2';
-const BUILD = '2026-02-12-v4.8.2-full-perplexity-db';
+const VERSION = '4.8.3';
+const BUILD = '2026-02-12-v4.8.3-route-fix';
 
 async function runAutoMigrations() {
   try {
@@ -27,7 +24,6 @@ async function runAutoMigrations() {
     await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS address TEXT DEFAULT NULL`);
     await pool.query(`ALTER TABLE complexes ALTER COLUMN created_at SET DEFAULT NOW()`);
     
-    // Phase 4.5: Enhanced data source columns
     const phase45Columns = [
       'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_avg_price_sqm INTEGER',
       'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_price_trend DECIMAL(5,2)',
@@ -51,70 +47,55 @@ async function runAutoMigrations() {
     ];
     
     for (const sql of phase45Columns) {
-      try {
-        await pool.query(sql);
-      } catch (e) {
-        // Column might already exist
-      }
+      try { await pool.query(sql); } catch (e) { /* column exists */ }
     }
     
-    logger.info('Auto-migrations completed (Phase 4.5 columns)');
+    logger.info('Auto-migrations completed');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
 }
 
 // Middleware
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
-
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'] }));
 app.use(express.json({ limit: '50mb' }));
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 }));
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000
-});
-app.use('/api/', limiter);
-
-// Health check - always first
-app.get('/health', async (req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({ 
-      status: 'healthy', 
-      timestamp: new Date().toISOString(),
-      version: VERSION,
-      build: BUILD
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      status: 'unhealthy', 
-      error: error.message,
-      version: VERSION
-    });
-  }
-});
-
-// Debug endpoint
-app.get('/api/debug', async (req, res) => {
-  res.json({
-    version: VERSION,
-    build: BUILD,
-    timestamp: new Date().toISOString(),
-    env: {
-      NODE_ENV: process.env.NODE_ENV,
-      hasPerplexityKey: !!process.env.PERPLEXITY_API_KEY,
-      hasDbUrl: !!process.env.DATABASE_URL
+// Request logging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    if (req.path !== '/health' && req.path !== '/debug') {
+      logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
     }
   });
+  next();
+});
+
+// Health check
+app.get('/health', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT COUNT(*) FROM complexes');
+    const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
+    const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
+    const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      version: VERSION,
+      build: BUILD,
+      db: 'connected',
+      complexes: parseInt(result.rows[0].count),
+      transactions: parseInt(txCount.rows[0].count),
+      listings: parseInt(listingCount.rows[0].count),
+      unread_alerts: parseInt(alertCount.rows[0].count),
+      notifications: notificationService.isConfigured() ? 'active' : 'disabled'
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'unhealthy', error: error.message, version: VERSION });
+  }
 });
 
 // Route loading with error handling
@@ -122,101 +103,152 @@ function loadRoute(routePath, mountPath) {
   try {
     const route = require(routePath);
     app.use(mountPath, route);
-    logger.info(`✅ Loaded route: ${mountPath}`);
+    logger.info(`Route loaded: ${mountPath}`);
     return true;
   } catch (error) {
-    logger.error(`❌ Failed to load route ${mountPath}: ${error.message}`);
+    logger.warn(`Route skipped ${mountPath}: ${error.message}`);
     return false;
   }
 }
 
-// Load all routes
 async function loadRoutes() {
+  // Map to ACTUAL files in src/routes/
   const routes = [
-    // Core routes
-    ['./routes/complexes', '/api/complexes'],
-    ['./routes/transactions', '/api/transactions'],
+    ['./routes/projects', '/api/projects'],
+    ['./routes/opportunities', '/api'],
     ['./routes/scan', '/api/scan'],
-    ['./routes/yad2', '/api/yad2'],
-    ['./routes/kones', '/api/kones'],
-    
-    // Analytics routes
-    ['./routes/opportunities', '/api/opportunities'],
-    ['./routes/stressed-sellers', '/api/stressed-sellers'],
-    ['./routes/insights', '/api/insights'],
-    
-    // Phase 4.5: Enhanced data sources
-    ['./routes/madlan', '/api/madlan'],
-    ['./routes/official-status', '/api/official-status'],
-    ['./routes/committee-tracker', '/api/committee'],
-    ['./routes/developer-intel', '/api/developer'],
-    ['./routes/notifications', '/api/notifications'],
-    
-    // Phase 4.6: Mavat integration
-    ['./routes/mavat', '/api/mavat'],
-    
-    // Phase 4.8: Perplexity DB integration
-    ['./routes/perplexity-db', '/api/perplexity']
+    ['./routes/alerts', '/api/alerts'],
+    ['./routes/ssiRoutes', '/api/ssi'],
+    ['./routes/enhancedData', '/api/enhanced'],
+    ['./routes/konesRoutes', '/api/kones'],
+    ['./routes/perplexityRoutes', '/api/perplexity'],
+    ['./routes/governmentDataRoutes', '/api/government'],
+    ['./routes/newsRoutes', '/api/news'],
+    ['./routes/pricingRoutes', '/api/pricing'],
+    ['./routes/admin', '/api/admin'],
   ];
   
-  let loaded = 0;
-  let failed = 0;
-  
+  let loaded = 0, failed = 0;
   for (const [routePath, mountPath] of routes) {
-    if (loadRoute(routePath, mountPath)) {
-      loaded++;
-    } else {
-      failed++;
-    }
+    if (loadRoute(routePath, mountPath)) loaded++;
+    else failed++;
   }
-  
-  logger.info(`Routes loaded: ${loaded} success, ${failed} failed`);
-  return { loaded, failed };
+  logger.info(`Routes: ${loaded} loaded, ${failed} skipped`);
 }
 
-// API status endpoint
-app.get('/api/status', async (req, res) => {
+// Lazy load services
+function getDiscoveryInfo() {
   try {
-    const dbResult = await pool.query('SELECT COUNT(*) as count FROM complexes');
-    const complexCount = parseInt(dbResult.rows[0].count);
-    
-    res.json({
-      status: 'operational',
-      version: VERSION,
-      build: BUILD,
-      database: {
-        connected: true,
-        complexes: complexCount
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      version: VERSION,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
+    const ds = require('./services/discoveryService');
+    return { available: true, cities: ds.ALL_TARGET_CITIES?.length || 0 };
+  } catch { return { available: false }; }
+}
+
+function getKonesInfo() {
+  try {
+    const ks = require('./services/konesIsraelService');
+    return { available: true, configured: ks.isConfigured?.() || false };
+  } catch { return { available: false }; }
+}
+
+// Debug endpoint
+app.get('/debug', (req, res) => {
+  const discovery = getDiscoveryInfo();
+  const kones = getKonesInfo();
+  
+  let schedulerStatus = null;
+  try {
+    const { getSchedulerStatus } = require('./jobs/weeklyScanner');
+    schedulerStatus = getSchedulerStatus();
+  } catch (e) {
+    schedulerStatus = { error: e.message };
+  }
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    build: BUILD,
+    version: VERSION,
+    node_version: process.version,
+    env: {
+      DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
+      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)',
+      RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)',
+      KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)',
+      KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)',
+    },
+    features: {
+      discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled',
+      kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled',
+      notifications: notificationService.isConfigured() ? 'active' : 'disabled',
+    },
+    scheduler: schedulerStatus
+  });
+});
+
+// Scheduler routes
+app.get('/api/scheduler', (req, res) => {
+  try {
+    const { getSchedulerStatus } = require('./jobs/weeklyScanner');
+    res.json(getSchedulerStatus());
+  } catch (e) {
+    res.json({ error: e.message });
   }
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    error: 'Not Found',
-    path: req.path,
-    version: VERSION
+app.post('/api/scheduler/run', async (req, res) => {
+  try {
+    const { runWeeklyScan, getSchedulerStatus } = require('./jobs/weeklyScanner');
+    const status = getSchedulerStatus();
+    if (status.isRunning) return res.status(409).json({ error: 'Scan already running' });
+    res.json({ message: 'Scan triggered', note: 'Running in background' });
+    await runWeeklyScan();
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Notification routes
+app.get('/api/notifications/status', (req, res) => {
+  res.json(notificationService.getStatus ? notificationService.getStatus() : { configured: notificationService.isConfigured() });
+});
+
+app.post('/api/notifications/test', async (req, res) => {
+  try {
+    await notificationService.sendTestEmail?.();
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Root
+app.get('/', (req, res) => {
+  res.json({
+    name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
+    version: VERSION,
+    build: BUILD,
+    endpoints: {
+      health: '/health',
+      debug: '/debug',
+      scheduler: '/api/scheduler',
+      projects: '/api/projects',
+      opportunities: '/api/opportunities',
+      scan: '/api/scan',
+      kones: '/api/kones',
+      notifications: '/api/notifications/status'
+    }
   });
+});
+
+// 404
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION });
 });
 
 // Error handler
 app.use((err, req, res, next) => {
   logger.error('Unhandled error:', err);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: err.message,
-    version: VERSION
-  });
+  res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION });
 });
 
 async function start() {
@@ -226,9 +258,17 @@ async function start() {
   await runAutoMigrations();
   await loadRoutes();
   
+  // Start scheduler
+  try {
+    const { startScheduler } = require('./jobs/weeklyScanner');
+    startScheduler();
+  } catch (e) {
+    logger.warn('Scheduler failed to start:', e.message);
+  }
+  
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
-    logger.info(`Health check: http://localhost:${PORT}/health`);
+    logger.info(`Notifications: ${notificationService.isConfigured() ? 'active' : 'disabled'}`);
   });
 }
 
