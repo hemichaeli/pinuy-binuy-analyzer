@@ -12,7 +12,7 @@
     "scan": "node src/jobs/weeklyScanner.js",
     "test": "echo \"No tests yet\""
   },
-  "build": "2026-02-12-v4.8.2-full-perplexity-db",
+  "build": "2026-02-13-v4.8.2-redeploy",
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
