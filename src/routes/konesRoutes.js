@@ -5,13 +5,17 @@
 
 const express = require('express');
 const router = express.Router();
+const { logger } = require('../services/logger');
 
 let konesIsraelService;
+let loadError = null;
 
 try {
   konesIsraelService = require('../services/konesIsraelService');
+  logger.info('KonesIsrael service loaded successfully');
 } catch (e) {
-  console.warn('KonesIsrael service not available:', e.message);
+  loadError = e.message;
+  logger.error('KonesIsrael service failed to load:', { error: e.message, stack: e.stack });
 }
 
 /**
@@ -23,7 +27,8 @@ router.get('/status', (req, res) => {
     return res.json({ 
       service: 'konesIsrael',
       available: false,
-      error: 'Service not initialized'
+      error: 'Service not initialized',
+      loadError: loadError
     });
   }
   res.json(konesIsraelService.getStatus());
@@ -36,7 +41,7 @@ router.get('/status', (req, res) => {
 router.get('/listings', async (req, res) => {
   try {
     if (!konesIsraelService) {
-      return res.status(503).json({ error: 'KonesIsrael service not available' });
+      return res.status(503).json({ error: 'KonesIsrael service not available', loadError: loadError });
     }
 
     const forceRefresh = req.query.refresh === 'true';
@@ -59,7 +64,7 @@ router.get('/listings', async (req, res) => {
 router.get('/stats', async (req, res) => {
   try {
     if (!konesIsraelService) {
-      return res.status(503).json({ error: 'KonesIsrael service not available' });
+      return res.status(503).json({ error: 'KonesIsrael service not available', loadError: loadError });
     }
 
     const stats = await konesIsraelService.getStatistics();
@@ -79,7 +84,7 @@ router.get('/stats', async (req, res) => {
 router.get('/search/city/:city', async (req, res) => {
   try {
     if (!konesIsraelService) {
-      return res.status(503).json({ error: 'KonesIsrael service not available' });
+      return res.status(503).json({ error: 'KonesIsrael service not available', loadError: loadError });
     }
 
     const city = decodeURIComponent(req.params.city);
@@ -103,7 +108,7 @@ router.get('/search/city/:city', async (req, res) => {
 router.get('/search/address', async (req, res) => {
   try {
     if (!konesIsraelService) {
-      return res.status(503).json({ error: 'KonesIsrael service not available' });
+      return res.status(503).json({ error: 'KonesIsrael service not available', loadError: loadError });
     }
 
     const address = req.query.q;
@@ -131,7 +136,7 @@ router.get('/search/address', async (req, res) => {
 router.get('/search/gush/:gush', async (req, res) => {
   try {
     if (!konesIsraelService) {
-      return res.status(503).json({ error: 'KonesIsrael service not available' });
+      return res.status(503).json({ error: 'KonesIsrael service not available', loadError: loadError });
     }
 
     const gush = req.params.gush;
@@ -159,7 +164,7 @@ router.get('/search/gush/:gush', async (req, res) => {
 router.post('/check-complex', async (req, res) => {
   try {
     if (!konesIsraelService) {
-      return res.status(503).json({ error: 'KonesIsrael service not available' });
+      return res.status(503).json({ error: 'KonesIsrael service not available', loadError: loadError });
     }
 
     const { complex } = req.body;
@@ -187,7 +192,7 @@ router.post('/check-complex', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     if (!konesIsraelService) {
-      return res.status(503).json({ error: 'KonesIsrael service not available' });
+      return res.status(503).json({ error: 'KonesIsrael service not available', loadError: loadError });
     }
 
     const success = await konesIsraelService.login();
