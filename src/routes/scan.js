@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
-const { scanComplex, scanAll } = require('../services/perplexityService');
+// ========== DIRECT JSON APIs - NO PERPLEXITY ==========
+const directApi = require('../services/directApiService');
 const { calculateIAI, calculateAllIAI } = require('../services/iaiCalculator');
 const { calculateSSI, calculateAllSSI } = require('../services/ssiCalculator');
 const nadlanScraper = require('../services/nadlanScraper');
@@ -168,7 +169,7 @@ router.get('/discovery/status', (req, res) => {
       min_housing_units: discovery.MIN_HOUSING_UNITS,
       target_regions: discovery.TARGET_REGIONS,
       total_target_cities: discovery.ALL_TARGET_CITIES.length,
-      perplexity_configured: !!process.env.PERPLEXITY_API_KEY
+      direct_api_mode: true // No Perplexity needed
     });
   } catch (err) {
     res.json({ available: false, error: err.message });
@@ -197,7 +198,7 @@ router.get('/discovery/recent', async (req, res) => {
   }
 });
 
-// POST /api/scan/unified - Unified Perplexity + Claude scan (Phase 4.3)
+// POST /api/scan/unified - Unified Claude scan (Phase 4.3)
 router.post('/unified', async (req, res) => {
   try {
     const orchestrator = getClaudeOrchestrator();
@@ -223,7 +224,7 @@ router.post('/unified', async (req, res) => {
     const scanId = scanLog.rows[0].id;
 
     res.json({
-      message: 'Unified AI scan triggered (Perplexity + Claude)',
+      message: 'Unified AI scan triggered (Claude)',
       scan_id: scanId,
       note: 'Claude will validate and consolidate data from multiple sources',
       claude_configured: orchestrator.isClaudeConfigured()
@@ -246,7 +247,7 @@ router.post('/unified', async (req, res) => {
           `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
             complexes_scanned = $1, status_changes = $2, summary = $3 WHERE id = $4`,
           [results.total, results.changes,
-            `Unified AI: ${results.succeeded}/${results.total} ok, ${results.changes} changes, sources: Perplexity+Claude`, scanId]
+            `Unified AI: ${results.succeeded}/${results.total} ok, ${results.changes} changes`, scanId]
         );
 
         if (results.changes > 0 && notificationService.isConfigured()) {
@@ -273,7 +274,7 @@ router.get('/unified/status', (req, res) => {
     res.json({
       available: !!orchestrator,
       claude_configured: orchestrator?.isClaudeConfigured() || false,
-      perplexity_configured: !!process.env.PERPLEXITY_API_KEY,
+      direct_api_mode: true, // Using direct JSON APIs
       anthropic_key: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)',
       claude_key: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)'
     });
@@ -282,11 +283,12 @@ router.get('/unified/status', (req, res) => {
   }
 });
 
-// POST /api/scan/run - Trigger a Perplexity scan
+// ========== MAIN SCAN - DIRECT API (NO PERPLEXITY) ==========
+// POST /api/scan/run - Trigger a Direct API scan
 router.post('/run', async (req, res) => {
   try {
     const { type, city, status, limit, complexId, staleOnly } = req.body;
-    const scanType = type || 'perplexity';
+    const scanType = type || 'direct_api';
 
     const running = await pool.query(
       "SELECT id FROM scan_logs WHERE status = 'running' AND started_at > NOW() - INTERVAL '1 hour'"
@@ -301,7 +303,10 @@ router.post('/run', async (req, res) => {
     const scanId = scanLog.rows[0].id;
 
     res.json({
-      message: 'Scan triggered successfully', scan_id: scanId, type: scanType,
+      message: 'Direct API scan triggered (nadlan + yad2 + mavat)',
+      scan_id: scanId, 
+      type: scanType,
+      mode: 'direct_json_api',
       note: complexId
         ? `Scanning single complex ${complexId}`
         : `Scanning complexes${city ? ` in ${city}` : ''}${limit ? ` (limit: ${limit})` : ''}`
@@ -311,7 +316,7 @@ router.post('/run', async (req, res) => {
       try {
         let results;
         if (complexId) {
-          const result = await scanComplex(parseInt(complexId));
+          const result = await directApi.scanComplex(parseInt(complexId));
           results = {
             total: 1, scanned: 1,
             succeeded: result.status === 'success' ? 1 : 0,
@@ -321,7 +326,7 @@ router.post('/run', async (req, res) => {
             details: [result]
           };
         } else {
-          results = await scanAll({
+          results = await directApi.scanAll({
             city: city || null, status: status || null,
             limit: limit ? parseInt(limit) : null, staleOnly: staleOnly !== false
           });
@@ -335,7 +340,7 @@ router.post('/run', async (req, res) => {
             complexes_scanned = $1, new_transactions = $2, new_listings = $3, summary = $4
           WHERE id = $5`,
           [results.scanned, results.totalNewTransactions, results.totalNewListings,
-            `Perplexity scan: ${results.succeeded}/${results.total} succeeded, ` +
+            `DirectAPI scan: ${results.succeeded}/${results.total} succeeded, ` +
             `${results.totalNewTransactions} new tx, ${results.totalNewListings} new listings.`, scanId]
         );
       } catch (err) {
@@ -621,20 +626,21 @@ router.get('/notifications/status', (req, res) => {
   });
 });
 
-// POST /api/scan/complex/:id
+// POST /api/scan/complex/:id - Scan single complex using Direct API
 router.post('/complex/:id', async (req, res) => {
   try {
     const complexId = parseInt(req.params.id);
     const complexCheck = await pool.query('SELECT id, name, city FROM complexes WHERE id = $1', [complexId]);
     if (complexCheck.rows.length === 0) return res.status(404).json({ error: 'Complex not found' });
 
-    const result = await scanComplex(complexId);
+    const result = await directApi.scanComplex(complexId);
     const iai = await calculateIAI(complexId);
 
     res.json({
       scan_result: result,
       iai_score: iai?.iai_score || null,
-      message: `Scanned ${complexCheck.rows[0].name}`
+      message: `Scanned ${complexCheck.rows[0].name}`,
+      mode: 'direct_json_api'
     });
   } catch (err) {
     res.status(500).json({ error: `Scan failed: ${err.message}` });
