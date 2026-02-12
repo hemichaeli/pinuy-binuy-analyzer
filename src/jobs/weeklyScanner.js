@@ -47,6 +47,22 @@ function getKonesIsraelService() {
 }
 
 /**
+ * Step tracker for scan notifications
+ */
+function createStepTracker() {
+  const steps = [];
+  return {
+    add(name, nameHe, success, detail, error = null) {
+      steps.push({ name, nameHe, success, detail, error: error ? String(error).slice(0, 120) : null });
+    },
+    getSteps() { return steps; },
+    failedCount() { return steps.filter(s => !s.success).length; },
+    successCount() { return steps.filter(s => s.success).length; },
+    totalCount() { return steps.length; }
+  };
+}
+
+/**
  * Send notification that today's scan was skipped
  */
 async function sendSkipNotification(skipInfo) {
@@ -94,7 +110,7 @@ async function sendSkipNotification(skipInfo) {
       
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
       <p style="font-size: 11px; color: #9ca3af; text-align: center;">
-        QUANTUM v4.8.0 - Pinuy Binuy Investment Analyzer
+        QUANTUM v4.8.1 - Pinuy Binuy Investment Analyzer
       </p>
     </div>
   `;
@@ -210,78 +226,97 @@ function formatPrice(price) {
 }
 
 /**
- * Send scan status notification
+ * Build step status rows for email
+ */
+function buildStepRows(steps) {
+  return steps.map((step, i) => {
+    const icon = step.success ? '✅' : '❌';
+    const bgColor = step.success ? '#f0fdf4' : '#fef2f2';
+    const detailColor = step.success ? '#166534' : '#991b1b';
+    const errorLine = step.error ? `<br><span style="color: #dc2626; font-size: 11px;">שגיאה: ${step.error}</span>` : '';
+    
+    return `
+      <tr style="background: ${i % 2 === 0 ? bgColor : '#ffffff'};">
+        <td style="padding: 8px 12px; border: 1px solid #e5e7eb; text-align: center; font-size: 18px; width: 40px;">${icon}</td>
+        <td style="padding: 8px 12px; border: 1px solid #e5e7eb; font-weight: 600;">${step.nameHe}</td>
+        <td style="padding: 8px 12px; border: 1px solid #e5e7eb; color: ${detailColor}; font-size: 13px;">${step.detail}${errorLine}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Send scan status notification with per-step breakdown
  */
 async function sendScanStatusNotification(result) {
   if (!notificationService.isConfigured()) return;
 
-  const subject = result.error 
-    ? `❌ [QUANTUM] סריקה יומית נכשלה` 
-    : `✅ [QUANTUM] סריקה יומית הושלמה`;
+  const steps = result.steps || [];
+  const failedCount = steps.filter(s => !s.success).length;
+  const totalSteps = steps.length;
+  const hasCriticalFailure = !!result.error;
+  
+  // Determine overall status
+  let statusIcon, statusText, statusColor;
+  if (hasCriticalFailure) {
+    statusIcon = '❌';
+    statusText = 'סריקה יומית נכשלה';
+    statusColor = '#dc2626';
+  } else if (failedCount > 0) {
+    statusIcon = '⚠️';
+    statusText = `סריקה הושלמה עם ${failedCount} שגיאות`;
+    statusColor = '#d97706';
+  } else {
+    statusIcon = '✅';
+    statusText = 'סריקה יומית הושלמה בהצלחה';
+    statusColor = '#16a34a';
+  }
+
+  const subject = `${statusIcon} [QUANTUM] ${statusText}`;
+
+  const israelTime = new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
+  const durationMin = result.duration ? Math.round(parseInt(result.duration) / 60) : '?';
 
   const html = `
-    <div style="font-family: Arial, sans-serif; direction: rtl; text-align: right;">
-      <h2 style="color: ${result.error ? '#dc3545' : '#28a745'};">
-        ${result.error ? '❌ סריקה נכשלה' : '✅ סריקה יומית הושלמה'}
-      </h2>
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto;">
+      <h2 style="color: ${statusColor}; margin-bottom: 4px;">${statusIcon} ${statusText}</h2>
+      <p style="color: #6b7280; margin: 0 0 16px; font-size: 13px;">
+        ${israelTime} &nbsp;|&nbsp; ${durationMin} דקות &nbsp;|&nbsp; סריקה #${result.scanId || '?'}
+      </p>
       
-      <p><strong>זמן:</strong> ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</p>
-      <p><strong>משך:</strong> ${result.duration || 'N/A'}</p>
-      
-      ${result.error ? `<p style="color: #dc3545;"><strong>שגיאה:</strong> ${result.error}</p>` : ''}
-      
-      ${!result.error ? `
-        <h3>📊 סיכום סריקה</h3>
-        <table style="border-collapse: collapse; width: 100%;">
-          <tr style="background: #f8f9fa;">
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>מתחמים נסרקו</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.unified?.scanned || result.perplexity?.succeeded || 0}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>שינויים זוהו</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.unified?.changes || 0}</td>
-          </tr>
-          <tr style="background: #f8f9fa;">
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>עסקאות חדשות</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.nadlan?.newTransactions || 0}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>מודעות חדשות</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.yad2?.newListings || 0}</td>
-          </tr>
-          ${result.konesIsrael ? `
-          <tr style="background: #fff3e0;">
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🏛️ כונס נכסים (KonesIsrael)</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.konesIsrael.totalListings || 0} מודעות, ${result.konesIsrael.matchedComplexes || 0} התאמות למתחמים</td>
-          </tr>
-          ` : ''}
-          ${result.discovery ? `
-          <tr style="background: #e8f4fd;">
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🔍 ערים נסרקו לגילוי</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.discovery?.citiesScanned || 0} ערים</td>
-          </tr>
-          <tr style="background: #d4edda;">
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>🆕 מתחמים חדשים התגלו</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.discovery?.newAdded || 0}</td>
-          </tr>
-          ` : ''}
-          <tr style="background: #f8f9fa;">
-            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>התראות נוצרו</strong></td>
-            <td style="padding: 8px; border: 1px solid #dee2e6;">${result.alertsGenerated || 0}</td>
-          </tr>
-        </table>
-        
-        <h3>🤖 מקורות AI</h3>
-        <ul>
-          <li>Perplexity: ${result.unified?.sources?.perplexity ? '✅' : '❌'}</li>
-          <li>Claude: ${result.unified?.sources?.claude ? '✅' : '⚠️ לא מוגדר'}</li>
-          <li>KonesIsrael: ${result.konesIsrael ? '✅' : '⚠️ לא זמין'}</li>
-        </ul>
+      ${hasCriticalFailure ? `
+        <div style="background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 12px; margin: 0 0 16px;">
+          <strong style="color: #dc2626;">שגיאה קריטית:</strong> ${result.error}
+        </div>
       ` : ''}
       
-      <hr style="margin: 20px 0;">
-      <p style="color: #6c757d; font-size: 12px;">
-        QUANTUM - Pinuy Binuy Investment Analyzer v4.8.0<br>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+        <thead>
+          <tr style="background: #f3f4f6;">
+            <th style="padding: 8px 12px; border: 1px solid #e5e7eb; text-align: center; width: 40px;">סטטוס</th>
+            <th style="padding: 8px 12px; border: 1px solid #e5e7eb; text-align: right;">שלב</th>
+            <th style="padding: 8px 12px; border: 1px solid #e5e7eb; text-align: right;">פירוט</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${buildStepRows(steps)}
+        </tbody>
+      </table>
+      
+      ${!hasCriticalFailure ? `
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; font-size: 13px;">
+          <strong>סיכום:</strong> 
+          ${result.unified?.succeeded || 0} מתחמים נסרקו,
+          ${result.unified?.changes || 0} שינויים,
+          ${result.yad2?.newListings || 0} מודעות חדשות,
+          ${result.discovery?.newAdded || 0} מתחמים חדשים,
+          ${result.alertsGenerated || 0} התראות
+        </div>
+      ` : ''}
+      
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+      <p style="font-size: 11px; color: #9ca3af; text-align: center;">
+        QUANTUM v4.8.1 - Pinuy Binuy Investment Analyzer<br>
         סריקה אוטומטית יומית ב-08:00 (ראשון-חמישי, לא בחגים)
       </p>
     </div>
@@ -291,7 +326,7 @@ async function sendScanStatusNotification(result) {
     for (const email of notificationService.NOTIFICATION_EMAILS) {
       await notificationService.sendEmail(email, subject, html);
     }
-    logger.info('Scan status notification sent');
+    logger.info(`Scan notification sent: ${statusIcon} ${failedCount}/${totalSteps} failed`);
   } catch (err) {
     logger.warn('Failed to send scan status notification', { error: err.message });
   }
@@ -300,7 +335,7 @@ async function sendScanStatusNotification(result) {
 /**
  * Run the daily scan with unified AI (Perplexity + Claude)
  * NOW SCANS ALL TARGET CITIES DAILY FOR DISCOVERY
- * v4.8.0: Includes KonesIsrael + Weekend/Holiday skip
+ * v4.8.1: Enhanced notifications with per-step ✅/❌ status
  */
 async function runWeeklyScan(options = {}) {
   const { forceAll = false, includeDiscovery = true } = options;
@@ -312,6 +347,7 @@ async function runWeeklyScan(options = {}) {
   isRunning = true;
   const startTime = Date.now();
   const staleOnly = !forceAll;
+  const tracker = createStepTracker();
   
   logger.info(`=== Daily scan started (forceAll: ${forceAll}, discovery: ${includeDiscovery}) ===`);
 
@@ -330,25 +366,40 @@ async function runWeeklyScan(options = {}) {
         logger.info('Step 1/9: Running Unified AI scan (Perplexity + Claude)...');
         unifiedResults = await orchestrator.scanAllUnified({ staleOnly, limit: 129 });
         logger.info(`Unified AI: ${unifiedResults.succeeded}/${unifiedResults.total} ok, ${unifiedResults.changes} changes`);
+        tracker.add('unified_ai', 'סריקת AI (Perplexity + Claude)', true, 
+          `${unifiedResults.succeeded}/${unifiedResults.total} מתחמים, ${unifiedResults.changes} שינויים`);
       } catch (unifiedErr) {
         logger.warn('Unified AI scan failed', { error: unifiedErr.message });
         // Fallback to Perplexity only
         logger.info('Falling back to Perplexity-only scan...');
-        const fallback = await scanAll({ staleOnly });
-        unifiedResults = { 
-          total: fallback.total, scanned: fallback.scanned, 
-          succeeded: fallback.succeeded, changes: 0,
-          sources: { perplexity: true, claude: false }
-        };
+        try {
+          const fallback = await scanAll({ staleOnly });
+          unifiedResults = { 
+            total: fallback.total, scanned: fallback.scanned, 
+            succeeded: fallback.succeeded, changes: 0,
+            sources: { perplexity: true, claude: false }
+          };
+          tracker.add('unified_ai', 'סריקת AI (Perplexity בלבד - fallback)', true,
+            `${fallback.succeeded}/${fallback.total} מתחמים (Claude לא זמין)`);
+        } catch (fallbackErr) {
+          tracker.add('unified_ai', 'סריקת AI (Perplexity + Claude)', false,
+            'שני המקורות נכשלו', fallbackErr.message);
+        }
       }
     } else {
       logger.info('Step 1/9: Running Perplexity scan (Claude not available)...');
-      const results = await scanAll({ staleOnly });
-      unifiedResults = { 
-        total: results.total, scanned: results.scanned, 
-        succeeded: results.succeeded, changes: 0,
-        sources: { perplexity: true, claude: false }
-      };
+      try {
+        const results = await scanAll({ staleOnly });
+        unifiedResults = { 
+          total: results.total, scanned: results.scanned, 
+          succeeded: results.succeeded, changes: 0,
+          sources: { perplexity: true, claude: false }
+        };
+        tracker.add('unified_ai', 'סריקת AI (Perplexity)', true,
+          `${results.succeeded}/${results.total} מתחמים`);
+      } catch (e) {
+        tracker.add('unified_ai', 'סריקת AI (Perplexity)', false, 'נכשל', e.message);
+      }
     }
 
     // Step 2: Nadlan transactions
@@ -356,34 +407,58 @@ async function runWeeklyScan(options = {}) {
     try {
       logger.info('Step 2/9: Running nadlan.gov.il scan...');
       nadlanResults = await nadlanScraper.scanAll({ staleOnly, limit: 50 });
-    } catch (e) { logger.warn('Nadlan failed', { error: e.message }); }
+      tracker.add('nadlan', 'עסקאות נדל"ן (nadlan.gov.il)', true,
+        `${nadlanResults.totalNew || 0} עסקאות חדשות`);
+    } catch (e) {
+      logger.warn('Nadlan failed', { error: e.message });
+      tracker.add('nadlan', 'עסקאות נדל"ן (nadlan.gov.il)', false, 'נכשל', e.message);
+    }
 
     // Step 3: Benchmarks
     let benchmarkResults = { calculated: 0 };
     try {
       logger.info('Step 3/9: Calculating benchmarks...');
       benchmarkResults = await calculateAllBenchmarks({ limit: 50 });
-    } catch (e) { logger.warn('Benchmark failed', { error: e.message }); }
+      tracker.add('benchmarks', 'חישוב benchmarks', true,
+        `${benchmarkResults.calculated || 0} חושבו`);
+    } catch (e) {
+      logger.warn('Benchmark failed', { error: e.message });
+      tracker.add('benchmarks', 'חישוב benchmarks', false, 'נכשל', e.message);
+    }
 
     // Step 4: yad2 listings
     let yad2Results = { totalNew: 0, totalUpdated: 0, totalPriceChanges: 0 };
     try {
       logger.info('Step 4/9: Running yad2 scan...');
       yad2Results = await yad2Scraper.scanAll({ staleOnly, limit: 50 });
-    } catch (e) { logger.warn('yad2 failed', { error: e.message }); }
+      tracker.add('yad2', 'מודעות יד2', true,
+        `${yad2Results.totalNew || 0} חדשות, ${yad2Results.totalUpdated || 0} עודכנו`);
+    } catch (e) {
+      logger.warn('yad2 failed', { error: e.message });
+      tracker.add('yad2', 'מודעות יד2', false, 'נכשל', e.message);
+    }
 
     // Step 5: SSI calculation
     let ssiResults = { stressed: 0, very_stressed: 0 };
     try {
       logger.info('Step 5/9: Calculating SSI scores...');
       ssiResults = await calculateAllSSI();
-    } catch (e) { logger.warn('SSI failed', { error: e.message }); }
+      tracker.add('ssi', 'חישוב SSI (לחץ מוכרים)', true,
+        `${ssiResults.total || ssiResults.updated || 0} דורגו, ${ssiResults.highStress || 0} לחץ גבוה`);
+    } catch (e) {
+      logger.warn('SSI failed', { error: e.message });
+      tracker.add('ssi', 'חישוב SSI (לחץ מוכרים)', false, 'נכשל', e.message);
+    }
 
     // Step 6: IAI recalculation
     try {
       logger.info('Step 6/9: Recalculating IAI scores...');
       await calculateAllIAI();
-    } catch (e) { logger.warn('IAI failed', { error: e.message }); }
+      tracker.add('iai', 'חישוב IAI (אטרקטיביות)', true, 'הושלם');
+    } catch (e) {
+      logger.warn('IAI failed', { error: e.message });
+      tracker.add('iai', 'חישוב IAI (אטרקטיביות)', false, 'נכשל', e.message);
+    }
 
     // Step 7: Discovery - SCAN ALL TARGET CITIES DAILY
     let discoveryResults = { citiesScanned: 0, newAdded: 0, alreadyExisted: 0 };
@@ -408,7 +483,6 @@ async function runWeeklyScan(options = {}) {
               
               if (cityResult?.discovered_complexes) {
                 for (const complex of cityResult.discovered_complexes) {
-                  // Skip if below minimum units
                   if (complex.existing_units && complex.existing_units < discoveryService.MIN_HOUSING_UNITS) {
                     continue;
                   }
@@ -418,7 +492,6 @@ async function runWeeklyScan(options = {}) {
                     totalNew++;
                     logger.info(`  ✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
                     
-                    // Create alert for new discovery
                     await createAlert({
                       complexId: newId,
                       type: 'new_complex',
@@ -439,7 +512,6 @@ async function runWeeklyScan(options = {}) {
                 }
               }
               
-              // Rate limit between cities (3 seconds)
               if (i < allCities.length - 1) {
                 await new Promise(r => setTimeout(r, 3000));
               }
@@ -456,14 +528,19 @@ async function runWeeklyScan(options = {}) {
           };
           
           logger.info(`Discovery complete: ${citiesScanned}/${allCities.length} cities, ${totalNew} NEW complexes!`);
+          tracker.add('discovery', 'גילוי מתחמים חדשים', true,
+            `${citiesScanned}/${allCities.length} ערים, ${totalNew} מתחמים חדשים`);
         } catch (e) { 
-          logger.warn('Discovery failed', { error: e.message }); 
+          logger.warn('Discovery failed', { error: e.message });
+          tracker.add('discovery', 'גילוי מתחמים חדשים', false, 'נכשל', e.message);
         }
       } else {
         logger.info('Step 7/9: Discovery service not available');
+        tracker.add('discovery', 'גילוי מתחמים חדשים', false, 'שירות לא זמין');
       }
     } else {
       logger.info('Step 7/9: Discovery disabled');
+      tracker.add('discovery', 'גילוי מתחמים חדשים', true, 'מושבת');
     }
 
     // Step 8: KonesIsrael receivership data scan
@@ -473,20 +550,17 @@ async function runWeeklyScan(options = {}) {
       try {
         logger.info('Step 8/9: 🏛️ Scanning KonesIsrael receivership listings...');
         
-        // Fetch listings via headless browser
         const listings = await konesService.fetchWithLogin(true);
         konesResults.totalListings = listings.length;
         logger.info(`KonesIsrael: Fetched ${listings.length} receivership listings`);
         
         if (listings.length > 0) {
-          // Match with existing complexes
           const complexes = await pool.query('SELECT id, name, city, street, address FROM complexes');
           const matches = await konesService.matchWithComplexes(complexes.rows);
           konesResults.matchedComplexes = matches.length;
           
           logger.info(`KonesIsrael: ${matches.length} matches found with existing complexes`);
           
-          // Update SSI for matched complexes (receivership = +30 SSI)
           for (const match of matches) {
             try {
               await pool.query(
@@ -514,7 +588,6 @@ async function runWeeklyScan(options = {}) {
               );
               konesResults.ssiUpdated++;
               
-              // Create alert for receivership match
               await createAlert({
                 complexId: match.complexId,
                 type: 'stressed_seller',
@@ -532,7 +605,6 @@ async function runWeeklyScan(options = {}) {
             }
           }
           
-          // Store listings summary in distressed_sellers table
           for (const listing of listings.slice(0, 100)) {
             try {
               const existingCheck = await pool.query(
@@ -545,7 +617,7 @@ async function runWeeklyScan(options = {}) {
                   `INSERT INTO distressed_sellers (complex_id, distress_type, distress_score, source, details) 
                    VALUES ($1, 'receivership', 30, 'konesisrael', $2)`,
                   [
-                    null, // Will be linked if matched
+                    null,
                     JSON.stringify({
                       city: listing.city,
                       address: listing.address,
@@ -566,17 +638,29 @@ async function runWeeklyScan(options = {}) {
           
           logger.info(`KonesIsrael: Updated ${konesResults.ssiUpdated} complexes with receivership data`);
         }
+        
+        tracker.add('kones_israel', 'כונס נכסים (KonesIsrael)', true,
+          `${konesResults.totalListings} מודעות, ${konesResults.matchedComplexes} התאמות`);
       } catch (e) {
         konesResults.errors = e.message;
         logger.warn('KonesIsrael scan failed', { error: e.message });
+        tracker.add('kones_israel', 'כונס נכסים (KonesIsrael)', false, 'נכשל', e.message);
       }
     } else {
       logger.info('Step 8/9: KonesIsrael service not available');
+      tracker.add('kones_israel', 'כונס נכסים (KonesIsrael)', false, 'שירות לא זמין');
     }
 
     // Step 9: Generate alerts
     logger.info('Step 9/9: Generating alerts...');
-    const alertCount = await generateAlerts(beforeSnapshot);
+    let alertCount = 0;
+    try {
+      alertCount = await generateAlerts(beforeSnapshot);
+      tracker.add('alerts', 'יצירת התראות', true, `${alertCount} התראות נוצרו`);
+    } catch (e) {
+      logger.warn('Alert generation failed', { error: e.message });
+      tracker.add('alerts', 'יצירת התראות', false, 'נכשל', e.message);
+    }
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     const summary = `Daily scan: Unified AI ${unifiedResults.succeeded}/${unifiedResults.total} ok, ` +
@@ -584,7 +668,7 @@ async function runWeeklyScan(options = {}) {
       `yad2: ${yad2Results.totalNew} new. ` +
       `KonesIsrael: ${konesResults.totalListings} listings, ${konesResults.matchedComplexes} matches. ` +
       `Discovery: ${discoveryResults.citiesScanned} cities, ${discoveryResults.newAdded} new. ` +
-      `${alertCount} alerts. ${duration}s`;
+      `${alertCount} alerts. ${duration}s. Steps: ${tracker.successCount()}✅ ${tracker.failedCount()}❌`;
 
     lastRunResult = {
       scanId, completedAt: new Date().toISOString(), duration: `${duration}s`,
@@ -596,6 +680,7 @@ async function runWeeklyScan(options = {}) {
       konesIsrael: konesResults,
       discovery: discoveryResults,
       alertsGenerated: alertCount,
+      steps: tracker.getSteps(),
       summary
     };
 
@@ -622,12 +707,17 @@ async function runWeeklyScan(options = {}) {
       } catch (e) { logger.warn('Failed to send alerts', { error: e.message }); }
     }
 
-    logger.info(`=== Daily scan completed in ${duration}s ===`);
+    logger.info(`=== Daily scan completed in ${duration}s (${tracker.successCount()}✅ ${tracker.failedCount()}❌) ===`);
     return lastRunResult;
 
   } catch (err) {
     logger.error('Daily scan failed', { error: err.message });
-    lastRunResult = { error: err.message, completedAt: new Date().toISOString() };
+    tracker.add('critical', 'שגיאה קריטית', false, 'הסריקה קרסה', err.message);
+    lastRunResult = { 
+      error: err.message, 
+      completedAt: new Date().toISOString(),
+      steps: tracker.getSteps()
+    };
     await sendScanStatusNotification(lastRunResult);
     return lastRunResult;
   } finally {
