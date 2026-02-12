@@ -1,0 +1,27 @@
+# Nixpacks configuration for Railway deployment
+# Required for Puppeteer/Chromium headless browser
+
+[phases.setup]
+nixPkgs = [
+  "nodejs_18",
+  "chromium",
+  "nss",
+  "freetype",
+  "harfbuzz",
+  "ca-certificates",
+  "ttf-liberation",
+  "fontconfig"
+]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "npm start"
+
+[variables]
+PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+PUPPETEER_EXECUTABLE_PATH = "/nix/store/chromium/bin/chromium"
