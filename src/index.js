@@ -325,8 +325,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.7.3-puppeteer',
-    version: '4.7.3',
+    build: '2026-02-12-v4.7.4-chromium-fix',
+    version: '4.7.4',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -335,7 +335,9 @@ app.get('/debug', (req, res) => {
       CLAUDE_API_KEY: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)',
       RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)',
       KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)',
-      KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)'
+      KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)',
+      PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || '(not set)',
+      CHROMIUM_PATH: process.env.CHROMIUM_PATH || '(not set)'
     },
     features: {
       unified_ai_scan: isClaudeConfigured() ? 'active (Perplexity + Claude)' : 'partial (Perplexity only)',
@@ -384,7 +386,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.7.3',
+      version: '4.7.4',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -406,7 +408,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.7.3',
+    version: '4.7.4',
     phase: 'Phase 4.7 - KonesIsrael Receivership Integration (Puppeteer)',
     endpoints: {
       health: 'GET /health',
@@ -450,7 +452,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.7.3 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.7.4 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
