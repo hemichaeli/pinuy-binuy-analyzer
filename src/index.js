@@ -250,7 +250,12 @@ try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('P
 try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
 
 // Phase 4.7: KonesIsrael receivership data routes (konesisrael.co.il)
-try { app.use('/api/kones', require('./routes/konesRoutes')); logger.info('KonesIsrael receivership routes loaded'); } catch (e) { logger.warn('KonesIsrael routes not available', { error: e.message }); }
+try { 
+  app.use('/api/kones', require('./routes/konesRoutes')); 
+  logger.info('KonesIsrael receivership routes loaded'); 
+} catch (e) { 
+  logger.error('KonesIsrael routes FAILED to load', { error: e.message, stack: e.stack }); 
+}
 
 const { getSchedulerStatus, runWeeklyScan } = require('./jobs/weeklyScanner');
 
@@ -296,16 +301,16 @@ function getDiscoveryInfo() {
 }
 
 function getEnhancedDataInfo() {
-  const sources = {};
-  try { require('./services/madlanService'); sources.madlan = 'active'; } catch (e) { sources.madlan = false; }
-  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewalAuthority = 'active'; } catch (e) { sources.urbanRenewalAuthority = false; }
-  try { require('./services/committeeProtocolService'); sources.committeeProtocols = 'active'; } catch (e) { sources.committeeProtocols = false; }
-  try { require('./services/developerInfoService'); sources.developerInfo = 'active'; } catch (e) { sources.developerInfo = false; }
-  try { require('./services/distressedSellerService'); sources.distressedSeller = 'active'; } catch (e) { sources.distressedSeller = false; }
-  try { require('./services/newsMonitorService'); sources.newsMonitor = 'active'; } catch (e) { sources.newsMonitor = false; }
-  try { require('./services/pricingAccuracyService'); sources.pricingAccuracy = 'active'; } catch (e) { sources.pricingAccuracy = false; }
-  try { require('./services/governmentDataService'); sources.governmentData = 'active'; } catch (e) { sources.governmentData = false; }
-  try { require('./services/konesIsraelService'); sources.konesIsrael = 'active'; } catch (e) { sources.konesIsrael = false; }
+  const sources = { errors: {} };
+  try { require('./services/madlanService'); sources.madlan = 'active'; } catch (e) { sources.madlan = false; sources.errors.madlan = e.message; }
+  try { require('./services/urbanRenewalAuthorityService'); sources.urbanRenewalAuthority = 'active'; } catch (e) { sources.urbanRenewalAuthority = false; sources.errors.urban = e.message; }
+  try { require('./services/committeeProtocolService'); sources.committeeProtocols = 'active'; } catch (e) { sources.committeeProtocols = false; sources.errors.committee = e.message; }
+  try { require('./services/developerInfoService'); sources.developerInfo = 'active'; } catch (e) { sources.developerInfo = false; sources.errors.developer = e.message; }
+  try { require('./services/distressedSellerService'); sources.distressedSeller = 'active'; } catch (e) { sources.distressedSeller = false; sources.errors.distressed = e.message; }
+  try { require('./services/newsMonitorService'); sources.newsMonitor = 'active'; } catch (e) { sources.newsMonitor = false; sources.errors.news = e.message; }
+  try { require('./services/pricingAccuracyService'); sources.pricingAccuracy = 'active'; } catch (e) { sources.pricingAccuracy = false; sources.errors.pricing = e.message; }
+  try { require('./services/governmentDataService'); sources.governmentData = 'active'; } catch (e) { sources.governmentData = false; sources.errors.gov = e.message; }
+  try { require('./services/konesIsraelService'); sources.konesIsrael = 'active'; } catch (e) { sources.konesIsrael = false; sources.errors.kones = e.message; logger.error('KonesIsrael service FAILED to load', { error: e.message }); }
   sources.allActive = sources.madlan && sources.urbanRenewalAuthority && sources.committeeProtocols && sources.developerInfo;
   sources.extendedActive = sources.distressedSeller && sources.newsMonitor && sources.pricingAccuracy;
   sources.govDataActive = sources.governmentData;
@@ -320,8 +325,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.7.0-kones',
-    version: '4.7.0',
+    build: '2026-02-12-v4.7.1-kones-debug',
+    version: '4.7.1',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -379,7 +384,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.7.0',
+      version: '4.7.1',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -401,7 +406,7 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.7.0',
+    version: '4.7.1',
     phase: 'Phase 4.7 - KonesIsrael Receivership Integration',
     endpoints: {
       health: 'GET /health',
@@ -444,7 +449,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.7.0 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.7.1 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
@@ -452,7 +457,10 @@ async function start() {
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
     logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE - data.gov.il integrated' : 'disabled'}`);
-    logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - receivership data' : 'disabled'}`);
+    logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - receivership data' : 'DISABLED - check errors'}`);
+    if (enhanced.errors && Object.keys(enhanced.errors).length > 0) {
+      logger.warn('Service loading errors:', enhanced.errors);
+    }
     logger.info(`Notifications: ${notificationService.isConfigured() ? notificationService.getProvider() : 'disabled'}`);
   });
 }
