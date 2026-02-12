@@ -249,10 +249,10 @@ try { app.use('/api/pricing', require('./routes/pricingRoutes')); logger.info('P
 // Phase 4.5.3: Government Data API routes (data.gov.il integration)
 try { app.use('/api/gov', require('./routes/governmentDataRoutes')); logger.info('Government data routes loaded'); } catch (e) { logger.warn('Government data routes not available', { error: e.message }); }
 
-// Phase 4.7: KonesIsrael receivership data routes (konesisrael.co.il)
+// Phase 4.7: KonesIsrael receivership data routes (konesisrael.co.il) - uses Puppeteer headless browser
 try { 
   app.use('/api/kones', require('./routes/konesRoutes')); 
-  logger.info('KonesIsrael receivership routes loaded'); 
+  logger.info('KonesIsrael receivership routes loaded (headless browser mode)'); 
 } catch (e) { 
   logger.error('KonesIsrael routes FAILED to load', { error: e.message, stack: e.stack }); 
 }
@@ -325,8 +325,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(),
-    build: '2026-02-12-v4.7.2-kones-fix',
-    version: '4.7.2',
+    build: '2026-02-12-v4.7.3-puppeteer',
+    version: '4.7.3',
     node_version: process.version,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
@@ -348,7 +348,7 @@ app.get('/debug', (req, res) => {
       news_monitoring: enhancedSources.newsMonitor ? 'active' : 'disabled',
       pricing_accuracy: enhancedSources.pricingAccuracy ? 'active' : 'disabled',
       government_data: enhancedSources.governmentData ? 'active' : 'disabled',
-      kones_israel: enhancedSources.konesIsrael ? 'active' : 'disabled',
+      kones_israel: enhancedSources.konesIsrael ? 'active (puppeteer)' : 'disabled',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       weekly_scanner: scheduler.enabled ? 'active' : 'disabled'
     },
@@ -357,7 +357,7 @@ app.get('/debug', (req, res) => {
       inheritance_registry: 'data.gov.il - 1.2M+ records',
       boi_mortgage_rates: 'Bank of Israel',
       receivership_news: 'RSS News Monitoring',
-      kones_israel: 'konesisrael.co.il - 3000+ receivership listings'
+      kones_israel: 'konesisrael.co.il - 3000+ receivership listings (headless browser)'
     },
     discovery: discovery,
     enhanced_data_sources: enhancedSources
@@ -384,7 +384,7 @@ app.get('/health', async (req, res) => {
 
     res.json({
       status: 'ok',
-      version: '4.7.2',
+      version: '4.7.3',
       db: 'connected',
       complexes: parseInt(complexes.rows[0].count),
       transactions: parseInt(tx.rows[0].count),
@@ -406,8 +406,8 @@ app.get('/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: '4.7.2',
-    phase: 'Phase 4.7 - KonesIsrael Receivership Integration',
+    version: '4.7.3',
+    phase: 'Phase 4.7 - KonesIsrael Receivership Integration (Puppeteer)',
     endpoints: {
       health: 'GET /health',
       debug: 'GET /debug',
@@ -429,7 +429,8 @@ app.get('/', (req, res) => {
       konesStatus: 'GET /api/kones/status',
       konesListings: 'GET /api/kones/listings',
       konesStats: 'GET /api/kones/stats',
-      konesSearchCity: 'GET /api/kones/search/city/:city'
+      konesSearchCity: 'GET /api/kones/search/city/:city',
+      konesLogin: 'POST /api/kones/login'
     }
   });
 });
@@ -449,7 +450,7 @@ async function start() {
   }
   
   app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`QUANTUM API v4.7.2 running on port ${PORT}`);
+    logger.info(`QUANTUM API v4.7.3 running on port ${PORT}`);
     logger.info(`AI Sources: Perplexity=${!!process.env.PERPLEXITY_API_KEY}, Claude=${isClaudeConfigured()}`);
     const discovery = getDiscoveryInfo();
     if (discovery.available) logger.info(`Discovery: ${discovery.cities} target cities`);
@@ -457,7 +458,7 @@ async function start() {
     logger.info(`Enhanced Sources: Madlan=${enhanced.madlan}, Urban=${enhanced.urbanRenewalAuthority}, Committee=${enhanced.committeeProtocols}, Developer=${enhanced.developerInfo}`);
     logger.info(`Extended Sources: SSI=${enhanced.distressedSeller}, News=${enhanced.newsMonitor}, Pricing=${enhanced.pricingAccuracy}`);
     logger.info(`Government Data: ${enhanced.governmentData ? 'ACTIVE - data.gov.il integrated' : 'disabled'}`);
-    logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - receivership data' : 'DISABLED - check errors'}`);
+    logger.info(`KonesIsrael: ${enhanced.konesIsrael ? 'ACTIVE - Puppeteer headless browser' : 'DISABLED - check errors'}`);
     if (enhanced.errors && Object.keys(enhanced.errors).length > 0) {
       logger.warn('Service loading errors:', enhanced.errors);
     }
