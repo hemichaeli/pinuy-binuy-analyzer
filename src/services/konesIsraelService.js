@@ -7,8 +7,21 @@
  */
 
 const axios = require('axios');
-const cheerio = require('cheerio');
 const { logger } = require('./logger');
+
+// Lazy-load cheerio to avoid potential initialization issues
+let cheerio = null;
+function getCheerio() {
+  if (!cheerio) {
+    try {
+      cheerio = require('cheerio');
+    } catch (e) {
+      logger.error('Failed to load cheerio:', e.message);
+      throw new Error('HTML parser not available');
+    }
+  }
+  return cheerio;
+}
 
 class KonesIsraelService {
   constructor() {
@@ -158,7 +171,7 @@ class KonesIsraelService {
    * Parse the HTML page and extract listing data
    */
   parseListingsPage(html) {
-    const $ = cheerio.load(html);
+    const $ = getCheerio().load(html);
     const listings = [];
     
     // Parse table rows
@@ -241,8 +254,7 @@ class KonesIsraelService {
    * Extract property details
    */
   extractDetails(html) {
-    const $ = cheerio.load(html);
-    // Look for the details column content
+    // Simple regex extraction without cheerio for this small snippet
     const detailsMatch = html.match(/פרטים:([^<]+)/);
     return detailsMatch ? detailsMatch[1].trim() : null;
   }
