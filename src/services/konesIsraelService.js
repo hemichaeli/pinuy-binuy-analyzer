@@ -8,30 +8,108 @@
  */
 
 const { logger } = require('./logger');
+const { execSync } = require('child_process');
 
 // Lazy-load browser dependencies
 let puppeteer = null;
-let chromium = null;
+
+// Find Chromium executable path
+function findChromiumPath() {
+  const possiblePaths = [
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.CHROMIUM_PATH
+  ];
+  
+  // Try to find chromium via which command
+  try {
+    const whichResult = execSync('which chromium chromium-browser google-chrome 2>/dev/null || true', { encoding: 'utf8' });
+    const foundPath = whichResult.trim().split('\n')[0];
+    if (foundPath) {
+      possiblePaths.unshift(foundPath);
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+  
+  // Try nix store paths
+  try {
+    const nixPaths = execSync('find /nix/store -name "chromium" -type f -executable 2>/dev/null | head -1 || true', { encoding: 'utf8' });
+    if (nixPaths.trim()) {
+      possiblePaths.unshift(nixPaths.trim());
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+  
+  const fs = require('fs');
+  for (const p of possiblePaths) {
+    if (p && fs.existsSync(p)) {
+      logger.info(`KonesIsrael: Found Chromium at ${p}`);
+      return p;
+    }
+  }
+  
+  return null;
+}
 
 async function getBrowser() {
   if (!puppeteer) {
     puppeteer = require('puppeteer-core');
   }
-  if (!chromium) {
-    chromium = require('@sparticuz/chromium');
+  
+  let executablePath = findChromiumPath();
+  
+  // If no system chromium, try @sparticuz/chromium
+  if (!executablePath) {
+    try {
+      const chromium = require('@sparticuz/chromium');
+      chromium.setHeadlessMode = true;
+      chromium.setGraphicsMode = false;
+      executablePath = await chromium.executablePath();
+      
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath,
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true
+      });
+      
+      return browser;
+    } catch (e) {
+      logger.error(`KonesIsrael: @sparticuz/chromium failed: ${e.message}`);
+      throw new Error(`No Chromium found. Tried system paths and @sparticuz/chromium. Error: ${e.message}`);
+    }
   }
   
-  // Configure chromium for serverless environment
-  chromium.setHeadlessMode = true;
-  chromium.setGraphicsMode = false;
-  
-  const executablePath = await chromium.executablePath();
-  
+  // Use system Chromium
   const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--disable-extensions',
+      '--disable-sync',
+      '--disable-translate',
+      '--hide-scrollbars',
+      '--metrics-recording-only',
+      '--mute-audio',
+      '--safebrowsing-disable-auto-update'
+    ],
+    defaultViewport: { width: 1280, height: 720 },
     executablePath,
-    headless: chromium.headless,
+    headless: 'new',
     ignoreHTTPSErrors: true
   });
   
@@ -564,11 +642,32 @@ class KonesIsraelService {
    */
   async getStatus() {
     try {
+      // First check if chromium is available
+      const chromiumPath = findChromiumPath();
+      
+      if (!chromiumPath) {
+        return {
+          status: 'error',
+          method: 'headless_browser',
+          error: 'Chromium not found on system',
+          configured: this.isConfigured(),
+          authenticated: this.isLoggedIn,
+          chromiumPaths: {
+            checked: ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'],
+            envVars: {
+              PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || '(not set)',
+              CHROMIUM_PATH: process.env.CHROMIUM_PATH || '(not set)'
+            }
+          }
+        };
+      }
+      
       const stats = await this.getStatistics();
       
       return {
         status: 'connected',
         method: 'headless_browser',
+        chromiumPath,
         configured: this.isConfigured(),
         authenticated: this.isLoggedIn,
         source: 'konesisrael.co.il',
