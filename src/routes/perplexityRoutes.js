@@ -53,7 +53,7 @@ router.get('/brain.html', async (req, res) => {
       pool.query(`SELECT name, city, addresses, enhanced_ssi_score, iai_score, ssi_enhancement_factors, is_receivership, is_inheritance_property FROM complexes WHERE enhanced_ssi_score >= 10 ORDER BY enhanced_ssi_score DESC LIMIT 20`),
       pool.query(`SELECT city, COUNT(*) as total, COUNT(*) FILTER (WHERE iai_score >= 30) as opp, COUNT(*) FILTER (WHERE enhanced_ssi_score >= 40) as stressed, ROUND(AVG(iai_score)) as avg_iai FROM complexes WHERE city IS NOT NULL GROUP BY city HAVING COUNT(*) >= 3 ORDER BY COUNT(*) FILTER (WHERE iai_score >= 30) DESC LIMIT 25`),
       pool.query(`SELECT address, city, property_type, price, region, source, gush_helka, submission_deadline FROM kones_listings WHERE is_active = true ORDER BY created_at DESC LIMIT 15`),
-      pool.query(`SELECT title, city, alert_type, severity, created_at FROM alerts WHERE severity IN ('high','critical') ORDER BY created_at DESC LIMIT 10`),
+      pool.query(`SELECT a.title, c.city, a.alert_type, a.severity, a.created_at FROM alerts a LEFT JOIN complexes c ON a.complex_id = c.id WHERE a.severity IN ('high','critical') ORDER BY a.created_at DESC LIMIT 10`),
       pool.query(`SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE has_urgent_keywords = true) as urgent, COUNT(*) FILTER (WHERE ssi_score > 0) as with_ssi FROM listings`),
       pool.query(`SELECT COUNT(*) as total FROM transactions`)
     ]);
