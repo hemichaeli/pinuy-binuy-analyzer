@@ -1,11 +1,13 @@
 /**
  * KonesIsrael Routes - Receivership Property Data API
- * Phase 4.8: Database-first with import capabilities
+ * Phase 4.9: Dual-source scanning (Claude + Perplexity)
  * 
  * Architecture:
  * - GET /listings reads from DB (kones_listings table)
- * - POST /import adds data manually or from Perplexity
- * - Live scraping blocked by SiteGround CAPTCHA
+ * - POST /import adds data manually or from Claude web search
+ * - POST /scan-complexes uses Perplexity AI to find receiverships near complexes
+ * - POST /scan-city uses Perplexity AI to scan specific city
+ * - Live scraping of konesisrael.co.il blocked by SiteGround CAPTCHA
  */
 
 const express = require('express');
@@ -370,6 +372,158 @@ router.get('/urgent', async (req, res) => {
     });
   } catch (error) {
     logger.error(`KonesIsrael urgent error: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// RECEIVERSHIP SCANNER - Perplexity AI powered search
+// Searches for כינוס נכסים near identified complexes
+// =====================================================
+
+const receivershipScanner = require('../services/receivershipScanner');
+
+/**
+ * POST /api/kones/scan-complexes
+ * Scan identified complexes for receivership listings using Perplexity AI
+ * 
+ * Body params:
+ *   limit: number of complexes to scan (default: 10)
+ *   minIAI: minimum IAI score filter (default: 50)
+ *   city: optional city filter
+ */
+router.post('/scan-complexes', async (req, res) => {
+  try {
+    const { limit = 10, minIAI = 50, city = null } = req.body || {};
+    
+    logger.info(`Starting receivership complex scan: limit=${limit}, minIAI=${minIAI}, city=${city || 'all'}`);
+    
+    const results = await receivershipScanner.scanComplexesForReceiverships({
+      limit: Math.min(limit, 50),
+      minIAI,
+      cityFilter: city
+    });
+
+    res.json({
+      success: true,
+      message: `Scanned ${results.scannedComplexes} complex areas`,
+      ...results
+    });
+  } catch (error) {
+    logger.error(`Receivership scan error: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/kones/scan-city
+ * Search for receivership listings in a specific city/area
+ * 
+ * Body params:
+ *   city: city name (required)
+ *   streets: comma-separated street names (optional)
+ */
+router.post('/scan-city', async (req, res) => {
+  try {
+    const { city, streets = '' } = req.body || {};
+    if (!city) {
+      return res.status(400).json({ success: false, error: 'City is required' });
+    }
+
+    logger.info(`Scanning city for receiverships: ${city}`);
+    
+    const searchResult = await receivershipScanner.searchReceiverships(
+      city, streets, city
+    );
+
+    const listings = searchResult.listings || [];
+    let importResult = { imported: 0, skipped: 0 };
+    
+    if (listings.length > 0) {
+      importResult = await receivershipScanner.importListings(
+        listings, 'perplexity_city_scan'
+      );
+    }
+
+    res.json({
+      success: true,
+      city,
+      listingsFound: listings.length,
+      imported: importResult.imported,
+      skipped: importResult.skipped,
+      listings: listings
+    });
+  } catch (error) {
+    logger.error(`City scan error: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/kones/scan-status
+ * Shows scanning architecture and data source status
+ */
+router.get('/scan-status', async (req, res) => {
+  try {
+    const perplexityKey = !!process.env.PERPLEXITY_API_KEY;
+    const konesEmail = !!process.env.KONES_EMAIL;
+    
+    const dbCount = await pool.query('SELECT COUNT(*) as count FROM kones_listings WHERE deleted_at IS NULL');
+    const byScanSource = await pool.query(`
+      SELECT COALESCE(scan_source, source, 'unknown') as src, COUNT(*) as count 
+      FROM kones_listings WHERE deleted_at IS NULL 
+      GROUP BY src ORDER BY count DESC
+    `).catch(() => ({ rows: [] }));
+
+    const complexCount = await pool.query('SELECT COUNT(*) as count FROM complexes WHERE city IS NOT NULL');
+    const receivershipComplexes = await pool.query(
+      'SELECT COUNT(*) as count FROM complexes WHERE is_receivership = TRUE'
+    ).catch(() => ({ rows: [{ count: 0 }] }));
+
+    res.json({
+      success: true,
+      architecture: {
+        description: 'Dual-source scanning: Claude (web search + manual import) + Perplexity (automated API)',
+        sources: {
+          claude: {
+            method: 'Web search in chat, imports via POST /api/kones/import',
+            status: 'always_available',
+            description: 'Claude searches web for receivership listings and imports real data'
+          },
+          perplexity: {
+            method: 'Automated API scan via POST /api/kones/scan-complexes',
+            status: perplexityKey ? 'configured' : 'missing_api_key',
+            description: 'Perplexity searches for listings near identified complexes'
+          },
+          konesisrael: {
+            method: 'Direct scraping (blocked by CAPTCHA)',
+            status: konesEmail ? 'credentials_set' : 'no_credentials',
+            description: 'konesisrael.co.il - SiteGround CAPTCHA blocks automation'
+          },
+          manual_import: {
+            method: 'POST /api/kones/import with JSON body',
+            status: 'always_available',
+            description: 'Import listings from any source (paid subscriptions, manual research)'
+          }
+        }
+      },
+      database: {
+        totalListings: parseInt(dbCount.rows[0].count),
+        byScanSource: byScanSource.rows.reduce((acc, r) => { acc[r.src] = parseInt(r.count); return acc; }, {}),
+        totalComplexes: parseInt(complexCount.rows[0].count),
+        receivershipComplexes: parseInt(receivershipComplexes.rows[0].count)
+      },
+      endpoints: {
+        'POST /api/kones/scan-complexes': 'Perplexity scans complex areas (body: {limit, minIAI, city})',
+        'POST /api/kones/scan-city': 'Perplexity scans specific city (body: {city, streets})',
+        'POST /api/kones/import': 'Import from any source (body: {listings: [...]})',
+        'POST /api/kones/scan-all': 'Match existing listings to complexes + update SSI',
+        'GET /api/kones/match-complexes': 'Show listing-to-complex matches',
+        'GET /api/kones/listings': 'View all listings'
+      }
+    });
+  } catch (error) {
+    logger.error(`Scan status error: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 });
