@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.10.1';
-const BUILD = '2026-02-13-v4.10.1-perplexity-access-fix';
+const VERSION = '4.10.2';
+const BUILD = '2026-02-13-v4.10.2-robots-txt-perplexity';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -59,7 +59,7 @@ async function runAutoMigrations() {
   }
 }
 
-// CRITICAL: Trust proxy for Railway reverse proxy (fixes rate limiter X-Forwarded-For error)
+// CRITICAL: Trust proxy for Railway reverse proxy
 app.set('trust proxy', 1);
 
 // Middleware
@@ -70,11 +70,59 @@ app.use(express.json({ limit: '50mb' }));
 // Rate limiting - exempt perplexity routes (public AI endpoints)
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
 app.use('/api/', (req, res, next) => {
-  // Skip rate limiting for perplexity endpoints (public AI access)
   if (req.path.startsWith('/perplexity/') || req.path.startsWith('/perplexity')) {
     return next();
   }
   apiLimiter(req, res, next);
+});
+
+// ============================================================
+// ROBOTS.TXT + CRAWLER SUPPORT
+// Must be registered BEFORE request logging to avoid noise
+// ============================================================
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`# QUANTUM - Pinuy Binuy Intelligence
+# Welcome crawlers! Our data endpoints are open for AI access.
+
+User-agent: *
+Allow: /api/perplexity/
+Allow: /health
+Disallow: /api/admin/
+Disallow: /api/scan/
+Disallow: /diagnostics
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /api/perplexity/
+
+User-agent: Claude-Web
+Allow: /api/perplexity/
+
+User-agent: GPTBot
+Allow: /api/perplexity/
+
+Sitemap: https://pinuy-binuy-analyzer-production.up.railway.app/api/perplexity/sitemap.xml
+`);
+});
+
+// .well-known for AI discovery
+app.get('/.well-known/ai-plugin.json', (req, res) => {
+  res.json({
+    schema_version: 'v1',
+    name_for_human: 'QUANTUM - Pinuy Binuy Intelligence',
+    name_for_model: 'quantum_pinuy_binuy',
+    description_for_human: 'Israeli urban renewal (Pinuy-Binuy) real estate investment data. 472 complexes, opportunities, stressed sellers, receiverships.',
+    description_for_model: 'Access Israeli Pinuy-Binuy real estate data including investment opportunities (IAI scores), stressed sellers (SSI scores), receivership properties, committee decisions, and city breakdowns. Use /api/perplexity/brain.html for a compact summary or /api/perplexity/brain.json for structured data.',
+    api: {
+      type: 'openapi',
+      url: 'https://pinuy-binuy-analyzer-production.up.railway.app/api/perplexity/brain.json'
+    },
+    logo_url: 'https://pinuy-binuy-analyzer-production.up.railway.app/favicon.ico',
+    contact_email: 'Office@u-r-quantum.com',
+    legal_info_url: 'https://pinuy-binuy-analyzer-production.up.railway.app/'
+  });
 });
 
 // Request logging
@@ -82,7 +130,7 @@ app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     const duration = Date.now() - start;
-    if (req.path !== '/health' && req.path !== '/debug') {
+    if (req.path !== '/health' && req.path !== '/debug' && req.path !== '/robots.txt') {
       logger.info(`${req.method} ${req.path} ${res.statusCode} ${duration}ms`);
     }
   });
