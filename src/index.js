@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.8.5';
-const BUILD = '2026-02-13-v4.8.5-route-diagnostics';
+const VERSION = '4.8.6';
+const BUILD = '2026-02-13-v4.8.6-route-order-fix';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -103,7 +103,7 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Route loading with FULL error reporting
+// Route loading with full error reporting
 function loadRoute(routePath, mountPath) {
   try {
     const route = require(routePath);
@@ -119,7 +119,7 @@ function loadRoute(routePath, mountPath) {
   }
 }
 
-async function loadRoutes() {
+function loadAllRoutes() {
   const routes = [
     ['./routes/projects', '/api/projects'],
     ['./routes/opportunities', '/api'],
@@ -158,9 +158,8 @@ function getKonesInfo() {
   } catch { return { available: false }; }
 }
 
-// Diagnostics endpoint - shows EVERYTHING
+// Diagnostics endpoint
 app.get('/diagnostics', async (req, res) => {
-  // Check DB tables
   let dbTables = [];
   try {
     const tableResult = await pool.query(`
@@ -175,7 +174,6 @@ app.get('/diagnostics', async (req, res) => {
     dbTables = [{ error: e.message }];
   }
 
-  // Check row counts
   let rowCounts = {};
   for (const table of dbTables) {
     if (table.table_name) {
@@ -188,7 +186,6 @@ app.get('/diagnostics', async (req, res) => {
     }
   }
 
-  // Check for duplicates in complexes
   let duplicates = [];
   try {
     const dupResult = await pool.query(`
@@ -204,7 +201,6 @@ app.get('/diagnostics', async (req, res) => {
     duplicates = [{ error: e.message }];
   }
 
-  // Check unique counts
   let uniqueCounts = {};
   try {
     const uc = await pool.query(`
@@ -322,30 +318,29 @@ app.get('/', (req, res) => {
       scheduler: '/api/scheduler',
       projects: '/api/projects',
       opportunities: '/api/opportunities',
+      stressed_sellers: '/api/ssi/stressed-sellers',
       scan: '/api/scan',
       kones: '/api/kones',
+      perplexity: '/api/perplexity',
       notifications: '/api/notifications/status'
     }
   });
 });
 
-// 404
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION });
-});
-
-// Error handler
-app.use((err, req, res, next) => {
-  logger.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION });
-});
+// ============================================================
+// CRITICAL: 404 and error handlers MUST be registered AFTER
+// all routes are loaded. They are added in start() function
+// after loadAllRoutes() completes.
+// ============================================================
 
 async function start() {
   logger.info(`Starting QUANTUM Backend v${VERSION}`);
   logger.info(`Build: ${BUILD}`);
   
   await runAutoMigrations();
-  await loadRoutes();
+  
+  // Load all route files - MUST happen before 404/error handlers
+  loadAllRoutes();
   
   // Log route results summary
   const loaded = routeLoadResults.filter(r => r.status === 'ok');
@@ -353,6 +348,17 @@ async function start() {
   logger.info(`=== ROUTE LOADING SUMMARY ===`);
   loaded.forEach(r => logger.info(`  OK: ${r.path}`));
   failed.forEach(r => logger.error(`  FAILED: ${r.path} -> ${r.error}`));
+  
+  // NOW register 404 handler - AFTER all routes are loaded
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION });
+  });
+  
+  // Error handler - LAST
+  app.use((err, req, res, next) => {
+    logger.error('Unhandled error:', err);
+    res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION });
+  });
   
   // Start scheduler
   try {
