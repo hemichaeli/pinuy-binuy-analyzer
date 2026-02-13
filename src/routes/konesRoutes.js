@@ -341,10 +341,10 @@ router.get('/scan-status', async (req, res) => {
   try {
     const perplexityKey = !!process.env.PERPLEXITY_API_KEY;
     const konesEmail = !!process.env.KONES_EMAIL;
-    const dbCount = await pool.query('SELECT COUNT(*) as count FROM kones_listings WHERE deleted_at IS NULL');
+    const dbCount = await pool.query('SELECT COUNT(*) as count FROM kones_listings WHERE is_active = true');
     const byScanSource = await pool.query(`
       SELECT COALESCE(scan_source, source, 'unknown') as src, COUNT(*) as count 
-      FROM kones_listings WHERE deleted_at IS NULL GROUP BY src ORDER BY count DESC
+      FROM kones_listings WHERE is_active = true GROUP BY src ORDER BY count DESC
     `).catch(() => ({ rows: [] }));
     const complexCount = await pool.query('SELECT COUNT(*) as count FROM complexes WHERE city IS NOT NULL');
     const rcCount = await pool.query(
@@ -367,7 +367,8 @@ router.get('/scan-status', async (req, res) => {
           perplexity: { method: 'POST /api/kones/scan-complexes', status: perplexityKey ? 'configured' : 'missing_api_key' },
           liveScraper: { 
             method: 'POST /api/kones/live-scrape (SG CAPTCHA bypass + WP login)', 
-            status: konesEmail ? 'configured' : 'no_credentials',
+            status: konesEmail ? 'configured_but_ip_blocked' : 'no_credentials',
+            note: 'SiteGround WAF blocks datacenter IPs (403). Works from residential IPs only.',
             details: liveScraperStatus
           },
           manual_import: { method: 'POST /api/kones/import', status: 'always_available' }
@@ -387,7 +388,8 @@ router.get('/scan-status', async (req, res) => {
 
 // =====================================================
 // LIVE SCRAPER - SiteGround CAPTCHA bypass + WP login
-// Scrapes konesisrael.co.il directly
+// Note: SiteGround WAF blocks Railway datacenter IPs (403)
+// CAPTCHA bypass works from residential IPs only
 // =====================================================
 
 let konesLiveScraper;
@@ -450,7 +452,6 @@ router.post('/captcha-test', async (req, res) => {
     const elapsed = Date.now() - start;
     
     if (bypassed) {
-      // Try fetching a page to verify
       const testPage = await sgCaptcha.fetchPage('https://konesisrael.co.il/');
       const hasContent = testPage && testPage.body && testPage.body.length > 1000;
       
