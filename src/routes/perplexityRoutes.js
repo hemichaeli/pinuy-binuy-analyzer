@@ -264,7 +264,7 @@ router.get('/stressed-sellers.html', async (req, res) => {
 });
 
 // =====================================================
-// 4. COMMITTEE DECISIONS - Planning approvals
+// 4. COMMITTEE DECISIONS
 // =====================================================
 router.get('/decisions.html', async (req, res) => {
   try {
@@ -275,32 +275,17 @@ router.get('/decisions.html', async (req, res) => {
       ORDER BY cd.decision_date DESC NULLS LAST
       LIMIT 200
     `);
-
     const decisions = result.rows;
-    
     const content = `
       <h1>QUANTUM - החלטות ועדות תכנון</h1>
       <p>סה"כ החלטות: <strong>${decisions.length}</strong></p>
-      
       <h2>למה זה חשוב?</h2>
       <p>החלטות ועדות תכנון הן טריגר מרכזי לעליית מחירים. אישור ועדה מקומית יכול להעלות ערך נכס ב-15-25%.</p>
-
       <h2>החלטות אחרונות</h2>
       <table>
-        <thead>
-          <tr>
-            <th>תאריך</th>
-            <th>מתחם</th>
-            <th>עיר</th>
-            <th>ועדה</th>
-            <th>סוג החלטה</th>
-            <th>נושא</th>
-            <th>הצבעה</th>
-          </tr>
-        </thead>
+        <thead><tr><th>תאריך</th><th>מתחם</th><th>עיר</th><th>ועדה</th><th>סוג החלטה</th><th>נושא</th><th>הצבעה</th></tr></thead>
         <tbody>
-          ${decisions.map(d => `
-          <tr>
+          ${decisions.map(d => `<tr>
             <td>${d.decision_date ? new Date(d.decision_date).toLocaleDateString('he-IL') : '-'}</td>
             <td>${d.complex_name || d.addresses || '-'}</td>
             <td>${d.city || '-'}</td>
@@ -308,19 +293,10 @@ router.get('/decisions.html', async (req, res) => {
             <td>${d.decision_type || '-'}</td>
             <td>${d.subject || '-'}</td>
             <td>${d.vote || '-'}</td>
-          </tr>
-          `).join('')}
+          </tr>`).join('')}
         </tbody>
-      </table>
-    `;
-
-    res.type('html').send(htmlWrapper(
-      'החלטות ועדות תכנון',
-      'QUANTUM - החלטות ועדות תכנון בפרויקטי פינוי-בינוי. אישורים, דחיות, והתקדמות תכנונית.',
-      content
-    ));
-    logger.info(`Perplexity: Served decisions.html with ${decisions.length} decisions`);
-    
+      </table>`;
+    res.type('html').send(htmlWrapper('החלטות ועדות תכנון', 'QUANTUM - החלטות ועדות תכנון בפרויקטי פינוי-בינוי.', content));
   } catch (error) {
     logger.error('Perplexity decisions.html error:', error);
     res.status(500).send('Error generating page');
@@ -337,48 +313,26 @@ router.get('/hearings.html', async (req, res) => {
       FROM upcoming_hearings uh
       LEFT JOIN complexes c ON uh.complex_id = c.id
       WHERE uh.hearing_date >= CURRENT_DATE
-      ORDER BY uh.hearing_date ASC
-      LIMIT 100
+      ORDER BY uh.hearing_date ASC LIMIT 100
     `);
-
     const hearings = result.rows;
-    
     const content = `
       <h1>QUANTUM - דיונים עתידיים בוועדות</h1>
       <p>סה"כ דיונים קרובים: <strong>${hearings.length}</strong></p>
-      
-      <h2>דיונים קרובים</h2>
       <table>
-        <thead>
-          <tr>
-            <th>תאריך</th>
-            <th>מתחם</th>
-            <th>עיר</th>
-            <th>ועדה</th>
-            <th>נושא</th>
-            <th>IAI</th>
-          </tr>
-        </thead>
+        <thead><tr><th>תאריך</th><th>מתחם</th><th>עיר</th><th>ועדה</th><th>נושא</th><th>IAI</th></tr></thead>
         <tbody>
-          ${hearings.map(h => `
-          <tr class="${h.iai_score >= 30 ? 'highlight' : ''}">
+          ${hearings.map(h => `<tr class="${h.iai_score >= 30 ? 'highlight' : ''}">
             <td><strong>${h.hearing_date ? new Date(h.hearing_date).toLocaleDateString('he-IL') : '-'}</strong></td>
             <td>${h.complex_name || h.addresses || '-'}</td>
             <td>${h.city || '-'}</td>
             <td>${h.committee || '-'}</td>
             <td>${h.subject || '-'}</td>
             <td class="${h.iai_score >= 30 ? 'good' : ''}">${h.iai_score || '-'}</td>
-          </tr>
-          `).join('')}
+          </tr>`).join('')}
         </tbody>
-      </table>
-    `;
-
-    res.type('html').send(htmlWrapper(
-      'דיונים עתידיים בוועדות תכנון',
-      'QUANTUM - דיונים קרובים בוועדות תכנון.',
-      content
-    ));
+      </table>`;
+    res.type('html').send(htmlWrapper('דיונים עתידיים בוועדות תכנון', 'QUANTUM - דיונים קרובים בוועדות תכנון.', content));
   } catch (error) {
     logger.error('Perplexity hearings.html error:', error);
     res.status(500).send('Error generating page');
@@ -391,42 +345,26 @@ router.get('/hearings.html', async (req, res) => {
 router.get('/developers.html', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT d.*,
-             COUNT(c.id) as active_projects,
-             AVG(c.iai_score) as avg_iai
+      SELECT d.*, COUNT(c.id) as active_projects, AVG(c.iai_score) as avg_iai
       FROM developers d
       LEFT JOIN complexes c ON c.developer = d.name
       GROUP BY d.id
       ORDER BY d.risk_score ASC NULLS LAST, active_projects DESC
     `);
-
     const developers = result.rows;
-    
     const content = `
       <h1>QUANTUM - מאגר יזמים</h1>
       <p>סה"כ יזמים: <strong>${developers.length}</strong></p>
-
-      <h2>רשימת יזמים</h2>
       <table>
-        <thead>
-          <tr>
-            <th>שם יזם</th>
-            <th>ציון סיכון</th>
-            <th>פרויקטים פעילים</th>
-          </tr>
-        </thead>
+        <thead><tr><th>שם יזם</th><th>ציון סיכון</th><th>פרויקטים פעילים</th></tr></thead>
         <tbody>
-          ${developers.map(d => `
-          <tr>
+          ${developers.map(d => `<tr>
             <td>${d.name || '-'}</td>
             <td>${d.risk_score || '-'}</td>
             <td>${d.active_projects || 0}</td>
-          </tr>
-          `).join('')}
+          </tr>`).join('')}
         </tbody>
-      </table>
-    `;
-
+      </table>`;
     res.type('html').send(htmlWrapper('מאגר יזמים', 'QUANTUM - מידע על יזמי נדל"ן בישראל.', content));
   } catch (error) {
     logger.error('Perplexity developers.html error:', error);
@@ -441,52 +379,31 @@ router.get('/kones.html', async (req, res) => {
   try {
     let listings = [];
     try {
-      const result = await pool.query(`SELECT * FROM kones_listings ORDER BY created_at DESC LIMIT 200`);
-      listings = result.rows;
+      listings = (await pool.query('SELECT * FROM kones_listings ORDER BY created_at DESC LIMIT 200')).rows;
     } catch (e) {
       try {
-        const result = await pool.query(`
+        listings = (await pool.query(`
           SELECT ds.*, c.name as complex_name, c.city, c.addresses
-          FROM distressed_sellers ds
-          LEFT JOIN complexes c ON ds.complex_id = c.id
-          WHERE ds.distress_type = 'receivership'
-          ORDER BY ds.created_at DESC LIMIT 200
-        `);
-        listings = result.rows;
-      } catch (e2) {
-        // Tables don't exist yet
-      }
+          FROM distressed_sellers ds LEFT JOIN complexes c ON ds.complex_id = c.id
+          WHERE ds.distress_type = 'receivership' ORDER BY ds.created_at DESC LIMIT 200
+        `)).rows;
+      } catch (e2) {}
     }
-    
     const content = `
       <h1>QUANTUM - נכסי כינוס נכסים</h1>
       <p>סה"כ נכסים בכינוס: <strong>${listings.length}</strong></p>
-
-      <h2>נכסים זמינים</h2>
       <table>
-        <thead>
-          <tr>
-            <th>כתובת</th>
-            <th>עיר</th>
-            <th>סוג נכס</th>
-            <th>מחיר</th>
-            <th>תאריך</th>
-          </tr>
-        </thead>
+        <thead><tr><th>כתובת</th><th>עיר</th><th>סוג נכס</th><th>מחיר</th><th>תאריך</th></tr></thead>
         <tbody>
-          ${listings.map(l => `
-          <tr>
+          ${listings.map(l => `<tr>
             <td>${l.address || l.addresses || l.complex_name || '-'}</td>
             <td>${l.city || '-'}</td>
             <td>${l.property_type || l.distress_type || '-'}</td>
             <td>${l.price ? `₪${l.price.toLocaleString()}` : '-'}</td>
             <td>${l.created_at ? new Date(l.created_at).toLocaleDateString('he-IL') : '-'}</td>
-          </tr>
-          `).join('')}
+          </tr>`).join('')}
         </tbody>
-      </table>
-    `;
-
+      </table>`;
     res.type('html').send(htmlWrapper('נכסי כינוס נכסים', 'QUANTUM - נכסי כינוס נכסים בישראל.', content));
   } catch (error) {
     logger.error('Perplexity kones.html error:', error);
@@ -501,38 +418,21 @@ router.get('/transactions.html', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT t.*, c.name as complex_name, c.city
-      FROM transactions t
-      LEFT JOIN complexes c ON t.complex_id = c.id
-      ORDER BY t.transaction_date DESC NULLS LAST
-      LIMIT 500
+      FROM transactions t LEFT JOIN complexes c ON t.complex_id = c.id
+      ORDER BY t.transaction_date DESC NULLS LAST LIMIT 500
     `);
-
     const transactions = result.rows;
-    const avgPrice = transactions.length > 0 
+    const avgPrice = transactions.length > 0
       ? Math.round(transactions.reduce((sum, t) => sum + (t.price_per_sqm || 0), 0) / Math.max(transactions.filter(t => t.price_per_sqm).length, 1))
       : 0;
-    
     const content = `
       <h1>QUANTUM - עסקאות נדל"ן היסטוריות</h1>
       <p>סה"כ עסקאות: <strong>${transactions.length}</strong></p>
       <p>מחיר ממוצע למ"ר: <strong>₪${avgPrice.toLocaleString()}</strong></p>
-
-      <h2>עסקאות אחרונות</h2>
       <table>
-        <thead>
-          <tr>
-            <th>תאריך</th>
-            <th>מתחם</th>
-            <th>עיר</th>
-            <th>כתובת</th>
-            <th>שטח</th>
-            <th>מחיר</th>
-            <th>מחיר/מ"ר</th>
-          </tr>
-        </thead>
+        <thead><tr><th>תאריך</th><th>מתחם</th><th>עיר</th><th>כתובת</th><th>שטח</th><th>מחיר</th><th>מחיר/מ"ר</th></tr></thead>
         <tbody>
-          ${transactions.map(t => `
-          <tr>
+          ${transactions.map(t => `<tr>
             <td>${t.transaction_date ? new Date(t.transaction_date).toLocaleDateString('he-IL') : '-'}</td>
             <td>${t.complex_name || '-'}</td>
             <td>${t.city || '-'}</td>
@@ -540,12 +440,9 @@ router.get('/transactions.html', async (req, res) => {
             <td>${t.size_sqm ? `${t.size_sqm} מ"ר` : '-'}</td>
             <td>${t.price ? `₪${t.price.toLocaleString()}` : '-'}</td>
             <td>${t.price_per_sqm ? `₪${t.price_per_sqm.toLocaleString()}` : '-'}</td>
-          </tr>
-          `).join('')}
+          </tr>`).join('')}
         </tbody>
-      </table>
-    `;
-
+      </table>`;
     res.type('html').send(htmlWrapper('עסקאות נדל"ן היסטוריות', 'QUANTUM - היסטוריית עסקאות נדל"ן בפינוי-בינוי.', content));
   } catch (error) {
     logger.error('Perplexity transactions.html error:', error);
@@ -560,8 +457,7 @@ router.get('/news.html', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT na.*, c.name as complex_name, c.city
-      FROM news_alerts na
-      LEFT JOIN complexes c ON na.complex_id = c.id
+      FROM news_alerts na LEFT JOIN complexes c ON na.complex_id = c.id
       ORDER BY na.created_at DESC LIMIT 100
     `);
     const news = result.rows;
@@ -591,7 +487,7 @@ router.get('/news.html', async (req, res) => {
 // =====================================================
 router.get('/regulations.html', async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM regulation_updates ORDER BY effective_date DESC NULLS LAST, created_at DESC LIMIT 50`);
+    const result = await pool.query('SELECT * FROM regulation_updates ORDER BY effective_date DESC NULLS LAST, created_at DESC LIMIT 50');
     const regulations = result.rows;
     const content = `
       <h1>QUANTUM - עדכוני רגולציה</h1>
@@ -624,11 +520,9 @@ router.get('/city/:city.html', async (req, res) => {
       SELECT id, name, city, addresses, developer,
              planned_units, actual_premium,
              iai_score, enhanced_ssi_score, status
-      FROM complexes 
-      WHERE city ILIKE $1
+      FROM complexes WHERE city ILIKE $1
       ORDER BY iai_score DESC NULLS LAST
     `, [`%${city}%`]);
-
     const complexes = result.rows;
     const content = `
       <h1>פינוי-בינוי ב${city}</h1>
@@ -655,51 +549,142 @@ router.get('/city/:city.html', async (req, res) => {
 });
 
 // =====================================================
-// 12. FULL EXPORT JSON
+// 12. FULL EXPORT JSON - ALL DATA IN ONE ENDPOINT
 // =====================================================
 router.get('/full-export.json', async (req, res) => {
   try {
-    const [complexes, decisions, hearings, developers, transactions, news, regulations] = await Promise.all([
+    // Query ALL tables in parallel
+    const [
+      complexes, transactions, listings, alerts, scanLogs, benchmarks,
+      decisions, hearings, developers, news, regulations
+    ] = await Promise.all([
       pool.query('SELECT * FROM complexes ORDER BY iai_score DESC NULLS LAST'),
+      pool.query('SELECT * FROM transactions ORDER BY transaction_date DESC LIMIT 2000'),
+      pool.query('SELECT * FROM listings ORDER BY created_at DESC LIMIT 2000'),
+      pool.query('SELECT * FROM alerts ORDER BY created_at DESC LIMIT 1000'),
+      pool.query('SELECT * FROM scan_logs ORDER BY created_at DESC LIMIT 200'),
+      pool.query('SELECT * FROM benchmarks ORDER BY created_at DESC LIMIT 50'),
       pool.query('SELECT * FROM committee_decisions ORDER BY decision_date DESC LIMIT 500'),
-      pool.query('SELECT * FROM upcoming_hearings WHERE hearing_date >= CURRENT_DATE ORDER BY hearing_date ASC'),
+      pool.query('SELECT * FROM upcoming_hearings ORDER BY hearing_date ASC'),
       pool.query('SELECT * FROM developers ORDER BY risk_score NULLS LAST'),
-      pool.query('SELECT * FROM transactions ORDER BY transaction_date DESC LIMIT 1000'),
-      pool.query('SELECT * FROM news_alerts ORDER BY created_at DESC LIMIT 200'),
+      pool.query('SELECT * FROM news_alerts ORDER BY created_at DESC LIMIT 500'),
       pool.query('SELECT * FROM regulation_updates ORDER BY effective_date DESC')
     ]);
 
+    // Optional tables (may not exist)
     let konesListings = [];
-    try { konesListings = (await pool.query('SELECT * FROM kones_listings')).rows; } catch (e) {}
+    try { konesListings = (await pool.query('SELECT * FROM kones_listings WHERE is_active = true ORDER BY created_at DESC')).rows; } catch (e) {}
 
     let distressedSellers = [];
     try { distressedSellers = (await pool.query('SELECT * FROM distressed_sellers ORDER BY created_at DESC')).rows; } catch (e) {}
 
+    let priceHistory = [];
+    try { priceHistory = (await pool.query('SELECT * FROM price_history ORDER BY created_at DESC LIMIT 1000')).rows; } catch (e) {}
+
+    let developerNews = [];
+    try { developerNews = (await pool.query('SELECT * FROM developer_news ORDER BY created_at DESC LIMIT 200')).rows; } catch (e) {}
+
+    // Compute derived data
+    const allComplexes = complexes.rows;
+    const opportunities = allComplexes.filter(c => c.iai_score >= 30);
+    const excellent = allComplexes.filter(c => c.iai_score >= 70);
+    const good = allComplexes.filter(c => c.iai_score >= 50 && c.iai_score < 70);
+    const stressedSellers = allComplexes.filter(c => c.enhanced_ssi_score >= 40);
+    const cities = [...new Set(allComplexes.map(c => c.city).filter(Boolean))].sort();
+
+    // City breakdown
+    const cityBreakdown = {};
+    for (const c of allComplexes) {
+      if (!c.city) continue;
+      if (!cityBreakdown[c.city]) cityBreakdown[c.city] = { total: 0, iai30plus: 0, iai70plus: 0 };
+      cityBreakdown[c.city].total++;
+      if (c.iai_score >= 30) cityBreakdown[c.city].iai30plus++;
+      if (c.iai_score >= 70) cityBreakdown[c.city].iai70plus++;
+    }
+
     res.json({
       metadata: {
-        source: 'QUANTUM',
+        source: 'QUANTUM - Pinuy Binuy Investment Analyzer',
+        description: 'Complete database export with ALL tables, computed metrics, and derived analytics',
+        version: '4.10.0',
         exported_at: new Date().toISOString(),
-        version: '4.8.7',
+        api_base: 'https://pinuy-binuy-analyzer-production.up.railway.app',
         stats: {
-          total_complexes: complexes.rows.length,
-          high_iai: complexes.rows.filter(c => c.iai_score >= 30).length,
-          high_ssi: complexes.rows.filter(c => c.enhanced_ssi_score >= 40).length,
-          cities: [...new Set(complexes.rows.map(c => c.city).filter(Boolean))].length,
-          transactions: transactions.rows.length
+          total_complexes: allComplexes.length,
+          unique_cities: cities.length,
+          opportunities_iai30plus: opportunities.length,
+          excellent_iai70plus: excellent.length,
+          good_iai50to69: good.length,
+          stressed_sellers_ssi40plus: stressedSellers.length,
+          total_transactions: transactions.rows.length,
+          total_yad2_listings: listings.rows.length,
+          total_kones_listings: konesListings.length,
+          total_alerts: alerts.rows.length,
+          total_scan_logs: scanLogs.rows.length,
+          total_committee_decisions: decisions.rows.length,
+          total_upcoming_hearings: hearings.rows.length,
+          total_developers: developers.rows.length,
+          total_news_alerts: news.rows.length,
+          total_regulation_updates: regulations.rows.length,
+          total_benchmarks: benchmarks.rows.length,
+          total_distressed_sellers: distressedSellers.length,
+          total_price_history: priceHistory.length,
+          total_developer_news: developerNews.length
         }
       },
       data: {
-        complexes: complexes.rows,
-        committee_decisions: decisions.rows,
-        upcoming_hearings: hearings.rows,
-        developers: developers.rows,
+        // Core data
+        complexes: allComplexes,
+
+        // Computed rankings
+        opportunities: opportunities.map((c, i) => ({
+          rank: i + 1,
+          id: c.id,
+          slug: c.slug,
+          name: c.name,
+          city: c.city,
+          addresses: c.addresses,
+          developer: c.developer,
+          iai_score: c.iai_score,
+          iai_category: c.iai_score >= 70 ? 'excellent' : c.iai_score >= 50 ? 'good' : 'moderate',
+          enhanced_ssi_score: c.enhanced_ssi_score,
+          status: c.status,
+          planned_units: c.planned_units,
+          existing_units: c.existing_units,
+          premium_gap: c.premium_gap,
+          actual_premium: c.actual_premium,
+          perplexity_summary: c.perplexity_summary
+        })),
+        stressed_sellers: stressedSellers,
+
+        // Market data
         transactions: transactions.rows,
+        yad2_listings: listings.rows,
         kones_listings: konesListings,
         distressed_sellers: distressedSellers,
+        price_history: priceHistory,
+
+        // Planning & regulation
+        committee_decisions: decisions.rows,
+        upcoming_hearings: hearings.rows,
+        regulation_updates: regulations.rows,
+
+        // Players
+        developers: developers.rows,
+        developer_news: developerNews,
+
+        // Monitoring
         news_alerts: news.rows,
-        regulation_updates: regulations.rows
+        alerts: alerts.rows,
+        scan_logs: scanLogs.rows,
+        benchmarks: benchmarks.rows,
+
+        // Analytics
+        city_breakdown: cityBreakdown,
+        cities: cities
       }
     });
+    logger.info(`Perplexity: Served COMPLETE full-export.json - ${allComplexes.length} complexes, ${transactions.rows.length} transactions, ${listings.rows.length} listings, ${konesListings.length} kones, ${alerts.rows.length} alerts`);
   } catch (error) {
     logger.error('Perplexity full-export.json error:', error);
     res.status(500).json({ error: 'Export failed', message: error.message });
@@ -707,7 +692,7 @@ router.get('/full-export.json', async (req, res) => {
 });
 
 // =====================================================
-// 13. SIMPLE JSON EXPORT
+// 13. SIMPLE JSON EXPORT (complexes only)
 // =====================================================
 router.get('/export.json', async (req, res) => {
   try {
@@ -781,8 +766,8 @@ router.get('/', (req, res) => {
     </ul>
     <h2>ייצוא נתונים</h2>
     <ul>
-      <li><a href="/perplexity/export.json">export.json</a></li>
-      <li><a href="/perplexity/full-export.json">full-export.json</a></li>
+      <li><a href="/perplexity/export.json">export.json - מתחמים בלבד</a></li>
+      <li><a href="/perplexity/full-export.json"><strong>full-export.json - כל הנתונים (מתחמים, עסקאות, מודעות, כינוסים, התראות, ועדות, יזמים, רגולציה)</strong></a></li>
       <li><a href="/perplexity/sitemap.xml">sitemap.xml</a></li>
     </ul>`;
   res.type('html').send(htmlWrapper('Perplexity Integration', 'QUANTUM - Perplexity Integration Index', content));
