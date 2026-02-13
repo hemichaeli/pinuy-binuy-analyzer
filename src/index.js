@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.8.6';
-const BUILD = '2026-02-13-v4.8.6-route-order-fix';
+const VERSION = '4.9.0';
+const BUILD = '2026-02-13-v4.9.0-receivership-scanner';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
