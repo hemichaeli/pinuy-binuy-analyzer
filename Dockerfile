@@ -40,7 +40,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies (production only to save space)
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copy application code
 COPY . .
