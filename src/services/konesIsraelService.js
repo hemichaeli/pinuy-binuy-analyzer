@@ -68,6 +68,7 @@ class KonesIsraelService {
     this.listingsCache = { data: null, timestamp: null, ttl: 4 * 60 * 60 * 1000 };
     this.isLoggedIn = false;
     this._pool = null;
+    this._tableReady = false;
   }
 
   _getPool() {
@@ -82,40 +83,48 @@ class KonesIsraelService {
   }
 
   /**
+   * Ensure kones_listings table exists (cached - only runs once)
+   */
+  async _ensureTable() {
+    if (this._tableReady) return;
+    const pool = this._getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kones_listings (
+        id SERIAL PRIMARY KEY,
+        source VARCHAR(50) DEFAULT 'konesisrael',
+        property_type VARCHAR(100),
+        property_type_en VARCHAR(50),
+        region VARCHAR(100),
+        region_en VARCHAR(50),
+        city VARCHAR(200),
+        address TEXT,
+        submission_deadline DATE,
+        gush_helka VARCHAR(200),
+        gush INTEGER,
+        helka INTEGER,
+        tat_helka INTEGER,
+        contact_person VARCHAR(200),
+        email VARCHAR(200),
+        phone VARCHAR(50),
+        url TEXT,
+        is_receivership BOOLEAN DEFAULT true,
+        ssi_contribution INTEGER DEFAULT 30,
+        raw_data JSONB,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        is_active BOOLEAN DEFAULT true
+      )
+    `);
+    this._tableReady = true;
+  }
+
+  /**
    * Primary data source: PostgreSQL kones_listings table
    */
   async fetchFromDatabase() {
     try {
+      await this._ensureTable();
       const pool = this._getPool();
-      
-      // Ensure table exists
-      await pool.query(`
-        CREATE TABLE IF NOT EXISTS kones_listings (
-          id SERIAL PRIMARY KEY,
-          source VARCHAR(50) DEFAULT 'konesisrael',
-          property_type VARCHAR(100),
-          property_type_en VARCHAR(50),
-          region VARCHAR(100),
-          region_en VARCHAR(50),
-          city VARCHAR(200),
-          address TEXT,
-          submission_deadline DATE,
-          gush_helka VARCHAR(200),
-          gush INTEGER,
-          helka INTEGER,
-          tat_helka INTEGER,
-          contact_person VARCHAR(200),
-          email VARCHAR(200),
-          phone VARCHAR(50),
-          url TEXT,
-          is_receivership BOOLEAN DEFAULT true,
-          ssi_contribution INTEGER DEFAULT 30,
-          raw_data JSONB,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW(),
-          is_active BOOLEAN DEFAULT true
-        )
-      `);
 
       const result = await pool.query(`
         SELECT * FROM kones_listings 
@@ -157,6 +166,7 @@ class KonesIsraelService {
    * Import listings into database
    */
   async importListings(listings) {
+    await this._ensureTable();
     const pool = this._getPool();
     let imported = 0;
     let skipped = 0;
@@ -525,6 +535,7 @@ class KonesIsraelService {
   async getStatus() {
     let dbCount = 0;
     try {
+      await this._ensureTable();
       const pool = this._getPool();
       const result = await pool.query('SELECT COUNT(*) FROM kones_listings WHERE is_active = true');
       dbCount = parseInt(result.rows[0].count);
