@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.9.0';
-const BUILD = '2026-02-13-v4.9.0-receivership-scanner';
+const VERSION = '4.10.0';
+const BUILD = '2026-02-13-v4.10.0-live-scraper-captcha-bypass';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -230,6 +230,7 @@ app.get('/diagnostics', async (req, res) => {
       PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing',
       RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing',
       KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing',
+      KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing',
     }
   });
 });
@@ -321,6 +322,8 @@ app.get('/', (req, res) => {
       stressed_sellers: '/api/ssi/stressed-sellers',
       scan: '/api/scan',
       kones: '/api/kones',
+      kones_live_scrape: '/api/kones/live-scrape',
+      kones_captcha_test: '/api/kones/captcha-test',
       perplexity: '/api/perplexity',
       notifications: '/api/notifications/status'
     }
