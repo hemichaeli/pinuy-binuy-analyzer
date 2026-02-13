@@ -14,8 +14,11 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.8.3';
-const BUILD = '2026-02-12-v4.8.3-route-fix';
+const VERSION = '4.8.5';
+const BUILD = '2026-02-13-v4.8.5-route-diagnostics';
+
+// Store route loading results for diagnostics
+const routeLoadResults = [];
 
 async function runAutoMigrations() {
   try {
@@ -91,28 +94,32 @@ app.get('/health', async (req, res) => {
       transactions: parseInt(txCount.rows[0].count),
       listings: parseInt(listingCount.rows[0].count),
       unread_alerts: parseInt(alertCount.rows[0].count),
-      notifications: notificationService.isConfigured() ? 'active' : 'disabled'
+      notifications: notificationService.isConfigured() ? 'active' : 'disabled',
+      routes_loaded: routeLoadResults.filter(r => r.status === 'ok').length,
+      routes_failed: routeLoadResults.filter(r => r.status === 'failed').length
     });
   } catch (error) {
     res.status(500).json({ status: 'unhealthy', error: error.message, version: VERSION });
   }
 });
 
-// Route loading with error handling
+// Route loading with FULL error reporting
 function loadRoute(routePath, mountPath) {
   try {
     const route = require(routePath);
     app.use(mountPath, route);
     logger.info(`Route loaded: ${mountPath}`);
+    routeLoadResults.push({ path: mountPath, file: routePath, status: 'ok' });
     return true;
   } catch (error) {
-    logger.warn(`Route skipped ${mountPath}: ${error.message}`);
+    const errorDetail = `${error.message} | Stack: ${error.stack?.split('\n').slice(0, 3).join(' -> ')}`;
+    logger.error(`Route FAILED ${mountPath}: ${errorDetail}`);
+    routeLoadResults.push({ path: mountPath, file: routePath, status: 'failed', error: error.message, stack: error.stack?.split('\n').slice(0, 5) });
     return false;
   }
 }
 
 async function loadRoutes() {
-  // Map to ACTUAL files in src/routes/
   const routes = [
     ['./routes/projects', '/api/projects'],
     ['./routes/opportunities', '/api'],
@@ -151,6 +158,86 @@ function getKonesInfo() {
   } catch { return { available: false }; }
 }
 
+// Diagnostics endpoint - shows EVERYTHING
+app.get('/diagnostics', async (req, res) => {
+  // Check DB tables
+  let dbTables = [];
+  try {
+    const tableResult = await pool.query(`
+      SELECT table_name, 
+        (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name AND table_schema = 'public') as columns
+      FROM information_schema.tables t 
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+      ORDER BY table_name
+    `);
+    dbTables = tableResult.rows;
+  } catch (e) {
+    dbTables = [{ error: e.message }];
+  }
+
+  // Check row counts
+  let rowCounts = {};
+  for (const table of dbTables) {
+    if (table.table_name) {
+      try {
+        const r = await pool.query(`SELECT COUNT(*) FROM "${table.table_name}"`);
+        rowCounts[table.table_name] = parseInt(r.rows[0].count);
+      } catch (e) {
+        rowCounts[table.table_name] = `ERROR: ${e.message}`;
+      }
+    }
+  }
+
+  // Check for duplicates in complexes
+  let duplicates = [];
+  try {
+    const dupResult = await pool.query(`
+      SELECT name, city, COUNT(*) as cnt 
+      FROM complexes 
+      GROUP BY name, city 
+      HAVING COUNT(*) > 1 
+      ORDER BY cnt DESC 
+      LIMIT 30
+    `);
+    duplicates = dupResult.rows;
+  } catch (e) {
+    duplicates = [{ error: e.message }];
+  }
+
+  // Check unique counts
+  let uniqueCounts = {};
+  try {
+    const uc = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(DISTINCT name) as unique_names,
+        COUNT(DISTINCT CONCAT(name, '|', city)) as unique_name_city,
+        COUNT(DISTINCT city) as cities
+      FROM complexes
+    `);
+    uniqueCounts = uc.rows[0];
+  } catch (e) {
+    uniqueCounts = { error: e.message };
+  }
+
+  res.json({
+    version: VERSION,
+    build: BUILD,
+    timestamp: new Date().toISOString(),
+    routes: routeLoadResults,
+    db_tables: dbTables,
+    row_counts: rowCounts,
+    complex_duplicates: duplicates,
+    complex_unique_counts: uniqueCounts,
+    env_check: {
+      DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing',
+      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing',
+      RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing',
+      KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing',
+    }
+  });
+});
+
 // Debug endpoint
 app.get('/debug', (req, res) => {
   const discovery = getDiscoveryInfo();
@@ -181,6 +268,7 @@ app.get('/debug', (req, res) => {
       kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled',
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
     },
+    routes: routeLoadResults,
     scheduler: schedulerStatus
   });
 });
@@ -230,6 +318,7 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/health',
       debug: '/debug',
+      diagnostics: '/diagnostics',
       scheduler: '/api/scheduler',
       projects: '/api/projects',
       opportunities: '/api/opportunities',
@@ -258,6 +347,13 @@ async function start() {
   await runAutoMigrations();
   await loadRoutes();
   
+  // Log route results summary
+  const loaded = routeLoadResults.filter(r => r.status === 'ok');
+  const failed = routeLoadResults.filter(r => r.status === 'failed');
+  logger.info(`=== ROUTE LOADING SUMMARY ===`);
+  loaded.forEach(r => logger.info(`  OK: ${r.path}`));
+  failed.forEach(r => logger.error(`  FAILED: ${r.path} -> ${r.error}`));
+  
   // Start scheduler
   try {
     const { startScheduler } = require('./jobs/weeklyScanner');
@@ -268,6 +364,7 @@ async function start() {
   
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
+    logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`Notifications: ${notificationService.isConfigured() ? 'active' : 'disabled'}`);
   });
 }
