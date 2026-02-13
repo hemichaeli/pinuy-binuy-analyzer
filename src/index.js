@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.10.2';
-const BUILD = '2026-02-13-v4.10.2-robots-txt-perplexity';
+const VERSION = '4.11.0';
+const BUILD = '2026-02-13-v4.11.0-quantum-chat';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -67,10 +67,10 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'] }));
 app.use(express.json({ limit: '50mb' }));
 
-// Rate limiting - exempt perplexity routes (public AI endpoints)
+// Rate limiting - exempt perplexity and chat routes
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
 app.use('/api/', (req, res, next) => {
-  if (req.path.startsWith('/perplexity/') || req.path.startsWith('/perplexity')) {
+  if (req.path.startsWith('/perplexity/') || req.path.startsWith('/perplexity') || req.path.startsWith('/chat/') || req.path.startsWith('/chat')) {
     return next();
   }
   apiLimiter(req, res, next);
@@ -78,7 +78,6 @@ app.use('/api/', (req, res, next) => {
 
 // ============================================================
 // ROBOTS.TXT + CRAWLER SUPPORT
-// Must be registered BEFORE request logging to avoid noise
 // ============================================================
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(`# QUANTUM - Pinuy Binuy Intelligence
@@ -113,12 +112,9 @@ app.get('/.well-known/ai-plugin.json', (req, res) => {
     schema_version: 'v1',
     name_for_human: 'QUANTUM - Pinuy Binuy Intelligence',
     name_for_model: 'quantum_pinuy_binuy',
-    description_for_human: 'Israeli urban renewal (Pinuy-Binuy) real estate investment data. 472 complexes, opportunities, stressed sellers, receiverships.',
-    description_for_model: 'Access Israeli Pinuy-Binuy real estate data including investment opportunities (IAI scores), stressed sellers (SSI scores), receivership properties, committee decisions, and city breakdowns. Use /api/perplexity/brain.html for a compact summary or /api/perplexity/brain.json for structured data.',
-    api: {
-      type: 'openapi',
-      url: 'https://pinuy-binuy-analyzer-production.up.railway.app/api/perplexity/brain.json'
-    },
+    description_for_human: 'Israeli urban renewal (Pinuy-Binuy) real estate investment data.',
+    description_for_model: 'Access Israeli Pinuy-Binui real estate data. Use /api/perplexity/brain.html for summary or /api/perplexity/brain.json for structured data.',
+    api: { type: 'openapi', url: 'https://pinuy-binuy-analyzer-production.up.railway.app/api/perplexity/brain.json' },
     logo_url: 'https://pinuy-binuy-analyzer-production.up.railway.app/favicon.ico',
     contact_email: 'Office@u-r-quantum.com',
     legal_info_url: 'https://pinuy-binuy-analyzer-production.up.railway.app/'
@@ -163,7 +159,7 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Route loading with full error reporting
+// Route loading
 function loadRoute(routePath, mountPath) {
   try {
     const route = require(routePath);
@@ -189,6 +185,7 @@ function loadAllRoutes() {
     ['./routes/enhancedData', '/api/enhanced'],
     ['./routes/konesRoutes', '/api/kones'],
     ['./routes/perplexityRoutes', '/api/perplexity'],
+    ['./routes/chatRoutes', '/api/chat'],
     ['./routes/governmentDataRoutes', '/api/government'],
     ['./routes/newsRoutes', '/api/news'],
     ['./routes/pricingRoutes', '/api/pricing'],
@@ -249,49 +246,19 @@ app.get('/diagnostics', async (req, res) => {
   let duplicates = [];
   try {
     const dupResult = await pool.query(`
-      SELECT name, city, COUNT(*) as cnt 
-      FROM complexes 
-      GROUP BY name, city 
-      HAVING COUNT(*) > 1 
-      ORDER BY cnt DESC 
-      LIMIT 30
+      SELECT name, city, COUNT(*) as cnt FROM complexes GROUP BY name, city HAVING COUNT(*) > 1 ORDER BY cnt DESC LIMIT 30
     `);
     duplicates = dupResult.rows;
-  } catch (e) {
-    duplicates = [{ error: e.message }];
-  }
+  } catch (e) { duplicates = [{ error: e.message }]; }
 
   let uniqueCounts = {};
   try {
-    const uc = await pool.query(`
-      SELECT 
-        COUNT(*) as total,
-        COUNT(DISTINCT name) as unique_names,
-        COUNT(DISTINCT CONCAT(name, '|', city)) as unique_name_city,
-        COUNT(DISTINCT city) as cities
-      FROM complexes
-    `);
+    const uc = await pool.query(`SELECT COUNT(*) as total, COUNT(DISTINCT name) as unique_names, COUNT(DISTINCT CONCAT(name, '|', city)) as unique_name_city, COUNT(DISTINCT city) as cities FROM complexes`);
     uniqueCounts = uc.rows[0];
-  } catch (e) {
-    uniqueCounts = { error: e.message };
-  }
+  } catch (e) { uniqueCounts = { error: e.message }; }
 
-  res.json({
-    version: VERSION,
-    build: BUILD,
-    timestamp: new Date().toISOString(),
-    routes: routeLoadResults,
-    db_tables: dbTables,
-    row_counts: rowCounts,
-    complex_duplicates: duplicates,
-    complex_unique_counts: uniqueCounts,
-    env_check: {
-      DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing',
-      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing',
-      RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing',
-      KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing',
-      KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing',
-    }
+  res.json({ version: VERSION, build: BUILD, timestamp: new Date().toISOString(), routes: routeLoadResults, db_tables: dbTables, row_counts: rowCounts, complex_duplicates: duplicates, complex_unique_counts: uniqueCounts,
+    env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing' }
   });
 });
 
@@ -299,145 +266,66 @@ app.get('/diagnostics', async (req, res) => {
 app.get('/debug', (req, res) => {
   const discovery = getDiscoveryInfo();
   const kones = getKonesInfo();
-  
   let schedulerStatus = null;
-  try {
-    const { getSchedulerStatus } = require('./jobs/weeklyScanner');
-    schedulerStatus = getSchedulerStatus();
-  } catch (e) {
-    schedulerStatus = { error: e.message };
-  }
+  try { const { getSchedulerStatus } = require('./jobs/weeklyScanner'); schedulerStatus = getSchedulerStatus(); } catch (e) { schedulerStatus = { error: e.message }; }
   
   res.json({
-    timestamp: new Date().toISOString(),
-    build: BUILD,
-    version: VERSION,
-    node_version: process.version,
-    env: {
-      DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)',
-      PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)',
-      RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)',
-      KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)',
-      KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)',
-    },
-    features: {
-      discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled',
-      kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled',
-      notifications: notificationService.isConfigured() ? 'active' : 'disabled',
-    },
-    routes: routeLoadResults,
-    scheduler: schedulerStatus
+    timestamp: new Date().toISOString(), build: BUILD, version: VERSION, node_version: process.version,
+    env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)' },
+    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled' },
+    routes: routeLoadResults, scheduler: schedulerStatus
   });
 });
 
 // Scheduler routes
-app.get('/api/scheduler', (req, res) => {
-  try {
-    const { getSchedulerStatus } = require('./jobs/weeklyScanner');
-    res.json(getSchedulerStatus());
-  } catch (e) {
-    res.json({ error: e.message });
-  }
-});
-
-app.post('/api/scheduler/run', async (req, res) => {
-  try {
-    const { runWeeklyScan, getSchedulerStatus } = require('./jobs/weeklyScanner');
-    const status = getSchedulerStatus();
-    if (status.isRunning) return res.status(409).json({ error: 'Scan already running' });
-    res.json({ message: 'Scan triggered', note: 'Running in background' });
-    await runWeeklyScan();
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+app.get('/api/scheduler', (req, res) => { try { const { getSchedulerStatus } = require('./jobs/weeklyScanner'); res.json(getSchedulerStatus()); } catch (e) { res.json({ error: e.message }); } });
+app.post('/api/scheduler/run', async (req, res) => { try { const { runWeeklyScan, getSchedulerStatus } = require('./jobs/weeklyScanner'); const status = getSchedulerStatus(); if (status.isRunning) return res.status(409).json({ error: 'Scan already running' }); res.json({ message: 'Scan triggered', note: 'Running in background' }); await runWeeklyScan(); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // Notification routes
-app.get('/api/notifications/status', (req, res) => {
-  res.json(notificationService.getStatus ? notificationService.getStatus() : { configured: notificationService.isConfigured() });
-});
-
-app.post('/api/notifications/test', async (req, res) => {
-  try {
-    await notificationService.sendTestEmail?.();
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+app.get('/api/notifications/status', (req, res) => { res.json(notificationService.getStatus ? notificationService.getStatus() : { configured: notificationService.isConfigured() }); });
+app.post('/api/notifications/test', async (req, res) => { try { await notificationService.sendTestEmail?.(); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // Root
 app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
-    version: VERSION,
-    build: BUILD,
+    version: VERSION, build: BUILD,
     endpoints: {
-      health: '/health',
-      debug: '/debug',
-      diagnostics: '/diagnostics',
-      scheduler: '/api/scheduler',
-      projects: '/api/projects',
-      opportunities: '/api/opportunities',
-      stressed_sellers: '/api/ssi/stressed-sellers',
-      scan: '/api/scan',
-      kones: '/api/kones',
-      kones_live_scrape: '/api/kones/live-scrape',
-      kones_captcha_test: '/api/kones/captcha-test',
-      perplexity: '/api/perplexity',
+      health: '/health', debug: '/debug', diagnostics: '/diagnostics',
+      chat: '/api/chat', chat_api: 'POST /api/chat/ask',
+      projects: '/api/projects', opportunities: '/api/opportunities',
+      stressed_sellers: '/api/ssi/stressed-sellers', scan: '/api/scan',
+      kones: '/api/kones', perplexity: '/api/perplexity',
       notifications: '/api/notifications/status'
     }
   });
 });
-
-// ============================================================
-// CRITICAL: 404 and error handlers MUST be registered AFTER
-// all routes are loaded. They are added in start() function
-// after loadAllRoutes() completes.
-// ============================================================
 
 async function start() {
   logger.info(`Starting QUANTUM Backend v${VERSION}`);
   logger.info(`Build: ${BUILD}`);
   
   await runAutoMigrations();
-  
-  // Load all route files - MUST happen before 404/error handlers
   loadAllRoutes();
   
-  // Log route results summary
   const loaded = routeLoadResults.filter(r => r.status === 'ok');
   const failed = routeLoadResults.filter(r => r.status === 'failed');
   logger.info(`=== ROUTE LOADING SUMMARY ===`);
   loaded.forEach(r => logger.info(`  OK: ${r.path}`));
   failed.forEach(r => logger.error(`  FAILED: ${r.path} -> ${r.error}`));
   
-  // NOW register 404 handler - AFTER all routes are loaded
-  app.use((req, res) => {
-    res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION });
-  });
+  // 404 handler - AFTER all routes
+  app.use((req, res) => { res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION }); });
+  app.use((err, req, res, next) => { logger.error('Unhandled error:', err); res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION }); });
   
-  // Error handler - LAST
-  app.use((err, req, res, next) => {
-    logger.error('Unhandled error:', err);
-    res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION });
-  });
-  
-  // Start scheduler
-  try {
-    const { startScheduler } = require('./jobs/weeklyScanner');
-    startScheduler();
-  } catch (e) {
-    logger.warn('Scheduler failed to start:', e.message);
-  }
+  try { const { startScheduler } = require('./jobs/weeklyScanner'); startScheduler(); } catch (e) { logger.warn('Scheduler failed to start:', e.message); }
   
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
-    logger.info(`Notifications: ${notificationService.isConfigured() ? 'active' : 'disabled'}`);
+    logger.info(`QUANTUM Chat: /api/chat`);
   });
 }
 
 start();
-
 module.exports = app;
