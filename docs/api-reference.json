@@ -1,0 +1,142 @@
+{
+  "name": "QUANTUM - Pinuy Binuy Investment Analyzer API",
+  "version": "4.10.0",
+  "base_url": "https://pinuy-binuy-analyzer-production.up.railway.app",
+  "description": "Full API reference for QUANTUM real estate intelligence platform. All endpoints return JSON unless noted otherwise.",
+
+  "system": {
+    "health": { "method": "GET", "url": "/health", "description": "System health check" },
+    "debug": { "method": "GET", "url": "/debug", "description": "Debug info" },
+    "diagnostics": { "method": "GET", "url": "/diagnostics", "description": "Full diagnostics" }
+  },
+
+  "projects": {
+    "list": { "method": "GET", "url": "/api/projects", "params": { "city": "Filter by city", "status": "planning/approved/construction", "limit": "50", "offset": "0" } },
+    "stats": { "method": "GET", "url": "/api/projects/stats" },
+    "cities": { "method": "GET", "url": "/api/projects/cities" },
+    "get_by_id": { "method": "GET", "url": "/api/projects/:id" },
+    "transactions": { "method": "GET", "url": "/api/projects/:id/transactions" },
+    "listings": { "method": "GET", "url": "/api/projects/:id/listings" },
+    "benchmark": { "method": "GET", "url": "/api/projects/:id/benchmark" }
+  },
+
+  "opportunities": {
+    "top_investments": { "method": "GET", "url": "/api/opportunities", "description": "Top investments by IAI score" },
+    "stressed_sellers": { "method": "GET", "url": "/api/stressed-sellers", "description": "Distressed sellers by SSI" },
+    "dashboard": { "method": "GET", "url": "/api/dashboard" }
+  },
+
+  "kones_receivership": {
+    "status": { "method": "GET", "url": "/api/kones/status" },
+    "listings": { "method": "GET", "url": "/api/kones/listings", "params": { "limit": "100", "offset": "0" } },
+    "import": { "method": "POST", "url": "/api/kones/import", "body": { "listings": [{ "propertyType": "דירה", "city": "תל אביב", "address": "הרצל 10" }] } },
+    "stats": { "method": "GET", "url": "/api/kones/stats" },
+    "search_city": { "method": "GET", "url": "/api/kones/search/city/:city" },
+    "search_region": { "method": "GET", "url": "/api/kones/search/region/:region" },
+    "search_gush": { "method": "GET", "url": "/api/kones/search/gush/:gush?helka=123" },
+    "check_address": { "method": "POST", "url": "/api/kones/check-address", "body": { "city": "תל אביב", "street": "הרצל" } },
+    "match_complexes": { "method": "GET", "url": "/api/kones/match-complexes" },
+    "enhance_ssi": { "method": "POST", "url": "/api/kones/enhance-ssi/:complexId" },
+    "scan_all": { "method": "POST", "url": "/api/kones/scan-all" },
+    "urgent": { "method": "GET", "url": "/api/kones/urgent" },
+    "scan_complexes": { "method": "POST", "url": "/api/kones/scan-complexes", "body": { "limit": 10, "minIAI": 50, "city": null } },
+    "scan_city": { "method": "POST", "url": "/api/kones/scan-city", "body": { "city": "בת ים", "streets": "" } },
+    "scan_status": { "method": "GET", "url": "/api/kones/scan-status" }
+  },
+
+  "ssi_distress": {
+    "status": { "method": "GET", "url": "/api/ssi/status" },
+    "enhance": { "method": "POST", "url": "/api/ssi/enhance/:complexId" },
+    "receivership_city": { "method": "GET", "url": "/api/ssi/receivership/:city" },
+    "check_owner": { "method": "POST", "url": "/api/ssi/check-owner" },
+    "check_property": { "method": "POST", "url": "/api/ssi/check-property" },
+    "high_distress": { "method": "GET", "url": "/api/ssi/high-distress" },
+    "enhance_all": { "method": "POST", "url": "/api/ssi/enhance-all" }
+  },
+
+  "scanning": {
+    "discovery": { "method": "POST", "url": "/api/scan/discovery" },
+    "unified": { "method": "POST", "url": "/api/scan/unified" },
+    "nadlan": { "method": "POST", "url": "/api/scan/nadlan" },
+    "yad2": { "method": "POST", "url": "/api/scan/yad2" },
+    "mavat": { "method": "POST", "url": "/api/scan/mavat" },
+    "committee": { "method": "POST", "url": "/api/scan/committee" },
+    "weekly": { "method": "POST", "url": "/api/scan/weekly" },
+    "results": { "method": "GET", "url": "/api/scan/results" }
+  },
+
+  "enhanced_data": {
+    "madlan_area": { "method": "GET", "url": "/api/enhanced/madlan/area/:city" },
+    "official_list": { "method": "GET", "url": "/api/enhanced/official/list" },
+    "committee_upcoming": { "method": "GET", "url": "/api/enhanced/committee/upcoming" },
+    "developer_risk": { "method": "GET", "url": "/api/enhanced/developer/risk-report" },
+    "enrich_all": { "method": "POST", "url": "/api/enhanced/enrich-all" },
+    "enrichment_stats": { "method": "GET", "url": "/api/enhanced/enrichment-stats" }
+  },
+
+  "government_data": {
+    "summary": { "method": "GET", "url": "/api/government/summary" },
+    "liens_search": { "method": "GET", "url": "/api/government/liens/search/:term" },
+    "inheritance_search": { "method": "GET", "url": "/api/government/inheritance/search/:term" },
+    "bankruptcy_search": { "method": "GET", "url": "/api/government/bankruptcy/search/:term" },
+    "check": { "method": "POST", "url": "/api/government/check" },
+    "receivership": { "method": "GET", "url": "/api/government/receivership" }
+  },
+
+  "news": {
+    "rss": { "method": "GET", "url": "/api/news/rss" },
+    "search_complex": { "method": "GET", "url": "/api/news/search/complex/:id" },
+    "regulation": { "method": "GET", "url": "/api/news/regulation" },
+    "tama38": { "method": "GET", "url": "/api/news/tama38" },
+    "tax_changes": { "method": "GET", "url": "/api/news/tax-changes" },
+    "scan": { "method": "POST", "url": "/api/news/scan" }
+  },
+
+  "pricing": {
+    "city": { "method": "GET", "url": "/api/pricing/city/:city" },
+    "benchmark": { "method": "POST", "url": "/api/pricing/benchmark/:complexId" },
+    "sold": { "method": "GET", "url": "/api/pricing/sold/:city" },
+    "index": { "method": "GET", "url": "/api/pricing/index/:city" },
+    "mortgage": { "method": "GET", "url": "/api/pricing/mortgage" },
+    "compare": { "method": "GET", "url": "/api/pricing/compare/:city" },
+    "top_opportunities": { "method": "GET", "url": "/api/pricing/top-opportunities" }
+  },
+
+  "perplexity_pages": {
+    "index": { "method": "GET", "url": "/api/perplexity/", "format": "HTML" },
+    "complexes": { "method": "GET", "url": "/api/perplexity/complexes.html", "format": "HTML" },
+    "opportunities": { "method": "GET", "url": "/api/perplexity/opportunities.html", "format": "HTML" },
+    "stressed_sellers": { "method": "GET", "url": "/api/perplexity/stressed-sellers.html", "format": "HTML" },
+    "decisions": { "method": "GET", "url": "/api/perplexity/decisions.html", "format": "HTML" },
+    "hearings": { "method": "GET", "url": "/api/perplexity/hearings.html", "format": "HTML" },
+    "developers": { "method": "GET", "url": "/api/perplexity/developers.html", "format": "HTML" },
+    "kones": { "method": "GET", "url": "/api/perplexity/kones.html", "format": "HTML" },
+    "transactions": { "method": "GET", "url": "/api/perplexity/transactions.html", "format": "HTML" },
+    "news": { "method": "GET", "url": "/api/perplexity/news.html", "format": "HTML" },
+    "regulations": { "method": "GET", "url": "/api/perplexity/regulations.html", "format": "HTML" },
+    "city_page": { "method": "GET", "url": "/api/perplexity/city/:city.html", "format": "HTML" },
+    "export_json": { "method": "GET", "url": "/api/perplexity/export.json", "format": "JSON" },
+    "full_export": { "method": "GET", "url": "/api/perplexity/full-export.json", "format": "JSON" },
+    "sitemap": { "method": "GET", "url": "/api/perplexity/sitemap.xml", "format": "XML" }
+  },
+
+  "alerts": {
+    "list": { "method": "GET", "url": "/api/alerts" },
+    "mark_read": { "method": "PUT", "url": "/api/alerts/:id/read" },
+    "mark_all_read": { "method": "PUT", "url": "/api/alerts/read-all" }
+  },
+
+  "scheduler": {
+    "status": { "method": "GET", "url": "/api/scheduler" },
+    "trigger": { "method": "POST", "url": "/api/scheduler/run" }
+  },
+
+  "admin": {
+    "migrate": { "method": "POST", "url": "/api/admin/migrate" },
+    "schema": { "method": "GET", "url": "/api/admin/schema/:table" },
+    "sql": { "method": "POST", "url": "/api/admin/sql" },
+    "duplicates": { "method": "GET", "url": "/api/admin/duplicates" },
+    "dedup": { "method": "POST", "url": "/api/admin/dedup" },
+    "stats": { "method": "GET", "url": "/api/admin/stats" }
+  }
+}
