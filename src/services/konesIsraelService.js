@@ -21,6 +21,21 @@ function getAxios() {
 
 function getCheerio() {
   if (!_cheerio) {
+    // Polyfill File global for Node 18 (required by undici used in cheerio 1.x)
+    if (typeof globalThis.File === 'undefined') {
+      try {
+        const { File } = require('node:buffer');
+        globalThis.File = File;
+      } catch (e) {
+        // Node 18 may not have File in buffer, create minimal stub
+        globalThis.File = class File {
+          constructor(bits, name, options = {}) {
+            this.name = name;
+            this.lastModified = options.lastModified || Date.now();
+          }
+        };
+      }
+    }
     _cheerio = require('cheerio');
   }
   return _cheerio;
