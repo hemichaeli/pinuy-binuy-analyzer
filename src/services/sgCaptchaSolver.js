@@ -23,6 +23,7 @@ class SgCaptchaSolver {
     this.cookies = {};
     this.lastSolveTime = null;
     this.sessionValid = false;
+    this.lastDebug = null;
   }
 
   /**
@@ -87,6 +88,8 @@ class SgCaptchaSolver {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
+          'Accept-Encoding': 'identity',
+          'Connection': 'keep-alive',
           ...(cookieStr ? { 'Cookie': cookieStr } : {}),
           ...(options.headers || {})
         },
@@ -147,52 +150,144 @@ class SgCaptchaSolver {
       logger.info('SG-CAPTCHA: Step 1 - Initial request...');
       const initial = await this.httpRequest(baseUrl + '/');
       
+      // Debug: Log what we got
+      const bodyPreview = initial.body ? initial.body.substring(0, 500) : '(empty)';
+      logger.info(`SG-CAPTCHA: Response status=${initial.status}, bodyLen=${initial.body?.length || 0}`);
+      logger.info(`SG-CAPTCHA: Body preview: ${bodyPreview.replace(/\n/g, ' ').substring(0, 200)}`);
+      logger.info(`SG-CAPTCHA: Headers: ${JSON.stringify(Object.keys(initial.headers))}`);
+      logger.info(`SG-CAPTCHA: Set-Cookies: ${JSON.stringify(initial.headers['set-cookie'] || [])}`);
+      
+      this.lastDebug = {
+        step1: {
+          status: initial.status,
+          bodyLength: initial.body?.length || 0,
+          bodyPreview: bodyPreview.substring(0, 300),
+          headers: Object.keys(initial.headers),
+          setCookies: (initial.headers['set-cookie'] || []).map(c => c.split(';')[0])
+        }
+      };
+      
+      // Check for meta redirect (SG captcha pattern)
       const metaMatch = initial.body.match(/content="0;([^"]+)"/);
-      if (!metaMatch) {
+      
+      // Also check for sgchallenge directly in the page
+      const directChallenge = initial.body.match(/sgchallenge="([^"]+)"/);
+      const directSubmit = initial.body.match(/sgsubmit_url="([^"]+)"/);
+      
+      if (!metaMatch && !directChallenge) {
         if (initial.status === 200 && !initial.headers['sg-captcha']) {
-          logger.info('SG-CAPTCHA: No captcha needed');
+          logger.info('SG-CAPTCHA: No captcha needed (clean 200)');
           this.sessionValid = true;
           return true;
         }
+        // Check if we got a 403 or other block
+        if (initial.status === 403) {
+          logger.warn('SG-CAPTCHA: Got 403 - may be IP blocked');
+          this.lastDebug.step1.blocked = true;
+        }
+        // Check for JavaScript challenge (different format)
+        const jsChallenge = initial.body.match(/challenge\s*[:=]\s*["']([^"']+)["']/);
+        if (jsChallenge) {
+          logger.info(`SG-CAPTCHA: Found JS challenge format: ${jsChallenge[1].substring(0, 50)}`);
+          return this._solveAndSubmit(jsChallenge[1], '/.well-known/sgcaptcha/', baseUrl);
+        }
+        logger.warn(`SG-CAPTCHA: No challenge found (status=${initial.status})`);
         return false;
       }
       
-      logger.info('SG-CAPTCHA: Step 2 - Fetching challenge...');
+      // Direct challenge in initial page
+      if (directChallenge) {
+        logger.info('SG-CAPTCHA: Challenge found directly in initial page');
+        const challenge = directChallenge[1];
+        const submitUrl = directSubmit ? directSubmit[1] : '/.well-known/sgcaptcha/?r=%2F';
+        return this._solveAndSubmit(challenge, submitUrl, baseUrl);
+      }
+      
+      // Meta redirect to captcha page
+      logger.info('SG-CAPTCHA: Step 2 - Fetching challenge page...');
       const captchaUrl = new URL(metaMatch[1], baseUrl).href;
+      logger.info(`SG-CAPTCHA: Challenge URL: ${captchaUrl}`);
       const challengePage = await this.httpRequest(captchaUrl);
+      
+      logger.info(`SG-CAPTCHA: Challenge page status=${challengePage.status}, bodyLen=${challengePage.body?.length || 0}`);
+      
+      this.lastDebug.step2 = {
+        url: captchaUrl,
+        status: challengePage.status,
+        bodyLength: challengePage.body?.length || 0,
+        bodyPreview: (challengePage.body || '').substring(0, 300)
+      };
       
       const sgMatch = challengePage.body.match(/sgchallenge="([^"]+)"/);
       const submitMatch = challengePage.body.match(/sgsubmit_url="([^"]+)"/);
       
-      if (!sgMatch) return false;
+      if (!sgMatch) {
+        logger.warn('SG-CAPTCHA: No sgchallenge in challenge page');
+        return false;
+      }
       
       const challenge = sgMatch[1];
       const submitUrl = submitMatch ? submitMatch[1] : '/.well-known/sgcaptcha/?r=%2F';
-      logger.info(`SG-CAPTCHA: Challenge (complexity=${parseInt(challenge.split(':')[0])})`);
       
-      logger.info('SG-CAPTCHA: Step 3 - Solving PoW...');
-      const sol = this.solvePow(challenge);
-      if (!sol) return false;
-      logger.info(`SG-CAPTCHA: Solved in ${sol.elapsed}ms (${sol.hashes} hashes)`);
-      
-      logger.info('SG-CAPTCHA: Step 4 - Submitting...');
-      const sep = submitUrl.includes('?') ? '&' : '?';
-      const solUrl = `${baseUrl}${submitUrl}${sep}sol=${encodeURIComponent(sol.solution)}&s=${sol.elapsed}:${sol.hashes}`;
-      
-      await this.httpRequestFollow(solUrl);
-      
-      if (this.cookies['_I_']) {
-        logger.info('SG-CAPTCHA: Session established!');
-        this.sessionValid = true;
-        this.lastSolveTime = Date.now();
-        return true;
-      }
-      
-      return false;
+      return this._solveAndSubmit(challenge, submitUrl, baseUrl);
     } catch (error) {
       logger.error(`SG-CAPTCHA: ${error.message}`);
+      this.lastDebug = { ...this.lastDebug, error: error.message };
       return false;
     }
+  }
+
+  /**
+   * Internal: Solve PoW and submit solution
+   */
+  async _solveAndSubmit(challenge, submitUrl, baseUrl) {
+    logger.info(`SG-CAPTCHA: Challenge (complexity=${parseInt(challenge.split(':')[0])})`);
+    
+    logger.info('SG-CAPTCHA: Step 3 - Solving PoW...');
+    const sol = this.solvePow(challenge);
+    if (!sol) {
+      logger.error('SG-CAPTCHA: Failed to solve');
+      return false;
+    }
+    logger.info(`SG-CAPTCHA: Solved in ${sol.elapsed}ms (${sol.hashes} hashes)`);
+    
+    logger.info('SG-CAPTCHA: Step 4 - Submitting...');
+    const sep = submitUrl.includes('?') ? '&' : '?';
+    const fullSubmitUrl = submitUrl.startsWith('http') ? submitUrl : `${baseUrl}${submitUrl}`;
+    const solUrl = `${fullSubmitUrl}${sep}sol=${encodeURIComponent(sol.solution)}&s=${sol.elapsed}:${sol.hashes}`;
+    
+    const submitResult = await this.httpRequestFollow(solUrl);
+    logger.info(`SG-CAPTCHA: Submit response status=${submitResult.status}`);
+    
+    this.lastDebug = {
+      ...this.lastDebug,
+      step3: { elapsed: sol.elapsed, hashes: sol.hashes },
+      step4: { 
+        url: solUrl.substring(0, 100),
+        status: submitResult.status,
+        cookies: Object.keys(this.cookies)
+      }
+    };
+    
+    if (this.cookies['_I_']) {
+      logger.info('SG-CAPTCHA: Session established!');
+      this.sessionValid = true;
+      this.lastSolveTime = Date.now();
+      return true;
+    }
+    
+    // Even without _I_ cookie, check if we can access the site now
+    logger.info('SG-CAPTCHA: No _I_ cookie, trying direct access...');
+    const testRes = await this.httpRequest(baseUrl + '/');
+    if (testRes.status === 200 && testRes.body.length > 5000 && !testRes.body.includes('sgchallenge')) {
+      logger.info('SG-CAPTCHA: Access granted without _I_ cookie');
+      this.sessionValid = true;
+      this.lastSolveTime = Date.now();
+      return true;
+    }
+    
+    logger.warn('SG-CAPTCHA: Solution submitted but no session cookie obtained');
+    return false;
   }
 
   /**
@@ -270,7 +365,8 @@ class SgCaptchaSolver {
       lastSolveTime: this.lastSolveTime ? new Date(this.lastSolveTime).toISOString() : null,
       cookieCount: Object.keys(this.cookies).length,
       hasSgCookie: !!this.cookies['_I_'],
-      hasWpCookie: Object.keys(this.cookies).some(k => k.startsWith('wordpress_logged_in'))
+      hasWpCookie: Object.keys(this.cookies).some(k => k.startsWith('wordpress_logged_in')),
+      lastDebug: this.lastDebug
     };
   }
 
@@ -278,6 +374,7 @@ class SgCaptchaSolver {
     this.cookies = {};
     this.sessionValid = false;
     this.lastSolveTime = null;
+    this.lastDebug = null;
   }
 }
 
