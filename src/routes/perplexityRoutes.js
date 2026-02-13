@@ -52,10 +52,10 @@ const htmlWrapper = (title, description, content) => `
 router.get('/complexes.html', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, name, city, street, status, developer, 
-             housing_units, year_built, current_price_per_sqm,
-             iai_score, ssi_score, stage,
-             local_committee_status, district_committee_status,
+      SELECT id, name, city, addresses, status, developer, 
+             planned_units, existing_units, actual_premium,
+             iai_score, enhanced_ssi_score,
+             last_committee_decision, district_committee_date,
              is_officially_declared, official_track,
              is_receivership, has_enforcement_cases, is_inheritance_property
       FROM complexes 
@@ -92,13 +92,13 @@ router.get('/complexes.html', async (req, res) => {
         <tbody>
           ${complexes.map(c => `
           <tr class="${c.iai_score >= 30 ? 'highlight' : ''}">
-            <td>${c.name || c.street || '-'}</td>
+            <td>${c.name || c.addresses || '-'}</td>
             <td>${c.city || '-'}</td>
             <td>${c.developer || '-'}</td>
-            <td>${c.housing_units || '-'}</td>
+            <td>${c.planned_units || '-'}</td>
             <td class="${c.iai_score >= 30 ? 'good' : ''}">${c.iai_score || '-'}</td>
-            <td class="${c.ssi_score >= 40 ? 'danger' : ''}">${c.ssi_score || '-'}</td>
-            <td>${c.stage || '-'}</td>
+            <td class="${c.enhanced_ssi_score >= 40 ? 'danger' : ''}">${c.enhanced_ssi_score || '-'}</td>
+            <td>${c.status || '-'}</td>
             <td>${c.is_receivership ? '✓' : '-'}</td>
             <td>${c.has_enforcement_cases ? '✓' : '-'}</td>
           </tr>
@@ -135,11 +135,11 @@ router.get('/complexes.html', async (req, res) => {
 router.get('/opportunities.html', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, name, city, street, developer,
-             housing_units, current_price_per_sqm,
-             iai_score, ssi_score, stage, status,
-             local_committee_status, local_committee_date,
-             district_committee_status
+      SELECT id, name, city, addresses, developer,
+             planned_units, actual_premium,
+             iai_score, enhanced_ssi_score, status,
+             last_committee_decision, local_committee_date,
+             district_committee_date
       FROM complexes 
       WHERE iai_score >= 30
       ORDER BY iai_score DESC
@@ -175,13 +175,13 @@ router.get('/opportunities.html', async (req, res) => {
           ${opportunities.map((o, i) => `
           <tr>
             <td>${i + 1}</td>
-            <td>${o.name || o.street || '-'}</td>
+            <td>${o.name || o.addresses || '-'}</td>
             <td>${o.city || '-'}</td>
             <td>${o.developer || '-'}</td>
             <td class="good"><strong>${o.iai_score}</strong></td>
-            <td>${o.ssi_score || '-'}</td>
-            <td>${o.stage || '-'}</td>
-            <td>${o.local_committee_status || '-'}</td>
+            <td>${o.enhanced_ssi_score || '-'}</td>
+            <td>${o.status || '-'}</td>
+            <td>${o.last_committee_decision || '-'}</td>
           </tr>
           `).join('')}
         </tbody>
@@ -207,14 +207,14 @@ router.get('/opportunities.html', async (req, res) => {
 router.get('/stressed-sellers.html', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, name, city, street, developer,
-             housing_units, current_price_per_sqm,
-             iai_score, ssi_score, stage, status,
+      SELECT id, name, city, addresses, developer,
+             planned_units, actual_premium,
+             iai_score, enhanced_ssi_score, status,
              is_receivership, has_enforcement_cases,
              has_bankruptcy_proceedings, is_inheritance_property
       FROM complexes 
-      WHERE ssi_score >= 40
-      ORDER BY ssi_score DESC
+      WHERE enhanced_ssi_score >= 40
+      ORDER BY enhanced_ssi_score DESC
       LIMIT 100
     `);
 
@@ -252,9 +252,9 @@ router.get('/stressed-sellers.html', async (req, res) => {
         <tbody>
           ${sellers.map(s => `
           <tr>
-            <td>${s.name || s.street || '-'}</td>
+            <td>${s.name || s.addresses || '-'}</td>
             <td>${s.city || '-'}</td>
-            <td class="danger"><strong>${s.ssi_score}</strong></td>
+            <td class="danger"><strong>${s.enhanced_ssi_score}</strong></td>
             <td>${s.is_receivership ? '✓' : '-'}</td>
             <td>${s.has_enforcement_cases ? '✓' : '-'}</td>
             <td>${s.has_bankruptcy_proceedings ? '✓' : '-'}</td>
@@ -284,7 +284,7 @@ router.get('/stressed-sellers.html', async (req, res) => {
 router.get('/decisions.html', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT cd.*, c.name as complex_name, c.city, c.street
+      SELECT cd.*, c.name as complex_name, c.city, c.addresses
       FROM committee_decisions cd
       LEFT JOIN complexes c ON cd.complex_id = c.id
       ORDER BY cd.decision_date DESC NULLS LAST
@@ -317,7 +317,7 @@ router.get('/decisions.html', async (req, res) => {
           ${decisions.map(d => `
           <tr>
             <td>${d.decision_date ? new Date(d.decision_date).toLocaleDateString('he-IL') : '-'}</td>
-            <td>${d.complex_name || d.street || '-'}</td>
+            <td>${d.complex_name || d.addresses || '-'}</td>
             <td>${d.city || '-'}</td>
             <td>${d.committee || '-'}</td>
             <td>${d.decision_type || '-'}</td>
@@ -343,12 +343,12 @@ router.get('/decisions.html', async (req, res) => {
 });
 
 // =====================================================
-// 5. UPCOMING HEARINGS - Future committee dates
+// 5. UPCOMING HEARINGS
 // =====================================================
 router.get('/hearings.html', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT uh.*, c.name as complex_name, c.city, c.street, c.iai_score
+      SELECT uh.*, c.name as complex_name, c.city, c.addresses, c.iai_score
       FROM upcoming_hearings uh
       LEFT JOIN complexes c ON uh.complex_id = c.id
       WHERE uh.hearing_date >= CURRENT_DATE
@@ -381,7 +381,7 @@ router.get('/hearings.html', async (req, res) => {
           ${hearings.map(h => `
           <tr class="${h.iai_score >= 30 ? 'highlight' : ''}">
             <td><strong>${h.hearing_date ? new Date(h.hearing_date).toLocaleDateString('he-IL') : '-'}</strong></td>
-            <td>${h.complex_name || h.street || '-'}</td>
+            <td>${h.complex_name || h.addresses || '-'}</td>
             <td>${h.city || '-'}</td>
             <td>${h.committee || '-'}</td>
             <td>${h.subject || '-'}</td>
@@ -406,7 +406,7 @@ router.get('/hearings.html', async (req, res) => {
 });
 
 // =====================================================
-// 6. DEVELOPERS - Developer intelligence
+// 6. DEVELOPERS
 // =====================================================
 router.get('/developers.html', async (req, res) => {
   try {
@@ -415,7 +415,7 @@ router.get('/developers.html', async (req, res) => {
              COUNT(c.id) as active_projects,
              AVG(c.iai_score) as avg_iai
       FROM developers d
-      LEFT JOIN complexes c ON c.developer_id = d.id
+      LEFT JOIN complexes c ON c.developer = d.name
       GROUP BY d.id
       ORDER BY d.risk_score ASC NULLS LAST, active_projects DESC
     `);
@@ -427,13 +427,7 @@ router.get('/developers.html', async (req, res) => {
       <p>סה"כ יזמים: <strong>${developers.length}</strong></p>
       
       <h2>למה לבדוק יזם?</h2>
-      <p>יזם חזק = פרויקט שיגמר. יזם בבעיות = סיכון לעיכובים ואפילו קריסה. אנחנו עוקבים אחרי:</p>
-      <ul>
-        <li>מצב פיננסי ובנקאי</li>
-        <li>היסטוריית פרויקטים</li>
-        <li>תביעות ובעיות משפטיות</li>
-        <li>רישיון קבלני</li>
-      </ul>
+      <p>יזם חזק = פרויקט שיגמר. יזם בבעיות = סיכון לעיכובים ואפילו קריסה.</p>
 
       <h2>רשימת יזמים</h2>
       <table>
@@ -458,7 +452,7 @@ router.get('/developers.html', async (req, res) => {
             <td>${d.financial_status || '-'}</td>
             <td>${d.active_projects || 0}</td>
             <td>${d.completed_projects || 0}</td>
-            <td>${d.has_lawsuits ? `כן (${d.lawsuit_count})` : 'לא'}</td>
+            <td>${d.has_lawsuits ? 'כן' : 'לא'}</td>
             <td>${d.receiver_appointed ? '⚠️ כן' : 'לא'}</td>
           </tr>
           `).join('')}
@@ -480,24 +474,21 @@ router.get('/developers.html', async (req, res) => {
 });
 
 // =====================================================
-// 7. KONES/RECEIVERSHIP - Court-appointed sales
+// 7. KONES/RECEIVERSHIP
 // =====================================================
 router.get('/kones.html', async (req, res) => {
   try {
-    // Try kones_listings table first, fall back to distressed_sellers
     let listings = [];
     try {
       const result = await pool.query(`
-        SELECT * FROM kones_listings 
-        WHERE is_active = true
+        SELECT * FROM kones_listings
         ORDER BY created_at DESC
         LIMIT 200
       `);
       listings = result.rows;
     } catch (e) {
-      // Table might not exist, try distressed_sellers
       const result = await pool.query(`
-        SELECT ds.*, c.name as complex_name, c.city, c.street
+        SELECT ds.*, c.name as complex_name, c.city, c.addresses
         FROM distressed_sellers ds
         LEFT JOIN complexes c ON ds.complex_id = c.id
         WHERE ds.distress_type = 'receivership'
@@ -512,12 +503,7 @@ router.get('/kones.html', async (req, res) => {
       <p>סה"כ נכסים בכינוס: <strong>${listings.length}</strong></p>
       
       <h2>מה זה כינוס נכסים?</h2>
-      <p>כינוס נכסים הוא מכירה כפויה על ידי בית משפט. המוכר חייב למכור, מה שאומר:</p>
-      <ul>
-        <li>מחיר נמוך מהשוק (10-30% הנחה)</li>
-        <li>תהליך מהיר יחסית</li>
-        <li>פחות מו"מ - מחיר מינימום קבוע</li>
-      </ul>
+      <p>כינוס נכסים הוא מכירה כפויה על ידי בית משפט. מחיר נמוך מהשוק 10-30%.</p>
 
       <h2>נכסים זמינים</h2>
       <table>
@@ -535,7 +521,7 @@ router.get('/kones.html', async (req, res) => {
         <tbody>
           ${listings.map(l => `
           <tr>
-            <td>${l.address || l.street || l.complex_name || '-'}</td>
+            <td>${l.address || l.addresses || l.complex_name || '-'}</td>
             <td>${l.city || '-'}</td>
             <td>${l.property_type || l.distress_type || '-'}</td>
             <td>${l.price ? `₪${l.price.toLocaleString()}` : '-'}</td>
@@ -562,7 +548,7 @@ router.get('/kones.html', async (req, res) => {
 });
 
 // =====================================================
-// 8. TRANSACTIONS - Historical sales data
+// 8. TRANSACTIONS
 // =====================================================
 router.get('/transactions.html', async (req, res) => {
   try {
@@ -575,8 +561,6 @@ router.get('/transactions.html', async (req, res) => {
     `);
 
     const transactions = result.rows;
-    
-    // Calculate stats
     const avgPrice = transactions.length > 0 
       ? Math.round(transactions.reduce((sum, t) => sum + (t.price_per_sqm || 0), 0) / transactions.filter(t => t.price_per_sqm).length)
       : 0;
@@ -585,14 +569,6 @@ router.get('/transactions.html', async (req, res) => {
       <h1>QUANTUM - עסקאות נדל"ן היסטוריות</h1>
       <p>סה"כ עסקאות: <strong>${transactions.length}</strong></p>
       <p>מחיר ממוצע למ"ר: <strong>₪${avgPrice.toLocaleString()}</strong></p>
-      
-      <h2>למה היסטוריית עסקאות חשובה?</h2>
-      <p>עסקאות קודמות מראות את המחיר האמיתי, לא מחיר מבוקש. זה עוזר:</p>
-      <ul>
-        <li>לזהות אם נכס מתומחר נכון</li>
-        <li>לראות מגמות מחירים</li>
-        <li>להשוות לשכונות דומות</li>
-      </ul>
 
       <h2>עסקאות אחרונות</h2>
       <table>
@@ -625,7 +601,7 @@ router.get('/transactions.html', async (req, res) => {
 
     res.type('html').send(htmlWrapper(
       'עסקאות נדל"ן היסטוריות',
-      'QUANTUM - היסטוריית עסקאות נדל"ן בפרויקטי פינוי-בינוי. מחירים אמיתיים, מגמות, השוואות.',
+      'QUANTUM - היסטוריית עסקאות נדל"ן בפרויקטי פינוי-בינוי.',
       content
     ));
     logger.info(`Perplexity: Served transactions.html with ${transactions.length} transactions`);
@@ -637,7 +613,7 @@ router.get('/transactions.html', async (req, res) => {
 });
 
 // =====================================================
-// 9. NEWS ALERTS - Market updates
+// 9. NEWS ALERTS
 // =====================================================
 router.get('/news.html', async (req, res) => {
   try {
@@ -686,7 +662,7 @@ router.get('/news.html', async (req, res) => {
 
     res.type('html').send(htmlWrapper(
       'חדשות והתראות שוק',
-      'QUANTUM - חדשות והתראות על פרויקטי פינוי-בינוי. עדכונים בזמן אמת.',
+      'QUANTUM - חדשות והתראות על פרויקטי פינוי-בינוי.',
       content
     ));
     logger.info(`Perplexity: Served news.html with ${news.length} items`);
@@ -698,13 +674,12 @@ router.get('/news.html', async (req, res) => {
 });
 
 // =====================================================
-// 10. REGULATIONS - Policy updates
+// 10. REGULATIONS
 // =====================================================
 router.get('/regulations.html', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT * FROM regulation_updates
-      WHERE is_active = true
       ORDER BY effective_date DESC NULLS LAST, created_at DESC
       LIMIT 50
     `);
@@ -714,15 +689,6 @@ router.get('/regulations.html', async (req, res) => {
     const content = `
       <h1>QUANTUM - עדכוני רגולציה</h1>
       <p>סה"כ עדכונים: <strong>${regulations.length}</strong></p>
-
-      <h2>למה רגולציה חשובה?</h2>
-      <p>שינויי חוק ורגולציה יכולים להשפיע דרמטית על כדאיות השקעה:</p>
-      <ul>
-        <li>הקלות מס חדשות</li>
-        <li>שינויים בזכויות בנייה</li>
-        <li>תקנות בטיחות ותקנים</li>
-        <li>מדיניות רשויות מקומיות</li>
-      </ul>
 
       <h2>עדכונים אחרונים</h2>
       <table>
@@ -772,10 +738,10 @@ router.get('/city/:city.html', async (req, res) => {
     const city = decodeURIComponent(req.params.city);
     
     const result = await pool.query(`
-      SELECT id, name, city, street, developer,
-             housing_units, current_price_per_sqm,
-             iai_score, ssi_score, stage, status,
-             local_committee_status, district_committee_status
+      SELECT id, name, city, addresses, developer,
+             planned_units, actual_premium,
+             iai_score, enhanced_ssi_score, status,
+             last_committee_decision, district_committee_date
       FROM complexes 
       WHERE city ILIKE $1
       ORDER BY iai_score DESC NULLS LAST
@@ -790,8 +756,7 @@ router.get('/city/:city.html', async (req, res) => {
       <h2>סיכום עירוני</h2>
       <ul>
         <li>מתחמים עם IAI מעל 30: <strong>${complexes.filter(c => c.iai_score >= 30).length}</strong></li>
-        <li>מתחמים עם SSI מעל 40: <strong>${complexes.filter(c => c.ssi_score >= 40).length}</strong></li>
-        <li>בשלב ועדה מקומית: ${complexes.filter(c => c.local_committee_status).length}</li>
+        <li>מתחמים עם SSI מעל 40: <strong>${complexes.filter(c => c.enhanced_ssi_score >= 40).length}</strong></li>
       </ul>
 
       <h2>רשימת מתחמים ב${city}</h2>
@@ -809,12 +774,12 @@ router.get('/city/:city.html', async (req, res) => {
         <tbody>
           ${complexes.map(c => `
           <tr class="${c.iai_score >= 30 ? 'highlight' : ''}">
-            <td>${c.name || c.street || '-'}</td>
+            <td>${c.name || c.addresses || '-'}</td>
             <td>${c.developer || '-'}</td>
-            <td>${c.housing_units || '-'}</td>
+            <td>${c.planned_units || '-'}</td>
             <td class="${c.iai_score >= 30 ? 'good' : ''}">${c.iai_score || '-'}</td>
-            <td class="${c.ssi_score >= 40 ? 'danger' : ''}">${c.ssi_score || '-'}</td>
-            <td>${c.stage || '-'}</td>
+            <td class="${c.enhanced_ssi_score >= 40 ? 'danger' : ''}">${c.enhanced_ssi_score || '-'}</td>
+            <td>${c.status || '-'}</td>
           </tr>
           `).join('')}
         </tbody>
@@ -835,11 +800,10 @@ router.get('/city/:city.html', async (req, res) => {
 });
 
 // =====================================================
-// 12. FULL EXPORT JSON - Complete database
+// 12. FULL EXPORT JSON
 // =====================================================
 router.get('/full-export.json', async (req, res) => {
   try {
-    // Fetch all tables
     const [complexes, decisions, hearings, developers, transactions, news, regulations] = await Promise.all([
       pool.query('SELECT * FROM complexes ORDER BY iai_score DESC NULLS LAST'),
       pool.query('SELECT * FROM committee_decisions ORDER BY decision_date DESC LIMIT 500'),
@@ -847,57 +811,36 @@ router.get('/full-export.json', async (req, res) => {
       pool.query('SELECT * FROM developers ORDER BY risk_score NULLS LAST'),
       pool.query('SELECT * FROM transactions ORDER BY transaction_date DESC LIMIT 1000'),
       pool.query('SELECT * FROM news_alerts ORDER BY created_at DESC LIMIT 200'),
-      pool.query('SELECT * FROM regulation_updates WHERE is_active = true ORDER BY effective_date DESC')
+      pool.query('SELECT * FROM regulation_updates ORDER BY effective_date DESC')
     ]);
 
-    // Try to get kones_listings if exists
     let konesListings = [];
     try {
-      const konesResult = await pool.query('SELECT * FROM kones_listings WHERE is_active = true');
+      const konesResult = await pool.query('SELECT * FROM kones_listings');
       konesListings = konesResult.rows;
-    } catch (e) {
-      // Table doesn't exist, skip
-    }
+    } catch (e) { /* skip */ }
 
-    // Try to get distressed_sellers if exists
     let distressedSellers = [];
     try {
       const distressedResult = await pool.query('SELECT * FROM distressed_sellers ORDER BY created_at DESC');
       distressedSellers = distressedResult.rows;
-    } catch (e) {
-      // Table doesn't exist, skip
-    }
+    } catch (e) { /* skip */ }
 
     const exportData = {
       metadata: {
         source: 'QUANTUM - משרד תיווך NEXT-GEN להתחדשות עירונית',
-        description: 'מאגר מידע מלא על פינוי-בינוי בישראל',
         exported_at: new Date().toISOString(),
-        version: '4.8.2',
+        version: '4.8.7',
         stats: {
           total_complexes: complexes.rows.length,
           high_iai_opportunities: complexes.rows.filter(c => c.iai_score >= 30).length,
-          high_ssi_distressed: complexes.rows.filter(c => c.ssi_score >= 40).length,
+          high_ssi_distressed: complexes.rows.filter(c => c.enhanced_ssi_score >= 40).length,
           cities: [...new Set(complexes.rows.map(c => c.city).filter(Boolean))].length,
           total_decisions: decisions.rows.length,
           upcoming_hearings: hearings.rows.length,
           developers: developers.rows.length,
           transactions: transactions.rows.length,
           receivership_listings: konesListings.length
-        }
-      },
-      metrics_explanation: {
-        IAI: {
-          name: 'מדד אטרקטיביות השקעה (Investment Attractiveness Index)',
-          range: '0-100',
-          good_score: 'מעל 30',
-          description: 'משקלל פער פרמיות, שלב תכנוני, ואמינות יזם'
-        },
-        SSI: {
-          name: 'מדד לחץ מוכר (Seller Stress Index)',
-          range: '0-100',
-          opportunity_score: 'מעל 40',
-          description: 'מזהה מוכרים במצוקה - כינוס, הוצל"פ, פשיטת רגל'
         }
       },
       data: {
@@ -914,7 +857,7 @@ router.get('/full-export.json', async (req, res) => {
     };
 
     res.json(exportData);
-    logger.info(`Perplexity: Full export with ${complexes.rows.length} complexes and all tables`);
+    logger.info(`Perplexity: Full export with ${complexes.rows.length} complexes`);
     
   } catch (error) {
     logger.error('Perplexity full-export.json error:', error);
@@ -923,38 +866,29 @@ router.get('/full-export.json', async (req, res) => {
 });
 
 // =====================================================
-// 13. SIMPLE JSON EXPORT (backwards compatible)
+// 13. SIMPLE JSON EXPORT
 // =====================================================
 router.get('/export.json', async (req, res) => {
   try {
-    const complexes = await pool.query(`
-      SELECT * FROM complexes ORDER BY iai_score DESC NULLS LAST
-    `);
+    const complexes = await pool.query('SELECT * FROM complexes ORDER BY iai_score DESC NULLS LAST');
     
     const stats = await pool.query(`
       SELECT 
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE iai_score >= 30) as high_iai,
-        COUNT(*) FILTER (WHERE ssi_score >= 40) as high_ssi,
+        COUNT(*) FILTER (WHERE enhanced_ssi_score >= 40) as high_ssi,
         COUNT(DISTINCT city) as cities
       FROM complexes
     `);
 
-    const exportData = {
+    res.json({
       metadata: {
         source: 'QUANTUM - משרד תיווך NEXT-GEN',
-        description: 'מאגר מתחמי פינוי-בינוי בישראל',
         exported_at: new Date().toISOString(),
         stats: stats.rows[0]
       },
-      metrics_explanation: {
-        IAI: 'מדד אטרקטיביות השקעה (0-100). מעל 30 = מומלץ להשקעה',
-        SSI: 'מדד לחץ מוכר (0-100). גבוה יותר = מוכר במצוקה = הזדמנות למחיר טוב'
-      },
       complexes: complexes.rows
-    };
-
-    res.json(exportData);
+    });
     logger.info(`Perplexity: Exported ${complexes.rows.length} complexes as JSON`);
     
   } catch (error) {
@@ -968,10 +902,7 @@ router.get('/export.json', async (req, res) => {
 // =====================================================
 router.get('/sitemap.xml', async (req, res) => {
   try {
-    const cities = await pool.query(`
-      SELECT DISTINCT city FROM complexes WHERE city IS NOT NULL
-    `);
-    
+    const cities = await pool.query('SELECT DISTINCT city FROM complexes WHERE city IS NOT NULL');
     const baseUrl = 'https://pinuy-binuy-analyzer-production.up.railway.app/perplexity';
     
     const staticPages = [
@@ -1013,7 +944,7 @@ router.get('/sitemap.xml', async (req, res) => {
 });
 
 // =====================================================
-// 15. INDEX PAGE - Directory of all endpoints
+// 15. INDEX PAGE
 // =====================================================
 router.get('/', (req, res) => {
   const content = `
@@ -1022,35 +953,35 @@ router.get('/', (req, res) => {
     
     <h2>מידע בסיסי</h2>
     <ul>
-      <li><a href="/perplexity/complexes.html">כל המתחמים</a> - מאגר מלא של מתחמי פינוי-בינוי</li>
-      <li><a href="/perplexity/opportunities.html">הזדמנויות השקעה</a> - מתחמים עם IAI גבוה</li>
-      <li><a href="/perplexity/stressed-sellers.html">מוכרים במצוקה</a> - מתחמים עם SSI גבוה</li>
+      <li><a href="/perplexity/complexes.html">כל המתחמים</a></li>
+      <li><a href="/perplexity/opportunities.html">הזדמנויות השקעה</a></li>
+      <li><a href="/perplexity/stressed-sellers.html">מוכרים במצוקה</a></li>
     </ul>
     
     <h2>ועדות ואישורים</h2>
     <ul>
-      <li><a href="/perplexity/decisions.html">החלטות ועדות</a> - אישורים והחלטות תכנוניות</li>
-      <li><a href="/perplexity/hearings.html">דיונים קרובים</a> - ישיבות ועדה עתידיות</li>
+      <li><a href="/perplexity/decisions.html">החלטות ועדות</a></li>
+      <li><a href="/perplexity/hearings.html">דיונים קרובים</a></li>
     </ul>
     
     <h2>שחקני שוק</h2>
     <ul>
-      <li><a href="/perplexity/developers.html">יזמים</a> - מידע על יזמי נדל"ן</li>
-      <li><a href="/perplexity/kones.html">כינוס נכסים</a> - נכסים במכירה כפויה</li>
+      <li><a href="/perplexity/developers.html">יזמים</a></li>
+      <li><a href="/perplexity/kones.html">כינוס נכסים</a></li>
     </ul>
     
-    <h2>נתונים היסטוריים</h2>
+    <h2>נתונים</h2>
     <ul>
-      <li><a href="/perplexity/transactions.html">עסקאות</a> - היסטוריית מכירות</li>
-      <li><a href="/perplexity/news.html">חדשות</a> - התראות ועדכונים</li>
-      <li><a href="/perplexity/regulations.html">רגולציה</a> - עדכוני חוק ומדיניות</li>
+      <li><a href="/perplexity/transactions.html">עסקאות</a></li>
+      <li><a href="/perplexity/news.html">חדשות</a></li>
+      <li><a href="/perplexity/regulations.html">רגולציה</a></li>
     </ul>
     
-    <h2>ייצוא נתונים</h2>
+    <h2>ייצוא</h2>
     <ul>
-      <li><a href="/perplexity/export.json">export.json</a> - ייצוא מתחמים (JSON)</li>
-      <li><a href="/perplexity/full-export.json">full-export.json</a> - ייצוא מלא של כל הטבלאות (JSON)</li>
-      <li><a href="/perplexity/sitemap.xml">sitemap.xml</a> - מפת אתר</li>
+      <li><a href="/perplexity/export.json">export.json</a></li>
+      <li><a href="/perplexity/full-export.json">full-export.json</a></li>
+      <li><a href="/perplexity/sitemap.xml">sitemap.xml</a></li>
     </ul>
   `;
 
