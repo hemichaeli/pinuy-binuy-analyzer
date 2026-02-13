@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.10.0';
-const BUILD = '2026-02-13-v4.10.0-live-scraper-captcha-bypass';
+const VERSION = '4.10.1';
+const BUILD = '2026-02-13-v4.10.1-perplexity-access-fix';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -59,11 +59,23 @@ async function runAutoMigrations() {
   }
 }
 
+// CRITICAL: Trust proxy for Railway reverse proxy (fixes rate limiter X-Forwarded-For error)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'] }));
 app.use(express.json({ limit: '50mb' }));
-app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 1000 }));
+
+// Rate limiting - exempt perplexity routes (public AI endpoints)
+const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
+app.use('/api/', (req, res, next) => {
+  // Skip rate limiting for perplexity endpoints (public AI access)
+  if (req.path.startsWith('/perplexity/') || req.path.startsWith('/perplexity')) {
+    return next();
+  }
+  apiLimiter(req, res, next);
+});
 
 // Request logging
 app.use((req, res, next) => {
