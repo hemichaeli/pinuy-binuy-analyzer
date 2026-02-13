@@ -2,22 +2,28 @@
  * KonesIsrael Service - Receivership Property Data Integration
  * Source: konesisrael.co.il
  * 
- * Uses axios + cheerio for reliable HTML scraping (no Puppeteer/Chromium dependency)
+ * Uses axios + cheerio for reliable HTTP scraping (no browser needed)
  * Provides access to properties being sold by receivers (כונס נכסים)
  * Key SSI indicator: Properties in receivership are distressed sales by definition
  */
 
-const axios = require('axios');
 const { logger } = require('./logger');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
-// Lazy-load cheerio
-let cheerio = null;
-function getCheerio() {
-  if (!cheerio) {
-    cheerio = require('cheerio');
-  }
-  return cheerio;
-}
+// HTTP client with browser-like headers
+const httpClient = axios.create({
+  timeout: 30000,
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Cache-Control': 'no-cache'
+  },
+  maxRedirects: 5
+});
 
 class KonesIsraelService {
   constructor() {
@@ -62,24 +68,9 @@ class KonesIsraelService {
       ttl: 4 * 60 * 60 * 1000 // 4 hours cache
     };
     
-    // Session cookies from login
-    this.sessionCookies = '';
+    // Cookie jar for session persistence
+    this.cookies = '';
     this.isLoggedIn = false;
-    
-    // HTTP client with browser-like headers
-    this.httpClient = axios.create({
-      timeout: 30000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Cache-Control': 'max-age=0'
-      },
-      maxRedirects: 5
-    });
   }
 
   /**
@@ -94,62 +85,55 @@ class KonesIsraelService {
    */
   async login() {
     if (!this.isConfigured()) {
-      logger.info('KonesIsrael: No credentials configured, using public access');
+      logger.info('KonesIsrael: No credentials configured');
       return false;
     }
 
     try {
-      logger.info('KonesIsrael: Attempting login via HTTP...');
+      logger.info('KonesIsrael: Attempting HTTP login...');
       
-      // First get the login page to capture any nonces/cookies
-      const loginPage = await this.httpClient.get(this.loginUrl, {
-        validateStatus: () => true
-      });
+      // First get the login page to capture any nonce/tokens
+      const loginPage = await httpClient.get(this.loginUrl);
+      const $ = cheerio.load(loginPage.data);
       
-      // Extract cookies from response
-      const initialCookies = this._extractCookies(loginPage.headers);
+      // Extract any hidden form fields
+      const formData = new URLSearchParams();
+      formData.append('log', this.credentials.email);
+      formData.append('pwd', this.credentials.password);
+      formData.append('wp-submit', 'Log In');
+      formData.append('redirect_to', this.baseUrl);
+      formData.append('testcookie', '1');
       
-      // Submit login form
-      const formData = new URLSearchParams({
-        'log': this.credentials.email,
-        'pwd': this.credentials.password,
-        'wp-submit': 'Log In',
-        'redirect_to': this.baseUrl,
-        'testcookie': '1'
-      });
-      
-      const loginResponse = await this.httpClient.post(this.loginUrl, formData.toString(), {
+      // Submit login
+      const response = await httpClient.post(this.loginUrl, formData.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Cookie': initialCookies,
-          'Referer': this.loginUrl
+          'Cookie': this.extractCookies(loginPage.headers)
         },
         maxRedirects: 0,
-        validateStatus: (status) => status < 500
+        validateStatus: (status) => status < 400 || status === 302
       });
       
-      // Check for session cookies indicating successful login
-      const responseCookies = this._extractCookies(loginResponse.headers);
+      // Capture cookies from response
+      this.cookies = this.extractCookies(response.headers);
       
-      if (responseCookies.includes('wordpress_logged_in')) {
-        this.sessionCookies = responseCookies;
+      if (response.status === 302 || !response.data?.includes('שגיאה')) {
         this.isLoggedIn = true;
-        logger.info('KonesIsrael: Login successful');
+        logger.info('KonesIsrael: HTTP login successful');
         return true;
       }
       
-      // 302 redirect usually means success
-      if (loginResponse.status === 302) {
-        this.sessionCookies = responseCookies || initialCookies;
-        this.isLoggedIn = true;
-        logger.info('KonesIsrael: Login successful (302 redirect)');
-        return true;
-      }
-      
-      logger.warn('KonesIsrael: Login may have failed - no session cookie found');
+      logger.warn('KonesIsrael: Login failed - invalid credentials');
       return false;
       
     } catch (error) {
+      // 302 redirect on login is actually success
+      if (error.response && error.response.status === 302) {
+        this.cookies = this.extractCookies(error.response.headers);
+        this.isLoggedIn = true;
+        logger.info('KonesIsrael: HTTP login successful (redirect)');
+        return true;
+      }
       logger.error(`KonesIsrael: Login failed - ${error.message}`);
       return false;
     }
@@ -158,67 +142,88 @@ class KonesIsraelService {
   /**
    * Extract cookies from response headers
    */
-  _extractCookies(headers) {
-    const setCookies = headers['set-cookie'];
-    if (!setCookies) return '';
+  extractCookies(headers) {
+    const setCookie = headers['set-cookie'];
+    if (!setCookie) return this.cookies || '';
     
-    const cookies = Array.isArray(setCookies) ? setCookies : [setCookies];
-    return cookies.map(c => c.split(';')[0]).join('; ');
+    const cookieArr = Array.isArray(setCookie) ? setCookie : [setCookie];
+    const newCookies = cookieArr.map(c => c.split(';')[0]).join('; ');
+    
+    // Merge with existing cookies
+    if (this.cookies) {
+      return `${this.cookies}; ${newCookies}`;
+    }
+    return newCookies;
   }
 
   /**
-   * Fetch listings via HTTP + cheerio parsing
+   * Fetch listings via HTTP request
    */
   async fetchListings(forceRefresh = false) {
     // Check cache
     if (!forceRefresh && this.listingsCache.data && 
         Date.now() - this.listingsCache.timestamp < this.listingsCache.ttl) {
-      logger.info(`KonesIsrael: Returning ${this.listingsCache.data.length} cached listings`);
+      logger.info(`KonesIsrael: Returning cached listings (${this.listingsCache.data.length} items)`);
       return this.listingsCache.data;
     }
 
     try {
       logger.info('KonesIsrael: Fetching listings via HTTP...');
       
-      const requestHeaders = {};
-      if (this.sessionCookies) {
-        requestHeaders['Cookie'] = this.sessionCookies;
+      const requestConfig = {};
+      if (this.cookies) {
+        requestConfig.headers = { 'Cookie': this.cookies };
       }
       
-      // Fetch the main real estate listings page
-      const response = await this.httpClient.get(this.realEstateUrl, {
-        headers: requestHeaders,
-        validateStatus: () => true
-      });
+      // Fetch main listings page
+      const response = await httpClient.get(this.realEstateUrl, requestConfig);
       
-      if (response.status !== 200) {
-        logger.warn(`KonesIsrael: HTTP ${response.status} from listings page`);
+      // Update cookies
+      if (response.headers['set-cookie']) {
+        this.cookies = this.extractCookies(response.headers);
       }
-      
-      // Update cookies if returned
-      const newCookies = this._extractCookies(response.headers);
-      if (newCookies) {
-        this.sessionCookies = newCookies;
-      }
-      
-      const html = response.data;
-      logger.info(`KonesIsrael: Received ${(html.length / 1024).toFixed(0)}KB HTML`);
       
       // Parse the HTML
-      let listings = this.parseListingsPage(html);
+      const listings = this.parseListingsPage(response.data);
       
-      // If no listings found, try paginated pages
-      if (listings.length === 0) {
-        logger.info('KonesIsrael: No listings on main page, trying paginated URLs...');
-        listings = await this._fetchPaginatedListings(requestHeaders);
+      // Try to fetch additional pages if pagination exists
+      const $ = cheerio.load(response.data);
+      const paginationLinks = [];
+      $('a.page-numbers, .pagination a, .nav-links a').each((i, el) => {
+        const href = $(el).attr('href');
+        if (href && !href.includes('#') && !paginationLinks.includes(href)) {
+          paginationLinks.push(href);
+        }
+      });
+      
+      // Fetch up to 5 additional pages
+      for (const pageUrl of paginationLinks.slice(0, 5)) {
+        try {
+          await new Promise(r => setTimeout(r, 2000)); // Rate limit
+          const pageResponse = await httpClient.get(pageUrl, requestConfig);
+          const pageListings = this.parseListingsPage(pageResponse.data);
+          listings.push(...pageListings);
+          logger.info(`KonesIsrael: Fetched ${pageListings.length} listings from ${pageUrl}`);
+        } catch (err) {
+          logger.warn(`KonesIsrael: Failed to fetch page ${pageUrl}: ${err.message}`);
+        }
       }
       
+      // Deduplicate by address+city
+      const seen = new Set();
+      const unique = listings.filter(l => {
+        const key = `${l.city || ''}_${l.address || ''}_${l.propertyType || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      
       // Update cache
-      this.listingsCache.data = listings;
+      this.listingsCache.data = unique;
       this.listingsCache.timestamp = Date.now();
       
-      logger.info(`KonesIsrael: Fetched ${listings.length} receivership listings`);
-      return listings;
+      logger.info(`KonesIsrael: Fetched ${unique.length} unique receivership listings (${listings.length} total)`);
+      return unique;
       
     } catch (error) {
       logger.error(`KonesIsrael: Fetch failed - ${error.message}`);
@@ -229,51 +234,8 @@ class KonesIsraelService {
         return this.listingsCache.data;
       }
       
-      return [];
+      throw error;
     }
-  }
-
-  /**
-   * Try fetching paginated listing pages
-   */
-  async _fetchPaginatedListings(headers) {
-    const allListings = [];
-    const pagePaths = [
-      '/page/1/', '/page/2/', '/page/3/',
-      '?page=1', '?page=2', '?page=3'
-    ];
-    
-    for (const pagePath of pagePaths) {
-      try {
-        const url = this.realEstateUrl.replace(/\/$/, '') + pagePath;
-        const response = await this.httpClient.get(url, {
-          headers,
-          validateStatus: () => true
-        });
-        
-        if (response.status === 200) {
-          const pageListings = this.parseListingsPage(response.data);
-          if (pageListings.length > 0) {
-            allListings.push(...pageListings);
-            logger.info(`KonesIsrael: Found ${pageListings.length} listings on ${pagePath}`);
-          }
-        }
-        
-        // Rate limit
-        await new Promise(r => setTimeout(r, 1500));
-      } catch (e) {
-        // Skip failed pages
-      }
-    }
-    
-    // Deduplicate by address+city
-    const seen = new Set();
-    return allListings.filter(l => {
-      const key = `${l.city}_${l.address}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
   }
 
   /**
@@ -287,7 +249,7 @@ class KonesIsraelService {
         return listings;
       }
     } catch (e) {
-      logger.info('KonesIsrael: Initial fetch returned no results, attempting login...');
+      logger.info('KonesIsrael: Initial fetch failed, attempting login...');
     }
     
     // Try logging in first
@@ -295,7 +257,7 @@ class KonesIsraelService {
       await this.login();
     }
     
-    // Try fetching again with session
+    // Try fetching again
     return await this.fetchListings(true);
   }
 
@@ -303,16 +265,15 @@ class KonesIsraelService {
    * Parse the HTML page and extract listing data
    */
   parseListingsPage(html) {
-    const $ = getCheerio().load(html);
+    const $ = cheerio.load(html);
     const listings = [];
     
-    // Try multiple table selectors (KonesIsrael uses TablePress)
+    // Try multiple table selectors
     const tableSelectors = [
       'table.tablepress tbody tr',
       'table tbody tr',
       '.entry-content table tr',
-      '#tablepress-1 tbody tr',
-      '.tablepress tbody tr'
+      '#tablepress-1 tbody tr'
     ];
     
     let rows = $();
@@ -327,58 +288,27 @@ class KonesIsraelService {
     rows.each((index, row) => {
       try {
         const cells = $(row).find('td');
-        if (cells.length < 3) return; // Need at least 3 cells for useful data
+        if (cells.length < 5) return;
         
-        // KonesIsrael table format varies, try common layouts
-        let listing;
+        const listing = {
+          id: `kones_${Date.now()}_${index}`,
+          source: 'konesisrael',
+          propertyType: $(cells[0]).text().trim() || null,
+          propertyTypeEn: this.propertyTypes[$(cells[0]).text().trim()] || 'other',
+          region: $(cells[1]).text().trim() || null,
+          regionEn: this.regions[$(cells[1]).text().trim()] || 'unknown',
+          city: $(cells[2]).text().trim() || null,
+          address: $(cells[3]).text().trim() || null,
+          submissionDeadline: this.parseDate($(cells[4]).text().trim()),
+          gushHelka: cells.length > 5 ? $(cells[5]).text().trim() : null,
+          contactPerson: cells.length > 6 ? $(cells[6]).text().trim() : null,
+          email: this.extractEmail($(row).html() || ''),
+          phone: this.extractPhone($(row).html() || ''),
+          url: this.extractUrl($(row)),
+          isReceivership: true,
+          ssiContribution: 30
+        };
         
-        if (cells.length >= 7) {
-          // Full format: type, region, city, address, deadline, gush/helka, contact
-          listing = {
-            id: `kones_${Date.now()}_${index}`,
-            source: 'konesisrael',
-            propertyType: $(cells[0]).text().trim() || null,
-            propertyTypeEn: this.propertyTypes[$(cells[0]).text().trim()] || 'other',
-            region: $(cells[1]).text().trim() || null,
-            regionEn: this.regions[$(cells[1]).text().trim()] || 'unknown',
-            city: $(cells[2]).text().trim() || null,
-            address: $(cells[3]).text().trim() || null,
-            submissionDeadline: this.parseDate($(cells[4]).text().trim()),
-            gushHelka: $(cells[5]).text().trim() || null,
-            contactPerson: $(cells[6]).text().trim() || null
-          };
-        } else if (cells.length >= 5) {
-          // Compact format
-          listing = {
-            id: `kones_${Date.now()}_${index}`,
-            source: 'konesisrael',
-            propertyType: $(cells[0]).text().trim() || null,
-            propertyTypeEn: this.propertyTypes[$(cells[0]).text().trim()] || 'other',
-            city: $(cells[1]).text().trim() || null,
-            address: $(cells[2]).text().trim() || null,
-            submissionDeadline: this.parseDate($(cells[3]).text().trim()),
-            contactPerson: $(cells[4]).text().trim() || null
-          };
-        } else {
-          // Minimal format
-          listing = {
-            id: `kones_${Date.now()}_${index}`,
-            source: 'konesisrael',
-            city: $(cells[0]).text().trim() || null,
-            address: $(cells[1]).text().trim() || null,
-            submissionDeadline: cells.length > 2 ? this.parseDate($(cells[2]).text().trim()) : null
-          };
-        }
-        
-        // Extract email and phone from row HTML
-        const rowHtml = $(row).html() || '';
-        listing.email = this.extractEmail(rowHtml);
-        listing.phone = this.extractPhone(rowHtml);
-        listing.url = this.extractUrl($(row));
-        listing.isReceivership = true;
-        listing.ssiContribution = 30;
-        
-        // Parse gush/helka if present
         if (listing.gushHelka) {
           const parsed = this.parseGushHelka(listing.gushHelka);
           listing.gush = parsed.gush;
@@ -386,7 +316,6 @@ class KonesIsraelService {
           listing.tatHelka = parsed.tatHelka;
         }
         
-        // Only add if we have meaningful data
         if (listing.city || listing.address || listing.propertyType) {
           listings.push(listing);
         }
@@ -395,29 +324,20 @@ class KonesIsraelService {
       }
     });
     
-    // If no table data, try alternative page structures
+    // If no table data found, try alternative card/article selectors
     if (listings.length === 0) {
-      logger.info('KonesIsrael: No table data found, checking alternative formats...');
+      logger.info('KonesIsrael: No table data found, checking for alternative formats...');
       
-      // Try card/list-based layouts
-      const cardSelectors = [
-        '.property-item', '.listing-item', 'article.property',
-        '.wp-block-table tr', '.elementor-widget-table tr',
-        '.real-estate-item', '.auction-item'
-      ];
-      
-      for (const selector of cardSelectors) {
-        $(selector).each((index, item) => {
-          try {
-            const text = $(item).text().trim();
-            if (!text || text.length < 10) return;
-            
+      $('.property-item, .listing-item, article.property, .wp-block-table tr').each((index, item) => {
+        try {
+          const cells = $(item).find('td');
+          if (cells.length >= 3) {
             const listing = {
-              id: `kones_card_${Date.now()}_${index}`,
+              id: `kones_${Date.now()}_alt_${index}`,
               source: 'konesisrael',
-              propertyType: $(item).find('.property-type, .type, td:first').text().trim() || null,
-              city: $(item).find('.city, .location, td:nth-child(3)').text().trim() || null,
-              address: $(item).find('.address, .street, td:nth-child(4)').text().trim() || null,
+              city: $(cells[0]).text().trim() || null,
+              address: $(cells[1]).text().trim() || null,
+              propertyType: $(cells[2]).text().trim() || null,
               url: $(item).find('a').first().attr('href') || null,
               isReceivership: true,
               ssiContribution: 30
@@ -426,13 +346,11 @@ class KonesIsraelService {
             if (listing.city || listing.address) {
               listings.push(listing);
             }
-          } catch (err) {
-            // Skip individual parse errors
           }
-        });
-        
-        if (listings.length > 0) break;
-      }
+        } catch (err) {
+          logger.debug(`KonesIsrael: Error parsing alt item ${index}: ${err.message}`);
+        }
+      });
     }
     
     return listings;
@@ -513,29 +431,25 @@ class KonesIsraelService {
   async checkAddress(city, street) {
     const listings = await this.fetchWithLogin();
     
-    const normalizedStreet = (street || '').toLowerCase().replace(/\s+/g, ' ');
-    const normalizedCity = (city || '').toLowerCase();
-    
-    if (!normalizedCity) return [];
+    const normalizedStreet = street.toLowerCase().replace(/\s+/g, ' ');
+    const normalizedCity = city.toLowerCase();
     
     return listings.filter(l => {
       const listingCity = (l.city || '').toLowerCase();
       const listingAddress = (l.address || '').toLowerCase().replace(/\s+/g, ' ');
       
       return listingCity.includes(normalizedCity) && 
-             (normalizedStreet ? listingAddress.includes(normalizedStreet) : true);
+             listingAddress.includes(normalizedStreet);
     });
   }
 
   async matchWithComplexes(complexes) {
     const listings = await this.fetchWithLogin();
-    if (!listings || listings.length === 0) return [];
-    
     const matches = [];
     
     for (const complex of complexes) {
       const city = complex.city;
-      const addresses = complex.addresses || complex.name || '';
+      const address = complex.addresses || complex.address || complex.street || '';
       
       const matchingListings = listings.filter(l => {
         if (!l.city || !city) return false;
@@ -543,8 +457,8 @@ class KonesIsraelService {
         const cityMatch = l.city.includes(city) || city.includes(l.city);
         if (!cityMatch) return false;
         
-        if (addresses && l.address) {
-          return l.address.includes(addresses) || addresses.includes(l.address);
+        if (address && l.address) {
+          return l.address.includes(address) || address.includes(l.address);
         }
         
         return cityMatch;
@@ -553,7 +467,7 @@ class KonesIsraelService {
       if (matchingListings.length > 0) {
         matches.push({
           complexId: complex.id,
-          complexName: complex.name || `${city} - ${addresses}`,
+          complexName: complex.name || `${city} - ${address}`,
           matchedListings: matchingListings.length,
           listings: matchingListings,
           ssiBoost: 30
@@ -616,7 +530,7 @@ class KonesIsraelService {
   async getStatus() {
     return {
       status: 'ready',
-      method: 'http_axios',
+      method: 'http_scraper',
       configured: this.isConfigured(),
       authenticated: this.isLoggedIn,
       source: 'konesisrael.co.il',
