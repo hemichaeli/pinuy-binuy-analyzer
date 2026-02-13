@@ -1,4 +1,4 @@
-# Railway Dockerfile with Chromium for Puppeteer
+# Railway Dockerfile with Chromium for Puppeteer v4.8.5
 # Using full node:18 (not slim) for better Chromium compatibility
 FROM node:18-bookworm
 
