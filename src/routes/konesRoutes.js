@@ -1,13 +1,14 @@
 /**
  * KonesIsrael Routes - Receivership Property Data API
- * Phase 4.9: Dual-source scanning (Claude + Perplexity)
+ * Phase 4.10: Triple-source (Claude + Perplexity + Live Scraper with CAPTCHA bypass)
  * 
  * Architecture:
  * - GET /listings reads from DB (kones_listings table)
  * - POST /import adds data manually or from Claude web search
  * - POST /scan-complexes uses Perplexity AI to find receiverships near complexes
  * - POST /scan-city searches specific city via Perplexity
- * - Live scraping of konesisrael.co.il blocked by SiteGround CAPTCHA
+ * - POST /live-scrape bypasses SiteGround CAPTCHA + WP login for direct scraping
+ * - POST /captcha-test tests CAPTCHA bypass without scraping
  */
 
 const express = require('express');
@@ -350,14 +351,25 @@ router.get('/scan-status', async (req, res) => {
       'SELECT COUNT(*) as count FROM complexes WHERE is_receivership = TRUE'
     ).catch(() => ({ rows: [{ count: 0 }] }));
 
+    // Get live scraper status if available
+    let liveScraperStatus = null;
+    try {
+      const konesLiveScraper = require('../services/konesLiveScraper');
+      liveScraperStatus = konesLiveScraper.getStatus();
+    } catch (e) { /* not available */ }
+
     res.json({
       success: true,
       architecture: {
-        description: 'Dual-source: Claude (web search + import) + Perplexity (automated API)',
+        description: 'Triple-source: Claude + Perplexity + Live Scraper (CAPTCHA bypass)',
         sources: {
           claude: { method: 'Web search + POST /api/kones/import', status: 'always_available' },
           perplexity: { method: 'POST /api/kones/scan-complexes', status: perplexityKey ? 'configured' : 'missing_api_key' },
-          konesisrael: { method: 'Direct scrape (CAPTCHA blocked)', status: konesEmail ? 'credentials_set' : 'no_credentials' },
+          liveScraper: { 
+            method: 'POST /api/kones/live-scrape (SG CAPTCHA bypass + WP login)', 
+            status: konesEmail ? 'configured' : 'no_credentials',
+            details: liveScraperStatus
+          },
           manual_import: { method: 'POST /api/kones/import', status: 'always_available' }
         }
       },
@@ -369,6 +381,97 @@ router.get('/scan-status', async (req, res) => {
       }
     });
   } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// =====================================================
+// LIVE SCRAPER - SiteGround CAPTCHA bypass + WP login
+// Scrapes konesisrael.co.il directly
+// =====================================================
+
+let konesLiveScraper;
+try {
+  konesLiveScraper = require('../services/konesLiveScraper');
+} catch (e) {
+  // Gracefully handle if scraper not available
+}
+
+/**
+ * POST /api/kones/live-scrape
+ * Trigger live scraping of konesisrael.co.il
+ * Bypasses SiteGround CAPTCHA, logs in, scrapes listings
+ */
+router.post('/live-scrape', async (req, res) => {
+  try {
+    if (!konesLiveScraper) {
+      return res.status(500).json({ success: false, error: 'Live scraper not available' });
+    }
+    
+    logger.info('Starting live scrape of konesisrael.co.il...');
+    const result = await konesLiveScraper.scrapeAll();
+    
+    res.json({
+      success: result.success !== false,
+      ...result
+    });
+  } catch (error) {
+    logger.error(`Live scrape error: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/kones/live-status
+ * Check live scraper status
+ */
+router.get('/live-status', (req, res) => {
+  if (!konesLiveScraper) {
+    return res.json({ success: false, error: 'Live scraper not available' });
+  }
+  
+  res.json({
+    success: true,
+    scraper: konesLiveScraper.getStatus()
+  });
+});
+
+/**
+ * POST /api/kones/captcha-test
+ * Test CAPTCHA bypass without full scraping
+ */
+router.post('/captcha-test', async (req, res) => {
+  try {
+    const sgCaptcha = require('../services/sgCaptchaSolver');
+    
+    logger.info('Testing SiteGround CAPTCHA bypass...');
+    const start = Date.now();
+    const bypassed = await sgCaptcha.bypassCaptcha('https://konesisrael.co.il');
+    const elapsed = Date.now() - start;
+    
+    if (bypassed) {
+      // Try fetching a page to verify
+      const testPage = await sgCaptcha.fetchPage('https://konesisrael.co.il/');
+      const hasContent = testPage && testPage.body && testPage.body.length > 1000;
+      
+      res.json({
+        success: true,
+        captchaBypassed: true,
+        elapsed: `${elapsed}ms`,
+        sessionStatus: sgCaptcha.getStatus(),
+        testPageLoaded: hasContent,
+        testPageSize: testPage ? testPage.body.length : 0
+      });
+    } else {
+      res.json({
+        success: false,
+        captchaBypassed: false,
+        elapsed: `${elapsed}ms`,
+        sessionStatus: sgCaptcha.getStatus()
+      });
+    }
+  } catch (error) {
+    logger.error(`CAPTCHA test error: ${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   }
 });
