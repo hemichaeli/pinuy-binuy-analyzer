@@ -208,9 +208,9 @@ router.post('/check-address', async (req, res) => {
  */
 router.get('/match-complexes', async (req, res) => {
   try {
-    // Get all complexes from database
+    // Get all complexes from database - use actual column names
     const complexesResult = await pool.query(`
-      SELECT id, city, street, address, name 
+      SELECT id, city, addresses, name 
       FROM complexes 
       WHERE city IS NOT NULL
     `);
@@ -221,7 +221,7 @@ router.get('/match-complexes', async (req, res) => {
       success: true,
       totalComplexes: complexesResult.rows.length,
       matchedComplexes: matches.length,
-      matches: matches.slice(0, 50), // Limit response size
+      matches: matches.slice(0, 50),
       summary: {
         message: matches.length > 0 
           ? `Found ${matches.length} complexes with potential receivership properties`
@@ -264,13 +264,13 @@ router.post('/enhance-ssi/:complexId', async (req, res) => {
     // Check if any units in this complex are in receivership
     const matches = await konesIsraelService.checkAddress(
       complex.city || '', 
-      complex.street || complex.address || ''
+      complex.addresses || complex.name || ''
     );
     
     if (matches.length > 0) {
       // Update complex with receivership data
-      const currentSSI = complex.enhanced_ssi_score || complex.ssi_score || 0;
-      const newSSI = Math.min(100, currentSSI + 30); // Add receivership boost, max 100
+      const currentSSI = complex.enhanced_ssi_score || 0;
+      const newSSI = Math.min(100, currentSSI + 30);
       
       await pool.query(`
         UPDATE complexes SET
@@ -328,9 +328,9 @@ router.post('/scan-all', async (req, res) => {
   try {
     logger.info('KonesIsrael: Starting full complex scan...');
     
-    // Get all complexes
+    // Get all complexes - use actual column names
     const complexesResult = await pool.query(`
-      SELECT id, city, street, address, name, enhanced_ssi_score, ssi_score
+      SELECT id, city, addresses, name, enhanced_ssi_score
       FROM complexes 
       WHERE city IS NOT NULL
     `);
@@ -341,8 +341,7 @@ router.post('/scan-all', async (req, res) => {
     for (const match of matches) {
       try {
         const currentSSI = complexesResult.rows
-          .find(c => c.id === match.complexId)?.enhanced_ssi_score || 
-          complexesResult.rows.find(c => c.id === match.complexId)?.ssi_score || 0;
+          .find(c => c.id === match.complexId)?.enhanced_ssi_score || 0;
         
         const newSSI = Math.min(100, currentSSI + match.ssiBoost);
         
