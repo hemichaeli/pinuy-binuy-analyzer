@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.11.0';
-const BUILD = '2026-02-13-v4.11.0-quantum-chat';
+const VERSION = '4.12.0';
+const BUILD = '2026-02-14-v4.12.0-live-dashboard';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -67,10 +67,10 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'] }));
 app.use(express.json({ limit: '50mb' }));
 
-// Rate limiting - exempt perplexity and chat routes
+// Rate limiting - exempt public UI routes
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
 app.use('/api/', (req, res, next) => {
-  if (req.path.startsWith('/perplexity/') || req.path.startsWith('/perplexity') || req.path.startsWith('/chat/') || req.path.startsWith('/chat')) {
+  if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard')) {
     return next();
   }
   apiLimiter(req, res, next);
@@ -81,8 +81,6 @@ app.use('/api/', (req, res, next) => {
 // ============================================================
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(`# QUANTUM - Pinuy Binuy Intelligence
-# Welcome crawlers! Our data endpoints are open for AI access.
-
 User-agent: *
 Allow: /api/perplexity/
 Allow: /health
@@ -101,12 +99,9 @@ Allow: /api/perplexity/
 
 User-agent: GPTBot
 Allow: /api/perplexity/
-
-Sitemap: https://pinuy-binuy-analyzer-production.up.railway.app/api/perplexity/sitemap.xml
 `);
 });
 
-// .well-known for AI discovery
 app.get('/.well-known/ai-plugin.json', (req, res) => {
   res.json({
     schema_version: 'v1',
@@ -186,6 +181,7 @@ function loadAllRoutes() {
     ['./routes/konesRoutes', '/api/kones'],
     ['./routes/perplexityRoutes', '/api/perplexity'],
     ['./routes/chatRoutes', '/api/chat'],
+    ['./routes/dashboardRoutes', '/api/dashboard'],
     ['./routes/governmentDataRoutes', '/api/government'],
     ['./routes/newsRoutes', '/api/news'],
     ['./routes/pricingRoutes', '/api/pricing'],
@@ -202,60 +198,35 @@ function loadAllRoutes() {
 
 // Lazy load services
 function getDiscoveryInfo() {
-  try {
-    const ds = require('./services/discoveryService');
-    return { available: true, cities: ds.ALL_TARGET_CITIES?.length || 0 };
-  } catch { return { available: false }; }
+  try { const ds = require('./services/discoveryService'); return { available: true, cities: ds.ALL_TARGET_CITIES?.length || 0 }; } catch { return { available: false }; }
 }
-
 function getKonesInfo() {
-  try {
-    const ks = require('./services/konesIsraelService');
-    return { available: true, configured: ks.isConfigured?.() || false };
-  } catch { return { available: false }; }
+  try { const ks = require('./services/konesIsraelService'); return { available: true, configured: ks.isConfigured?.() || false }; } catch { return { available: false }; }
 }
 
 // Diagnostics endpoint
 app.get('/diagnostics', async (req, res) => {
   let dbTables = [];
   try {
-    const tableResult = await pool.query(`
-      SELECT table_name, 
-        (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name AND table_schema = 'public') as columns
-      FROM information_schema.tables t 
-      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-      ORDER BY table_name
-    `);
+    const tableResult = await pool.query(`SELECT table_name, (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name AND table_schema = 'public') as columns FROM information_schema.tables t WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`);
     dbTables = tableResult.rows;
-  } catch (e) {
-    dbTables = [{ error: e.message }];
-  }
+  } catch (e) { dbTables = [{ error: e.message }]; }
 
   let rowCounts = {};
   for (const table of dbTables) {
     if (table.table_name) {
-      try {
-        const r = await pool.query(`SELECT COUNT(*) FROM "${table.table_name}"`);
-        rowCounts[table.table_name] = parseInt(r.rows[0].count);
-      } catch (e) {
-        rowCounts[table.table_name] = `ERROR: ${e.message}`;
-      }
+      try { const r = await pool.query(`SELECT COUNT(*) FROM "${table.table_name}"`); rowCounts[table.table_name] = parseInt(r.rows[0].count); }
+      catch (e) { rowCounts[table.table_name] = `ERROR: ${e.message}`; }
     }
   }
 
   let duplicates = [];
-  try {
-    const dupResult = await pool.query(`
-      SELECT name, city, COUNT(*) as cnt FROM complexes GROUP BY name, city HAVING COUNT(*) > 1 ORDER BY cnt DESC LIMIT 30
-    `);
-    duplicates = dupResult.rows;
-  } catch (e) { duplicates = [{ error: e.message }]; }
+  try { const dupResult = await pool.query(`SELECT name, city, COUNT(*) as cnt FROM complexes GROUP BY name, city HAVING COUNT(*) > 1 ORDER BY cnt DESC LIMIT 30`); duplicates = dupResult.rows; }
+  catch (e) { duplicates = [{ error: e.message }]; }
 
   let uniqueCounts = {};
-  try {
-    const uc = await pool.query(`SELECT COUNT(*) as total, COUNT(DISTINCT name) as unique_names, COUNT(DISTINCT CONCAT(name, '|', city)) as unique_name_city, COUNT(DISTINCT city) as cities FROM complexes`);
-    uniqueCounts = uc.rows[0];
-  } catch (e) { uniqueCounts = { error: e.message }; }
+  try { const uc = await pool.query(`SELECT COUNT(*) as total, COUNT(DISTINCT name) as unique_names, COUNT(DISTINCT CONCAT(name, '|', city)) as unique_name_city, COUNT(DISTINCT city) as cities FROM complexes`); uniqueCounts = uc.rows[0]; }
+  catch (e) { uniqueCounts = { error: e.message }; }
 
   res.json({ version: VERSION, build: BUILD, timestamp: new Date().toISOString(), routes: routeLoadResults, db_tables: dbTables, row_counts: rowCounts, complex_duplicates: duplicates, complex_unique_counts: uniqueCounts,
     env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing' }
@@ -290,9 +261,12 @@ app.get('/', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
     version: VERSION, build: BUILD,
+    ui: {
+      dashboard: '/api/dashboard/',
+      chat: '/api/chat/',
+    },
     endpoints: {
       health: '/health', debug: '/debug', diagnostics: '/diagnostics',
-      chat: '/api/chat', chat_api: 'POST /api/chat/ask',
       projects: '/api/projects', opportunities: '/api/opportunities',
       stressed_sellers: '/api/ssi/stressed-sellers', scan: '/api/scan',
       kones: '/api/kones', perplexity: '/api/perplexity',
@@ -323,7 +297,8 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
-    logger.info(`QUANTUM Chat: /api/chat`);
+    logger.info(`Dashboard: /api/dashboard/`);
+    logger.info(`Chat: /api/chat/`);
   });
 }
 
