@@ -1,6 +1,11 @@
 /**
  * KonesIsrael Routes - Receivership Property Data API
- * Phase 4.7: Integration with konesisrael.co.il for distressed property data
+ * Phase 4.8: Database-first with import capabilities
+ * 
+ * Architecture:
+ * - GET /listings reads from DB (kones_listings table)
+ * - POST /import adds data manually or from Perplexity
+ * - Live scraping blocked by SiteGround CAPTCHA
  */
 
 const express = require('express');
@@ -11,28 +16,19 @@ const { logger } = require('../services/logger');
 
 /**
  * GET /api/kones/status
- * Get service status and statistics
  */
 router.get('/status', async (req, res) => {
   try {
     const status = await konesIsraelService.getStatus();
-    res.json({
-      success: true,
-      message: 'KonesIsrael receivership data service status',
-      data: status
-    });
+    res.json({ success: true, message: 'KonesIsrael receivership data service', data: status });
   } catch (error) {
     logger.error(`KonesIsrael status error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/kones/listings
- * Get all receivership listings
  */
 router.get('/listings', async (req, res) => {
   try {
@@ -51,21 +47,89 @@ router.get('/listings', async (req, res) => {
     });
   } catch (error) {
     logger.error(`KonesIsrael listings error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/kones/import
+ * Import receivership listings into database
+ * Body: { listings: [{ propertyType, city, address, region, submissionDeadline, ... }] }
+ * 
+ * Use this to manually add data from konesisrael.co.il or Perplexity searches
+ */
+router.post('/import', async (req, res) => {
+  try {
+    const { listings } = req.body;
+    
+    if (!listings || !Array.isArray(listings) || listings.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Body must contain "listings" array with at least one item',
+        example: {
+          listings: [{
+            propertyType: 'דירה',
+            city: 'תל אביב',
+            address: 'רחוב הרצל 10',
+            region: 'מרכז',
+            submissionDeadline: '2026-03-15',
+            gushHelka: 'גוש 1234 חלקה 56',
+            contactPerson: 'עו"ד כהן',
+            email: 'lawyer@example.com',
+            phone: '03-1234567'
+          }]
+        }
+      });
+    }
+
+    const result = await konesIsraelService.importListings(listings);
+    
+    logger.info(`KonesIsrael: Imported ${result.imported} listings (${result.skipped} skipped)`);
+    
+    res.json({
+      success: true,
+      message: `Imported ${result.imported} listings`,
+      ...result
     });
+  } catch (error) {
+    logger.error(`KonesIsrael import error: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/kones/listings/:id
+ * Deactivate a listing (soft delete)
+ */
+router.delete('/listings/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    
+    const result = await pool.query(
+      'UPDATE kones_listings SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Listing not found' });
+    }
+    
+    // Clear cache
+    konesIsraelService.listingsCache.data = null;
+    
+    res.json({ success: true, message: `Listing ${id} deactivated` });
+  } catch (error) {
+    logger.error(`KonesIsrael delete error: ${error.message}`);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/kones/stats
- * Get detailed statistics
  */
 router.get('/stats', async (req, res) => {
   try {
     const stats = await konesIsraelService.getStatistics();
-    
     res.json({
       success: true,
       data: {
@@ -82,105 +146,64 @@ router.get('/stats', async (req, res) => {
     });
   } catch (error) {
     logger.error(`KonesIsrael stats error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/kones/search/city/:city
- * Search listings by city
  */
 router.get('/search/city/:city', async (req, res) => {
   try {
     const { city } = req.params;
     const listings = await konesIsraelService.searchByCity(city);
-    
-    res.json({
-      success: true,
-      city,
-      count: listings.length,
-      data: listings
-    });
+    res.json({ success: true, city, count: listings.length, data: listings });
   } catch (error) {
     logger.error(`KonesIsrael city search error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/kones/search/region/:region
- * Search listings by region
  */
 router.get('/search/region/:region', async (req, res) => {
   try {
     const { region } = req.params;
     const listings = await konesIsraelService.searchByRegion(region);
-    
-    res.json({
-      success: true,
-      region,
-      count: listings.length,
-      data: listings
-    });
+    res.json({ success: true, region, count: listings.length, data: listings });
   } catch (error) {
     logger.error(`KonesIsrael region search error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/kones/search/gush/:gush
- * Search listings by gush (and optionally helka)
  */
 router.get('/search/gush/:gush', async (req, res) => {
   try {
     const gush = parseInt(req.params.gush);
     const helka = req.query.helka ? parseInt(req.query.helka) : null;
-    
     const listings = await konesIsraelService.searchByGushHelka(gush, helka);
-    
-    res.json({
-      success: true,
-      gush,
-      helka,
-      count: listings.length,
-      data: listings
-    });
+    res.json({ success: true, gush, helka, count: listings.length, data: listings });
   } catch (error) {
     logger.error(`KonesIsrael gush search error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * POST /api/kones/check-address
- * Check if an address appears in receivership listings
  */
 router.post('/check-address', async (req, res) => {
   try {
     const { city, street } = req.body;
-    
     if (!city || !street) {
-      return res.status(400).json({
-        success: false,
-        error: 'Both city and street are required'
-      });
+      return res.status(400).json({ success: false, error: 'Both city and street are required' });
     }
     
     const matches = await konesIsraelService.checkAddress(city, street);
-    
     res.json({
       success: true,
       query: { city, street },
@@ -195,28 +218,21 @@ router.post('/check-address', async (req, res) => {
     });
   } catch (error) {
     logger.error(`KonesIsrael address check error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/kones/match-complexes
- * Match receivership listings with QUANTUM complexes
  */
 router.get('/match-complexes', async (req, res) => {
   try {
-    // Get all complexes from database - use actual column names
     const complexesResult = await pool.query(`
       SELECT id, city, addresses, name 
-      FROM complexes 
-      WHERE city IS NOT NULL
+      FROM complexes WHERE city IS NOT NULL
     `);
     
     const matches = await konesIsraelService.matchWithComplexes(complexesResult.rows);
-    
     res.json({
       success: true,
       totalComplexes: complexesResult.rows.length,
@@ -231,44 +247,28 @@ router.get('/match-complexes', async (req, res) => {
     });
   } catch (error) {
     logger.error(`KonesIsrael match complexes error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * POST /api/kones/enhance-ssi/:complexId
- * Enhance SSI score for a complex if found in receivership listings
  */
 router.post('/enhance-ssi/:complexId', async (req, res) => {
   try {
     const complexId = parseInt(req.params.complexId);
     
-    // Get complex data
-    const complexResult = await pool.query(
-      'SELECT * FROM complexes WHERE id = $1',
-      [complexId]
-    );
-    
+    const complexResult = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
     if (complexResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Complex not found'
-      });
+      return res.status(404).json({ success: false, error: 'Complex not found' });
     }
     
     const complex = complexResult.rows[0];
-    
-    // Check if any units in this complex are in receivership
     const matches = await konesIsraelService.checkAddress(
-      complex.city || '', 
-      complex.addresses || complex.name || ''
+      complex.city || '', complex.addresses || complex.name || ''
     );
     
     if (matches.length > 0) {
-      // Update complex with receivership data
       const currentSSI = complex.enhanced_ssi_score || 0;
       const newSSI = Math.min(100, currentSSI + 30);
       
@@ -283,56 +283,40 @@ router.post('/enhance-ssi/:complexId', async (req, res) => {
       `, [
         newSSI,
         JSON.stringify({ konesisrael_matches: matches.length }),
-        JSON.stringify({ 
-          receivership_listings: matches.map(m => ({
-            source: m.source,
-            propertyType: m.propertyType,
-            deadline: m.submissionDeadline,
-            contact: m.contactPerson
-          }))
-        }),
+        JSON.stringify({ receivership_listings: matches.map(m => ({
+          source: m.source, propertyType: m.propertyType,
+          deadline: m.submissionDeadline, contact: m.contactPerson
+        })) }),
         complexId
       ]);
       
       res.json({
-        success: true,
-        message: 'SSI enhanced with receivership data',
-        complexId,
-        previousSSI: currentSSI,
-        newSSI,
-        matchesFound: matches.length,
-        receivershipListings: matches
+        success: true, message: 'SSI enhanced with receivership data',
+        complexId, previousSSI: currentSSI, newSSI,
+        matchesFound: matches.length, receivershipListings: matches
       });
     } else {
       res.json({
-        success: true,
-        message: 'No receivership listings found for this complex',
-        complexId,
-        matchesFound: 0
+        success: true, message: 'No receivership listings found for this complex',
+        complexId, matchesFound: 0
       });
     }
   } catch (error) {
     logger.error(`KonesIsrael enhance SSI error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * POST /api/kones/scan-all
- * Scan all complexes and update SSI with receivership data
  */
 router.post('/scan-all', async (req, res) => {
   try {
     logger.info('KonesIsrael: Starting full complex scan...');
     
-    // Get all complexes - use actual column names
     const complexesResult = await pool.query(`
       SELECT id, city, addresses, name, enhanced_ssi_score
-      FROM complexes 
-      WHERE city IS NOT NULL
+      FROM complexes WHERE city IS NOT NULL
     `);
     
     const matches = await konesIsraelService.matchWithComplexes(complexesResult.rows);
@@ -342,7 +326,6 @@ router.post('/scan-all', async (req, res) => {
       try {
         const currentSSI = complexesResult.rows
           .find(c => c.id === match.complexId)?.enhanced_ssi_score || 0;
-        
         const newSSI = Math.min(100, currentSSI + match.ssiBoost);
         
         await pool.query(`
@@ -352,11 +335,7 @@ router.post('/scan-all', async (req, res) => {
             ssi_enhancement_factors = COALESCE(ssi_enhancement_factors, '{}'::jsonb) || $2,
             ssi_last_enhanced = NOW()
           WHERE id = $3
-        `, [
-          newSSI,
-          JSON.stringify({ konesisrael_matches: match.matchedListings }),
-          match.complexId
-        ]);
+        `, [newSSI, JSON.stringify({ konesisrael_matches: match.matchedListings }), match.complexId]);
         
         updated++;
       } catch (err) {
@@ -365,29 +344,22 @@ router.post('/scan-all', async (req, res) => {
     }
     
     res.json({
-      success: true,
-      message: 'Full scan completed',
+      success: true, message: 'Full scan completed',
       totalComplexes: complexesResult.rows.length,
-      matchesFound: matches.length,
-      complexesUpdated: updated
+      matchesFound: matches.length, complexesUpdated: updated
     });
   } catch (error) {
     logger.error(`KonesIsrael scan-all error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 /**
  * GET /api/kones/urgent
- * Get urgent deadline listings (within 7 days)
  */
 router.get('/urgent', async (req, res) => {
   try {
     const stats = await konesIsraelService.getStatistics();
-    
     res.json({
       success: true,
       count: stats.urgentDeadlines.length,
@@ -398,33 +370,7 @@ router.get('/urgent', async (req, res) => {
     });
   } catch (error) {
     logger.error(`KonesIsrael urgent error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * POST /api/kones/login
- * Attempt login to KonesIsrael (for authenticated access)
- */
-router.post('/login', async (req, res) => {
-  try {
-    const success = await konesIsraelService.login();
-    
-    res.json({
-      success,
-      message: success 
-        ? 'Login successful - authenticated access enabled'
-        : 'Login failed or not configured - using public access'
-    });
-  } catch (error) {
-    logger.error(`KonesIsrael login error: ${error.message}`);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
