@@ -1,3 +1,2 @@
-# Deploy Trigger
-Last triggered: 2026-02-12T21:00:00Z
-Version: 4.8.2
+# Deploy trigger - February 13, 2026
+Triggering Railway auto-deploy after outage recovery.
