@@ -368,7 +368,7 @@ router.get('/', (req, res) => {
           </main>
 
           <footer style={{ borderTop: "1px solid "+C.border, padding: "14px 28px", textAlign: "center", marginTop: 24 }}>
-            <span style={{ fontSize: 10, color: C.dim }}>QUANTUM Intelligence v4.12.0 | {s.total_complexes} מתחמים | {s.cities} ערים</span>
+            <span style={{ fontSize: 10, color: C.dim }}>QUANTUM Intelligence v4.13.1 | {s.total_complexes} מתחמים | {s.cities} ערים</span>
           </footer>
         </div>
       );
