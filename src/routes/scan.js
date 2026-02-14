@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
-// ========== DIRECT JSON APIs - NO PERPLEXITY ==========
+// ========== DIRECT JSON APIs ==========
 const directApi = require('../services/directApiService');
 const { calculateIAI, calculateAllIAI } = require('../services/iaiCalculator');
 const { calculateSSI, calculateAllSSI } = require('../services/ssiCalculator');
@@ -11,6 +11,8 @@ const { calculateAllBenchmarks, calculateBenchmark } = require('../services/benc
 const yad2Scraper = require('../services/yad2Scraper');
 const mavatScraper = require('../services/mavatScraper');
 const notificationService = require('../services/notificationService');
+// ========== DUAL AI (Anthropic + Perplexity) ==========
+const { dualScanComplex, dualScanAll, isClaudeConfigured, isPerplexityConfigured, getAvailableModels, PERPLEXITY_MODEL_SCAN, CLAUDE_MODEL } = require('../services/dualAiService');
 
 // Lazy load services with better error reporting
 function getCommitteeTracker() {
@@ -39,6 +41,127 @@ function getDiscoveryService() {
     return null;
   }
 }
+
+// ============================================================
+// POST /api/scan/ai - DUAL AI SCAN (Anthropic Research + Perplexity Deep Research)
+// This is the primary intelligent scan - runs BOTH AIs in parallel
+// ============================================================
+router.post('/ai', async (req, res) => {
+  try {
+    if (!isPerplexityConfigured() && !isClaudeConfigured()) {
+      return res.status(500).json({ error: 'No AI configured. Set PERPLEXITY_API_KEY and/or ANTHROPIC_API_KEY.' });
+    }
+
+    const { city, limit, complexId, staleOnly, model } = req.body;
+    const perplexityModel = model || PERPLEXITY_MODEL_SCAN;
+
+    // Single complex scan
+    if (complexId) {
+      try {
+        const result = await dualScanComplex(parseInt(complexId), { perplexityModel });
+        
+        // Recalculate scores after scan
+        try { await calculateSSI(parseInt(complexId)); } catch (e) {}
+        try { await calculateIAI(parseInt(complexId)); } catch (e) {}
+
+        return res.json({ 
+          message: 'Dual AI scan complete', 
+          result,
+          engines: {
+            perplexity: isPerplexityConfigured() ? `active (${perplexityModel})` : 'off',
+            claude: isClaudeConfigured() ? `active (${CLAUDE_MODEL})` : 'off'
+          }
+        });
+      } catch (scanErr) {
+        logger.error('Dual AI single scan failed', { error: scanErr.message });
+        return res.status(500).json({ error: scanErr.message });
+      }
+    }
+
+    // Batch scan
+    const running = await pool.query(
+      "SELECT id FROM scan_logs WHERE status = 'running' AND scan_type LIKE 'dual_ai%' AND started_at > NOW() - INTERVAL '2 hours'"
+    );
+    if (running.rows.length > 0) {
+      return res.status(409).json({ error: 'A dual AI scan is already running', scan_id: running.rows[0].id });
+    }
+
+    const scanLog = await pool.query(
+      `INSERT INTO scan_logs (scan_type, status) VALUES ('dual_ai_research', 'running') RETURNING *`
+    );
+    const scanId = scanLog.rows[0].id;
+
+    res.json({
+      message: 'Dual AI Research scan triggered',
+      scan_id: scanId,
+      engines: {
+        perplexity: isPerplexityConfigured() ? `active (${perplexityModel})` : 'off',
+        claude: isClaudeConfigured() ? `active (${CLAUDE_MODEL})` : 'off'
+      },
+      mode: 'dual-ai-research',
+      note: `Scanning with Anthropic Research + Perplexity ${perplexityModel} in parallel`
+    });
+
+    // Run async
+    (async () => {
+      try {
+        const results = await dualScanAll({
+          city: city || null,
+          limit: limit ? parseInt(limit) : 20,
+          staleOnly: staleOnly !== false,
+          perplexityModel
+        });
+
+        // Recalculate all scores
+        try { await calculateAllSSI(); } catch (e) { logger.warn('SSI recalc failed', { error: e.message }); }
+        try { await calculateAllIAI(); } catch (e) { logger.warn('IAI recalc failed', { error: e.message }); }
+
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+            complexes_scanned = $1, new_transactions = $2, new_listings = $3, summary = $4
+          WHERE id = $5`,
+          [results.scanned, results.totalNewTx, results.totalNewListings,
+            `Dual AI (${perplexityModel}+claude): ${results.succeeded}/${results.total} ok, ` +
+            `${results.totalNewTx} tx, ${results.totalNewListings} listings`, scanId]
+        );
+
+        // Send notifications for significant changes
+        if ((results.totalNewTx > 0 || results.totalNewListings > 0) && notificationService.isConfigured()) {
+          await notificationService.sendPendingAlerts();
+        }
+      } catch (err) {
+        logger.error('Dual AI scan failed', { error: err.message });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+          [err.message, scanId]
+        );
+      }
+    })();
+  } catch (err) {
+    logger.error('Error triggering dual AI scan', { error: err.message });
+    res.status(500).json({ error: `Failed to trigger dual AI scan: ${err.message}` });
+  }
+});
+
+// GET /api/scan/ai/status - Dual AI status
+router.get('/ai/status', (req, res) => {
+  const models = getAvailableModels();
+  res.json({
+    perplexity: {
+      configured: isPerplexityConfigured(),
+      scan_model: PERPLEXITY_MODEL_SCAN,
+      available_models: models.perplexity.models.filter(m => m.id !== 'council')
+    },
+    claude: {
+      configured: isClaudeConfigured(),
+      model: CLAUDE_MODEL
+    },
+    dual_mode: isClaudeConfigured() && isPerplexityConfigured(),
+    mode: (isClaudeConfigured() && isPerplexityConfigured()) ? 'dual-ai' :
+          isClaudeConfigured() ? 'claude-only' :
+          isPerplexityConfigured() ? 'perplexity-only' : 'none'
+  });
+});
 
 // POST /api/scan/discovery - Discover NEW complexes in target cities
 router.post('/discovery', async (req, res) => {
@@ -69,7 +192,6 @@ router.post('/discovery', async (req, res) => {
           const result = await discovery.discoverInCity(city);
           const newCount = result?.discovered_complexes?.length || 0;
 
-          // Process discovered complexes
           let added = 0;
           if (result?.discovered_complexes) {
             for (const complex of result.discovered_complexes) {
@@ -156,27 +278,26 @@ router.post('/discovery', async (req, res) => {
   }
 });
 
-// GET /api/scan/discovery/status - Get discovery configuration
+// GET /api/scan/discovery/status
 router.get('/discovery/status', (req, res) => {
   try {
     const discovery = getDiscoveryService();
     if (!discovery) {
       return res.json({ available: false, error: 'Discovery service not loaded' });
     }
-
     res.json({
       available: true,
       min_housing_units: discovery.MIN_HOUSING_UNITS,
       target_regions: discovery.TARGET_REGIONS,
       total_target_cities: discovery.ALL_TARGET_CITIES.length,
-      direct_api_mode: true // No Perplexity needed
+      direct_api_mode: true
     });
   } catch (err) {
     res.json({ available: false, error: err.message });
   }
 });
 
-// GET /api/scan/discovery/recent - Get recently discovered complexes
+// GET /api/scan/discovery/recent
 router.get('/discovery/recent', async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
@@ -267,14 +388,14 @@ router.post('/unified', async (req, res) => {
   }
 });
 
-// GET /api/scan/unified/status - Check Claude orchestrator status
+// GET /api/scan/unified/status
 router.get('/unified/status', (req, res) => {
   try {
     const orchestrator = getClaudeOrchestrator();
     res.json({
       available: !!orchestrator,
       claude_configured: orchestrator?.isClaudeConfigured() || false,
-      direct_api_mode: true, // Using direct JSON APIs
+      direct_api_mode: true,
       anthropic_key: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)',
       claude_key: process.env.CLAUDE_API_KEY ? '(set)' : '(not set)'
     });
@@ -283,7 +404,7 @@ router.get('/unified/status', (req, res) => {
   }
 });
 
-// ========== MAIN SCAN - DIRECT API (NO PERPLEXITY) ==========
+// ========== MAIN SCAN - DIRECT API ==========
 // POST /api/scan/run - Trigger a Direct API scan
 router.post('/run', async (req, res) => {
   try {
