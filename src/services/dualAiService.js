@@ -1,13 +1,20 @@
 /**
  * Dual AI Service - Claude + Perplexity working together
  * 
- * SCAN MODE: Both AIs scan independently, results merged into DB
- * CHAT MODE: Both AIs answer, Claude merges into unified response
+ * SCAN MODE: Both AIs scan independently with research models, results merged into DB
+ * CHAT MODE: Multiple model options including Council mode
  * 
  * Perplexity Models:
- *   sonar       - Fast, basic (cheapest)
- *   sonar-pro   - Enhanced, better quality (default)
+ *   sonar              - Fast, basic (cheapest)
+ *   sonar-pro          - Enhanced, better quality
  *   sonar-reasoning-pro - Step-by-step reasoning with citations
+ *   sonar-deep-research - Multi-step deep research (slow, expensive, thorough)
+ * 
+ * Claude Model:
+ *   claude-sonnet-4-20250514 - Anthropic research-grade
+ * 
+ * Council Mode:
+ *   Runs query through 3 Perplexity models + Claude, synthesizes one answer
  */
 
 const axios = require('axios');
@@ -16,10 +23,36 @@ const { logger } = require('./logger');
 
 // === API CONFIG ===
 const PERPLEXITY_URL = 'https://api.perplexity.ai/chat/completions';
-const PERPLEXITY_MODEL_DEFAULT = 'sonar-pro';
-const PERPLEXITY_MODEL_RESEARCH = 'sonar-reasoning-pro';
 const CLAUDE_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+
+// Models
+const MODELS = {
+  perplexity: {
+    fast: 'sonar',
+    pro: 'sonar-pro',
+    reasoning: 'sonar-reasoning-pro',
+    deep: 'sonar-deep-research'
+  },
+  claude: {
+    default: 'claude-sonnet-4-20250514'
+  }
+};
+
+// Defaults
+const PERPLEXITY_MODEL_DEFAULT = MODELS.perplexity.pro;
+const PERPLEXITY_MODEL_RESEARCH = MODELS.perplexity.reasoning;
+const PERPLEXITY_MODEL_DEEP = MODELS.perplexity.deep;
+const PERPLEXITY_MODEL_SCAN = MODELS.perplexity.reasoning; // Scans use reasoning by default
+const CLAUDE_MODEL = MODELS.claude.default;
+
+// Timeouts per model
+const TIMEOUTS = {
+  'sonar': 60000,
+  'sonar-pro': 90000,
+  'sonar-reasoning-pro': 120000,
+  'sonar-deep-research': 300000, // 5 min - deep research is slow
+  'claude': 90000
+};
 
 const DELAY_BETWEEN_REQUESTS_MS = 3500;
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -31,9 +64,10 @@ async function callPerplexity(systemPrompt, userPrompt, opts = {}) {
   if (!apiKey) throw new Error('PERPLEXITY_API_KEY not set');
 
   const model = opts.model || PERPLEXITY_MODEL_DEFAULT;
-  logger.info(`[PERPLEXITY] Using model: ${model}`);
+  const timeout = TIMEOUTS[model] || 120000;
+  logger.info(`[PERPLEXITY] Model: ${model} | Timeout: ${timeout/1000}s`);
 
-  const response = await axios.post(PERPLEXITY_URL, {
+  const body = {
     model,
     messages: [
       { role: 'system', content: systemPrompt },
@@ -42,22 +76,41 @@ async function callPerplexity(systemPrompt, userPrompt, opts = {}) {
     ],
     temperature: opts.temperature || 0.1,
     max_tokens: opts.maxTokens || 4000
-  }, {
+  };
+
+  // Deep research specific options
+  if (model === MODELS.perplexity.deep) {
+    body.max_tokens = opts.maxTokens || 8000;
+    // Deep research benefits from higher search context
+    body.search_context_size = opts.searchContext || 'high';
+  }
+
+  const response = await axios.post(PERPLEXITY_URL, body, {
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    timeout: 120000
+    timeout
   });
 
-  return response.data.choices[0].message.content;
+  const content = response.data.choices[0].message.content;
+  const usage = response.data.usage;
+  
+  if (usage) {
+    logger.info(`[PERPLEXITY] ${model} usage: ${usage.prompt_tokens}in/${usage.completion_tokens}out = ${usage.total_tokens} tokens`);
+  }
+
+  return content;
 }
 
 async function callClaude(systemPrompt, userPrompt, opts = {}) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
+  const model = opts.model || CLAUDE_MODEL;
   const messages = [...(opts.history || []), { role: 'user', content: userPrompt }];
 
+  logger.info(`[CLAUDE] Model: ${model}`);
+
   const response = await axios.post(CLAUDE_URL, {
-    model: opts.model || CLAUDE_MODEL,
+    model,
     max_tokens: opts.maxTokens || 4000,
     system: systemPrompt,
     messages
@@ -67,10 +120,17 @@ async function callClaude(systemPrompt, userPrompt, opts = {}) {
       'anthropic-version': '2023-06-01',
       'Content-Type': 'application/json'
     },
-    timeout: 90000
+    timeout: TIMEOUTS.claude
   });
 
-  return response.data.content[0].text;
+  const content = response.data.content[0].text;
+  const usage = response.data.usage;
+
+  if (usage) {
+    logger.info(`[CLAUDE] ${model} usage: ${usage.input_tokens}in/${usage.output_tokens}out`);
+  }
+
+  return content;
 }
 
 function isClaudeConfigured() { return !!process.env.ANTHROPIC_API_KEY; }
@@ -81,15 +141,25 @@ function getAvailableModels() {
     perplexity: {
       default: PERPLEXITY_MODEL_DEFAULT,
       research: PERPLEXITY_MODEL_RESEARCH,
+      deep: PERPLEXITY_MODEL_DEEP,
+      scan_default: PERPLEXITY_MODEL_SCAN,
       models: [
-        { id: 'sonar', name: 'Sonar (מהיר)', description: 'מהיר וזול, לשאלות פשוטות' },
-        { id: 'sonar-pro', name: 'Sonar Pro (מומלץ)', description: 'איכות גבוהה, ברירת מחדל' },
-        { id: 'sonar-reasoning-pro', name: 'Research (מחקר)', description: 'מחקר מעמיק עם מקורות וניתוח' },
+        { id: 'sonar', name: 'Fast (מהיר)', description: 'מהיר וזול, לשאלות פשוטות', tier: 'basic' },
+        { id: 'sonar-pro', name: 'Pro (מומלץ)', description: 'איכות גבוהה, ברירת מחדל לצ\'אט', tier: 'standard' },
+        { id: 'sonar-reasoning-pro', name: 'Reasoning (חשיבה)', description: 'חשיבה שלב-שלב עם מקורות', tier: 'research' },
+        { id: 'sonar-deep-research', name: 'Deep Research (מחקר עמוק)', description: 'מחקר מעמיק, מספר דקות, עשרות מקורות', tier: 'research' },
+        { id: 'council', name: 'Council (מועצה)', description: '3 מודלים במקביל + סינתוז - הכי חכם', tier: 'premium' }
       ]
     },
     claude: {
       configured: isClaudeConfigured(),
-      model: CLAUDE_MODEL
+      model: CLAUDE_MODEL,
+      description: 'Anthropic research-grade AI'
+    },
+    scan: {
+      perplexity_model: PERPLEXITY_MODEL_SCAN,
+      claude_model: CLAUDE_MODEL,
+      dual_mode: isClaudeConfigured() && isPerplexityConfigured()
     }
   };
 }
@@ -204,14 +274,15 @@ async function dualScanComplex(complexId, options = {}) {
 
   const complex = complexResult.rows[0];
   const prompt = buildScanPrompt(complex);
-  const scanModel = options.perplexityModel || PERPLEXITY_MODEL_DEFAULT;
+  const scanModel = options.perplexityModel || PERPLEXITY_MODEL_SCAN;
 
-  logger.info(`[DUAL-SCAN] ${complex.name} (${complex.city}) [model: ${scanModel}]`, { complexId });
+  logger.info(`[DUAL-SCAN] ${complex.name} (${complex.city}) [Perplexity: ${scanModel} | Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}]`, { complexId });
 
   let perplexityData = null;
   let claudeData = null;
   const errors = [];
 
+  // Run BOTH AIs in parallel - Perplexity research + Claude research
   const [pResult, cResult] = await Promise.allSettled([
     isPerplexityConfigured()
       ? callPerplexity(SCAN_SYSTEM, prompt, { model: scanModel }).then(r => parseJsonResponse(r))
@@ -223,8 +294,8 @@ async function dualScanComplex(complexId, options = {}) {
 
   if (pResult.status === 'fulfilled') {
     perplexityData = pResult.value;
-    if (perplexityData) logger.info(`[DUAL-SCAN] Perplexity: OK for ${complex.name}`);
-    else logger.warn(`[DUAL-SCAN] Perplexity: no parseable data for ${complex.name}`);
+    if (perplexityData) logger.info(`[DUAL-SCAN] Perplexity (${scanModel}): OK for ${complex.name}`);
+    else logger.warn(`[DUAL-SCAN] Perplexity (${scanModel}): no parseable data for ${complex.name}`);
   } else {
     errors.push(`Perplexity: ${pResult.reason?.message || 'unknown'}`);
     logger.warn(`[DUAL-SCAN] Perplexity failed for ${complex.name}: ${pResult.reason?.message}`);
@@ -251,7 +322,7 @@ async function dualScanComplex(complexId, options = {}) {
 
   return {
     complexId, name: complex.name, city: complex.city, status: 'success',
-    sources: [perplexityData ? 'perplexity' : null, claudeData ? 'claude' : null].filter(Boolean),
+    sources: [perplexityData ? `perplexity:${scanModel}` : null, claudeData ? 'claude' : null].filter(Boolean),
     model: scanModel,
     confidence: merged.confidence, transactions: stored.transactions, listings: stored.listings,
     hasStatusUpdate: !!(merged.status_update && merged.status_update.current_status),
@@ -336,10 +407,15 @@ async function dualScanAll(options = {}) {
 
   const complexes = await pool.query(query, params);
   const total = complexes.rows.length;
-  const scanModel = options.perplexityModel || PERPLEXITY_MODEL_DEFAULT;
-  logger.info(`[DUAL-SCAN] Starting scan of ${total} complexes [model: ${scanModel}] (Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}, Perplexity: ${isPerplexityConfigured() ? 'ON' : 'OFF'})`);
+  const scanModel = options.perplexityModel || PERPLEXITY_MODEL_SCAN;
+  logger.info(`[DUAL-SCAN] Starting scan of ${total} complexes [Perplexity: ${scanModel} | Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}]`);
 
-  const results = { total, scanned: 0, succeeded: 0, failed: 0, totalNewTx: 0, totalNewListings: 0, model: scanModel, details: [] };
+  const results = { 
+    total, scanned: 0, succeeded: 0, failed: 0, totalNewTx: 0, totalNewListings: 0, 
+    perplexityModel: scanModel, claudeModel: CLAUDE_MODEL, 
+    dualMode: isClaudeConfigured() && isPerplexityConfigured(),
+    details: [] 
+  };
 
   for (let i = 0; i < complexes.rows.length; i++) {
     const c = complexes.rows[i];
@@ -358,14 +434,133 @@ async function dualScanAll(options = {}) {
     if (i < complexes.rows.length - 1) await sleep(DELAY_BETWEEN_REQUESTS_MS);
   }
 
-  logger.info(`[DUAL-SCAN] Complete: ${results.succeeded}/${results.total} ok, ${results.totalNewTx} tx, ${results.totalNewListings} listings [${scanModel}]`);
+  logger.info(`[DUAL-SCAN] Complete: ${results.succeeded}/${results.total} ok, ${results.totalNewTx} tx, ${results.totalNewListings} listings [${scanModel}+claude]`);
   return results;
 }
 
-// === DUAL CHAT ===
+// ============================================================
+// === COUNCIL MODE - Multi-model query + synthesis ===
+// ============================================================
+
+async function councilChat(question, dbContext, history = []) {
+  const chatSystem = `אתה יועץ השקעות נדל"ן מומחה של QUANTUM - משרד תיווך מוביל בפינוי-בינוי בישראל.
+ענה בעברית. תבסס על הנתונים. תן תובנות חכמות. אל תמציא.
+IAI = מדד אטרקטיביות השקעה (0-100). SSI = מדד לחץ מוכר (0-100).
+IAI גבוה = הזדמנות טובה יותר. SSI גבוה = מוכר לחוץ יותר.
+
+--- נתוני QUANTUM ---
+${dbContext}`;
+
+  logger.info(`[COUNCIL] Starting council mode - 3 Perplexity models${isClaudeConfigured() ? ' + Claude' : ''}`);
+  
+  const councilModels = [
+    { model: 'sonar-pro', label: 'Pro' },
+    { model: 'sonar-reasoning-pro', label: 'Reasoning' },
+    { model: 'sonar-deep-research', label: 'Deep Research' }
+  ];
+
+  // Run all models in parallel
+  const promises = councilModels.map(m => 
+    isPerplexityConfigured()
+      ? callPerplexity(chatSystem, question, { history, temperature: 0.3, model: m.model, maxTokens: m.model === 'sonar-deep-research' ? 8000 : 4000 })
+          .then(answer => ({ label: m.label, model: m.model, answer, status: 'ok' }))
+          .catch(err => ({ label: m.label, model: m.model, answer: null, status: 'error', error: err.message }))
+      : Promise.resolve({ label: m.label, model: m.model, answer: null, status: 'skipped' })
+  );
+
+  // Add Claude if configured
+  if (isClaudeConfigured()) {
+    promises.push(
+      callClaude(chatSystem, question, { history })
+        .then(answer => ({ label: 'Claude', model: CLAUDE_MODEL, answer, status: 'ok' }))
+        .catch(err => ({ label: 'Claude', model: CLAUDE_MODEL, answer: null, status: 'error', error: err.message }))
+    );
+  }
+
+  const results = await Promise.all(promises);
+  const successful = results.filter(r => r.status === 'ok' && r.answer);
+  const errors = results.filter(r => r.status === 'error').map(r => `${r.label}: ${r.error}`);
+
+  logger.info(`[COUNCIL] ${successful.length}/${results.length} models responded`);
+
+  if (successful.length === 0) {
+    return { answer: 'כל מודלי ה-AI לא זמינים כרגע. נסה שוב.', sources: [], model: 'council', errors };
+  }
+
+  if (successful.length === 1) {
+    return { 
+      answer: successful[0].answer, 
+      sources: [successful[0].label], 
+      model: `council(${successful[0].model})`, 
+      errors 
+    };
+  }
+
+  // Synthesize all answers into one
+  const synthesisSystem = `אתה מסנתז תשובות ממספר מודלי AI לתשובה אחת מושלמת.
+
+כללים:
+- שלב את הנקודות החזקות מכל תשובה
+- אם המודלים מסכימים - ציין זאת (מחזק את הביטחון)
+- אם יש חוסר הסכמה - הצג את שני הצדדים
+- תן עדיפות לנתונים ספציפיים (מספרים, תאריכים, שמות)
+- התשובה הסופית צריכה להיות מקיפה, ברורה ומקצועית
+- אל תציין שמיזגת תשובות - פשוט ענה כמומחה
+- ענה בעברית`;
+
+  const synthesisPrompt = `שאלה מקורית: "${question}"
+
+${successful.map((r, i) => `=== תשובה ${i+1} (${r.label}) ===\n${r.answer}`).join('\n\n')}
+
+סנתז לתשובה אחת מושלמת:`;
+
+  try {
+    let synthesized;
+    if (isClaudeConfigured()) {
+      // Claude synthesizes all responses
+      synthesized = await callClaude(synthesisSystem, synthesisPrompt, { maxTokens: 6000 });
+    } else {
+      // Use sonar-pro to synthesize
+      synthesized = await callPerplexity(synthesisSystem, synthesisPrompt, { model: 'sonar-pro', maxTokens: 6000 });
+    }
+
+    return {
+      answer: synthesized,
+      sources: successful.map(r => r.label),
+      model: 'council',
+      council_details: {
+        models_queried: results.length,
+        models_responded: successful.length,
+        models: successful.map(r => r.model),
+        synthesizer: isClaudeConfigured() ? 'claude' : 'sonar-pro'
+      },
+      errors
+    };
+  } catch (e) {
+    // Synthesis failed, return best individual answer (prefer deep research)
+    const best = successful.find(r => r.model === 'sonar-deep-research') 
+      || successful.find(r => r.model === 'sonar-reasoning-pro')
+      || successful[0];
+    
+    logger.warn(`[COUNCIL] Synthesis failed: ${e.message}, using ${best.label}`);
+    return {
+      answer: best.answer,
+      sources: [best.label],
+      model: `council-fallback(${best.model})`,
+      errors: [...errors, `Synthesis: ${e.message}`]
+    };
+  }
+}
+
+// === DUAL CHAT (standard) ===
 
 async function dualChat(question, dbContext, history = [], options = {}) {
   const chatModel = options.model || PERPLEXITY_MODEL_DEFAULT;
+
+  // Council mode
+  if (chatModel === 'council') {
+    return councilChat(question, dbContext, history);
+  }
 
   const chatSystem = `אתה יועץ השקעות נדל"ן מומחה של QUANTUM - משרד תיווך מוביל בפינוי-בינוי בישראל.
 ענה בעברית. תבסס על הנתונים. תן תובנות חכמות. אל תמציא.
@@ -387,11 +582,15 @@ ${dbContext}`;
   let claudeAnswer = null;
   const errors = [];
 
-  logger.info(`[DUAL-CHAT] Model: ${chatModel} | Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}`);
+  logger.info(`[CHAT] Model: ${chatModel} | Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}`);
 
+  // Run both AIs in parallel
   const [pRes, cRes] = await Promise.allSettled([
     isPerplexityConfigured()
-      ? callPerplexity(chatSystem, question, { history, temperature: 0.3, model: chatModel })
+      ? callPerplexity(chatSystem, question, { 
+          history, temperature: 0.3, model: chatModel,
+          maxTokens: chatModel === 'sonar-deep-research' ? 8000 : 4000
+        })
       : Promise.resolve(null),
     isClaudeConfigured()
       ? callClaude(chatSystem, question, { history })
@@ -400,14 +599,14 @@ ${dbContext}`;
 
   if (pRes.status === 'fulfilled' && pRes.value) {
     perplexityAnswer = pRes.value;
-    logger.info(`[DUAL-CHAT] Perplexity answered (${perplexityAnswer.length} chars) [${chatModel}]`);
+    logger.info(`[CHAT] Perplexity answered (${perplexityAnswer.length} chars) [${chatModel}]`);
   } else if (pRes.status === 'rejected') {
     errors.push(`Perplexity: ${pRes.reason?.message}`);
   }
 
   if (cRes.status === 'fulfilled' && cRes.value) {
     claudeAnswer = cRes.value;
-    logger.info(`[DUAL-CHAT] Claude answered (${claudeAnswer.length} chars)`);
+    logger.info(`[CHAT] Claude answered (${claudeAnswer.length} chars)`);
   } else if (cRes.status === 'rejected') {
     errors.push(`Claude: ${cRes.reason?.message}`);
   }
@@ -420,7 +619,7 @@ ${dbContext}`;
   try {
     const mergePrompt = `שאלה מקורית: "${question}"
 
-=== תשובת Perplexity ===
+=== תשובת Perplexity (${chatModel}) ===
 ${perplexityAnswer}
 
 === תשובת Claude ===
@@ -431,8 +630,8 @@ ${claudeAnswer}
     const merged = await callClaude(mergeSystem, mergePrompt, { maxTokens: 4000 });
     return { answer: merged, sources: ['perplexity', 'claude', 'merged'], model: chatModel, errors };
   } catch (e) {
-    logger.warn(`[DUAL-CHAT] Merge failed: ${e.message}, using Claude answer`);
-    return { answer: claudeAnswer, sources: ['claude'], model: chatModel, errors: [...errors, `Merge: ${e.message}`] };
+    logger.warn(`[CHAT] Merge failed: ${e.message}, using Perplexity answer`);
+    return { answer: perplexityAnswer, sources: ['perplexity'], model: chatModel, errors: [...errors, `Merge: ${e.message}`] };
   }
 }
 
@@ -446,9 +645,14 @@ module.exports = {
   dualScanComplex,
   dualScanAll,
   dualChat,
+  councilChat,
   mergeScanResults,
+  MODELS,
   PERPLEXITY_MODEL_DEFAULT,
   PERPLEXITY_MODEL_RESEARCH,
+  PERPLEXITY_MODEL_DEEP,
+  PERPLEXITY_MODEL_SCAN,
+  CLAUDE_MODEL,
   queryPerplexity: callPerplexity,
   scanComplex: dualScanComplex,
   scanAll: dualScanAll,
