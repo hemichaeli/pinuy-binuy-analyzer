@@ -215,7 +215,7 @@ router.get('/', (req, res) => {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Assistant', -apple-system, sans-serif; background: #080c14; color: #e0e0e0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     
-    .header { background: linear-gradient(135deg, #0f1623 0%, #080c14 100%); padding: 12px 20px; border-bottom: 1px solid #1a2744; display: flex; align-items: center; justify-content: space-between; }
+    .header { background: linear-gradient(135deg, #0f1623 0%, #080c14 100%); padding: 12px 20px; border-bottom: 1px solid #1a2744; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
     .header-right { display: flex; align-items: center; gap: 8px; }
     .logo { display: flex; align-items: center; gap: 10px; }
     .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #06d6a0, #3b82f6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; color: #000; font-family: serif; }
@@ -232,28 +232,61 @@ router.get('/', (req, res) => {
 
     .chat-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
     
-    .msg { max-width: 88%; padding: 12px 16px; border-radius: 14px; line-height: 1.7; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; animation: fadeIn 0.2s ease; }
+    .msg { max-width: 88%; padding: 12px 16px; border-radius: 14px; line-height: 1.7; font-size: 14px; word-wrap: break-word; animation: fadeIn 0.2s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
     
     .msg.user { background: linear-gradient(135deg, #1e3a5f, #1a2f4d); align-self: flex-start; border-bottom-right-radius: 4px; color: #e2e8f0; }
     .msg.bot { background: #0f1623; align-self: flex-end; border-bottom-left-radius: 4px; border: 1px solid #1a2744; }
-    .msg.bot strong { color: #06d6a0; }
     .msg.council { border-color: #fbbf24; }
-    .msg.council strong { color: #fbbf24; }
     .msg.system { background: transparent; align-self: center; text-align: center; color: #4a5e80; font-size: 12px; border: 1px dashed #1a2744; padding: 16px 24px; border-radius: 12px; max-width: 340px; }
     .msg .meta { font-size: 10px; color: #4a5e80; margin-top: 6px; padding-top: 5px; border-top: 1px solid #1a274422; }
     .msg.typing { color: #4a5e80; font-style: italic; background: transparent; border: none; font-size: 12px; }
     .msg .council-badge { display: inline-block; background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #000; font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
 
-    .suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px 8px; justify-content: center; }
+    /* Markdown rendering inside bot messages */
+    .msg.bot h1, .msg.bot h2, .msg.bot h3 { color: #06d6a0; margin: 10px 0 6px; font-family: 'Assistant', sans-serif; }
+    .msg.council h1, .msg.council h2, .msg.council h3 { color: #fbbf24; }
+    .msg.bot h1 { font-size: 17px; }
+    .msg.bot h2 { font-size: 15px; border-bottom: 1px solid #1a2744; padding-bottom: 4px; }
+    .msg.bot h3 { font-size: 14px; color: #3b82f6; }
+    .msg.bot strong { color: #06d6a0; }
+    .msg.council strong { color: #fbbf24; }
+    .msg.bot ul, .msg.bot ol { margin: 6px 0; padding-right: 20px; }
+    .msg.bot li { margin: 4px 0; line-height: 1.6; }
+    .msg.bot a { color: #06d6a0; text-decoration: none; border-bottom: 1px dashed #06d6a044; transition: all 0.15s; }
+    .msg.bot a:hover { color: #fff; border-bottom-color: #06d6a0; }
+    .msg.bot code { background: #141d2e; color: #fbbf24; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    .msg.bot blockquote { border-right: 3px solid #06d6a044; padding-right: 10px; color: #8899b4; margin: 6px 0; }
+    .msg.bot hr { border: none; border-top: 1px solid #1a2744; margin: 10px 0; }
+    .msg.bot table { border-collapse: collapse; margin: 8px 0; width: 100%; font-size: 12px; }
+    .msg.bot th { background: #141d2e; color: #06d6a0; padding: 6px 10px; text-align: right; border: 1px solid #1a2744; font-weight: 700; }
+    .msg.bot td { padding: 5px 10px; border: 1px solid #1a2744; }
+    .msg.bot tr:hover td { background: #141d2e; }
+    .msg.bot p { margin: 4px 0; }
+
+    /* Clickable result items */
+    .result-item { display: block; padding: 8px 12px; margin: 4px 0; background: #141d2e; border: 1px solid #1a2744; border-radius: 8px; cursor: pointer; transition: all 0.15s; text-decoration: none; color: inherit; }
+    .result-item:hover { border-color: #06d6a0; background: #1a2744; }
+    .result-item .ri-name { font-weight: 700; color: #e2e8f0; font-size: 13px; }
+    .result-item .ri-city { color: #8899b4; font-size: 11px; margin-right: 6px; }
+    .result-item .ri-scores { display: flex; gap: 8px; margin-top: 3px; }
+    .result-item .ri-iai { color: #06d6a0; font-size: 11px; font-weight: 700; }
+    .result-item .ri-ssi { font-size: 11px; font-weight: 700; }
+    .result-item .ri-ssi.high { color: #ff4d6a; }
+    .result-item .ri-ssi.med { color: #ff8c42; }
+    .result-item .ri-ssi.low { color: #ffc233; }
+    .result-item .ri-tag { display: inline-block; background: #06d6a018; color: #06d6a0; font-size: 9px; padding: 1px 6px; border-radius: 3px; margin-right: 4px; }
+    .result-item .ri-tag.gold { background: #ffc23318; color: #ffc233; }
+
+    .suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px 8px; justify-content: center; flex-shrink: 0; }
     .suggestions button { background: transparent; border: 1px solid #1a2744; color: #8899b4; padding: 5px 12px; border-radius: 16px; cursor: pointer; font-size: 12px; font-family: inherit; transition: all 0.15s; }
     .suggestions button:hover { border-color: #06d6a0; color: #06d6a0; }
 
-    .input-area { background: #0a0e17; padding: 12px 16px; border-top: 1px solid #1a2744; display: flex; gap: 8px; }
+    .input-area { background: #0a0e17; padding: 12px 16px; border-top: 1px solid #1a2744; display: flex; gap: 8px; flex-shrink: 0; }
     .input-area input { flex: 1; background: #0f1623; border: 1px solid #1a2744; color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 15px; font-family: inherit; outline: none; }
     .input-area input:focus { border-color: #06d6a0; }
     .input-area input::placeholder { color: #4a5e80; }
-    .send-btn { background: linear-gradient(135deg, #06d6a0, #059669); color: #000; border: none; width: 44px; height: 44px; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+    .send-btn { background: linear-gradient(135deg, #06d6a0, #059669); color: #000; border: none; width: 44px; height: 44px; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .send-btn:hover { filter: brightness(1.1); }
     .send-btn:disabled { background: #1a2744; color: #4a5e80; cursor: wait; }
   </style>
@@ -318,21 +351,148 @@ router.get('/', (req, res) => {
       'council': 'Council'
     };
 
-    const modelEmojis = {
-      'sonar': '', 
-      'sonar-pro': '', 
-      'sonar-reasoning-pro': '',
-      'sonar-deep-research': '',
-      'council': ''
-    };
+    /**
+     * Convert markdown to HTML with full formatting
+     */
+    function mdToHtml(text) {
+      if (!text) return '';
+      let html = text;
+      
+      // Escape HTML first
+      html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      
+      // Headers: # ## ###
+      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+      
+      // Bold: **text**
+      html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+      
+      // Italic: *text*
+      html = html.replace(/(?<![*])\\*(?![*])(.+?)(?<![*])\\*(?![*])/g, '<em>$1</em>');
+      
+      // Code: \`text\`
+      html = html.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+      
+      // Links: [text](url)
+      html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      
+      // Horizontal rule
+      html = html.replace(/^---$/gm, '<hr>');
+      
+      // Blockquote
+      html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+      
+      // Tables: detect | pipes
+      const tableRegex = /^(\\|.+\\|\\n)(\\|[-| :]+\\|\\n)((?:\\|.+\\|\\n?)+)/gm;
+      html = html.replace(tableRegex, (match, headerRow, sepRow, bodyRows) => {
+        const headers = headerRow.trim().split('|').filter(c => c.trim());
+        const rows = bodyRows.trim().split('\\n').map(r => r.split('|').filter(c => c.trim()));
+        let table = '<table><thead><tr>';
+        headers.forEach(h => { table += '<th>' + h.trim() + '</th>'; });
+        table += '</tr></thead><tbody>';
+        rows.forEach(r => {
+          table += '<tr>';
+          r.forEach(c => { table += '<td>' + c.trim() + '</td>'; });
+          table += '</tr>';
+        });
+        table += '</tbody></table>';
+        return table;
+      });
+      
+      // Numbered lists with complex/result items - make them clickable cards
+      // Pattern: number. text | city | IAI:xx | SSI:xx  OR  number. **name** | city
+      html = html.replace(/^(\\d+)\\.\\s+(.+?)\\s*\\|\\s*(.+?)\\s*\\|\\s*(?:IAI|iai)[:\\s]*([\\d]+)\\s*\\|\\s*(?:SSI|ssi)[:\\s]*([\\d]+)(.*)$/gm, 
+        (match, num, name, city, iai, ssi, rest) => {
+          name = name.replace(/<\\/?strong>/g, '');
+          const ssiClass = +ssi >= 60 ? 'high' : +ssi >= 40 ? 'med' : 'low';
+          const isGold = +iai >= 40 && +ssi >= 20;
+          let tags = '';
+          if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
+          if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
+          if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
+          if (isGold && !tags.includes('זהב')) tags += '<span class="ri-tag gold">פוטנציאל</span>';
+          return '<div class="result-item" onclick="askQ(\\'ספר לי עוד על ' + name.trim() + ' ב' + city.trim() + '\\')"><div><span class="ri-name">' + name.trim() + '</span><span class="ri-city">' + city.trim() + '</span></div><div class="ri-scores"><span class="ri-iai">IAI: ' + iai + '</span><span class="ri-ssi ' + ssiClass + '">SSI: ' + ssi + '</span>' + tags + '</div></div>';
+        }
+      );
+      
+      // Simpler numbered list items with IAI and SSI (different format)
+      html = html.replace(/^(\\d+)\\.\\s+(.+?)\\s*\\|\\s*(.+?)\\s*\\|\\s*(?:IAI|iai)[:\\s]*([\\d]+)$/gm,
+        (match, num, name, city, iai) => {
+          name = name.replace(/<\\/?strong>/g, '');
+          return '<div class="result-item" onclick="askQ(\\'ספר לי עוד על ' + name.trim() + ' ב' + city.trim() + '\\')"><div><span class="ri-name">' + name.trim() + '</span><span class="ri-city">' + city.trim() + '</span></div><div class="ri-scores"><span class="ri-iai">IAI: ' + iai + '</span></div></div>';
+        }
+      );
+
+      // Numbered list items: detect SSI:xx pattern  
+      html = html.replace(/^(\\d+)\\.\\s+(.+?)\\s*\\|\\s*(.+?)\\s*\\|\\s*(?:SSI|ssi)[:\\s]*([\\d]+)(.*)$/gm,
+        (match, num, name, city, ssi, rest) => {
+          // Skip if already converted
+          if (match.includes('result-item')) return match;
+          name = name.replace(/<\\/?strong>/g, '');
+          const ssiClass = +ssi >= 60 ? 'high' : +ssi >= 40 ? 'med' : 'low';
+          let iaiMatch = rest.match(/IAI[:\\s]*(\\d+)/i);
+          let iaiHtml = iaiMatch ? '<span class="ri-iai">IAI: ' + iaiMatch[1] + '</span>' : '';
+          let tags = '';
+          if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
+          if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
+          if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
+          return '<div class="result-item" onclick="askQ(\\'ספר לי עוד על ' + name.trim() + ' ב' + city.trim() + '\\')"><div><span class="ri-name">' + name.trim() + '</span><span class="ri-city">' + city.trim() + '</span></div><div class="ri-scores">' + iaiHtml + '<span class="ri-ssi ' + ssiClass + '">SSI: ' + ssi + '</span>' + tags + '</div></div>';
+        }
+      );
+
+      // Regular numbered lists (not result items)
+      html = html.replace(/^(\\d+)\\.\\s+(?!<div)(.+)$/gm, (match, num, content) => {
+        if (match.includes('result-item')) return match;
+        return '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#4a5e80;min-width:18px;text-align:center;">' + num + '.</span><span>' + content + '</span></div>';
+      });
+      
+      // Bullet lists
+      html = html.replace(/^[\\-\\*]\\s+(.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#06d6a0;">&#x2022;</span><span>$1</span></div>');
+      
+      // Citation references [1], [2], etc - make them subtle
+      html = html.replace(/\\[(\\d+)\\]/g, '<sup style="color:#4a5e80;font-size:9px;">[$1]</sup>');
+      
+      // Arrow markers
+      html = html.replace(/←/g, '<span style="color:#06d6a0;">&#8592;</span>');
+      
+      // Paragraphs - convert double newlines
+      html = html.replace(/\\n\\n/g, '</p><p>');
+      html = html.replace(/\\n/g, '<br>');
+      html = '<p>' + html + '</p>';
+      
+      // Cleanup empty paragraphs
+      html = html.replace(/<p><\\/p>/g, '');
+      html = html.replace(/<p>(<h[123]>)/g, '$1');
+      html = html.replace(/(<\\/h[123]>)<\\/p>/g, '$1');
+      html = html.replace(/<p>(<div)/g, '$1');
+      html = html.replace(/(<\\/div>)<\\/p>/g, '$1');
+      html = html.replace(/<p>(<hr>)<\\/p>/g, '$1');
+      html = html.replace(/<p>(<table)/g, '$1');
+      html = html.replace(/(<\\/table>)<\\/p>/g, '$1');
+      html = html.replace(/<p>(<blockquote)/g, '$1');
+      html = html.replace(/(<\\/blockquote>)<\\/p>/g, '$1');
+      
+      return html;
+    }
 
     function addMsg(text, role, meta, isCouncil) {
       const div = document.createElement('div');
       div.className = 'msg ' + role + (isCouncil ? ' council' : '');
-      let html = text.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-      if (isCouncil && role === 'bot') {
-        html = '<span class="council-badge">COUNCIL</span> ' + html;
+      
+      let html;
+      if (role === 'bot') {
+        html = mdToHtml(text);
+        if (isCouncil) {
+          html = '<span class="council-badge">COUNCIL</span> ' + html;
+        }
+      } else if (role === 'typing' || role === 'system') {
+        html = text;
+      } else {
+        html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       }
+      
       if (meta) {
         html += '<div class="meta">' + meta + '</div>';
       }
