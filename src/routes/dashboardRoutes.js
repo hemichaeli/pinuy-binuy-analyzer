@@ -1,5 +1,6 @@
 /**
- * QUANTUM Dashboard - Self-contained React dashboard served as HTML
+ * QUANTUM Dashboard v4.13.3 - Zero-dependency vanilla JS dashboard
+ * No React, no Babel, no external CDNs - works in ALL browsers including Brave
  * GET /api/dashboard/ - Full dashboard UI
  */
 
@@ -10,382 +11,376 @@ router.get('/', (req, res) => {
   res.type('html').send(`<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QUANTUM Intelligence Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
-  <script>
-    window.addEventListener('error', function(e) {
-      if (e.target && e.target.tagName === 'SCRIPT') {
-        var root = document.getElementById('root');
-        if (root && !root.innerHTML.trim()) {
-          root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;font-family:Assistant,sans-serif"><div style="width:48px;height:48px;background:linear-gradient(135deg,#06d6a0,#3b82f6);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:24px;color:#000">Q</div><div style="color:#ff4d6a;font-size:14px;text-align:center;direction:rtl">Error loading dashboard<br><span style="color:#8899b4;font-size:11px">Try disabling ad blocker or use a different browser</span></div><a href="/api/dashboard/" style="color:#06d6a0;font-size:12px">Retry</a></div>';
-        }
-      }
-    }, true);
-  </script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Assistant', sans-serif; background: #080c14; color: #e2e8f0; direction: rtl; }
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: #080c14; }
-    ::-webkit-scrollbar-thumb { background: #1a2744; border-radius: 3px; }
-    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-    @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QUANTUM Intelligence Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Assistant',sans-serif;background:#080c14;color:#e2e8f0;direction:rtl}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:#080c14}
+::-webkit-scrollbar-thumb{background:#1a2744;border-radius:3px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+.header{border-bottom:1px solid #1a2744;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,12,20,.92);backdrop-filter:blur(16px);position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:10px}
+.header-logo{display:flex;align-items:center;gap:14px}
+.logo-q{width:36px;height:36px;background:linear-gradient(135deg,#06d6a0,#3b82f6);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#000;font-family:'DM Serif Display',serif}
+.header-title{font-size:16px;font-weight:800;letter-spacing:3px;font-family:'DM Serif Display',serif}
+.header-sub{font-size:9px;color:#4a5e80;margin-right:10px;letter-spacing:1px}
+.header-btns{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{padding:6px 14px;background:transparent;border:1px solid #243352;border-radius:7px;color:#e2e8f0;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap}
+.btn-chat{color:#9f7aea;font-weight:700}
+.btn-ssi{color:#06d6a0;font-weight:700}
+.btn-ssi.loading{color:#4a5e80;cursor:default}
+.time-label{font-size:10px;color:#4a5e80}
+
+.nav{padding:0 20px;border-bottom:1px solid #1a2744;display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.nav-btn{padding:11px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#4a5e80;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.nav-btn.active{border-bottom-color:#06d6a0;color:#06d6a0;font-weight:700}
+
+.main{padding:20px;max-width:1360px;margin:0 auto}
+.grid{display:grid;gap:14px;margin-bottom:24px}
+.grid-6{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.grid-4{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.grid-3{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.grid-2{grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+@media(max-width:768px){
+  .grid-2{grid-template-columns:1fr}
+  .grid-6{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+  .header{padding:10px 14px}
+  .nav{padding:0 14px}
+  .main{padding:14px}
+  .stat{padding:14px 16px}
+  .stat-val{font-size:26px}
+}
+
+.stat{background:#0f1623;border:1px solid #1a2744;border-radius:14px;padding:18px 22px;position:relative;overflow:hidden;transition:border-color .2s}
+.stat-icon{position:absolute;top:-8px;left:-4px;font-size:56px;opacity:.03;font-weight:900}
+.stat-label{font-size:11px;color:#8899b4;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;font-weight:600}
+.stat-val{font-size:32px;font-weight:800;line-height:1.1;font-family:'DM Serif Display',serif}
+.stat-sub{font-size:11px;color:#4a5e80;margin-top:5px}
+
+.panel{background:#0f1623;border:1px solid #1a2744;border-radius:14px;padding:18px;margin-bottom:20px}
+.panel-gold{border-color:rgba(255,194,51,.13);background:linear-gradient(135deg,#0f1623 0%,rgba(255,194,51,.03) 100%)}
+.panel-head{margin-bottom:14px;display:flex;align-items:baseline;gap:8px}
+.panel-head-icon{font-size:16px;opacity:.6}
+.panel-title{font-size:17px;font-weight:700;color:#e2e8f0;margin:0;font-family:'DM Serif Display',serif}
+.panel-sub{font-size:11px;color:#4a5e80;margin:2px 0 0}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{padding:8px 10px;color:#4a5e80;font-weight:600;border-bottom:1px solid #1a2744;font-size:10px;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;text-align:right}
+td{padding:9px 10px;color:#e2e8f0;text-align:right}
+th.c,td.c{text-align:center}
+tr:hover td{background:#141d2e}
+.nw{white-space:nowrap}
+.fw{font-weight:700}
+.f6{font-weight:600}
+.dim{color:#4a5e80}
+.muted{color:#8899b4}
+.sm{font-size:11px}
+.xs{font-size:10px}
+.empty-msg{color:#4a5e80;padding:20px;text-align:center;font-size:13px}
+
+.badge-ssi{padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap}
+.badge-critical{background:rgba(255,77,106,.12);color:#ff4d6a}
+.badge-high{background:rgba(255,140,66,.12);color:#ff8c42}
+.badge-med{background:rgba(255,194,51,.12);color:#ffc233}
+.badge-low{background:rgba(34,197,94,.08);color:#22c55e}
+
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.dot-red{background:#ff4d6a}
+.dot-orange{background:#ff8c42}
+.dot-green{background:#22c55e}
+
+.bar-chart{display:flex;flex-direction:column;gap:6px;padding:4px 0}
+.bar-row{display:flex;align-items:center;gap:8px}
+.bar-label{width:70px;font-size:10px;color:#8899b4;text-align:left;flex-shrink:0}
+.bar-track{flex:1;height:14px;background:#141d2e;border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:0 3px 3px 0;transition:width .5s ease}
+.bar-val{font-size:10px;color:#8899b4;width:24px;text-align:center;flex-shrink:0}
+
+.pie-legend{display:flex;flex-direction:column;gap:8px}
+.pie-row{display:flex;justify-content:space-between;padding:5px 0}
+.pie-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;margin-top:3px}
+.pie-info{display:flex;align-items:flex-start;gap:7px}
+
+.loading-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px}
+.loading-q{width:48px;height:48px;background:linear-gradient(135deg,#06d6a0,#3b82f6);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:24px;color:#000;font-family:'DM Serif Display',serif;animation:pulse 1.5s infinite}
+
+.tab-content{animation:fadeUp .25s ease}
+.hidden{display:none}
+
+.footer{border-top:1px solid #1a2744;padding:14px 20px;text-align:center;margin-top:24px}
+.footer span{font-size:10px;color:#4a5e80}
+
+.overflow-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
+</style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect, useCallback } = React;
-    const { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } = Recharts;
 
-    const API = "";
-    const C = {
-      bg: "#080c14", surface: "#0f1623", surfaceAlt: "#141d2e", border: "#1a2744", borderLight: "#243352",
-      text: "#e2e8f0", muted: "#8899b4", dim: "#4a5e80",
-      cyan: "#06d6a0", cyanDim: "#059669", gold: "#ffc233", goldDim: "#cc9a00",
-      red: "#ff4d6a", orange: "#ff8c42", green: "#22c55e", purple: "#9f7aea", blue: "#3b82f6",
-    };
+<div id="loading" class="loading-screen">
+  <div class="loading-q">Q</div>
+  <div style="color:#8899b4;font-size:13px">QUANTUM Intelligence</div>
+</div>
 
-    function Stat({ label, val, sub, color = C.cyan, icon }) {
-      return (
-        <div style={{ background: C.surface, border: "1px solid "+C.border, borderRadius: 14, padding: "18px 22px", position: "relative", overflow: "hidden", transition: "border-color 0.2s" }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = color + "44"}
-          onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
-          <div style={{ position: "absolute", top: -8, left: -4, fontSize: 56, opacity: 0.03, fontWeight: 900 }}>{icon}</div>
-          <div style={{ fontSize: 11, color: C.muted, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>{label}</div>
-          <div style={{ fontSize: 32, fontWeight: 800, color, lineHeight: 1.1, fontFamily: "'DM Serif Display', serif" }}>{val}</div>
-          {sub && <div style={{ fontSize: 11, color: C.dim, marginTop: 5 }}>{sub}</div>}
-        </div>
-      );
+<div id="app" class="hidden">
+  <header class="header">
+    <div class="header-logo">
+      <div class="logo-q">Q</div>
+      <div>
+        <span class="header-title">QUANTUM</span>
+        <span class="header-sub">INTELLIGENCE</span>
+      </div>
+    </div>
+    <div class="header-btns">
+      <a href="/api/chat/" class="btn btn-chat">Chat AI</a>
+      <button id="btn-ssi" class="btn btn-ssi" onclick="runSSI()">SSI</button>
+      <button class="btn" onclick="loadData()">רענון</button>
+      <span id="time-label" class="time-label"></span>
+    </div>
+  </header>
+
+  <nav class="nav" id="nav"></nav>
+  <main class="main" id="main"></main>
+
+  <footer class="footer">
+    <span id="footer-text">QUANTUM Intelligence v4.13.3</span>
+  </footer>
+</div>
+
+<script>
+var D=null,currentTab="overview",aggRunning=false;
+
+function ssiCls(sc){
+  if(!sc&&sc!==0)return'';
+  return sc>=80?'badge-critical':sc>=60?'badge-high':sc>=40?'badge-med':'badge-low';
+}
+function ssiLbl(sc){
+  if(!sc&&sc!==0)return'-';
+  var t=sc>=80?'קריטי':sc>=60?'גבוה':sc>=40?'בינוני':'נמוך';
+  return sc+' '+t;
+}
+function iaiH(sc){
+  if(!sc&&sc!==0)return'<span class="dim">-</span>';
+  var c=sc>=70?'#22c55e':sc>=50?'#06d6a0':sc>=30?'#ffc233':'#4a5e80';
+  return'<span style="color:'+c+';font-weight:700;font-size:13px">'+sc+'</span>';
+}
+function dotH(sev){
+  var c=sev==='high'||sev==='critical'?'dot-red':sev==='medium'?'dot-orange':'dot-green';
+  return'<span class="dot '+c+'"></span>';
+}
+function cut(s,n){return s?(s.length>n?s.substring(0,n)+'...':s):'-';}
+function fmtD(d){try{return new Date(d).toLocaleDateString('he-IL');}catch(e){return'-';}}
+function pf(v){return Array.isArray(v)?v:(typeof v==='string'?JSON.parse(v||'[]'):[]);}
+
+function loadData(){
+  fetch('/api/ssi/dashboard-data')
+    .then(function(r){return r.json();})
+    .then(function(data){
+      D=data;
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      document.getElementById('time-label').textContent=new Date().toLocaleTimeString('he-IL');
+      var s=D.stats||{};
+      document.getElementById('footer-text').textContent='QUANTUM Intelligence v4.13.3 | '+(s.total_complexes||0)+' מתחמים | '+(s.cities||0)+' ערים';
+      renderNav();
+      renderTab();
+    })
+    .catch(function(e){
+      console.error(e);
+      document.getElementById('loading').innerHTML='<div class="loading-q">Q</div><div style="color:#ff4d6a;font-size:14px;text-align:center;direction:rtl">שגיאה בטעינת נתונים</div><button class="btn" onclick="loadData()" style="margin-top:8px">נסה שוב</button>';
+    });
+}
+
+function runSSI(){
+  if(aggRunning)return;
+  aggRunning=true;
+  var btn=document.getElementById('btn-ssi');
+  btn.textContent='...SSI';
+  btn.classList.add('loading');
+  fetch('/api/ssi/batch-aggregate',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"minListings":1,"limit":500}'})
+    .then(function(){return new Promise(function(r){setTimeout(r,3000);});})
+    .then(function(){return loadData();})
+    .catch(function(e){console.error(e);})
+    .finally(function(){
+      aggRunning=false;
+      btn.textContent='SSI';
+      btn.classList.remove('loading');
+    });
+}
+
+var tabs=[
+  {id:'overview',l:'סקירה'},
+  {id:'ssi',l:'מוכרים לחוצים'},
+  {id:'opp',l:'הזדמנויות'},
+  {id:'cities',l:'ערים'},
+  {id:'alerts',l:'התראות'}
+];
+
+function renderNav(){
+  var h='';
+  for(var i=0;i<tabs.length;i++){
+    h+='<button class="nav-btn'+(tabs[i].id===currentTab?' active':'')+'" onclick="switchTab(\\''+tabs[i].id+'\\')">'+tabs[i].l+'</button>';
+  }
+  document.getElementById('nav').innerHTML=h;
+}
+
+function switchTab(id){currentTab=id;renderNav();renderTab();}
+
+function renderTab(){
+  var m=document.getElementById('main');
+  if(!D){m.innerHTML='';return;}
+  var s=D.stats||{},dist=D.ssiDistribution||{},topSSI=D.topSSI||[],topIAI=D.topIAI||[],alerts=D.recentAlerts||[],cities=D.cityBreakdown||[],ls=D.listingStats||{};
+
+  if(currentTab==='overview')m.innerHTML=renderOverview(s,dist,topSSI,alerts,cities,ls);
+  else if(currentTab==='ssi')m.innerHTML=renderSSITab(s,dist,topSSI);
+  else if(currentTab==='opp')m.innerHTML=renderOpp(s,topIAI);
+  else if(currentTab==='cities')m.innerHTML=renderCities(s,cities);
+  else if(currentTab==='alerts')m.innerHTML=renderAlerts(alerts);
+}
+
+function statCard(label,val,sub,color,icon){
+  return'<div class="stat"><div class="stat-icon">'+icon+'</div><div class="stat-label">'+label+'</div><div class="stat-val" style="color:'+color+'">'+(val!=null?val:'-')+'</div>'+(sub?'<div class="stat-sub">'+sub+'</div>':'')+'</div>';
+}
+function panelH(title,sub,icon){
+  return'<div class="panel-head">'+(icon?'<span class="panel-head-icon">'+icon+'</span>':'')+'<div><h2 class="panel-title">'+title+'</h2>'+(sub?'<p class="panel-sub">'+sub+'</p>':'')+'</div></div>';
+}
+
+function renderOverview(s,dist,topSSI,alerts,cities,ls){
+  var h='<div class="tab-content"><div class="grid grid-6">';
+  h+=statCard('מתחמים',s.total_complexes,s.cities+' ערים','#06d6a0','Q');
+  h+=statCard('הזדמנויות',s.opportunities,s.excellent+' מצוינות (70+)','#ffc233','★');
+  h+=statCard('מוכרים לחוצים',s.stressed_sellers,s.high_stress+' ברמה גבוהה','#ff4d6a','!');
+  h+=statCard('מודעות',ls.active||'0',(ls.urgent||'0')+' דחופות','#22c55e','▤');
+  h+=statCard('כינוסים',(D.konesStats||{}).total||'0','נכסי כינוס','#9f7aea','⚖');
+  h+=statCard('IAI ממוצע',s.avg_iai||'-','אינדקס אטרקטיביות','#3b82f6','△');
+  h+='</div>';
+
+  var goldOpp=topSSI.filter(function(x){return x.iai_score>=40;}).slice(0,5);
+  if(goldOpp.length>0){
+    h+='<div class="panel panel-gold">'+panelH('הזדמנויות זהב','IAI גבוה + מוכר לחוץ','◆');
+    h+='<div class="overflow-x"><table><thead><tr><th class="c">SSI</th><th class="c">IAI</th><th>מתחם</th><th>עיר</th><th>גורמי לחץ</th></tr></thead><tbody>';
+    for(var i=0;i<goldOpp.length;i++){
+      var r=goldOpp[i],f=pf(r.ssi_enhancement_factors).slice(0,2).join(' | ');
+      h+='<tr><td class="c nw"><span class="badge-ssi '+ssiCls(r.enhanced_ssi_score)+'">'+ssiLbl(r.enhanced_ssi_score)+'</span></td>';
+      h+='<td class="c nw">'+iaiH(r.iai_score)+'</td>';
+      h+='<td class="fw">'+cut(r.name||r.addresses,40)+'</td>';
+      h+='<td class="nw">'+(r.city||'-')+'</td>';
+      h+='<td class="xs muted">'+(f||'-')+'</td></tr>';
     }
+    h+='</tbody></table></div></div>';
+  }
 
-    function Badge({ score, type = "ssi" }) {
-      if (!score && score !== 0) return <span style={{ color: C.dim }}>-</span>;
-      if (type === "ssi") {
-        const lvl = score >= 80 ? "critical" : score >= 60 ? "high" : score >= 40 ? "med" : "low";
-        const cols = { critical: [C.red, "rgba(255,77,106,0.12)"], high: [C.orange, "rgba(255,140,66,0.12)"], med: [C.gold, "rgba(255,194,51,0.12)"], low: [C.green, "rgba(34,197,94,0.08)"] };
-        const tags = { critical: "קריטי", high: "גבוה", med: "בינוני", low: "נמוך" };
-        return <span style={{ background: cols[lvl][1], color: cols[lvl][0], padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{score} {tags[lvl]}</span>;
-      }
-      const color = score >= 70 ? C.green : score >= 50 ? C.cyan : score >= 30 ? C.gold : C.dim;
-      return <span style={{ color, fontWeight: 700, fontSize: 13 }}>{score}</span>;
+  h+='<div class="grid grid-2">';
+  // SSI Distribution
+  h+='<div class="panel">'+panelH('התפלגות SSI','סימני מצוקה','◉')+'<div class="pie-legend">';
+  var di=[{l:'גבוה (60+)',v:+(dist.high||0)+ +(dist.critical||0),c:'#ff4d6a'},{l:'בינוני (40-59)',v:+(dist.medium||0),c:'#ff8c42'},{l:'נמוך (20-39)',v:+(dist.low||0),c:'#ffc233'},{l:'מזערי (<20)',v:+(dist.minimal||0),c:'#4a5e80'}];
+  for(var i=0;i<di.length;i++){
+    h+='<div class="pie-row"><div class="pie-info"><div class="pie-dot" style="background:'+di[i].c+'"></div><span class="sm muted">'+di[i].l+'</span></div><span style="font-weight:700;color:'+di[i].c+';font-size:14px">'+di[i].v+'</span></div>';
+  }
+  h+='</div></div>';
+
+  // City bar chart
+  h+='<div class="panel">'+panelH('הזדמנויות לפי עיר','טופ 10','▣');
+  var ct=cities.slice(0,10),mx=1;
+  for(var i=0;i<ct.length;i++){if(+ct[i].opportunities>mx)mx=+ct[i].opportunities;}
+  h+='<div class="bar-chart">';
+  for(var i=0;i<ct.length;i++){
+    var pct=Math.round((+ct[i].opportunities/mx)*100);
+    h+='<div class="bar-row"><span class="bar-label">'+ct[i].city+'</span><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:#06d6a0"></div></div><span class="bar-val">'+ct[i].opportunities+'</span></div>';
+  }
+  h+='</div></div></div>';
+
+  // Alerts
+  h+='<div class="panel">'+panelH('התראות אחרונות',alerts.length+' התראות','●');
+  if(!alerts.length){h+='<div class="empty-msg">אין התראות</div>';}
+  else{
+    h+='<div class="overflow-x"><table><thead><tr><th class="c"></th><th>כותרת</th><th>עיר</th><th>סוג</th><th>תאריך</th></tr></thead><tbody>';
+    var sh=alerts.slice(0,6);
+    for(var i=0;i<sh.length;i++){
+      h+='<tr><td class="c">'+dotH(sh[i].severity)+'</td><td class="sm f6">'+cut(sh[i].title,55)+'</td><td class="sm muted nw">'+(sh[i].city||'-')+'</td><td class="xs dim nw">'+(sh[i].alert_type||'-')+'</td><td class="xs dim nw">'+(sh[i].created_at?fmtD(sh[i].created_at):'-')+'</td></tr>';
     }
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';
+  return h;
+}
 
-    function Panel({ children, style }) {
-      return <div style={{ background: C.surface, border: "1px solid "+C.border, borderRadius: 14, padding: 22, ...style }}>{children}</div>;
+function renderSSITab(s,dist,topSSI){
+  var h='<div class="tab-content"><div class="grid grid-4">';
+  h+=statCard('לחץ גבוה',+(dist.high||0)+ +(dist.critical||0),'','#ff4d6a','!');
+  h+=statCard('לחץ בינוני',dist.medium||'0','','#ff8c42','▲');
+  h+=statCard('לחץ נמוך',dist.low||'0','','#ffc233','△');
+  h+=statCard('SSI ממוצע',s.avg_ssi||'-','','#06d6a0','◎');
+  h+='</div><div class="panel">'+panelH('מתחמים עם סימני מצוקה','ממוינים לפי SSI','⚡');
+  if(!topSSI.length){h+='<div class="empty-msg">לא נמצאו מתחמים</div>';}
+  else{
+    h+='<div class="overflow-x"><table><thead><tr><th class="c">#</th><th class="c">SSI</th><th>מתחם</th><th>עיר</th><th class="c">IAI</th><th>סטטוס</th><th>גורמים</th></tr></thead><tbody>';
+    for(var i=0;i<topSSI.length;i++){
+      var r=topSSI[i],f=pf(r.ssi_enhancement_factors).slice(0,2).join(' | ');
+      h+='<tr><td class="c xs dim">'+(i+1)+'</td><td class="c nw"><span class="badge-ssi '+ssiCls(r.enhanced_ssi_score)+'">'+ssiLbl(r.enhanced_ssi_score)+'</span></td><td class="f6">'+cut(r.name||r.addresses,42)+'</td><td class="nw">'+(r.city||'-')+'</td><td class="c nw">'+iaiH(r.iai_score)+'</td><td class="xs dim nw">'+(r.status||'-')+'</td><td class="xs muted">'+(f||'-')+'</td></tr>';
     }
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';
+  return h;
+}
 
-    function Head({ t, s, icon }) {
-      return (
-        <div style={{ marginBottom: 14, display: "flex", alignItems: "baseline", gap: 8 }}>
-          {icon && <span style={{ fontSize: 16, opacity: 0.6 }}>{icon}</span>}
-          <div>
-            <h2 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0, fontFamily: "'DM Serif Display', serif" }}>{t}</h2>
-            {s && <p style={{ fontSize: 11, color: C.dim, margin: "2px 0 0" }}>{s}</p>}
-          </div>
-        </div>
-      );
+function renderOpp(s,topIAI){
+  var h='<div class="tab-content"><div class="grid grid-3">';
+  h+=statCard('סה״כ הזדמנויות',s.opportunities,'IAI 30+','#ffc233','★');
+  h+=statCard('מצוינות',s.excellent,'IAI 70+','#22c55e','◆');
+  h+=statCard('IAI ממוצע',s.avg_iai||'-','','#06d6a0','△');
+  h+='</div><div class="panel">'+panelH('טופ הזדמנויות','ממוינות לפי IAI','★');
+  h+='<div class="overflow-x"><table><thead><tr><th class="c">#</th><th class="c">IAI</th><th>מתחם</th><th>עיר</th><th class="c">SSI</th><th>יזם</th><th>סטטוס</th></tr></thead><tbody>';
+  for(var i=0;i<topIAI.length;i++){
+    var r=topIAI[i];
+    h+='<tr><td class="c xs dim">'+(i+1)+'</td><td class="c nw">'+iaiH(r.iai_score)+'</td><td class="f6">'+cut(r.name||r.addresses,45)+'</td><td class="nw">'+(r.city||'-')+'</td><td class="c nw">'+(r.enhanced_ssi_score?'<span class="badge-ssi '+ssiCls(r.enhanced_ssi_score)+'">'+ssiLbl(r.enhanced_ssi_score)+'</span>':'<span class="dim">-</span>')+'</td><td class="sm muted nw">'+cut(r.developer,20)+'</td><td class="xs dim nw">'+(r.status||'-')+'</td></tr>';
+  }
+  h+='</tbody></table></div></div></div>';
+  return h;
+}
+
+function renderCities(s,cities){
+  var h='<div class="tab-content"><div class="panel">'+panelH('הזדמנויות לפי ערים',(s.cities||0)+' ערים פעילות','▣');
+  var t10=cities.slice(0,10),mx=1;
+  for(var i=0;i<t10.length;i++){if(+t10[i].total>mx)mx=+t10[i].total;}
+  h+='<div class="bar-chart">';
+  for(var i=0;i<t10.length;i++){
+    var c=t10[i],pctO=Math.round((+c.opportunities/mx)*100);
+    h+='<div class="bar-row"><span class="bar-label">'+c.city+'</span><div class="bar-track"><div class="bar-fill" style="width:'+pctO+'%;background:#06d6a0"></div></div><span class="bar-val">'+c.opportunities+'/'+c.total+'</span></div>';
+  }
+  h+='</div></div>';
+
+  h+='<div class="panel"><div class="overflow-x"><table><thead><tr><th>עיר</th><th class="c">מתחמים</th><th class="c">הזדמנויות</th><th class="c">לחוצים</th><th class="c">IAI ממוצע</th></tr></thead><tbody>';
+  for(var i=0;i<cities.length;i++){
+    var c=cities[i];
+    h+='<tr><td class="fw">'+c.city+'</td><td class="c">'+c.total+'</td><td class="c" style="color:#06d6a0;font-weight:700">'+c.opportunities+'</td><td class="c">'+(+c.stressed>0?'<span style="color:#ff4d6a;font-weight:700">'+c.stressed+'</span>':'<span class="dim">0</span>')+'</td><td class="c" style="color:'+(+c.avg_iai>=50?'#22c55e':'#8899b4')+'">'+(c.avg_iai||'-')+'</td></tr>';
+  }
+  h+='</tbody></table></div></div></div>';
+  return h;
+}
+
+function renderAlerts(alerts){
+  var h='<div class="tab-content"><div class="panel">'+panelH('התראות','20 אחרונות','●');
+  if(!alerts.length){h+='<div class="empty-msg">אין התראות</div>';}
+  else{
+    h+='<div class="overflow-x"><table><thead><tr><th class="c"></th><th>כותרת</th><th>מתחם</th><th>עיר</th><th>סוג</th><th>תאריך</th></tr></thead><tbody>';
+    for(var i=0;i<alerts.length;i++){
+      var a=alerts[i];
+      h+='<tr><td class="c">'+dotH(a.severity)+'</td><td class="sm f6">'+cut(a.title,55)+'</td><td class="sm muted nw">'+(a.complex_name||'-')+'</td><td class="sm nw">'+(a.city||'-')+'</td><td class="xs dim nw">'+(a.alert_type||'-')+'</td><td class="xs dim nw">'+(a.created_at?fmtD(a.created_at):'-')+'</td></tr>';
     }
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';
+  return h;
+}
 
-    function Table({ data, cols, empty = "אין נתונים" }) {
-      if (!data?.length) return <div style={{ color: C.dim, padding: 20, textAlign: "center", fontSize: 13 }}>{empty}</div>;
-      return (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead><tr>{cols.map((c, i) => <th key={i} style={{ padding: "8px 10px", textAlign: c.a || "right", color: C.dim, fontWeight: 600, borderBottom: "1px solid "+C.border, fontSize: 10, letterSpacing: 0.5, textTransform: "uppercase", whiteSpace: "nowrap" }}>{c.h}</th>)}</tr></thead>
-            <tbody>{data.map((row, i) => (
-              <tr key={i} onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                {cols.map((c, j) => <td key={j} style={{ padding: "9px 10px", textAlign: c.a || "right", color: C.text, whiteSpace: c.nw ? "nowrap" : "normal" }}>{c.r ? c.r(row, i) : row[c.k]}</td>)}
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      );
-    }
-
-    function App() {
-      const [d, setD] = useState(null);
-      const [loading, setLoading] = useState(true);
-      const [tab, setTab] = useState("overview");
-      const [time, setTime] = useState(null);
-      const [agg, setAgg] = useState(false);
-
-      const load = useCallback(async () => {
-        try {
-          setLoading(true);
-          const r = await fetch(API + "/api/ssi/dashboard-data");
-          setD(await r.json());
-          setTime(new Date());
-        } catch (e) { console.error(e); }
-        setLoading(false);
-      }, []);
-
-      useEffect(() => { load(); }, [load]);
-
-      const runSSI = async () => {
-        setAgg(true);
-        try {
-          await fetch(API + "/api/ssi/batch-aggregate", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"minListings":1,"limit":500}' });
-          await new Promise(r => setTimeout(r, 3000));
-          await load();
-        } catch (e) { console.error(e); }
-        setAgg(false);
-      };
-
-      if (loading && !d) return (
-        <div style={{ background: C.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
-          <div style={{ width: 48, height: 48, background: "linear-gradient(135deg, "+C.cyan+", "+C.blue+")", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 24, color: "#000", fontFamily: "'DM Serif Display', serif", animation: "pulse 1.5s infinite" }}>Q</div>
-          <div style={{ color: C.muted, fontSize: 13 }}>QUANTUM Intelligence</div>
-        </div>
-      );
-
-      const s = d?.stats || {};
-      const dist = d?.ssiDistribution || {};
-      const topSSI = d?.topSSI || [];
-      const topIAI = d?.topIAI || [];
-      const alerts = d?.recentAlerts || [];
-      const cities = d?.cityBreakdown || [];
-      const ls = d?.listingStats || {};
-
-      const pieData = [
-        { name: "גבוה 60+", value: +(dist.high || 0) + +(dist.critical || 0), fill: C.red },
-        { name: "בינוני 40-59", value: +(dist.medium || 0), fill: C.orange },
-        { name: "נמוך 20-39", value: +(dist.low || 0), fill: C.gold },
-        { name: "מזערי", value: +(dist.minimal || 0), fill: C.dim },
-      ].filter(x => x.value > 0);
-
-      const cityChart = cities.slice(0, 10).map(c => ({ name: c.city, opp: +c.opportunities, str: +c.stressed, total: +c.total }));
-
-      const tabs = [
-        { id: "overview", l: "סקירה" },
-        { id: "ssi", l: "מוכרים לחוצים" },
-        { id: "opp", l: "הזדמנויות" },
-        { id: "cities", l: "ערים" },
-        { id: "alerts", l: "התראות" },
-      ];
-
-      const goldOpp = topSSI.filter(x => x.iai_score >= 40).slice(0, 5);
-
-      return (
-        <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'Assistant', sans-serif", direction: "rtl" }}>
-          <header style={{ borderBottom: "1px solid "+C.border, padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.92)", backdropFilter: "blur(16px)", position: "sticky", top: 0, zIndex: 100 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 36, height: 36, background: "linear-gradient(135deg, "+C.cyan+", "+C.blue+")", borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 18, color: "#000", fontFamily: "'DM Serif Display', serif" }}>Q</div>
-              <div>
-                <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: 3, fontFamily: "'DM Serif Display', serif" }}>QUANTUM</span>
-                <span style={{ fontSize: 9, color: C.dim, marginRight: 10, letterSpacing: 1 }}>INTELLIGENCE</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <a href="/api/chat/" style={{ padding: "6px 14px", background: "transparent", border: "1px solid "+C.borderLight, borderRadius: 7, color: C.purple, fontSize: 11, fontWeight: 700, textDecoration: "none" }}>Chat AI</a>
-              <button onClick={runSSI} disabled={agg}
-                style={{ padding: "6px 14px", background: agg ? C.border : "transparent", border: "1px solid "+C.borderLight, borderRadius: 7, color: agg ? C.dim : C.cyan, fontSize: 11, fontWeight: 700, cursor: agg ? "default" : "pointer", fontFamily: "inherit" }}>
-                {agg ? "...מחשב SSI" : "עדכון SSI"}
-              </button>
-              <button onClick={load}
-                style={{ padding: "6px 14px", background: "transparent", border: "1px solid "+C.borderLight, borderRadius: 7, color: C.text, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-                רענון
-              </button>
-              {time && <span style={{ fontSize: 10, color: C.dim }}>{time.toLocaleTimeString("he-IL")}</span>}
-            </div>
-          </header>
-
-          <nav style={{ padding: "0 28px", borderBottom: "1px solid "+C.border, display: "flex", gap: 2 }}>
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                style={{ padding: "11px 18px", background: "none", border: "none", borderBottom: tab === t.id ? "2px solid "+C.cyan : "2px solid transparent", color: tab === t.id ? C.cyan : C.dim, fontSize: 12, fontWeight: tab === t.id ? 700 : 500, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s" }}>
-                {t.l}
-              </button>
-            ))}
-          </nav>
-
-          <main style={{ padding: "28px", maxWidth: 1360, margin: "0 auto" }}>
-
-            {tab === "overview" && (
-              <div style={{ animation: "fadeUp 0.25s ease" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 28 }}>
-                  <Stat label="מתחמים" val={s.total_complexes} sub={s.cities+" ערים"} icon="Q" color={C.cyan} />
-                  <Stat label="הזדמנויות" val={s.opportunities} sub={s.excellent+" מצוינות (70+)"} icon="★" color={C.gold} />
-                  <Stat label="מוכרים לחוצים" val={s.stressed_sellers} sub={s.high_stress+" ברמה גבוהה"} icon="!" color={C.red} />
-                  <Stat label="מודעות" val={ls.active || "0"} sub={(ls.urgent || "0")+" דחופות"} icon="▤" color={C.green} />
-                  <Stat label="כינוסים" val={d?.konesStats?.total || "0"} sub="נכסי כינוס" icon="⚖" color={C.purple} />
-                  <Stat label="IAI ממוצע" val={s.avg_iai || "-"} sub="אינדקס אטרקטיביות" icon="△" color={C.blue} />
-                </div>
-
-                {goldOpp.length > 0 && (
-                  <Panel style={{ marginBottom: 20, border: "1px solid "+C.gold+"22", background: "linear-gradient(135deg, "+C.surface+" 0%, rgba(255,194,51,0.03) 100%)" }}>
-                    <Head t="הזדמנויות זהב" s="IAI גבוה + מוכר לחוץ = פוטנציאל מקסימלי" icon="◆" />
-                    <Table data={goldOpp} cols={[
-                      { h: "SSI", r: r => <Badge score={r.enhanced_ssi_score} type="ssi" />, a: "center", nw: true },
-                      { h: "IAI", r: r => <Badge score={r.iai_score} type="iai" />, a: "center", nw: true },
-                      { h: "מתחם", r: r => <span style={{ fontWeight: 700 }}>{(r.name || r.addresses || "").substring(0, 40)}</span> },
-                      { h: "עיר", k: "city", nw: true },
-                      { h: "גורמי לחץ", r: r => { const f = typeof r.ssi_enhancement_factors === "string" ? JSON.parse(r.ssi_enhancement_factors || "[]") : (r.ssi_enhancement_factors || []); return <span style={{ fontSize: 10, color: C.muted }}>{f.slice(0, 2).join(" | ")}</span>; } },
-                    ]} />
-                  </Panel>
-                )}
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
-                  <Panel>
-                    <Head t="התפלגות SSI" s="סימני מצוקה" icon="◉" />
-                    <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-                      <div style={{ width: 140, height: 140 }}>
-                        <ResponsiveContainer>
-                          <PieChart><Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={38} outerRadius={62} paddingAngle={3} strokeWidth={0}>
-                            {pieData.map((e, i) => <Cell key={i} fill={e.fill} />)}
-                          </Pie><Tooltip contentStyle={{ background: C.surface, border: "1px solid "+C.border, borderRadius: 8, direction: "rtl", fontSize: 11 }} /></PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        {[{ l: "גבוה (60+)", v: +(dist.high || 0) + +(dist.critical || 0), c: C.red },
-                          { l: "בינוני (40-59)", v: +(dist.medium || 0), c: C.orange },
-                          { l: "נמוך (20-39)", v: +(dist.low || 0), c: C.gold },
-                          { l: "מזערי (<20)", v: +(dist.minimal || 0), c: C.dim },
-                        ].map((x, i) => (
-                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: i < 3 ? "1px solid "+C.border+"10" : "none" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: 2, background: x.c }} />
-                              <span style={{ fontSize: 12, color: C.muted }}>{x.l}</span>
-                            </div>
-                            <span style={{ fontWeight: 700, color: x.c, fontSize: 14 }}>{x.v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </Panel>
-
-                  <Panel>
-                    <Head t="הזדמנויות לפי עיר" s="טופ 10" icon="▣" />
-                    <ResponsiveContainer width="100%" height={160}>
-                      <BarChart data={cityChart} layout="vertical" margin={{ right: 55, left: 5 }}>
-                        <XAxis type="number" hide />
-                        <YAxis type="category" dataKey="name" width={60} tick={{ fill: C.muted, fontSize: 10 }} />
-                        <Tooltip contentStyle={{ background: C.surface, border: "1px solid "+C.border, borderRadius: 8, direction: "rtl", fontSize: 11 }} />
-                        <Bar dataKey="opp" fill={C.cyan} radius={[0, 3, 3, 0]} name="הזדמנויות" barSize={12} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Panel>
-                </div>
-
-                <Panel>
-                  <Head t="התראות אחרונות" s={alerts.length+" התראות"} icon="●" />
-                  <Table data={alerts.slice(0, 6)} cols={[
-                    { h: "", r: r => <span style={{ width: 7, height: 7, borderRadius: "50%", display: "inline-block", background: r.severity === "high" ? C.red : r.severity === "medium" ? C.orange : C.green }} />, a: "center" },
-                    { h: "כותרת", r: r => <span style={{ fontSize: 11, fontWeight: 600 }}>{(r.title || "").substring(0, 55)}</span> },
-                    { h: "עיר", r: r => <span style={{ color: C.muted, fontSize: 11 }}>{r.city || "-"}</span>, nw: true },
-                    { h: "סוג", r: r => <span style={{ color: C.dim, fontSize: 10 }}>{r.alert_type}</span>, nw: true },
-                    { h: "תאריך", r: r => <span style={{ color: C.dim, fontSize: 10 }}>{r.created_at ? new Date(r.created_at).toLocaleDateString("he-IL") : "-"}</span>, nw: true },
-                  ]} />
-                </Panel>
-              </div>
-            )}
-
-            {tab === "ssi" && (
-              <div style={{ animation: "fadeUp 0.25s ease" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
-                  <Stat label="לחץ גבוה" val={+(dist.high || 0) + +(dist.critical || 0)} icon="!" color={C.red} />
-                  <Stat label="לחץ בינוני" val={dist.medium || "0"} icon="▲" color={C.orange} />
-                  <Stat label="לחץ נמוך" val={dist.low || "0"} icon="△" color={C.gold} />
-                  <Stat label="SSI ממוצע" val={s.avg_ssi || "-"} icon="◎" color={C.cyan} />
-                </div>
-                <Panel>
-                  <Head t="מתחמים עם סימני מצוקה" s="ממוינים לפי SSI" icon="⚡" />
-                  <Table data={topSSI} cols={[
-                    { h: "#", r: (_, i) => <span style={{ color: C.dim, fontSize: 10 }}>{i + 1}</span>, a: "center" },
-                    { h: "SSI", r: r => <Badge score={r.enhanced_ssi_score} />, a: "center", nw: true },
-                    { h: "מתחם", r: r => <span style={{ fontWeight: 600 }}>{(r.name || r.addresses || "").substring(0, 42)}</span> },
-                    { h: "עיר", k: "city", nw: true },
-                    { h: "IAI", r: r => r.iai_score ? <Badge score={r.iai_score} type="iai" /> : <span style={{ color: C.dim }}>-</span>, a: "center", nw: true },
-                    { h: "סטטוס", r: r => <span style={{ color: C.dim, fontSize: 10 }}>{r.status || "-"}</span>, nw: true },
-                    { h: "גורמים", r: r => { const f = typeof r.ssi_enhancement_factors === "string" ? JSON.parse(r.ssi_enhancement_factors || "[]") : (r.ssi_enhancement_factors || []); return <span style={{ fontSize: 10, color: C.muted }}>{f.slice(0, 2).join(" | ") || "-"}</span>; } },
-                  ]} empty='לא נמצאו מתחמים עם סימני מצוקה. לחץ "עדכון SSI" למעלה.' />
-                </Panel>
-              </div>
-            )}
-
-            {tab === "opp" && (
-              <div style={{ animation: "fadeUp 0.25s ease" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
-                  <Stat label="סה״כ הזדמנויות" val={s.opportunities} sub="IAI 30+" icon="★" color={C.gold} />
-                  <Stat label="מצוינות" val={s.excellent} sub="IAI 70+" icon="◆" color={C.green} />
-                  <Stat label="IAI ממוצע" val={s.avg_iai || "-"} icon="△" color={C.cyan} />
-                </div>
-                <Panel>
-                  <Head t="טופ הזדמנויות" s="ממוינות לפי IAI" icon="★" />
-                  <Table data={topIAI} cols={[
-                    { h: "#", r: (_, i) => <span style={{ color: C.dim, fontSize: 10 }}>{i + 1}</span>, a: "center" },
-                    { h: "IAI", r: r => <Badge score={r.iai_score} type="iai" />, a: "center", nw: true },
-                    { h: "מתחם", r: r => <span style={{ fontWeight: 600 }}>{(r.name || r.addresses || "").substring(0, 45)}</span> },
-                    { h: "עיר", k: "city", nw: true },
-                    { h: "SSI", r: r => r.enhanced_ssi_score ? <Badge score={r.enhanced_ssi_score} /> : <span style={{ color: C.dim }}>-</span>, a: "center", nw: true },
-                    { h: "יזם", r: r => <span style={{ color: C.muted, fontSize: 11 }}>{(r.developer || "-").substring(0, 20)}</span>, nw: true },
-                    { h: "סטטוס", r: r => <span style={{ color: C.dim, fontSize: 10 }}>{r.status || "-"}</span>, nw: true },
-                  ]} />
-                </Panel>
-              </div>
-            )}
-
-            {tab === "cities" && (
-              <div style={{ animation: "fadeUp 0.25s ease" }}>
-                <Panel style={{ marginBottom: 20 }}>
-                  <Head t="הזדמנויות לפי ערים" s={s.cities+" ערים פעילות"} icon="▣" />
-                  <ResponsiveContainer width="100%" height={320}>
-                    <BarChart data={cityChart} margin={{ right: 5, left: 5, bottom: 50 }}>
-                      <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
-                      <YAxis tick={{ fill: C.dim, fontSize: 10 }} />
-                      <Tooltip contentStyle={{ background: C.surface, border: "1px solid "+C.border, borderRadius: 8, direction: "rtl", fontSize: 11 }} />
-                      <Bar dataKey="total" fill={C.borderLight} name="סה״כ" radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="opp" fill={C.cyan} name="הזדמנויות" radius={[3, 3, 0, 0]} />
-                      <Bar dataKey="str" fill={C.red} name="לחוצים" radius={[3, 3, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Panel>
-                <Panel>
-                  <Table data={cities} cols={[
-                    { h: "עיר", r: r => <span style={{ fontWeight: 700 }}>{r.city}</span>, nw: true },
-                    { h: "מתחמים", k: "total", a: "center" },
-                    { h: "הזדמנויות", r: r => <span style={{ color: C.cyan, fontWeight: 700 }}>{r.opportunities}</span>, a: "center" },
-                    { h: "לחוצים", r: r => +r.stressed > 0 ? <span style={{ color: C.red, fontWeight: 700 }}>{r.stressed}</span> : <span style={{ color: C.dim }}>0</span>, a: "center" },
-                    { h: "IAI ממוצע", r: r => <span style={{ color: +r.avg_iai >= 50 ? C.green : C.muted }}>{r.avg_iai || "-"}</span>, a: "center" },
-                  ]} />
-                </Panel>
-              </div>
-            )}
-
-            {tab === "alerts" && (
-              <div style={{ animation: "fadeUp 0.25s ease" }}>
-                <Panel>
-                  <Head t="התראות" s="20 אחרונות" icon="●" />
-                  <Table data={alerts} cols={[
-                    { h: "", r: r => <span style={{ width: 7, height: 7, borderRadius: "50%", display: "inline-block", background: r.severity === "high" ? C.red : r.severity === "medium" ? C.orange : C.green }} />, a: "center" },
-                    { h: "כותרת", r: r => <span style={{ fontSize: 11, fontWeight: 600 }}>{r.title}</span> },
-                    { h: "תיאור", r: r => <span style={{ fontSize: 10, color: C.muted }}>{(r.description || "").substring(0, 70)}</span> },
-                    { h: "מתחם", r: r => <span style={{ color: C.muted, fontSize: 11 }}>{r.complex_name || "-"}</span>, nw: true },
-                    { h: "עיר", r: r => <span style={{ fontSize: 11 }}>{r.city || "-"}</span>, nw: true },
-                    { h: "סוג", r: r => <span style={{ color: C.dim, fontSize: 10 }}>{r.alert_type}</span>, nw: true },
-                    { h: "תאריך", r: r => <span style={{ color: C.dim, fontSize: 10 }}>{r.created_at ? new Date(r.created_at).toLocaleDateString("he-IL") : "-"}</span>, nw: true },
-                  ]} />
-                </Panel>
-              </div>
-            )}
-          </main>
-
-          <footer style={{ borderTop: "1px solid "+C.border, padding: "14px 28px", textAlign: "center", marginTop: 24 }}>
-            <span style={{ fontSize: 10, color: C.dim }}>QUANTUM Intelligence v4.13.3 | {s.total_complexes} מתחמים | {s.cities} ערים</span>
-          </footer>
-        </div>
-      );
-    }
-
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
+loadData();
+</script>
 </body>
 </html>`);
 });
