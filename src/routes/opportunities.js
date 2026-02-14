@@ -151,8 +151,9 @@ router.get('/stressed-sellers', async (req, res) => {
   }
 });
 
-// GET /api/dashboard - Combined dashboard data
-router.get('/dashboard', async (req, res) => {
+// GET /api/dashboard-json - Combined dashboard data (JSON API)
+// NOTE: renamed from /dashboard to avoid conflict with HTML dashboard at /api/dashboard/
+router.get('/dashboard-json', async (req, res) => {
   try {
     const topOpportunities = await pool.query(`
       SELECT id, slug, name, city, status, iai_score, premium_gap, developer, planned_units
