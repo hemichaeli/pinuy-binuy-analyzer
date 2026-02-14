@@ -24,6 +24,28 @@ function mdToHtml(text) {
   if (!text) return '';
   let html = text;
   
+  // === PREPROCESSING: Collapse multi-line AI entries into single-line format ===
+  // AI often returns: "1. **name | city**\n   IAI:68 (desc) | SSI:64 (desc)."
+  // We need:          "1. name | city | IAI:68 | SSI:64"
+  
+  // Pattern 1: IAI first, then SSI
+  html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+IAI[:\s]*(\d+)[^|\n]*\|\s*SSI[:\s]*(\d+)[^\n]*/gm,
+    (m, num, name, city, iai, ssi) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai} | SSI:${ssi}`
+  );
+  // Pattern 2: SSI first, then IAI
+  html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+SSI[:\s]*(\d+)[^|\n]*\|\s*IAI[:\s]*(\d+)[^\n]*/gm,
+    (m, num, name, city, ssi, iai) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai} | SSI:${ssi}`
+  );
+  // Pattern 3: IAI only (no SSI on the line)
+  html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+IAI[:\s]*(\d+)[^\n]*/gm,
+    (m, num, name, city, iai) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai}`
+  );
+  // Pattern 4: SSI only (no IAI on the line)
+  html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+SSI[:\s]*(\d+)[^\n]*/gm,
+    (m, num, name, city, ssi) => `${num}. ${name.trim()} | ${city.trim()} | SSI:${ssi}`
+  );
+  // === END PREPROCESSING ===
+  
   // Escape HTML entities
   html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   
