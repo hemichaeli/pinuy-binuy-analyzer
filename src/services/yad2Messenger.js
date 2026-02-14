@@ -2,14 +2,21 @@
  * yad2 Messenger Service - Puppeteer-based messaging
  * Sends messages to yad2 sellers via browser automation
  * Checks inbox for replies
+ * Uses puppeteer-core with system Chromium
  */
 
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const { logger } = require('./logger');
 
 const YAD2_BASE = 'https://www.yad2.co.il';
 const YAD2_LOGIN_URL = `${YAD2_BASE}/login`;
 const YAD2_INBOX_URL = `${YAD2_BASE}/my-messages`;
+
+// Chromium path - set by Dockerfile/nixpacks env var
+const CHROMIUM_PATH = process.env.PUPPETEER_EXECUTABLE_PATH 
+  || process.env.CHROMIUM_PATH 
+  || '/usr/bin/chromium'
+  || '/usr/bin/chromium-browser';
 
 // Browser instance (reuse across calls)
 let browser = null;
@@ -22,9 +29,10 @@ let isLoggedIn = false;
 async function getBrowser() {
   if (browser && browser.isConnected()) return browser;
   
-  logger.info('yad2Messenger: Launching browser...');
+  logger.info('yad2Messenger: Launching browser...', { chromiumPath: CHROMIUM_PATH });
   browser = await puppeteer.launch({
     headless: 'new',
+    executablePath: CHROMIUM_PATH,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -62,7 +70,7 @@ async function login() {
   
   try {
     await page.goto(YAD2_LOGIN_URL, { waitUntil: 'networkidle2', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await new Promise(r => setTimeout(r, 2000));
     
     // Try multiple login form selectors (yad2 changes their UI)
     const emailSelectors = [
@@ -83,11 +91,10 @@ async function login() {
     if (!emailInput) {
       // Maybe there's a "login with email" button first
       const emailLoginBtn = await page.$('button[data-test="email-login"]') 
-        || await page.$('a[href*="email"]')
-        || await page.$('button:has-text("דואר אלקטרוני")');
+        || await page.$('a[href*="email"]');
       if (emailLoginBtn) {
         await emailLoginBtn.click();
-        await page.waitForTimeout(1500);
+        await new Promise(r => setTimeout(r, 1500));
         for (const sel of emailSelectors) {
           emailInput = await page.$(sel);
           if (emailInput) break;
@@ -120,22 +127,12 @@ async function login() {
     }
     
     // Click submit
-    const submitSelectors = [
-      'button[type="submit"]',
-      'button[data-test="submit"]',
-      'button:has-text("התחבר")',
-      'button:has-text("כניסה")'
-    ];
-    
-    for (const sel of submitSelectors) {
-      const btn = await page.$(sel);
-      if (btn) {
-        await btn.click();
-        break;
-      }
+    const submitBtn = await page.$('button[type="submit"]') || await page.$('button[data-test="submit"]');
+    if (submitBtn) {
+      await submitBtn.click();
     }
     
-    await page.waitForTimeout(5000);
+    await new Promise(r => setTimeout(r, 5000));
     
     // Verify login success
     const currentUrl = page.url();
@@ -172,14 +169,11 @@ async function sendMessage(listingUrl, messageText) {
   try {
     // Navigate to listing page
     await page.goto(listingUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await new Promise(r => setTimeout(r, 2000));
     
-    // Look for "send message" / "שלח הודעה" button
+    // Look for contact/message button
     const msgBtnSelectors = [
       'button[data-test="send-message"]',
-      'button:has-text("שלח הודעה")',
-      'button:has-text("יצירת קשר")',
-      'a:has-text("שלח הודעה")',
       '[class*="contact"] button',
       '[class*="message"] button',
       'button[class*="chat"]',
@@ -191,87 +185,38 @@ async function sendMessage(listingUrl, messageText) {
       try {
         msgBtn = await page.$(sel);
         if (msgBtn) break;
-      } catch (e) { /* selector not valid, try next */ }
+      } catch (e) { /* selector not valid */ }
     }
     
-    // If no dedicated button, try clicking on the contact area
+    // Try XPath for Hebrew text buttons
     if (!msgBtn) {
-      // Try XPath for Hebrew text
-      const [xpathBtn] = await page.$x("//button[contains(., 'שלח הודעה')]");
-      if (xpathBtn) msgBtn = xpathBtn;
+      const xpathBtns = await page.$x("//button[contains(., 'שלח הודעה')] | //button[contains(., 'יצירת קשר')] | //a[contains(., 'שלח הודעה')]");
+      if (xpathBtns.length > 0) msgBtn = xpathBtns[0];
     }
     
-    if (!msgBtn) {
-      // Try finding any chat/message textarea directly
-      const textarea = await page.$('textarea[placeholder*="הודעה"]') || await page.$('textarea');
-      if (textarea) {
-        await textarea.type(messageText, { delay: 30 });
-        
-        // Find send button
-        const sendBtn = await page.$('button[type="submit"]') 
-          || await page.$('button:has-text("שלח")')
-          || await page.$('button[class*="send"]');
-        
-        if (sendBtn) {
-          await sendBtn.click();
-          await page.waitForTimeout(3000);
-          return { 
-            success: true, 
-            status: 'sent',
-            message: 'Message sent successfully'
-          };
-        }
-      }
-      
-      throw new Error('Message button/textarea not found on listing page');
-    }
+    // Check if textarea is already visible (some layouts show it directly)
+    let textarea = await page.$('textarea[placeholder*="הודעה"]') || await page.$('textarea');
     
-    await msgBtn.click();
-    await page.waitForTimeout(2000);
-    
-    // Type message in textarea
-    const textareaSelectors = [
-      'textarea[placeholder*="הודעה"]',
-      'textarea[name="message"]',
-      'textarea',
-      'div[contenteditable="true"]',
-      'input[type="text"][placeholder*="הודעה"]'
-    ];
-    
-    let textarea = null;
-    for (const sel of textareaSelectors) {
-      textarea = await page.$(sel);
-      if (textarea) break;
+    if (!textarea && msgBtn) {
+      await msgBtn.click();
+      await new Promise(r => setTimeout(r, 2000));
+      textarea = await page.$('textarea[placeholder*="הודעה"]') || await page.$('textarea') || await page.$('div[contenteditable="true"]');
     }
     
     if (!textarea) {
-      throw new Error('Message textarea not found after clicking contact button');
+      throw new Error('Message textarea not found on listing page');
     }
     
     await textarea.click();
     await textarea.type(messageText, { delay: 30 });
-    await page.waitForTimeout(500);
+    await new Promise(r => setTimeout(r, 500));
     
     // Click send
-    const sendSelectors = [
-      'button[type="submit"]',
-      'button:has-text("שלח")',
-      'button[class*="send"]',
-      'button[data-test="send"]',
-      'button[aria-label="שלח"]'
-    ];
-    
-    let sendBtn = null;
-    for (const sel of sendSelectors) {
-      try {
-        sendBtn = await page.$(sel);
-        if (sendBtn) break;
-      } catch (e) { /* try next */ }
-    }
+    let sendBtn = await page.$('button[type="submit"]') || await page.$('button[class*="send"]') || await page.$('button[data-test="send"]');
     
     if (!sendBtn) {
-      const [xpathSend] = await page.$x("//button[contains(., 'שלח')]");
-      if (xpathSend) sendBtn = xpathSend;
+      const xpathSend = await page.$x("//button[contains(., 'שלח')]");
+      if (xpathSend.length > 0) sendBtn = xpathSend[0];
     }
     
     if (!sendBtn) {
@@ -279,14 +224,14 @@ async function sendMessage(listingUrl, messageText) {
     }
     
     await sendBtn.click();
-    await page.waitForTimeout(3000);
+    await new Promise(r => setTimeout(r, 3000));
     
-    // Check for success indicators
+    // Check for errors
     const errorEl = await page.$('[class*="error"]');
     if (errorEl) {
       const errorText = await page.evaluate(el => el.textContent, errorEl);
-      if (errorText && errorText.length > 0) {
-        throw new Error(`yad2 error: ${errorText}`);
+      if (errorText && errorText.trim().length > 0) {
+        throw new Error(`yad2 error: ${errorText.trim()}`);
       }
     }
     
@@ -321,12 +266,11 @@ async function checkReplies() {
   
   try {
     await page.goto(YAD2_INBOX_URL, { waitUntil: 'networkidle2', timeout: 30000 });
-    await page.waitForTimeout(3000);
+    await new Promise(r => setTimeout(r, 3000));
     
     // Extract conversations from inbox
     const conversations = await page.evaluate(() => {
       const items = [];
-      // Try various selectors for message list items
       const selectors = [
         '[class*="conversation"]',
         '[class*="message-item"]',
@@ -355,14 +299,13 @@ async function checkReplies() {
     
     logger.info(`yad2Messenger: Found ${conversations.length} conversations`);
     
-    // Filter for unread/new messages
+    // Read unread conversations
     const newReplies = [];
     for (const conv of conversations) {
       if (conv.hasUnread && conv.href) {
-        // Navigate to conversation to read the reply
         try {
           await page.goto(conv.href, { waitUntil: 'networkidle2', timeout: 20000 });
-          await page.waitForTimeout(2000);
+          await new Promise(r => setTimeout(r, 2000));
           
           const messages = await page.evaluate(() => {
             const msgs = [];
@@ -379,7 +322,6 @@ async function checkReplies() {
             return msgs;
           });
           
-          // Get the last incoming message
           const lastIncoming = messages.reverse().find(m => m.incoming);
           if (lastIncoming) {
             newReplies.push({
@@ -426,9 +368,10 @@ async function cleanup() {
  */
 function getStatus() {
   return {
-    browserRunning: browser !== null && browser.isConnected(),
+    browserRunning: browser !== null && (browser.isConnected ? browser.isConnected() : false),
     isLoggedIn,
-    hasCredentials: !!(process.env.YAD2_EMAIL && process.env.YAD2_PASSWORD)
+    hasCredentials: !!(process.env.YAD2_EMAIL && process.env.YAD2_PASSWORD),
+    chromiumPath: CHROMIUM_PATH
   };
 }
 
