@@ -1,6 +1,7 @@
 /**
  * QUANTUM Dashboard v4.13.3 - Zero-dependency vanilla JS dashboard
  * No React, no Babel, no external CDNs - works in ALL browsers including Brave
+ * Uses event delegation instead of inline onclick (Brave blocks inline handlers)
  * GET /api/dashboard/ - Full dashboard UI
  */
 
@@ -137,8 +138,8 @@ tr:hover td{background:#141d2e}
     </div>
     <div class="header-btns">
       <a href="/api/chat/" class="btn btn-chat">Chat AI</a>
-      <button id="btn-ssi" class="btn btn-ssi" onclick="runSSI()">SSI</button>
-      <button class="btn" onclick="loadData()">רענון</button>
+      <button id="btn-ssi" class="btn btn-ssi" data-action="ssi">SSI</button>
+      <button class="btn" data-action="refresh">רענון</button>
       <span id="time-label" class="time-label"></span>
     </div>
   </header>
@@ -191,7 +192,7 @@ function loadData(){
     })
     .catch(function(e){
       console.error(e);
-      document.getElementById('loading').innerHTML='<div class="loading-q">Q</div><div style="color:#ff4d6a;font-size:14px;text-align:center;direction:rtl">שגיאה בטעינת נתונים</div><button class="btn" onclick="loadData()" style="margin-top:8px">נסה שוב</button>';
+      document.getElementById('loading').innerHTML='<div class="loading-q">Q</div><div style="color:#ff4d6a;font-size:14px;text-align:center;direction:rtl">שגיאה בטעינת נתונים</div><button class="btn" data-action="refresh" style="margin-top:8px">נסה שוב</button>';
     });
 }
 
@@ -223,7 +224,7 @@ var tabs=[
 function renderNav(){
   var h='';
   for(var i=0;i<tabs.length;i++){
-    h+='<button class="nav-btn'+(tabs[i].id===currentTab?' active':'')+'" onclick="switchTab(\\''+tabs[i].id+'\\')">'+tabs[i].l+'</button>';
+    h+='<button class="nav-btn'+(tabs[i].id===currentTab?' active':'')+'" data-tab="'+tabs[i].id+'">'+tabs[i].l+'</button>';
   }
   document.getElementById('nav').innerHTML=h;
 }
@@ -275,7 +276,6 @@ function renderOverview(s,dist,topSSI,alerts,cities,ls){
   }
 
   h+='<div class="grid grid-2">';
-  // SSI Distribution
   h+='<div class="panel">'+panelH('התפלגות SSI','סימני מצוקה','◉')+'<div class="pie-legend">';
   var di=[{l:'גבוה (60+)',v:+(dist.high||0)+ +(dist.critical||0),c:'#ff4d6a'},{l:'בינוני (40-59)',v:+(dist.medium||0),c:'#ff8c42'},{l:'נמוך (20-39)',v:+(dist.low||0),c:'#ffc233'},{l:'מזערי (<20)',v:+(dist.minimal||0),c:'#4a5e80'}];
   for(var i=0;i<di.length;i++){
@@ -283,7 +283,6 @@ function renderOverview(s,dist,topSSI,alerts,cities,ls){
   }
   h+='</div></div>';
 
-  // City bar chart
   h+='<div class="panel">'+panelH('הזדמנויות לפי עיר','טופ 10','▣');
   var ct=cities.slice(0,10),mx=1;
   for(var i=0;i<ct.length;i++){if(+ct[i].opportunities>mx)mx=+ct[i].opportunities;}
@@ -294,7 +293,6 @@ function renderOverview(s,dist,topSSI,alerts,cities,ls){
   }
   h+='</div></div></div>';
 
-  // Alerts
   h+='<div class="panel">'+panelH('התראות אחרונות',alerts.length+' התראות','●');
   if(!alerts.length){h+='<div class="empty-msg">אין התראות</div>';}
   else{
@@ -378,6 +376,18 @@ function renderAlerts(alerts){
   h+='</div></div>';
   return h;
 }
+
+// Event delegation - no inline event handlers, compatible with Brave Shields
+document.addEventListener('click', function(e) {
+  var tb = e.target.closest('[data-tab]');
+  if (tb) { switchTab(tb.getAttribute('data-tab')); return; }
+  var ac = e.target.closest('[data-action]');
+  if (ac) {
+    var a = ac.getAttribute('data-action');
+    if (a === 'ssi') runSSI();
+    else if (a === 'refresh') loadData();
+  }
+});
 
 loadData();
 </script>
