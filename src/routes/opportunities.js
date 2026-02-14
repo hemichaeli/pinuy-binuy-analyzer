@@ -6,24 +6,41 @@ const { logger } = require('../services/logger');
 // GET /api/opportunities - Top investment opportunities
 router.get('/opportunities', async (req, res) => {
   try {
+    const { min_iai, city, limit: limitParam } = req.query;
+    const minIai = parseInt(min_iai) || 30;
+    const limitVal = Math.min(parseInt(limitParam) || 50, 200);
+
+    let conditions = ['c.iai_score >= $1'];
+    let params = [minIai];
+    let paramCount = 1;
+
+    if (city) {
+      paramCount++;
+      conditions.push(`c.city = $${paramCount}`);
+      params.push(city);
+    }
+
     const result = await pool.query(`
       SELECT 
         c.id, c.name, c.city, c.status, c.developer, c.developer_strength,
-        c.iai_score, c.certainty_coefficient, c.avg_price_per_sqm,
+        c.iai_score, c.avg_price_per_sqm,
         c.planned_units, c.existing_units,
         c.theoretical_premium_pct, c.actual_premium_pct,
         c.slug,
         COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE) as active_listings,
         COUNT(DISTINCT t.id) as transactions_count,
-        AVG(l.ssi_score) FILTER (WHERE l.is_active = TRUE) as avg_ssi
+        AVG(l.ssi_score) FILTER (WHERE l.is_active = TRUE) as avg_ssi,
+        COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE AND l.deal_status = 'new') as new_leads,
+        COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE AND l.message_status = 'sent') as messages_sent,
+        COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE AND l.message_status = 'replied') as messages_replied
       FROM complexes c
-      LEFT JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
+      LEFT JOIN listings l ON l.complex_id = c.id
       LEFT JOIN transactions t ON t.complex_id = c.id
-      WHERE c.iai_score >= 30
+      WHERE ${conditions.join(' AND ')}
       GROUP BY c.id
       ORDER BY c.iai_score DESC NULLS LAST
-      LIMIT 50
-    `);
+      LIMIT $${paramCount + 1}
+    `, [...params, limitVal]);
 
     res.json({
       total: result.rows.length,
@@ -62,6 +79,7 @@ router.get('/stressed-sellers', async (req, res) => {
         l.ssi_score, l.ssi_time_score, l.ssi_price_score, l.ssi_indicator_score,
         l.address, l.city,
         l.first_seen, l.last_seen,
+        l.deal_status, l.message_status,
         c.id as complex_id, c.slug as complex_slug,
         c.name as complex_name, c.city as complex_city,
         c.status as complex_status,
@@ -138,11 +156,23 @@ router.get('/listings/filter-options', async (req, res) => {
       SELECT MIN(area_sqm) as min_area, MAX(area_sqm) as max_area
       FROM listings WHERE is_active = TRUE AND area_sqm > 0
     `);
+    const dealStatuses = await pool.query(`
+      SELECT deal_status, COUNT(*) as count
+      FROM listings WHERE is_active = TRUE
+      GROUP BY deal_status ORDER BY count DESC
+    `);
+    const messageStatuses = await pool.query(`
+      SELECT message_status, COUNT(*) as count
+      FROM listings WHERE is_active = TRUE
+      GROUP BY message_status ORDER BY count DESC
+    `);
     res.json({
       cities: cities.rows,
       price_range: priceRange.rows[0],
       rooms_range: roomsRange.rows[0],
-      area_range: areaRange.rows[0]
+      area_range: areaRange.rows[0],
+      deal_statuses: dealStatuses.rows,
+      message_statuses: messageStatuses.rows
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
