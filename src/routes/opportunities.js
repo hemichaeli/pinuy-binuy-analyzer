@@ -23,9 +23,10 @@ router.get('/opportunities', async (req, res) => {
     const result = await pool.query(`
       SELECT 
         c.id, c.name, c.city, c.status, c.developer, c.developer_strength,
-        c.iai_score, c.avg_price_per_sqm,
+        c.iai_score, c.multiplier,
         c.planned_units, c.existing_units,
-        c.theoretical_premium_pct, c.actual_premium_pct,
+        c.theoretical_premium_min, c.theoretical_premium_max,
+        c.actual_premium, c.premium_gap,
         c.slug,
         COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE) as active_listings,
         COUNT(DISTINCT t.id) as transactions_count,
@@ -180,7 +181,6 @@ router.get('/listings/filter-options', async (req, res) => {
 });
 
 // GET /api/listings/search - Full listings search with comprehensive filters
-// =====================================================
 router.get('/listings/search', async (req, res) => {
   try {
     const {
@@ -304,7 +304,6 @@ router.get('/listings/search', async (req, res) => {
 
     const whereClause = conditions.join(' AND ');
 
-    // Sorting
     const validSorts = {
       'price': 'l.asking_price',
       'ssi': 'l.ssi_score',
@@ -319,7 +318,6 @@ router.get('/listings/search', async (req, res) => {
     const sortCol = validSorts[sort_by] || 'l.ssi_score';
     const sortDir = sort_order === 'asc' ? 'ASC' : 'DESC';
 
-    // Count query
     const countQuery = `
       SELECT COUNT(*) as total
       FROM listings l
@@ -327,7 +325,6 @@ router.get('/listings/search', async (req, res) => {
       WHERE ${whereClause}
     `;
 
-    // Data query
     const dataQuery = `
       SELECT 
         l.id as listing_id,
