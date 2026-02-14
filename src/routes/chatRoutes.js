@@ -491,7 +491,7 @@ router.get('/', (req, res) => {
     };
 
     /**
-     * Client-side mdToHtml fallback (kept for resilience)
+     * Client-side mdToHtml fallback (kept for backwards compatibility)
      */
     function mdToHtml(text) {
       if (!text) return '';
@@ -501,25 +501,19 @@ router.get('/', (req, res) => {
       html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
       html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
       html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-      html = html.replace(/(?<![*])\\*(?![*])(.+?)(?<![*])\\*(?![*])/g, '<em>$1</em>');
+      html = html.replace(/(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)/g, '<em>$1</em>');
       html = html.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
-      html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
       html = html.replace(/^---$/gm, '<hr>');
       html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-      html = html.replace(/^(\\d+)\\.\\s+(?!<div)(.+)$/gm, (match, num, content) => {
-        if (match.includes('result-item')) return match;
+      // Simple numbered lists
+      html = html.replace(/^(\\d+)\\.\\s+(.+)$/gm, function(match, num, content) {
         return '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#4a5e80;min-width:18px;text-align:center;">' + num + '.</span><span>' + content + '</span></div>';
       });
       html = html.replace(/^[\\-\\*]\\s+(.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#06d6a0;">&#x2022;</span><span>$1</span></div>');
-      html = html.replace(/\\[(\\d+)\\]/g, '<sup style="color:#4a5e80;font-size:9px;">[$1]</sup>');
       html = html.replace(/\\n\\n/g, '</p><p>');
       html = html.replace(/\\n/g, '<br>');
       html = '<p>' + html + '</p>';
       html = html.replace(/<p><\\/p>/g, '');
-      html = html.replace(/<p>(<h[123]>)/g, '$1');
-      html = html.replace(/(<\\/h[123]>)<\\/p>/g, '$1');
-      html = html.replace(/<p>(<div)/g, '$1');
-      html = html.replace(/(<\\/div>)<\\/p>/g, '$1');
       return html;
     }
 
