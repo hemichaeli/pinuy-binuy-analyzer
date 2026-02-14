@@ -1,14 +1,16 @@
 /**
- * QUANTUM Chat - Dual AI (Claude + Perplexity) answering questions about our DB
- * POST /api/chat/ask - Ask a question, get merged AI answer
+ * QUANTUM Chat - AI answering questions about our DB
+ * POST /api/chat/ask - Ask a question, get AI answer
  * GET /api/chat/ - Chat UI
+ * GET /api/chat/status - AI status
+ * GET /api/chat/models - Available models
  */
 
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
-const { dualChat, isClaudeConfigured, isPerplexityConfigured } = require('../services/dualAiService');
+const { dualChat, isClaudeConfigured, isPerplexityConfigured, getAvailableModels } = require('../services/dualAiService');
 
 /**
  * Pull compact DB context based on the question
@@ -149,37 +151,36 @@ ${stats.total} מתחמים, ${stats.opportunities} הזדמנויות (IAI 30+)
  */
 router.post('/ask', async (req, res) => {
   try {
-    const { question, history } = req.body;
+    const { question, history, model } = req.body;
     if (!question) return res.status(400).json({ error: 'Missing question' });
 
     if (!isPerplexityConfigured() && !isClaudeConfigured()) {
-      return res.status(500).json({ error: 'No AI configured. Need PERPLEXITY_API_KEY or ANTHROPIC_API_KEY.' });
+      return res.status(500).json({ error: 'No AI configured.' });
     }
 
-    logger.info(`[DUAL-CHAT] Q: ${question.substring(0, 100)}`);
+    logger.info(`[CHAT] Q: ${question.substring(0, 100)} | model: ${model || 'default'}`);
 
     const dbContext = await getDbContext(question);
-    
-    // Convert history format
     const aiHistory = (history || []).slice(-6).map(m => ({ role: m.role, content: m.content }));
 
-    const result = await dualChat(question, dbContext, aiHistory);
+    const result = await dualChat(question, dbContext, aiHistory, { model: model || undefined });
     
-    logger.info(`[DUAL-CHAT] Sources: ${result.sources.join('+')} | ${result.answer.length} chars`);
+    logger.info(`[CHAT] Sources: ${result.sources.join('+')} | Model: ${result.model} | ${result.answer.length} chars`);
 
     res.json({
       answer: result.answer,
       sources: result.sources,
+      model: result.model,
       context_size: dbContext.length,
       engines: {
-        claude: isClaudeConfigured() ? 'active' : 'not configured',
-        perplexity: isPerplexityConfigured() ? 'active' : 'not configured'
+        claude: isClaudeConfigured() ? 'active' : 'off',
+        perplexity: isPerplexityConfigured() ? 'active' : 'off'
       },
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    logger.error('[DUAL-CHAT] Error:', error.message);
+    logger.error('[CHAT] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -198,67 +199,101 @@ router.get('/status', (req, res) => {
 });
 
 /**
+ * GET /api/chat/models
+ */
+router.get('/models', (req, res) => {
+  res.json(getAvailableModels());
+});
+
+/**
  * GET /api/chat/ - Chat UI
  */
 router.get('/', (req, res) => {
-  const claudeStatus = isClaudeConfigured();
-  const perplexityStatus = isPerplexityConfigured();
-  const mode = (claudeStatus && perplexityStatus) ? 'Dual AI' : claudeStatus ? 'Claude' : perplexityStatus ? 'Perplexity' : 'None';
-  const badge = (claudeStatus && perplexityStatus) ? '#10b981' : '#f59e0b';
-
   res.type('html').send(`<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QUANTUM Chat - ${mode}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>QUANTUM AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0e17; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-    .header { background: linear-gradient(135deg, #1a1f35 0%, #0d1117 100%); padding: 16px 24px; border-bottom: 1px solid #2a3040; display: flex; align-items: center; gap: 12px; }
-    .header h1 { font-size: 20px; color: #fff; }
-    .badge { background: ${badge}; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
-    .chat-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-    .msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; line-height: 1.7; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
-    .msg.user { background: #1e3a5f; align-self: flex-start; border-bottom-right-radius: 4px; }
-    .msg.bot { background: #1a2332; align-self: flex-end; border-bottom-left-radius: 4px; border: 1px solid #2a3545; }
-    .msg strong { color: #60a5fa; }
-    .msg.system { background: #1a1f2e; align-self: center; text-align: center; color: #888; font-size: 13px; border: 1px dashed #333; }
-    .msg .sources { font-size: 11px; color: #666; margin-top: 8px; padding-top: 6px; border-top: 1px solid #2a3545; }
-    .input-area { background: #0d1117; padding: 16px 20px; border-top: 1px solid #2a3040; display: flex; gap: 10px; }
-    .input-area input { flex: 1; background: #1a2332; border: 1px solid #2a3545; color: #fff; padding: 12px 16px; border-radius: 8px; font-size: 15px; outline: none; }
-    .input-area input:focus { border-color: #3b82f6; }
-    .input-area button { background: #3b82f6; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; }
-    .input-area button:hover { background: #2563eb; }
-    .input-area button:disabled { background: #334155; cursor: wait; }
-    .typing { color: #888; font-style: italic; }
-    .suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px 10px; }
-    .suggestions button { background: #1a2332; border: 1px solid #2a3545; color: #94a3b8; padding: 6px 14px; border-radius: 16px; cursor: pointer; font-size: 13px; }
-    .suggestions button:hover { border-color: #3b82f6; color: #fff; }
+    body { font-family: 'Assistant', -apple-system, sans-serif; background: #080c14; color: #e0e0e0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+    
+    .header { background: linear-gradient(135deg, #0f1623 0%, #080c14 100%); padding: 12px 20px; border-bottom: 1px solid #1a2744; display: flex; align-items: center; justify-content: space-between; }
+    .header-right { display: flex; align-items: center; gap: 10px; }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { width: 32px; height: 32px; background: linear-gradient(135deg, #06d6a0, #3b82f6); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; color: #000; font-family: serif; }
+    .logo h1 { font-size: 18px; color: #fff; font-weight: 800; letter-spacing: 2px; }
+    .logo .sub { font-size: 9px; color: #4a5e80; letter-spacing: 1px; display: block; margin-top: -2px; }
+    
+    .model-select { background: #0f1623; border: 1px solid #1a2744; color: #8899b4; padding: 5px 10px; border-radius: 6px; font-size: 11px; font-family: inherit; cursor: pointer; outline: none; direction: ltr; }
+    .model-select:focus { border-color: #3b82f6; }
+    .model-select option { background: #0f1623; }
+    
+    .dash-link { color: #4a5e80; text-decoration: none; font-size: 11px; padding: 5px 10px; border: 1px solid #1a2744; border-radius: 6px; }
+    .dash-link:hover { color: #06d6a0; border-color: #06d6a0; }
+
+    .chat-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth; }
+    
+    .msg { max-width: 88%; padding: 12px 16px; border-radius: 14px; line-height: 1.7; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .msg.user { background: linear-gradient(135deg, #1e3a5f, #1a2f4d); align-self: flex-start; border-bottom-right-radius: 4px; color: #e2e8f0; }
+    .msg.bot { background: #0f1623; align-self: flex-end; border-bottom-left-radius: 4px; border: 1px solid #1a2744; }
+    .msg.bot strong { color: #06d6a0; }
+    .msg.system { background: transparent; align-self: center; text-align: center; color: #4a5e80; font-size: 12px; border: 1px dashed #1a2744; padding: 16px 24px; border-radius: 12px; max-width: 340px; }
+    .msg .meta { font-size: 10px; color: #4a5e80; margin-top: 6px; padding-top: 5px; border-top: 1px solid #1a274422; }
+    .msg.typing { color: #4a5e80; font-style: italic; background: transparent; border: none; font-size: 12px; }
+
+    .suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 16px 8px; justify-content: center; }
+    .suggestions button { background: transparent; border: 1px solid #1a2744; color: #8899b4; padding: 5px 12px; border-radius: 16px; cursor: pointer; font-size: 12px; font-family: inherit; transition: all 0.15s; }
+    .suggestions button:hover { border-color: #06d6a0; color: #06d6a0; }
+
+    .input-area { background: #0a0e17; padding: 12px 16px; border-top: 1px solid #1a2744; display: flex; gap: 8px; }
+    .input-area input { flex: 1; background: #0f1623; border: 1px solid #1a2744; color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 15px; font-family: inherit; outline: none; }
+    .input-area input:focus { border-color: #06d6a0; }
+    .input-area input::placeholder { color: #4a5e80; }
+    .send-btn { background: linear-gradient(135deg, #06d6a0, #059669); color: #000; border: none; width: 44px; height: 44px; border-radius: 10px; cursor: pointer; font-size: 18px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+    .send-btn:hover { filter: brightness(1.1); }
+    .send-btn:disabled { background: #1a2744; color: #4a5e80; cursor: wait; }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>QUANTUM Chat</h1>
-    <span class="badge">${mode}</span>
+    <div class="logo">
+      <div class="logo-icon">Q</div>
+      <div>
+        <h1>QUANTUM</h1>
+        <span class="sub">INTELLIGENCE</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <select class="model-select" id="modelSelect">
+        <option value="sonar-pro">Pro (מומלץ)</option>
+        <option value="sonar-reasoning-pro">Research (מחקר)</option>
+        <option value="sonar">Fast (מהיר)</option>
+      </select>
+      <a href="/api/dashboard/" class="dash-link">📊 דשבורד</a>
+    </div>
   </div>
   
   <div class="chat-area" id="chat">
-    <div class="msg system">שלום! אני יודע הכל על מתחמי פינוי-בינוי בישראל. שאל אותי כל שאלה.<br>מנועים: ${mode}</div>
+    <div class="msg system">מח חד. הבנה עמוקה. גישה לסודות השוק.<br><br>שאל אותי כל שאלה על פינוי-בינוי.</div>
   </div>
 
   <div class="suggestions" id="suggestions">
-    <button onclick="askQ('מה ההזדמנויות הכי טובות עכשיו?')">הזדמנויות טובות</button>
-    <button onclick="askQ('איפה יש מוכרים במצוקה?')">מוכרים במצוקה</button>
-    <button onclick="askQ('השווה בין בת ים לחולון לפינוי בינוי')">השוואת ערים</button>
-    <button onclick="askQ('איזה מתחמים בכינוס נכסים?')">כינוס נכסים</button>
-    <button onclick="askQ('מה ההזדמנות הכי טובה בפתח תקווה?')">פתח תקווה</button>
-    <button onclick="askQ('תן לי 5 הזדמנויות זהב עם IAI וSSI גבוהים')">הזדמנויות זהב</button>
+    <button onclick="askQ('מה ההזדמנויות הכי טובות עכשיו?')">🔥 הזדמנויות</button>
+    <button onclick="askQ('איפה יש מוכרים במצוקה?')">⚡ מוכרים לחוצים</button>
+    <button onclick="askQ('השווה בין בת ים לחולון לפתח תקווה')">📊 השוואת ערים</button>
+    <button onclick="askQ('איזה מתחמים בכינוס נכסים?')">⚖ כינוס נכסים</button>
+    <button onclick="askQ('תן לי 5 הזדמנויות זהב')">💎 הזדמנויות זהב</button>
   </div>
 
   <div class="input-area">
-    <input type="text" id="input" placeholder="שאל שאלה על פינוי-בינוי..." onkeydown="if(event.key==='Enter')send()">
-    <button id="btn" onclick="send()">שלח</button>
+    <input type="text" id="input" placeholder="שאל על פינוי-בינוי..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)send()">
+    <button class="send-btn" id="btn" onclick="send()">➤</button>
   </div>
 
   <script>
@@ -266,14 +301,17 @@ router.get('/', (req, res) => {
     const input = document.getElementById('input');
     const btn = document.getElementById('btn');
     const suggestions = document.getElementById('suggestions');
+    const modelSelect = document.getElementById('modelSelect');
     let history = [];
 
-    function addMsg(text, role, sources) {
+    const modelNames = { 'sonar': 'Fast', 'sonar-pro': 'Pro', 'sonar-reasoning-pro': 'Research' };
+
+    function addMsg(text, role, meta) {
       const div = document.createElement('div');
       div.className = 'msg ' + role;
       let html = text.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-      if (sources && sources.length) {
-        html += '<div class="sources">מקורות: ' + sources.join(' + ') + '</div>';
+      if (meta) {
+        html += '<div class="meta">' + meta + '</div>';
       }
       div.innerHTML = html;
       chat.appendChild(div);
@@ -290,20 +328,24 @@ router.get('/', (req, res) => {
       btn.disabled = true;
       suggestions.style.display = 'none';
       addMsg(q, 'user');
-      const typing = addMsg('חושב... (Claude + Perplexity)', 'typing');
+      const model = modelSelect.value;
+      const typing = addMsg('מנתח... (' + modelNames[model] + ')', 'typing');
       
       try {
         const res = await fetch('/api/chat/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q, history })
+          body: JSON.stringify({ question: q, history, model })
         });
         const data = await res.json();
         typing.remove();
         
         if (data.error) { addMsg('שגיאה: ' + data.error, 'system'); }
         else {
-          addMsg(data.answer, 'bot', data.sources);
+          const metaParts = [];
+          if (data.model) metaParts.push(modelNames[data.model] || data.model);
+          if (data.context_size) metaParts.push(Math.round(data.context_size / 1024) + 'K context');
+          addMsg(data.answer, 'bot', metaParts.join(' | '));
           history.push({ role: 'user', content: q });
           history.push({ role: 'assistant', content: data.answer });
         }
@@ -312,6 +354,9 @@ router.get('/', (req, res) => {
       btn.disabled = false;
       input.focus();
     }
+
+    // Set default to sonar-pro
+    modelSelect.value = 'sonar-pro';
   </script>
 </body>
 </html>`);
