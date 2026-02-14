@@ -151,6 +151,270 @@ router.get('/stressed-sellers', async (req, res) => {
   }
 });
 
+// =====================================================
+// GET /api/listings/search - Full listings search with comprehensive filters
+// =====================================================
+router.get('/listings/search', async (req, res) => {
+  try {
+    const {
+      city,
+      min_price, max_price,
+      min_rooms, max_rooms,
+      min_area, max_area,
+      min_ssi, max_ssi,
+      min_iai,
+      min_days_on_market, max_days_on_market,
+      min_price_drops,
+      has_price_drop,
+      is_foreclosure, is_inheritance,
+      has_urgent_keywords,
+      complex_status,
+      sort_by,
+      sort_order,
+      limit, offset
+    } = req.query;
+
+    const limitVal = Math.min(parseInt(limit) || 50, 200);
+    const offsetVal = parseInt(offset) || 0;
+
+    let query = `
+      SELECT 
+        l.id as listing_id,
+        l.source, l.url,
+        l.asking_price, l.area_sqm, l.rooms, l.floor,
+        l.price_per_sqm,
+        l.days_on_market, l.price_changes, l.total_price_drop_percent,
+        l.original_price,
+        l.has_urgent_keywords, l.urgent_keywords_found,
+        l.is_foreclosure, l.is_inheritance,
+        l.ssi_score, l.ssi_time_score, l.ssi_price_score, l.ssi_indicator_score,
+        l.address, l.city,
+        l.first_seen, l.last_seen,
+        c.id as complex_id, c.slug as complex_slug,
+        c.name as complex_name, c.city as complex_city,
+        c.status as complex_status,
+        c.iai_score,
+        c.developer
+      FROM listings l
+      JOIN complexes c ON l.complex_id = c.id
+      WHERE l.is_active = TRUE
+    `;
+    const params = [];
+    let paramCount = 0;
+
+    // City filter
+    if (city) {
+      paramCount++;
+      query += ` AND l.city = $${paramCount}`;
+      params.push(city);
+    }
+
+    // Price filters
+    if (min_price) {
+      paramCount++;
+      query += ` AND l.asking_price >= $${paramCount}`;
+      params.push(parseFloat(min_price));
+    }
+    if (max_price) {
+      paramCount++;
+      query += ` AND l.asking_price <= $${paramCount}`;
+      params.push(parseFloat(max_price));
+    }
+
+    // Rooms filters
+    if (min_rooms) {
+      paramCount++;
+      query += ` AND l.rooms >= $${paramCount}`;
+      params.push(parseFloat(min_rooms));
+    }
+    if (max_rooms) {
+      paramCount++;
+      query += ` AND l.rooms <= $${paramCount}`;
+      params.push(parseFloat(max_rooms));
+    }
+
+    // Area filters
+    if (min_area) {
+      paramCount++;
+      query += ` AND l.area_sqm >= $${paramCount}`;
+      params.push(parseFloat(min_area));
+    }
+    if (max_area) {
+      paramCount++;
+      query += ` AND l.area_sqm <= $${paramCount}`;
+      params.push(parseFloat(max_area));
+    }
+
+    // SSI filters
+    if (min_ssi) {
+      paramCount++;
+      query += ` AND l.ssi_score >= $${paramCount}`;
+      params.push(parseInt(min_ssi));
+    }
+    if (max_ssi) {
+      paramCount++;
+      query += ` AND l.ssi_score <= $${paramCount}`;
+      params.push(parseInt(max_ssi));
+    }
+
+    // IAI filter
+    if (min_iai) {
+      paramCount++;
+      query += ` AND c.iai_score >= $${paramCount}`;
+      params.push(parseInt(min_iai));
+    }
+
+    // Days on market
+    if (min_days_on_market) {
+      paramCount++;
+      query += ` AND l.days_on_market >= $${paramCount}`;
+      params.push(parseInt(min_days_on_market));
+    }
+    if (max_days_on_market) {
+      paramCount++;
+      query += ` AND l.days_on_market <= $${paramCount}`;
+      params.push(parseInt(max_days_on_market));
+    }
+
+    // Price drops count
+    if (min_price_drops) {
+      paramCount++;
+      query += ` AND l.price_changes >= $${paramCount}`;
+      params.push(parseInt(min_price_drops));
+    }
+
+    // Boolean: has any price drop
+    if (has_price_drop === 'true') {
+      query += ` AND l.total_price_drop_percent > 0`;
+    }
+
+    // Boolean filters
+    if (is_foreclosure === 'true') {
+      query += ` AND l.is_foreclosure = TRUE`;
+    }
+    if (is_inheritance === 'true') {
+      query += ` AND l.is_inheritance = TRUE`;
+    }
+    if (has_urgent_keywords === 'true') {
+      query += ` AND l.has_urgent_keywords = TRUE`;
+    }
+
+    // Complex status
+    if (complex_status) {
+      paramCount++;
+      query += ` AND c.status = $${paramCount}`;
+      params.push(complex_status);
+    }
+
+    // Sorting
+    const validSorts = {
+      'price': 'l.asking_price',
+      'ssi': 'l.ssi_score',
+      'iai': 'c.iai_score',
+      'rooms': 'l.rooms',
+      'area': 'l.area_sqm',
+      'days': 'l.days_on_market',
+      'price_drop': 'l.total_price_drop_percent',
+      'price_changes': 'l.price_changes',
+      'date': 'l.first_seen'
+    };
+    const sortCol = validSorts[sort_by] || 'l.ssi_score';
+    const sortDir = sort_order === 'asc' ? 'ASC' : 'DESC';
+    query += ` ORDER BY ${sortCol} ${sortDir} NULLS LAST`;
+
+    // Count total before limit
+    const countQuery = query.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM');
+    
+    // Pagination
+    paramCount++;
+    query += ` LIMIT $${paramCount}`;
+    params.push(limitVal);
+    paramCount++;
+    query += ` OFFSET $${paramCount}`;
+    params.push(offsetVal);
+
+    const [result, countResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, params.slice(0, -2)) // without LIMIT/OFFSET params
+    ]);
+
+    const listings = result.rows.map(row => ({
+      ...row,
+      ssi_category: row.ssi_score >= 70 ? 'very_stressed'
+        : row.ssi_score >= 50 ? 'stressed'
+        : row.ssi_score >= 30 ? 'normal'
+        : 'strong',
+      strategy: row.ssi_score >= 70
+        ? 'הצעה אגרסיבית 15-20% מתחת למחיר'
+        : row.ssi_score >= 50
+        ? 'הצעה 10-15% מתחת למחיר'
+        : row.ssi_score >= 30
+        ? 'משא ומתן סטנדרטי'
+        : 'מחיר שוק מלא',
+      potential_discount: row.ssi_score >= 70 ? '15-20%'
+        : row.ssi_score >= 50 ? '10-15%'
+        : row.ssi_score >= 30 ? '5-10%'
+        : '0-5%'
+    }));
+
+    res.json({
+      listings,
+      total: parseInt(countResult.rows[0]?.total || result.rows.length),
+      returned: listings.length,
+      offset: offsetVal,
+      limit: limitVal,
+      filters_applied: Object.fromEntries(
+        Object.entries(req.query).filter(([k, v]) => v && k !== 'limit' && k !== 'offset')
+      )
+    });
+  } catch (err) {
+    logger.error('Error searching listings', { error: err.message });
+    res.status(500).json({ error: 'Failed to search listings' });
+  }
+});
+
+// GET /api/listings/filter-options - Get available filter values
+router.get('/listings/filter-options', async (req, res) => {
+  try {
+    const [citiesResult, statsResult, statusResult] = await Promise.all([
+      pool.query(`
+        SELECT l.city, COUNT(*) as count 
+        FROM listings l WHERE l.is_active = TRUE AND l.city IS NOT NULL
+        GROUP BY l.city ORDER BY count DESC
+      `),
+      pool.query(`
+        SELECT 
+          MIN(l.asking_price)::numeric as min_price,
+          MAX(l.asking_price)::numeric as max_price,
+          MIN(l.rooms)::numeric as min_rooms,
+          MAX(l.rooms)::numeric as max_rooms,
+          MIN(l.area_sqm)::numeric as min_area,
+          MAX(l.area_sqm)::numeric as max_area,
+          MIN(l.ssi_score) as min_ssi,
+          MAX(l.ssi_score) as max_ssi,
+          MAX(l.days_on_market) as max_days,
+          COUNT(*) as total
+        FROM listings l WHERE l.is_active = TRUE
+      `),
+      pool.query(`
+        SELECT DISTINCT c.status, COUNT(*) as count
+        FROM listings l JOIN complexes c ON l.complex_id = c.id
+        WHERE l.is_active = TRUE AND c.status IS NOT NULL
+        GROUP BY c.status ORDER BY count DESC
+      `)
+    ]);
+
+    res.json({
+      cities: citiesResult.rows,
+      ranges: statsResult.rows[0],
+      complex_statuses: statusResult.rows
+    });
+  } catch (err) {
+    logger.error('Error fetching filter options', { error: err.message });
+    res.status(500).json({ error: 'Failed to fetch filter options' });
+  }
+});
+
 // GET /api/dashboard-json - Combined dashboard data (JSON API)
 // NOTE: Renamed from /dashboard to avoid conflict with /api/dashboard HTML route
 router.get('/dashboard-json', async (req, res) => {
