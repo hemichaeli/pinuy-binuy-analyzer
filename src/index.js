@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.13.0';
-const BUILD = '2026-02-14-v4.13.0-council-deep-research';
+const VERSION = '4.13.1';
+const BUILD = '2026-02-14-v4.13.1-ui-fixes';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -256,8 +256,13 @@ app.post('/api/scheduler/run', async (req, res) => { try { const { runWeeklyScan
 app.get('/api/notifications/status', (req, res) => { res.json(notificationService.getStatus ? notificationService.getStatus() : { configured: notificationService.isConfigured() }); });
 app.post('/api/notifications/test', async (req, res) => { try { await notificationService.sendTestEmail?.(); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
-// Root
+// Root - redirect to dashboard
 app.get('/', (req, res) => {
+  res.redirect(302, '/api/dashboard/');
+});
+
+// API info endpoint (moved from root)
+app.get('/api/info', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
     version: VERSION, build: BUILD,
