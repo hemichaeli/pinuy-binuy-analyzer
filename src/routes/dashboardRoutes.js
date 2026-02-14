@@ -15,10 +15,20 @@ router.get('/', (req, res) => {
   <title>QUANTUM Intelligence Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet">
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js" crossorigin></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script>
+    window.addEventListener('error', function(e) {
+      if (e.target && e.target.tagName === 'SCRIPT') {
+        var root = document.getElementById('root');
+        if (root && !root.innerHTML.trim()) {
+          root.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;font-family:Assistant,sans-serif"><div style="width:48px;height:48px;background:linear-gradient(135deg,#06d6a0,#3b82f6);border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:24px;color:#000">Q</div><div style="color:#ff4d6a;font-size:14px;text-align:center;direction:rtl">Error loading dashboard<br><span style="color:#8899b4;font-size:11px">Try disabling ad blocker or use a different browser</span></div><a href="/api/dashboard/" style="color:#06d6a0;font-size:12px">Retry</a></div>';
+        }
+      }
+    }, true);
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Assistant', sans-serif; background: #080c14; color: #e2e8f0; direction: rtl; }
@@ -174,7 +184,7 @@ router.get('/', (req, res) => {
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <a href="/api/chat/" style={{ padding: "6px 14px", background: "transparent", border: "1px solid "+C.borderLight, borderRadius: 7, color: C.purple, fontSize: 11, fontWeight: 700, textDecoration: "none" }}>💬 Chat AI</a>
+              <a href="/api/chat/" style={{ padding: "6px 14px", background: "transparent", border: "1px solid "+C.borderLight, borderRadius: 7, color: C.purple, fontSize: 11, fontWeight: 700, textDecoration: "none" }}>Chat AI</a>
               <button onClick={runSSI} disabled={agg}
                 style={{ padding: "6px 14px", background: agg ? C.border : "transparent", border: "1px solid "+C.borderLight, borderRadius: 7, color: agg ? C.dim : C.cyan, fontSize: 11, fontWeight: 700, cursor: agg ? "default" : "pointer", fontFamily: "inherit" }}>
                 {agg ? "...מחשב SSI" : "עדכון SSI"}
@@ -368,7 +378,7 @@ router.get('/', (req, res) => {
           </main>
 
           <footer style={{ borderTop: "1px solid "+C.border, padding: "14px 28px", textAlign: "center", marginTop: 24 }}>
-            <span style={{ fontSize: 10, color: C.dim }}>QUANTUM Intelligence v4.13.2 | {s.total_complexes} מתחמים | {s.cities} ערים</span>
+            <span style={{ fontSize: 10, color: C.dim }}>QUANTUM Intelligence v4.13.3 | {s.total_complexes} מתחמים | {s.cities} ערים</span>
           </footer>
         </div>
       );
