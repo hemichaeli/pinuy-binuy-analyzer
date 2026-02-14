@@ -3,6 +3,11 @@
  * 
  * SCAN MODE: Both AIs scan independently, results merged into DB
  * CHAT MODE: Both AIs answer, Claude merges into unified response
+ * 
+ * Perplexity Models:
+ *   sonar       - Fast, basic (cheapest)
+ *   sonar-pro   - Enhanced, better quality (default)
+ *   sonar-reasoning-pro - Step-by-step reasoning with citations
  */
 
 const axios = require('axios');
@@ -11,7 +16,8 @@ const { logger } = require('./logger');
 
 // === API CONFIG ===
 const PERPLEXITY_URL = 'https://api.perplexity.ai/chat/completions';
-const PERPLEXITY_MODEL = 'sonar';
+const PERPLEXITY_MODEL_DEFAULT = 'sonar-pro';
+const PERPLEXITY_MODEL_RESEARCH = 'sonar-reasoning-pro';
 const CLAUDE_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
 
@@ -24,8 +30,11 @@ async function callPerplexity(systemPrompt, userPrompt, opts = {}) {
   const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) throw new Error('PERPLEXITY_API_KEY not set');
 
+  const model = opts.model || PERPLEXITY_MODEL_DEFAULT;
+  logger.info(`[PERPLEXITY] Using model: ${model}`);
+
   const response = await axios.post(PERPLEXITY_URL, {
-    model: opts.model || PERPLEXITY_MODEL,
+    model,
     messages: [
       { role: 'system', content: systemPrompt },
       ...(opts.history || []),
@@ -35,7 +44,7 @@ async function callPerplexity(systemPrompt, userPrompt, opts = {}) {
     max_tokens: opts.maxTokens || 4000
   }, {
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    timeout: 90000
+    timeout: 120000
   });
 
   return response.data.choices[0].message.content;
@@ -66,6 +75,24 @@ async function callClaude(systemPrompt, userPrompt, opts = {}) {
 
 function isClaudeConfigured() { return !!process.env.ANTHROPIC_API_KEY; }
 function isPerplexityConfigured() { return !!process.env.PERPLEXITY_API_KEY; }
+
+function getAvailableModels() {
+  return {
+    perplexity: {
+      default: PERPLEXITY_MODEL_DEFAULT,
+      research: PERPLEXITY_MODEL_RESEARCH,
+      models: [
+        { id: 'sonar', name: 'Sonar (מהיר)', description: 'מהיר וזול, לשאלות פשוטות' },
+        { id: 'sonar-pro', name: 'Sonar Pro (מומלץ)', description: 'איכות גבוהה, ברירת מחדל' },
+        { id: 'sonar-reasoning-pro', name: 'Research (מחקר)', description: 'מחקר מעמיק עם מקורות וניתוח' },
+      ]
+    },
+    claude: {
+      configured: isClaudeConfigured(),
+      model: CLAUDE_MODEL
+    }
+  };
+}
 
 // === JSON PARSING ===
 
@@ -127,7 +154,6 @@ function mergeScanResults(perplexityData, claudeData) {
     source: 'dual-ai'
   };
 
-  // Status: prefer higher confidence or more detailed
   const pStatus = perplexityData.status_update || {};
   const cStatus = claudeData.status_update || {};
   merged.status_update = {
@@ -138,19 +164,14 @@ function mergeScanResults(perplexityData, claudeData) {
     developer_update: [pStatus.developer_update, cStatus.developer_update].filter(Boolean).join(' | ')
   };
 
-  // Transactions: merge and dedupe by address+price
   const allTx = [
     ...(perplexityData.recent_transactions || []).map(t => ({ ...t, source: t.source || 'perplexity' })),
     ...(claudeData.recent_transactions || []).map(t => ({ ...t, source: t.source || 'claude' }))
   ];
   const txMap = new Map();
-  for (const tx of allTx) {
-    const key = `${tx.address}|${tx.price}`;
-    if (!txMap.has(key)) txMap.set(key, tx);
-  }
+  for (const tx of allTx) { const key = `${tx.address}|${tx.price}`; if (!txMap.has(key)) txMap.set(key, tx); }
   merged.recent_transactions = Array.from(txMap.values());
 
-  // Market: merge listings, take better avg
   const pMkt = perplexityData.current_market || {};
   const cMkt = claudeData.current_market || {};
   merged.current_market.avg_price_per_sqm = pMkt.avg_price_per_sqm || cMkt.avg_price_per_sqm;
@@ -163,44 +184,37 @@ function mergeScanResults(perplexityData, claudeData) {
     ...(cMkt.notable_listings || []).map(l => ({ ...l, source: l.source || 'claude' }))
   ];
   const listMap = new Map();
-  for (const l of allListings) {
-    const key = `${l.address}|${l.asking_price}`;
-    if (!listMap.has(key)) listMap.set(key, l);
-  }
+  for (const l of allListings) { const key = `${l.address}|${l.asking_price}`; if (!listMap.has(key)) listMap.set(key, l); }
   merged.current_market.notable_listings = Array.from(listMap.values());
   merged.current_market.num_active_listings = Math.max(pMkt.num_active_listings || 0, cMkt.num_active_listings || 0);
 
-  // News: combine
   merged.news = [perplexityData.news, claudeData.news].filter(Boolean).join(' | ');
 
-  // Confidence: higher of the two
   const confMap = { high: 3, medium: 2, low: 1 };
-  const pConf = confMap[perplexityData.confidence] || 1;
-  const cConf = confMap[claudeData.confidence] || 1;
-  merged.confidence = Math.max(pConf, cConf) >= 3 ? 'high' : Math.max(pConf, cConf) >= 2 ? 'medium' : 'low';
+  merged.confidence = Math.max(confMap[perplexityData.confidence] || 1, confMap[claudeData.confidence] || 1) >= 3 ? 'high' : Math.max(confMap[perplexityData.confidence] || 1, confMap[claudeData.confidence] || 1) >= 2 ? 'medium' : 'low';
 
   return merged;
 }
 
 // === DUAL SCAN (single complex) ===
 
-async function dualScanComplex(complexId) {
+async function dualScanComplex(complexId, options = {}) {
   const complexResult = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
   if (complexResult.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
 
   const complex = complexResult.rows[0];
   const prompt = buildScanPrompt(complex);
+  const scanModel = options.perplexityModel || PERPLEXITY_MODEL_DEFAULT;
 
-  logger.info(`[DUAL-SCAN] ${complex.name} (${complex.city})`, { complexId });
+  logger.info(`[DUAL-SCAN] ${complex.name} (${complex.city}) [model: ${scanModel}]`, { complexId });
 
   let perplexityData = null;
   let claudeData = null;
   const errors = [];
 
-  // Run both in parallel
   const [pResult, cResult] = await Promise.allSettled([
     isPerplexityConfigured()
-      ? callPerplexity(SCAN_SYSTEM, prompt).then(r => parseJsonResponse(r))
+      ? callPerplexity(SCAN_SYSTEM, prompt, { model: scanModel }).then(r => parseJsonResponse(r))
       : Promise.resolve(null),
     isClaudeConfigured()
       ? callClaude(SCAN_SYSTEM, prompt).then(r => parseJsonResponse(r))
@@ -225,7 +239,6 @@ async function dualScanComplex(complexId) {
     logger.warn(`[DUAL-SCAN] Claude failed for ${complex.name}: ${cResult.reason?.message}`);
   }
 
-  // Merge results
   const merged = mergeScanResults(perplexityData, claudeData);
 
   if (!merged) {
@@ -233,22 +246,16 @@ async function dualScanComplex(complexId) {
     return { complexId, name: complex.name, status: 'no_data', transactions: 0, listings: 0, errors };
   }
 
-  // Store in DB (reuse existing storage logic)
   const stored = await storeTransactionData(complexId, merged);
   await updateComplexStatus(complexId, merged);
 
   return {
-    complexId,
-    name: complex.name,
-    city: complex.city,
-    status: 'success',
+    complexId, name: complex.name, city: complex.city, status: 'success',
     sources: [perplexityData ? 'perplexity' : null, claudeData ? 'claude' : null].filter(Boolean),
-    confidence: merged.confidence,
-    transactions: stored.transactions,
-    listings: stored.listings,
+    model: scanModel,
+    confidence: merged.confidence, transactions: stored.transactions, listings: stored.listings,
     hasStatusUpdate: !!(merged.status_update && merged.status_update.current_status),
-    hasNews: !!merged.news,
-    errors
+    hasNews: !!merged.news, errors
   };
 }
 
@@ -261,17 +268,11 @@ async function storeTransactionData(complexId, data) {
   for (const tx of (data.recent_transactions || [])) {
     if (!tx.price || tx.price === 0) continue;
     try {
-      const dup = await pool.query(
-        `SELECT id FROM transactions WHERE complex_id = $1 AND address = $2 AND price = $3 AND transaction_date = $4`,
-        [complexId, tx.address, tx.price, tx.date || null]
-      );
+      const dup = await pool.query(`SELECT id FROM transactions WHERE complex_id = $1 AND address = $2 AND price = $3 AND transaction_date = $4`, [complexId, tx.address, tx.price, tx.date || null]);
       if (dup.rows.length === 0) {
         const pps = tx.area_sqm > 0 ? Math.round(tx.price / tx.area_sqm) : null;
-        await pool.query(
-          `INSERT INTO transactions (complex_id, transaction_date, price, area_sqm, rooms, floor, price_per_sqm, address, city, source)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT city FROM complexes WHERE id = $1), $9)`,
-          [complexId, tx.date || null, tx.price, tx.area_sqm || null, tx.rooms || null, tx.floor || null, pps, tx.address, tx.source || 'dual-ai']
-        );
+        await pool.query(`INSERT INTO transactions (complex_id, transaction_date, price, area_sqm, rooms, floor, price_per_sqm, address, city, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT city FROM complexes WHERE id = $1), $9)`,
+          [complexId, tx.date || null, tx.price, tx.area_sqm || null, tx.rooms || null, tx.floor || null, pps, tx.address, tx.source || 'dual-ai']);
         newTx++;
       }
     } catch (e) { logger.warn(`Store tx error: ${e.message}`); }
@@ -280,17 +281,11 @@ async function storeTransactionData(complexId, data) {
   for (const l of (data.current_market?.notable_listings || [])) {
     if (!l.asking_price || l.asking_price === 0) continue;
     try {
-      const dup = await pool.query(
-        `SELECT id FROM listings WHERE complex_id = $1 AND address = $2 AND asking_price = $3 AND is_active = true`,
-        [complexId, l.address, l.asking_price]
-      );
+      const dup = await pool.query(`SELECT id FROM listings WHERE complex_id = $1 AND address = $2 AND asking_price = $3 AND is_active = true`, [complexId, l.address, l.asking_price]);
       if (dup.rows.length === 0) {
         const pps = l.area_sqm > 0 ? Math.round(l.asking_price / l.area_sqm) : null;
-        await pool.query(
-          `INSERT INTO listings (complex_id, source, url, asking_price, area_sqm, rooms, price_per_sqm, address, city, first_seen, last_seen, days_on_market, original_price)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT city FROM complexes WHERE id = $1), CURRENT_DATE, CURRENT_DATE, $9, $4)`,
-          [complexId, l.source || 'dual-ai', l.url || null, l.asking_price, l.area_sqm || null, l.rooms || null, pps, l.address, l.days_on_market || 0]
-        );
+        await pool.query(`INSERT INTO listings (complex_id, source, url, asking_price, area_sqm, rooms, price_per_sqm, address, city, first_seen, last_seen, days_on_market, original_price) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT city FROM complexes WHERE id = $1), CURRENT_DATE, CURRENT_DATE, $9, $4)`,
+          [complexId, l.source || 'dual-ai', l.url || null, l.asking_price, l.area_sqm || null, l.rooms || null, pps, l.address, l.days_on_market || 0]);
         newListings++;
       }
     } catch (e) { logger.warn(`Store listing error: ${e.message}`); }
@@ -341,14 +336,15 @@ async function dualScanAll(options = {}) {
 
   const complexes = await pool.query(query, params);
   const total = complexes.rows.length;
-  logger.info(`[DUAL-SCAN] Starting scan of ${total} complexes (Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}, Perplexity: ${isPerplexityConfigured() ? 'ON' : 'OFF'})`);
+  const scanModel = options.perplexityModel || PERPLEXITY_MODEL_DEFAULT;
+  logger.info(`[DUAL-SCAN] Starting scan of ${total} complexes [model: ${scanModel}] (Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}, Perplexity: ${isPerplexityConfigured() ? 'ON' : 'OFF'})`);
 
-  const results = { total, scanned: 0, succeeded: 0, failed: 0, totalNewTx: 0, totalNewListings: 0, details: [] };
+  const results = { total, scanned: 0, succeeded: 0, failed: 0, totalNewTx: 0, totalNewListings: 0, model: scanModel, details: [] };
 
   for (let i = 0; i < complexes.rows.length; i++) {
     const c = complexes.rows[i];
     try {
-      const r = await dualScanComplex(c.id);
+      const r = await dualScanComplex(c.id, { perplexityModel: scanModel });
       results.scanned++; results.succeeded++;
       results.totalNewTx += r.transactions;
       results.totalNewListings += r.listings;
@@ -362,16 +358,19 @@ async function dualScanAll(options = {}) {
     if (i < complexes.rows.length - 1) await sleep(DELAY_BETWEEN_REQUESTS_MS);
   }
 
-  logger.info(`[DUAL-SCAN] Complete: ${results.succeeded}/${results.total} ok, ${results.totalNewTx} tx, ${results.totalNewListings} listings`);
+  logger.info(`[DUAL-SCAN] Complete: ${results.succeeded}/${results.total} ok, ${results.totalNewTx} tx, ${results.totalNewListings} listings [${scanModel}]`);
   return results;
 }
 
 // === DUAL CHAT ===
 
-async function dualChat(question, dbContext, history = []) {
+async function dualChat(question, dbContext, history = [], options = {}) {
+  const chatModel = options.model || PERPLEXITY_MODEL_DEFAULT;
+
   const chatSystem = `אתה יועץ השקעות נדל"ן מומחה של QUANTUM - משרד תיווך מוביל בפינוי-בינוי בישראל.
 ענה בעברית. תבסס על הנתונים. תן תובנות חכמות. אל תמציא.
-IAI = מדד אטרקטיביות השקעה. SSI = מדד לחץ מוכר.
+IAI = מדד אטרקטיביות השקעה (0-100). SSI = מדד לחץ מוכר (0-100).
+IAI גבוה = הזדמנות טובה יותר. SSI גבוה = מוכר לחוץ יותר.
 
 --- נתוני QUANTUM ---
 ${dbContext}`;
@@ -388,10 +387,11 @@ ${dbContext}`;
   let claudeAnswer = null;
   const errors = [];
 
-  // Run both in parallel
+  logger.info(`[DUAL-CHAT] Model: ${chatModel} | Claude: ${isClaudeConfigured() ? 'ON' : 'OFF'}`);
+
   const [pRes, cRes] = await Promise.allSettled([
     isPerplexityConfigured()
-      ? callPerplexity(chatSystem, question, { history, temperature: 0.3 })
+      ? callPerplexity(chatSystem, question, { history, temperature: 0.3, model: chatModel })
       : Promise.resolve(null),
     isClaudeConfigured()
       ? callClaude(chatSystem, question, { history })
@@ -400,7 +400,7 @@ ${dbContext}`;
 
   if (pRes.status === 'fulfilled' && pRes.value) {
     perplexityAnswer = pRes.value;
-    logger.info(`[DUAL-CHAT] Perplexity answered (${perplexityAnswer.length} chars)`);
+    logger.info(`[DUAL-CHAT] Perplexity answered (${perplexityAnswer.length} chars) [${chatModel}]`);
   } else if (pRes.status === 'rejected') {
     errors.push(`Perplexity: ${pRes.reason?.message}`);
   }
@@ -412,10 +412,9 @@ ${dbContext}`;
     errors.push(`Claude: ${cRes.reason?.message}`);
   }
 
-  // If only one answered, return it
-  if (perplexityAnswer && !claudeAnswer) return { answer: perplexityAnswer, sources: ['perplexity'], errors };
-  if (claudeAnswer && !perplexityAnswer) return { answer: claudeAnswer, sources: ['claude'], errors };
-  if (!perplexityAnswer && !claudeAnswer) return { answer: 'שתי מערכות ה-AI לא זמינות כרגע. נסה שוב.', sources: [], errors };
+  if (perplexityAnswer && !claudeAnswer) return { answer: perplexityAnswer, sources: ['perplexity'], model: chatModel, errors };
+  if (claudeAnswer && !perplexityAnswer) return { answer: claudeAnswer, sources: ['claude'], model: chatModel, errors };
+  if (!perplexityAnswer && !claudeAnswer) return { answer: 'מערכות ה-AI לא זמינות כרגע. נסה שוב.', sources: [], model: chatModel, errors };
 
   // Both answered - Claude merges
   try {
@@ -430,11 +429,10 @@ ${claudeAnswer}
 מזג לתשובה אחת מושלמת:`;
 
     const merged = await callClaude(mergeSystem, mergePrompt, { maxTokens: 4000 });
-    return { answer: merged, sources: ['perplexity', 'claude', 'merged'], errors };
+    return { answer: merged, sources: ['perplexity', 'claude', 'merged'], model: chatModel, errors };
   } catch (e) {
-    // If merge fails, return Claude's answer (usually more analytical)
     logger.warn(`[DUAL-CHAT] Merge failed: ${e.message}, using Claude answer`);
-    return { answer: claudeAnswer, sources: ['claude'], errors: [...errors, `Merge: ${e.message}`] };
+    return { answer: claudeAnswer, sources: ['claude'], model: chatModel, errors: [...errors, `Merge: ${e.message}`] };
   }
 }
 
@@ -443,12 +441,14 @@ module.exports = {
   callClaude,
   isClaudeConfigured,
   isPerplexityConfigured,
+  getAvailableModels,
   parseJsonResponse,
   dualScanComplex,
   dualScanAll,
   dualChat,
   mergeScanResults,
-  // Backward compat
+  PERPLEXITY_MODEL_DEFAULT,
+  PERPLEXITY_MODEL_RESEARCH,
   queryPerplexity: callPerplexity,
   scanComplex: dualScanComplex,
   scanAll: dualScanAll,
