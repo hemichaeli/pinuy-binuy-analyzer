@@ -29,6 +29,52 @@ router.post('/migrate', async (req, res) => {
       if (!e.message.includes('already exists')) migrations.push(`declaration_date: ${e.message}`);
     }
 
+    // v4.15.0: Messaging system columns
+    const msgCols = [
+      ["deal_status", "VARCHAR(50) DEFAULT 'חדש'"],
+      ["message_status", "VARCHAR(50) DEFAULT 'לא נשלחה'"],
+      ["last_message_sent_at", "TIMESTAMP"],
+      ["last_reply_at", "TIMESTAMP"],
+      ["last_reply_text", "TEXT"],
+      ["notes", "TEXT"]
+    ];
+    for (const [col, type] of msgCols) {
+      try {
+        await pool.query(`ALTER TABLE listings ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+        migrations.push(`listings.${col} ensured`);
+      } catch (e) {
+        migrations.push(`listings.${col}: ${e.message}`);
+      }
+    }
+
+    // v4.15.0: Create listing_messages table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS listing_messages (
+          id SERIAL PRIMARY KEY,
+          listing_id INTEGER REFERENCES listings(id) ON DELETE CASCADE,
+          direction VARCHAR(10) NOT NULL DEFAULT 'sent',
+          message_text TEXT NOT NULL,
+          sent_at TIMESTAMP DEFAULT NOW(),
+          status VARCHAR(30) DEFAULT 'pending',
+          yad2_conversation_id VARCHAR(100),
+          error_message TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      migrations.push('listing_messages table created');
+    } catch (e) {
+      migrations.push(`listing_messages: ${e.message}`);
+    }
+
+    try {
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listing_messages_listing ON listing_messages(listing_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listing_messages_direction ON listing_messages(direction)`);
+      migrations.push('listing_messages indexes created');
+    } catch (e) {
+      migrations.push(`indexes: ${e.message}`);
+    }
+
     res.json({ message: 'Migrations completed', migrations, timestamp: new Date().toISOString() });
   } catch (err) {
     logger.error('Migration failed', { error: err.message });
@@ -56,9 +102,9 @@ router.get('/schema/:table', async (req, res) => {
 router.post('/sql', async (req, res) => {
   try {
     const { query, params } = req.body;
-    const allowed = /^(SELECT|ALTER|CREATE INDEX|UPDATE complexes SET)/i;
+    const allowed = /^(SELECT|ALTER|CREATE (INDEX|TABLE)|UPDATE complexes SET|UPDATE listings SET)/i;
     if (!allowed.test(query.trim())) {
-      return res.status(403).json({ error: 'Only SELECT, ALTER, and CREATE INDEX queries allowed' });
+      return res.status(403).json({ error: 'Only SELECT, ALTER, CREATE INDEX/TABLE, and UPDATE listings/complexes queries allowed' });
     }
     const result = await pool.query(query, params || []);
     res.json({ rowCount: result.rowCount, rows: result.rows?.slice(0, 100) });
@@ -102,9 +148,8 @@ router.get('/duplicates', async (req, res) => {
 router.post('/dedup', async (req, res) => {
   try {
     const { dryRun } = req.body;
-    const isDryRun = dryRun !== false; // Default to dry run for safety
+    const isDryRun = dryRun !== false;
 
-    // Find IDs to delete: keep the one with most data (most recent update, or has perplexity summary)
     const toDelete = await pool.query(`
       WITH ranked AS (
         SELECT id, name, city,
@@ -132,22 +177,18 @@ router.post('/dedup', async (req, res) => {
       });
     }
 
-    // Actually delete
     const ids = toDelete.rows.map(r => r.id);
     if (ids.length === 0) {
       return res.json({ message: 'No duplicates found', deleted: 0 });
     }
 
-    // First update foreign keys to point to the kept record
     for (const row of toDelete.rows) {
-      // Find the kept ID for this name+city
       const kept = await pool.query(
         'SELECT id FROM complexes WHERE name = $1 AND city = $2 AND id != $3 ORDER BY updated_at DESC LIMIT 1',
         [row.name, row.city, row.id]
       );
       if (kept.rows.length > 0) {
         const keptId = kept.rows[0].id;
-        // Move related data to kept record
         await pool.query('UPDATE listings SET complex_id = $1 WHERE complex_id = $2', [keptId, row.id]);
         await pool.query('UPDATE transactions SET complex_id = $1 WHERE complex_id = $2', [keptId, row.id]);
         await pool.query('UPDATE alerts SET complex_id = $1 WHERE complex_id = $2', [keptId, row.id]);
@@ -157,7 +198,6 @@ router.post('/dedup', async (req, res) => {
       }
     }
 
-    // Delete duplicates
     const deleteResult = await pool.query(
       'DELETE FROM complexes WHERE id = ANY($1)',
       [ids]
