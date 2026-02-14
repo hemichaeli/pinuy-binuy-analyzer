@@ -24,23 +24,34 @@ function mdToHtml(text) {
   if (!text) return '';
   let html = text;
   
-  // === PREPROCESSING: Collapse multi-line AI entries into single-line format ===
-  // AI often returns: "1. **name | city**\n   IAI:68 (desc) | SSI:64 (desc)."
-  // We need:          "1. name | city | IAI:68 | SSI:64"
+  // === PREPROCESSING: Collapse multi-line AI entries into single-line card format ===
+  // AI outputs vary. We normalize all to: "N. name | city | IAI:XX | SSI:XX"
   
-  // Pattern 1: IAI first, then SSI
+  // Format A: "## N. **name - city**\n- **IAI: XX** | **SSI: XX** (desc)"
+  html = html.replace(/^#{1,3}\s*(\d+)\.\s+\*\*(.+?)\s*[-\u2013]\s*(.+?)\*\*\s*\n-\s+\*\*IAI[:\s]*(\d+)\*\*\s*\|\s*\*\*SSI[:\s]*(\d+)\*\*[^\n]*/gm,
+    (m, num, name, city, iai, ssi) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai} | SSI:${ssi}`
+  );
+  // Format A2: SSI first
+  html = html.replace(/^#{1,3}\s*(\d+)\.\s+\*\*(.+?)\s*[-\u2013]\s*(.+?)\*\*\s*\n-\s+\*\*SSI[:\s]*(\d+)\*\*\s*\|\s*\*\*IAI[:\s]*(\d+)\*\*[^\n]*/gm,
+    (m, num, name, city, ssi, iai) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai} | SSI:${ssi}`
+  );
+  // Format B: "## N. **name - city**\n- IAI: XX | SSI: XX (desc)" (no bold on metrics)
+  html = html.replace(/^#{1,3}\s*(\d+)\.\s+\*\*(.+?)\s*[-\u2013]\s*(.+?)\*\*\s*\n-\s+IAI[:\s]*(\d+)[^|\n]*\|\s*SSI[:\s]*(\d+)[^\n]*/gm,
+    (m, num, name, city, iai, ssi) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai} | SSI:${ssi}`
+  );
+  // Format C: "N. **name | city**\n   IAI:XX (desc) | SSI:XX (desc)"
   html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+IAI[:\s]*(\d+)[^|\n]*\|\s*SSI[:\s]*(\d+)[^\n]*/gm,
     (m, num, name, city, iai, ssi) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai} | SSI:${ssi}`
   );
-  // Pattern 2: SSI first, then IAI
+  // Format C2: SSI first
   html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+SSI[:\s]*(\d+)[^|\n]*\|\s*IAI[:\s]*(\d+)[^\n]*/gm,
     (m, num, name, city, ssi, iai) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai} | SSI:${ssi}`
   );
-  // Pattern 3: IAI only (no SSI on the line)
+  // Format D: IAI only
   html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+IAI[:\s]*(\d+)[^\n]*/gm,
     (m, num, name, city, iai) => `${num}. ${name.trim()} | ${city.trim()} | IAI:${iai}`
   );
-  // Pattern 4: SSI only (no IAI on the line)
+  // Format E: SSI only
   html = html.replace(/^(\d+)\.\s+\*\*(.+?)\s*\|\s*(.+?)\*\*\s*\n\s+SSI[:\s]*(\d+)[^\n]*/gm,
     (m, num, name, city, ssi) => `${num}. ${name.trim()} | ${city.trim()} | SSI:${ssi}`
   );
@@ -95,13 +106,13 @@ function mdToHtml(text) {
       const ssiClass = +ssi >= 60 ? 'high' : +ssi >= 40 ? 'med' : 'low';
       const isGold = +iai >= 40 && +ssi >= 20;
       let tags = '';
-      if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
-      if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
-      if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
-      if (isGold && !tags.includes('זהב')) tags += '<span class="ri-tag gold">פוטנציאל</span>';
+      if (rest && rest.includes('\u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05ea \u05d6\u05d4\u05d1')) tags += '<span class="ri-tag gold">\u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05ea \u05d6\u05d4\u05d1</span>';
+      if (rest && rest.includes('\u05db\u05d9\u05e0\u05d5\u05e1')) tags += '<span class="ri-tag">\u05db\u05d9\u05e0\u05d5\u05e1</span>';
+      if (rest && rest.includes('\u05d9\u05e8\u05d5\u05e9\u05d4')) tags += '<span class="ri-tag">\u05d9\u05e8\u05d5\u05e9\u05d4</span>';
+      if (isGold && !tags.includes('\u05d6\u05d4\u05d1')) tags += '<span class="ri-tag gold">\u05e4\u05d5\u05d8\u05e0\u05e6\u05d9\u05d0\u05dc</span>';
       const safeName = name.trim().replace(/'/g, "\\'");
       const safeCity = city.trim().replace(/'/g, "\\'");
-      return `<div class="result-item" onclick="askQ('ספר לי עוד על ${safeName} ב${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores"><span class="ri-iai">IAI: ${iai}</span><span class="ri-ssi ${ssiClass}">SSI: ${ssi}</span>${tags}</div></div>`;
+      return `<div class="result-item" onclick="askQ('\u05e1\u05e4\u05e8 \u05dc\u05d9 \u05e2\u05d5\u05d3 \u05e2\u05dc ${safeName} \u05d1${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores"><span class="ri-iai">IAI: ${iai}</span><span class="ri-ssi ${ssiClass}">SSI: ${ssi}</span>${tags}</div></div>`;
     }
   );
   
@@ -111,7 +122,7 @@ function mdToHtml(text) {
       name = name.replace(/<\/?strong>/g, '');
       const safeName = name.trim().replace(/'/g, "\\'");
       const safeCity = city.trim().replace(/'/g, "\\'");
-      return `<div class="result-item" onclick="askQ('ספר לי עוד על ${safeName} ב${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores"><span class="ri-iai">IAI: ${iai}</span></div></div>`;
+      return `<div class="result-item" onclick="askQ('\u05e1\u05e4\u05e8 \u05dc\u05d9 \u05e2\u05d5\u05d3 \u05e2\u05dc ${safeName} \u05d1${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores"><span class="ri-iai">IAI: ${iai}</span></div></div>`;
     }
   );
   
@@ -124,12 +135,12 @@ function mdToHtml(text) {
       let iaiMatch = rest.match(/IAI[:\s]*(\d+)/i);
       let iaiHtml = iaiMatch ? `<span class="ri-iai">IAI: ${iaiMatch[1]}</span>` : '';
       let tags = '';
-      if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
-      if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
-      if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
+      if (rest && rest.includes('\u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05ea \u05d6\u05d4\u05d1')) tags += '<span class="ri-tag gold">\u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05ea \u05d6\u05d4\u05d1</span>';
+      if (rest && rest.includes('\u05db\u05d9\u05e0\u05d5\u05e1')) tags += '<span class="ri-tag">\u05db\u05d9\u05e0\u05d5\u05e1</span>';
+      if (rest && rest.includes('\u05d9\u05e8\u05d5\u05e9\u05d4')) tags += '<span class="ri-tag">\u05d9\u05e8\u05d5\u05e9\u05d4</span>';
       const safeName = name.trim().replace(/'/g, "\\'");
       const safeCity = city.trim().replace(/'/g, "\\'");
-      return `<div class="result-item" onclick="askQ('ספר לי עוד על ${safeName} ב${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores">${iaiHtml}<span class="ri-ssi ${ssiClass}">SSI: ${ssi}</span>${tags}</div></div>`;
+      return `<div class="result-item" onclick="askQ('\u05e1\u05e4\u05e8 \u05dc\u05d9 \u05e2\u05d5\u05d3 \u05e2\u05dc ${safeName} \u05d1${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores">${iaiHtml}<span class="ri-ssi ${ssiClass}">SSI: ${ssi}</span>${tags}</div></div>`;
     }
   );
   
@@ -185,8 +196,8 @@ async function getDbContext(question) {
     FROM complexes
   `)).rows[0];
 
-  let context = `מסד נתונים QUANTUM - פינוי-בינוי ישראל:
-${stats.total} מתחמים, ${stats.opportunities} הזדמנויות (IAI 30+), ${stats.excellent} מצוינות (IAI 70+), ${stats.stressed} מוכרים במצוקה (SSI 40+), ${stats.cities} ערים. IAI ממוצע: ${stats.avg_iai}.
+  let context = `\u05de\u05e1\u05d3 \u05e0\u05ea\u05d5\u05e0\u05d9\u05dd QUANTUM - \u05e4\u05d9\u05e0\u05d5\u05d9-\u05d1\u05d9\u05e0\u05d5\u05d9 \u05d9\u05e9\u05e8\u05d0\u05dc:
+${stats.total} \u05de\u05ea\u05d7\u05de\u05d9\u05dd, ${stats.opportunities} \u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea (IAI 30+), ${stats.excellent} \u05de\u05e6\u05d5\u05d9\u05e0\u05d5\u05ea (IAI 70+), ${stats.stressed} \u05de\u05d5\u05db\u05e8\u05d9\u05dd \u05d1\u05de\u05e6\u05d5\u05e7\u05d4 (SSI 40+), ${stats.cities} \u05e2\u05e8\u05d9\u05dd. IAI \u05de\u05de\u05d5\u05e6\u05e2: ${stats.avg_iai}.
 
 `;
 
@@ -203,9 +214,9 @@ ${stats.total} מתחמים, ${stats.opportunities} הזדמנויות (IAI 30+)
       FROM complexes WHERE city = $1 ORDER BY iai_score DESC NULLS LAST
     `, [targetCity])).rows;
     
-    context += `=== ${targetCity} (${cityData.length} מתחמים) ===\n`;
+    context += `=== ${targetCity} (${cityData.length} \u05de\u05ea\u05d7\u05de\u05d9\u05dd) ===\n`;
     cityData.forEach((c, i) => {
-      context += `${i+1}. ${c.name || c.addresses || '-'} | IAI:${c.iai_score || '-'} | SSI:${c.enhanced_ssi_score || '-'} | יזם:${c.developer || '-'} | שלב:${c.status || '-'} | יחד:${c.planned_units || '-'}${c.is_receivership ? ' | כינוס' : ''}${c.is_inheritance_property ? ' | ירושה' : ''}\n`;
+      context += `${i+1}. ${c.name || c.addresses || '-'} | IAI:${c.iai_score || '-'} | SSI:${c.enhanced_ssi_score || '-'} | \u05d9\u05d6\u05dd:${c.developer || '-'} | \u05e9\u05dc\u05d1:${c.status || '-'} | \u05d9\u05d7\u05d3:${c.planned_units || '-'}${c.is_receivership ? ' | \u05db\u05d9\u05e0\u05d5\u05e1' : ''}${c.is_inheritance_property ? ' | \u05d9\u05e8\u05d5\u05e9\u05d4' : ''}\n`;
     });
     context += '\n';
   }
@@ -215,45 +226,45 @@ ${stats.total} מתחמים, ${stats.opportunities} הזדמנויות (IAI 30+)
     FROM complexes WHERE iai_score >= 30 ORDER BY iai_score DESC LIMIT 20
   `)).rows;
   
-  context += `=== טופ 20 הזדמנויות ===\n`;
+  context += `=== \u05d8\u05d5\u05e4 20 \u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea ===\n`;
   topOpp.forEach((c, i) => {
-    context += `${i+1}. ${c.name} | ${c.city} | IAI:${c.iai_score} | SSI:${c.enhanced_ssi_score || '-'} | יזם:${c.developer || '-'} | שלב:${c.status || '-'}\n`;
+    context += `${i+1}. ${c.name} | ${c.city} | IAI:${c.iai_score} | SSI:${c.enhanced_ssi_score || '-'} | \u05d9\u05d6\u05dd:${c.developer || '-'} | \u05e9\u05dc\u05d1:${c.status || '-'}\n`;
   });
   context += '\n';
 
-  if (lowerQ.includes('מצוק') || lowerQ.includes('לח') || lowerQ.includes('stress') || lowerQ.includes('ssi') || lowerQ.includes('כינוס') || lowerQ.includes('ירוש') || lowerQ.includes('מוכר') || lowerQ.includes('הזדמנו') || lowerQ.includes('זול') || lowerQ.includes('מתחת')) {
+  if (lowerQ.includes('\u05de\u05e6\u05d5\u05e7') || lowerQ.includes('\u05dc\u05d7') || lowerQ.includes('stress') || lowerQ.includes('ssi') || lowerQ.includes('\u05db\u05d9\u05e0\u05d5\u05e1') || lowerQ.includes('\u05d9\u05e8\u05d5\u05e9') || lowerQ.includes('\u05de\u05d5\u05db\u05e8') || lowerQ.includes('\u05d4\u05d6\u05d3\u05de\u05e0\u05d5') || lowerQ.includes('\u05d6\u05d5\u05dc') || lowerQ.includes('\u05de\u05ea\u05d7\u05ea')) {
     const stressed = (await pool.query(`
       SELECT name, city, enhanced_ssi_score, iai_score, is_receivership, is_inheritance_property, has_enforcement_cases
       FROM complexes WHERE enhanced_ssi_score >= 10 ORDER BY enhanced_ssi_score DESC LIMIT 15
     `)).rows;
     
-    context += `=== מוכרים במצוקה ===\n`;
+    context += `=== \u05de\u05d5\u05db\u05e8\u05d9\u05dd \u05d1\u05de\u05e6\u05d5\u05e7\u05d4 ===\n`;
     stressed.forEach((c, i) => {
       let flags = [];
-      if (c.is_receivership) flags.push('כינוס');
-      if (c.is_inheritance_property) flags.push('ירושה');
-      if (c.has_enforcement_cases) flags.push('הוצלפ');
+      if (c.is_receivership) flags.push('\u05db\u05d9\u05e0\u05d5\u05e1');
+      if (c.is_inheritance_property) flags.push('\u05d9\u05e8\u05d5\u05e9\u05d4');
+      if (c.has_enforcement_cases) flags.push('\u05d4\u05d5\u05e6\u05dc\u05e4');
       context += `${i+1}. ${c.name} | ${c.city} | SSI:${c.enhanced_ssi_score} | IAI:${c.iai_score || '-'} | ${flags.join(', ') || '-'}\n`;
     });
     context += '\n';
   }
 
-  if (lowerQ.includes('כינוס') || lowerQ.includes('kones') || lowerQ.includes('receivership') || lowerQ.includes('מכר')) {
+  if (lowerQ.includes('\u05db\u05d9\u05e0\u05d5\u05e1') || lowerQ.includes('kones') || lowerQ.includes('receivership') || lowerQ.includes('\u05de\u05db\u05e8')) {
     const kones = (await pool.query(`
       SELECT address, city, property_type, price, region, submission_deadline
       FROM kones_listings WHERE is_active = true ORDER BY created_at DESC LIMIT 15
     `)).rows;
     
     if (kones.length > 0) {
-      context += `=== כינוס נכסים ===\n`;
+      context += `=== \u05db\u05d9\u05e0\u05d5\u05e1 \u05e0\u05db\u05e1\u05d9\u05dd ===\n`;
       kones.forEach((k, i) => {
-        context += `${i+1}. ${k.address || '-'} | ${k.city || '-'} | ${k.property_type || '-'} | ${k.price ? '₪'+Number(k.price).toLocaleString() : '-'}\n`;
+        context += `${i+1}. ${k.address || '-'} | ${k.city || '-'} | ${k.property_type || '-'} | ${k.price ? '\u20aa'+Number(k.price).toLocaleString() : '-'}\n`;
       });
       context += '\n';
     }
   }
 
-  if (lowerQ.includes('עסק') || lowerQ.includes('מכיר') || lowerQ.includes('מחיר') || lowerQ.includes('נמכר')) {
+  if (lowerQ.includes('\u05e2\u05e1\u05e7') || lowerQ.includes('\u05de\u05db\u05d9\u05e8') || lowerQ.includes('\u05de\u05d7\u05d9\u05e8') || lowerQ.includes('\u05e0\u05de\u05db\u05e8')) {
     const tx = (await pool.query(`
       SELECT t.address, c.city, t.price, t.size_sqm, t.price_per_sqm, t.transaction_date
       FROM transactions t LEFT JOIN complexes c ON t.complex_id = c.id
@@ -261,15 +272,15 @@ ${stats.total} מתחמים, ${stats.opportunities} הזדמנויות (IAI 30+)
     `)).rows;
     
     if (tx.length > 0) {
-      context += `=== עסקאות אחרונות ===\n`;
+      context += `=== \u05e2\u05e1\u05e7\u05d0\u05d5\u05ea \u05d0\u05d7\u05e8\u05d5\u05e0\u05d5\u05ea ===\n`;
       tx.forEach((t, i) => {
-        context += `${i+1}. ${t.address || '-'} | ${t.city || '-'} | ₪${t.price ? Number(t.price).toLocaleString() : '-'} | ${t.size_sqm || '-'}מר\n`;
+        context += `${i+1}. ${t.address || '-'} | ${t.city || '-'} | \u20aa${t.price ? Number(t.price).toLocaleString() : '-'} | ${t.size_sqm || '-'}\u05de\u05e8\n`;
       });
       context += '\n';
     }
   }
 
-  if (lowerQ.includes('עיר') || lowerQ.includes('ערים') || lowerQ.includes('השוו') || lowerQ.includes('איפה') || lowerQ.includes('איזה עיר') || lowerQ.includes('הכי טוב')) {
+  if (lowerQ.includes('\u05e2\u05d9\u05e8') || lowerQ.includes('\u05e2\u05e8\u05d9\u05dd') || lowerQ.includes('\u05d4\u05e9\u05d5\u05d5') || lowerQ.includes('\u05d0\u05d9\u05e4\u05d4') || lowerQ.includes('\u05d0\u05d9\u05d6\u05d4 \u05e2\u05d9\u05e8') || lowerQ.includes('\u05d4\u05db\u05d9 \u05d8\u05d5\u05d1')) {
     const cities = (await pool.query(`
       SELECT city, COUNT(*) as total, COUNT(*) FILTER (WHERE iai_score >= 30) as opp,
         COUNT(*) FILTER (WHERE enhanced_ssi_score >= 40) as stressed, ROUND(AVG(iai_score)) as avg_iai
@@ -277,8 +288,8 @@ ${stats.total} מתחמים, ${stats.opportunities} הזדמנויות (IAI 30+)
       ORDER BY COUNT(*) FILTER (WHERE iai_score >= 30) DESC LIMIT 25
     `)).rows;
     
-    context += `=== פילוח ערים ===\n`;
-    cities.forEach(c => { context += `${c.city}: ${c.total} מתחמים, ${c.opp} הזדמנויות, IAI ממוצע ${c.avg_iai}\n`; });
+    context += `=== \u05e4\u05d9\u05dc\u05d5\u05d7 \u05e2\u05e8\u05d9\u05dd ===\n`;
+    cities.forEach(c => { context += `${c.city}: ${c.total} \u05de\u05ea\u05d7\u05de\u05d9\u05dd, ${c.opp} \u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea, IAI \u05de\u05de\u05d5\u05e6\u05e2 ${c.avg_iai}\n`; });
     context += '\n';
   }
 
@@ -289,7 +300,7 @@ ${stats.total} מתחמים, ${stats.opportunities} הזדמנויות (IAI 30+)
   `)).rows;
   
   if (golden.length > 0) {
-    context += `=== הזדמנויות זהב ===\n`;
+    context += `=== \u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea \u05d6\u05d4\u05d1 ===\n`;
     golden.forEach((g, i) => { context += `${i+1}. ${g.name} | ${g.city} | IAI:${g.iai_score} | SSI:${g.enhanced_ssi_score}\n`; });
   }
 
@@ -464,35 +475,35 @@ router.get('/', (req, res) => {
     <div class="header-right">
       <select class="model-select" id="modelSelect">
         <optgroup label="Standard">
-          <option value="sonar-pro">Pro (מומלץ)</option>
-          <option value="sonar">Fast (מהיר)</option>
+          <option value="sonar-pro">Pro (\u05de\u05d5\u05de\u05dc\u05e5)</option>
+          <option value="sonar">Fast (\u05de\u05d4\u05d9\u05e8)</option>
         </optgroup>
         <optgroup label="Research">
-          <option value="sonar-reasoning-pro">Reasoning (חשיבה)</option>
-          <option value="sonar-deep-research">Deep Research (מחקר עמוק)</option>
+          <option value="sonar-reasoning-pro">Reasoning (\u05d7\u05e9\u05d9\u05d1\u05d4)</option>
+          <option value="sonar-deep-research">Deep Research (\u05de\u05d7\u05e7\u05e8 \u05e2\u05de\u05d5\u05e7)</option>
         </optgroup>
         <optgroup label="Premium">
-          <option value="council">Council (מועצה) - 3 מודלים</option>
+          <option value="council">Council (\u05de\u05d5\u05e2\u05e6\u05d4) - 3 \u05de\u05d5\u05d3\u05dc\u05d9\u05dd</option>
         </optgroup>
       </select>
-      <a href="/api/dashboard/" class="dash-link">דשבורד</a>
+      <a href="/api/dashboard/" class="dash-link">\u05d3\u05e9\u05d1\u05d5\u05e8\u05d3</a>
     </div>
   </div>
   
   <div class="chat-area" id="chat">
-    <div class="msg system">מח חד. הבנה עמוקה. גישה לסודות השוק.<br><br>שאל אותי כל שאלה על פינוי-בינוי.</div>
+    <div class="msg system">\u05de\u05d7 \u05d7\u05d3. \u05d4\u05d1\u05e0\u05d4 \u05e2\u05de\u05d5\u05e7\u05d4. \u05d2\u05d9\u05e9\u05d4 \u05dc\u05e1\u05d5\u05d3\u05d5\u05ea \u05d4\u05e9\u05d5\u05e7.<br><br>\u05e9\u05d0\u05dc \u05d0\u05d5\u05ea\u05d9 \u05db\u05dc \u05e9\u05d0\u05dc\u05d4 \u05e2\u05dc \u05e4\u05d9\u05e0\u05d5\u05d9-\u05d1\u05d9\u05e0\u05d5\u05d9.</div>
   </div>
 
   <div class="suggestions" id="suggestions">
-    <button onclick="askQ('מה ההזדמנויות הכי טובות עכשיו?')">הזדמנויות</button>
-    <button onclick="askQ('איפה יש מוכרים במצוקה?')">מוכרים לחוצים</button>
-    <button onclick="askQ('השווה בין בת ים לחולון לפתח תקווה')">השוואת ערים</button>
-    <button onclick="askQ('איזה מתחמים בכינוס נכסים?')">כינוס נכסים</button>
-    <button onclick="askQ('תן לי 5 הזדמנויות זהב')">הזדמנויות זהב</button>
+    <button onclick="askQ('\u05de\u05d4 \u05d4\u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea \u05d4\u05db\u05d9 \u05d8\u05d5\u05d1\u05d5\u05ea \u05e2\u05db\u05e9\u05d9\u05d5?')">\u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea</button>
+    <button onclick="askQ('\u05d0\u05d9\u05e4\u05d4 \u05d9\u05e9 \u05de\u05d5\u05db\u05e8\u05d9\u05dd \u05d1\u05de\u05e6\u05d5\u05e7\u05d4?')">\u05de\u05d5\u05db\u05e8\u05d9\u05dd \u05dc\u05d7\u05d5\u05e6\u05d9\u05dd</button>
+    <button onclick="askQ('\u05d4\u05e9\u05d5\u05d5\u05d4 \u05d1\u05d9\u05df \u05d1\u05ea \u05d9\u05dd \u05dc\u05d7\u05d5\u05dc\u05d5\u05df \u05dc\u05e4\u05ea\u05d7 \u05ea\u05e7\u05d5\u05d5\u05d4')">\u05d4\u05e9\u05d5\u05d5\u05d0\u05ea \u05e2\u05e8\u05d9\u05dd</button>
+    <button onclick="askQ('\u05d0\u05d9\u05d6\u05d4 \u05de\u05ea\u05d7\u05de\u05d9\u05dd \u05d1\u05db\u05d9\u05e0\u05d5\u05e1 \u05e0\u05db\u05e1\u05d9\u05dd?')">\u05db\u05d9\u05e0\u05d5\u05e1 \u05e0\u05db\u05e1\u05d9\u05dd</button>
+    <button onclick="askQ('\u05ea\u05df \u05dc\u05d9 5 \u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea \u05d6\u05d4\u05d1')">\u05d4\u05d6\u05d3\u05de\u05e0\u05d5\u05d9\u05d5\u05ea \u05d6\u05d4\u05d1</button>
   </div>
 
   <div class="input-area">
-    <input type="text" id="input" placeholder="שאל על פינוי-בינוי..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)send()">
+    <input type="text" id="input" placeholder="\u05e9\u05d0\u05dc \u05e2\u05dc \u05e4\u05d9\u05e0\u05d5\u05d9-\u05d1\u05d9\u05e0\u05d5\u05d9..." onkeydown="if(event.key==='Enter'&&!event.shiftKey)send()">
     <button class="send-btn" id="btn" onclick="send()">&#10148;</button>
   </div>
 
@@ -524,7 +535,7 @@ router.get('/', (req, res) => {
       html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
       html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
       html = html.replace(/(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)/g, '<em>$1</em>');
-      html = html.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+      html = html.replace(/\\\`([^\\\`]+)\\\`/g, '<code>$1</code>');
       html = html.replace(/^---$/gm, '<hr>');
       html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
       // Simple numbered lists
@@ -577,10 +588,10 @@ router.get('/', (req, res) => {
       const model = modelSelect.value;
       const mName = modelNames[model] || model;
       const typingText = model === 'council' 
-        ? 'Council: שולח ל-3 מודלים במקביל...' 
+        ? 'Council: \u05e9\u05d5\u05dc\u05d7 \u05dc-3 \u05de\u05d5\u05d3\u05dc\u05d9\u05dd \u05d1\u05de\u05e7\u05d1\u05d9\u05dc...' 
         : model === 'sonar-deep-research'
-          ? 'Deep Research: מחקר מעמיק (עד 5 דקות)...'
-          : mName + ' מנתח...';
+          ? 'Deep Research: \u05de\u05d7\u05e7\u05e8 \u05de\u05e2\u05de\u05d9\u05e7 (\u05e2\u05d3 5 \u05d3\u05e7\u05d5\u05ea)...'
+          : mName + ' \u05de\u05e0\u05ea\u05d7...';
       const typing = addMsg(typingText, 'typing');
       
       try {
@@ -606,7 +617,7 @@ router.get('/', (req, res) => {
           history.push({ role: 'user', content: q });
           history.push({ role: 'assistant', content: data.answer });
         }
-      } catch (e) { typing.remove(); addMsg('שגיאת חיבור: ' + e.message, 'system'); }
+      } catch (e) { typing.remove(); addMsg('\u05e9\u05d2\u05d9\u05d0\u05ea \u05d7\u05d9\u05d1\u05d5\u05e8: ' + e.message, 'system'); }
       
       btn.disabled = false;
       input.focus();
