@@ -1,6 +1,7 @@
 /**
  * QUANTUM Chat - AI answering questions about our DB
- * POST /api/chat/ask - Ask a question, get AI answer
+ * v4.13.2: Server-side markdown rendering for reliable clickable cards
+ * POST /api/chat/ask - Ask a question, get AI answer + html_answer
  * GET /api/chat/ - Chat UI
  * GET /api/chat/status - AI status
  * GET /api/chat/models - Available models
@@ -11,6 +12,140 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
 const { dualChat, isClaudeConfigured, isPerplexityConfigured, getAvailableModels } = require('../services/dualAiService');
+
+// ============================================================
+// SERVER-SIDE MARKDOWN TO HTML CONVERTER
+// Runs in Node.js where regex works correctly (no template literal escaping issues)
+// ============================================================
+/**
+ * Server-side Markdown to HTML converter for QUANTUM Chat
+ */
+function mdToHtml(text) {
+  if (!text) return '';
+  let html = text;
+  
+  // Escape HTML entities
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  
+  // Bold: **text**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  
+  // Italic: *text* (not preceded/followed by *)
+  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+  
+  // Code: `text`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // Links: [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  
+  // Horizontal rule
+  html = html.replace(/^---$/gm, '<hr>');
+  
+  // Blockquote
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  
+  // Tables: detect markdown tables with | pipes
+  html = html.replace(/^(\|.+\|\n)(\|[-| :]+\|\n)((?:\|.+\|\n?)+)/gm, (match, headerRow, sepRow, bodyRows) => {
+    const headers = headerRow.trim().split('|').filter(c => c.trim());
+    const rows = bodyRows.trim().split('\n').map(r => r.split('|').filter(c => c.trim()));
+    let table = '<table><thead><tr>';
+    headers.forEach(h => { table += '<th>' + h.trim() + '</th>'; });
+    table += '</tr></thead><tbody>';
+    rows.forEach(r => {
+      table += '<tr>';
+      r.forEach(c => { table += '<td>' + c.trim() + '</td>'; });
+      table += '</tr>';
+    });
+    table += '</tbody></table>';
+    return table;
+  });
+  
+  // Result cards: number. name | city | IAI:xx | SSI:xx (with optional rest)
+  html = html.replace(/^(\d+)\.\s+(.+?)\s*\|\s*(.+?)\s*\|\s*(?:IAI|iai)[:\s]*(\d+)\s*\|\s*(?:SSI|ssi)[:\s]*(\d+)(.*)$/gm, 
+    (match, num, name, city, iai, ssi, rest) => {
+      name = name.replace(/<\/?strong>/g, '');
+      const ssiClass = +ssi >= 60 ? 'high' : +ssi >= 40 ? 'med' : 'low';
+      const isGold = +iai >= 40 && +ssi >= 20;
+      let tags = '';
+      if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
+      if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
+      if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
+      if (isGold && !tags.includes('זהב')) tags += '<span class="ri-tag gold">פוטנציאל</span>';
+      const safeName = name.trim().replace(/'/g, "\\'");
+      const safeCity = city.trim().replace(/'/g, "\\'");
+      return `<div class="result-item" onclick="askQ('ספר לי עוד על ${safeName} ב${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores"><span class="ri-iai">IAI: ${iai}</span><span class="ri-ssi ${ssiClass}">SSI: ${ssi}</span>${tags}</div></div>`;
+    }
+  );
+  
+  // Result cards: number. name | city | IAI:xx (no SSI)
+  html = html.replace(/^(\d+)\.\s+(.+?)\s*\|\s*(.+?)\s*\|\s*(?:IAI|iai)[:\s]*(\d+)$/gm,
+    (match, num, name, city, iai) => {
+      name = name.replace(/<\/?strong>/g, '');
+      const safeName = name.trim().replace(/'/g, "\\'");
+      const safeCity = city.trim().replace(/'/g, "\\'");
+      return `<div class="result-item" onclick="askQ('ספר לי עוד על ${safeName} ב${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores"><span class="ri-iai">IAI: ${iai}</span></div></div>`;
+    }
+  );
+  
+  // Result cards: number. name | city | SSI:xx (with optional rest)
+  html = html.replace(/^(\d+)\.\s+(.+?)\s*\|\s*(.+?)\s*\|\s*(?:SSI|ssi)[:\s]*(\d+)(.*)$/gm,
+    (match, num, name, city, ssi, rest) => {
+      if (match.includes('result-item')) return match;
+      name = name.replace(/<\/?strong>/g, '');
+      const ssiClass = +ssi >= 60 ? 'high' : +ssi >= 40 ? 'med' : 'low';
+      let iaiMatch = rest.match(/IAI[:\s]*(\d+)/i);
+      let iaiHtml = iaiMatch ? `<span class="ri-iai">IAI: ${iaiMatch[1]}</span>` : '';
+      let tags = '';
+      if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
+      if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
+      if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
+      const safeName = name.trim().replace(/'/g, "\\'");
+      const safeCity = city.trim().replace(/'/g, "\\'");
+      return `<div class="result-item" onclick="askQ('ספר לי עוד על ${safeName} ב${safeCity}')"><div><span class="ri-name">${name.trim()}</span><span class="ri-city">${city.trim()}</span></div><div class="ri-scores">${iaiHtml}<span class="ri-ssi ${ssiClass}">SSI: ${ssi}</span>${tags}</div></div>`;
+    }
+  );
+  
+  // Regular numbered lists (not already converted to result-item)
+  html = html.replace(/^(\d+)\.\s+(?!<div)(.+)$/gm, (match, num, content) => {
+    if (match.includes('result-item')) return match;
+    return `<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#4a5e80;min-width:18px;text-align:center;">${num}.</span><span>${content}</span></div>`;
+  });
+  
+  // Bullet lists
+  html = html.replace(/^[-*]\s+(.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#06d6a0;">&#x2022;</span><span>$1</span></div>');
+  
+  // Citation references [1], [2], etc
+  html = html.replace(/\[(\d+)\]/g, '<sup style="color:#4a5e80;font-size:9px;">[$1]</sup>');
+  
+  // Arrow markers
+  html = html.replace(/\u2190/g, '<span style="color:#06d6a0;">&#8592;</span>');
+  
+  // Paragraphs - double newlines
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+  
+  // Cleanup
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>(<h[123]>)/g, '$1');
+  html = html.replace(/(<\/h[123]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<div)/g, '$1');
+  html = html.replace(/(<\/div>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<hr>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<table)/g, '$1');
+  html = html.replace(/(<\/table>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<blockquote)/g, '$1');
+  html = html.replace(/(<\/blockquote>)<\/p>/g, '$1');
+  
+  return html;
+}
+
 
 /**
  * Pull compact DB context based on the question
@@ -160,8 +295,12 @@ router.post('/ask', async (req, res) => {
     
     logger.info(`[CHAT] Sources: ${result.sources.join('+')} | Model: ${result.model} | ${result.answer.length} chars`);
 
+    // Server-side markdown rendering - produces reliable HTML with clickable cards
+    const htmlAnswer = mdToHtml(result.answer);
+
     res.json({
       answer: result.answer,
+      html_answer: htmlAnswer,
       sources: result.sources,
       model: result.model,
       council_details: result.council_details || null,
@@ -297,7 +436,7 @@ router.get('/', (req, res) => {
       <div class="logo-icon">Q</div>
       <div>
         <h1>QUANTUM</h1>
-        <span class="sub">INTELLIGENCE</span>
+        <span class="sub">INTELLIGENCE v4.13.2</span>
       </div>
     </div>
     <div class="header-right">
@@ -352,138 +491,46 @@ router.get('/', (req, res) => {
     };
 
     /**
-     * Convert markdown to HTML with full formatting
+     * Client-side mdToHtml fallback (kept for resilience)
      */
     function mdToHtml(text) {
       if (!text) return '';
       let html = text;
-      
-      // Escape HTML first
       html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      
-      // Headers: # ## ###
       html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
       html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
       html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-      
-      // Bold: **text**
       html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-      
-      // Italic: *text*
       html = html.replace(/(?<![*])\\*(?![*])(.+?)(?<![*])\\*(?![*])/g, '<em>$1</em>');
-      
-      // Code: \`text\`
       html = html.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
-      
-      // Links: [text](url)
       html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-      
-      // Horizontal rule
       html = html.replace(/^---$/gm, '<hr>');
-      
-      // Blockquote
       html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-      
-      // Tables: detect | pipes
-      const tableRegex = /^(\\|.+\\|\\n)(\\|[-| :]+\\|\\n)((?:\\|.+\\|\\n?)+)/gm;
-      html = html.replace(tableRegex, (match, headerRow, sepRow, bodyRows) => {
-        const headers = headerRow.trim().split('|').filter(c => c.trim());
-        const rows = bodyRows.trim().split('\\n').map(r => r.split('|').filter(c => c.trim()));
-        let table = '<table><thead><tr>';
-        headers.forEach(h => { table += '<th>' + h.trim() + '</th>'; });
-        table += '</tr></thead><tbody>';
-        rows.forEach(r => {
-          table += '<tr>';
-          r.forEach(c => { table += '<td>' + c.trim() + '</td>'; });
-          table += '</tr>';
-        });
-        table += '</tbody></table>';
-        return table;
-      });
-      
-      // Numbered lists with complex/result items - make them clickable cards
-      // Pattern: number. text | city | IAI:xx | SSI:xx  OR  number. **name** | city
-      html = html.replace(/^(\\d+)\\.\\s+(.+?)\\s*\\|\\s*(.+?)\\s*\\|\\s*(?:IAI|iai)[:\\s]*([\\d]+)\\s*\\|\\s*(?:SSI|ssi)[:\\s]*([\\d]+)(.*)$/gm, 
-        (match, num, name, city, iai, ssi, rest) => {
-          name = name.replace(/<\\/?strong>/g, '');
-          const ssiClass = +ssi >= 60 ? 'high' : +ssi >= 40 ? 'med' : 'low';
-          const isGold = +iai >= 40 && +ssi >= 20;
-          let tags = '';
-          if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
-          if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
-          if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
-          if (isGold && !tags.includes('זהב')) tags += '<span class="ri-tag gold">פוטנציאל</span>';
-          return '<div class="result-item" onclick="askQ(\\'ספר לי עוד על ' + name.trim() + ' ב' + city.trim() + '\\')"><div><span class="ri-name">' + name.trim() + '</span><span class="ri-city">' + city.trim() + '</span></div><div class="ri-scores"><span class="ri-iai">IAI: ' + iai + '</span><span class="ri-ssi ' + ssiClass + '">SSI: ' + ssi + '</span>' + tags + '</div></div>';
-        }
-      );
-      
-      // Simpler numbered list items with IAI and SSI (different format)
-      html = html.replace(/^(\\d+)\\.\\s+(.+?)\\s*\\|\\s*(.+?)\\s*\\|\\s*(?:IAI|iai)[:\\s]*([\\d]+)$/gm,
-        (match, num, name, city, iai) => {
-          name = name.replace(/<\\/?strong>/g, '');
-          return '<div class="result-item" onclick="askQ(\\'ספר לי עוד על ' + name.trim() + ' ב' + city.trim() + '\\')"><div><span class="ri-name">' + name.trim() + '</span><span class="ri-city">' + city.trim() + '</span></div><div class="ri-scores"><span class="ri-iai">IAI: ' + iai + '</span></div></div>';
-        }
-      );
-
-      // Numbered list items: detect SSI:xx pattern  
-      html = html.replace(/^(\\d+)\\.\\s+(.+?)\\s*\\|\\s*(.+?)\\s*\\|\\s*(?:SSI|ssi)[:\\s]*([\\d]+)(.*)$/gm,
-        (match, num, name, city, ssi, rest) => {
-          // Skip if already converted
-          if (match.includes('result-item')) return match;
-          name = name.replace(/<\\/?strong>/g, '');
-          const ssiClass = +ssi >= 60 ? 'high' : +ssi >= 40 ? 'med' : 'low';
-          let iaiMatch = rest.match(/IAI[:\\s]*(\\d+)/i);
-          let iaiHtml = iaiMatch ? '<span class="ri-iai">IAI: ' + iaiMatch[1] + '</span>' : '';
-          let tags = '';
-          if (rest && rest.includes('הזדמנות זהב')) tags += '<span class="ri-tag gold">הזדמנות זהב</span>';
-          if (rest && rest.includes('כינוס')) tags += '<span class="ri-tag">כינוס</span>';
-          if (rest && rest.includes('ירושה')) tags += '<span class="ri-tag">ירושה</span>';
-          return '<div class="result-item" onclick="askQ(\\'ספר לי עוד על ' + name.trim() + ' ב' + city.trim() + '\\')"><div><span class="ri-name">' + name.trim() + '</span><span class="ri-city">' + city.trim() + '</span></div><div class="ri-scores">' + iaiHtml + '<span class="ri-ssi ' + ssiClass + '">SSI: ' + ssi + '</span>' + tags + '</div></div>';
-        }
-      );
-
-      // Regular numbered lists (not result items)
       html = html.replace(/^(\\d+)\\.\\s+(?!<div)(.+)$/gm, (match, num, content) => {
         if (match.includes('result-item')) return match;
         return '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#4a5e80;min-width:18px;text-align:center;">' + num + '.</span><span>' + content + '</span></div>';
       });
-      
-      // Bullet lists
       html = html.replace(/^[\\-\\*]\\s+(.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#06d6a0;">&#x2022;</span><span>$1</span></div>');
-      
-      // Citation references [1], [2], etc - make them subtle
       html = html.replace(/\\[(\\d+)\\]/g, '<sup style="color:#4a5e80;font-size:9px;">[$1]</sup>');
-      
-      // Arrow markers
-      html = html.replace(/←/g, '<span style="color:#06d6a0;">&#8592;</span>');
-      
-      // Paragraphs - convert double newlines
       html = html.replace(/\\n\\n/g, '</p><p>');
       html = html.replace(/\\n/g, '<br>');
       html = '<p>' + html + '</p>';
-      
-      // Cleanup empty paragraphs
       html = html.replace(/<p><\\/p>/g, '');
       html = html.replace(/<p>(<h[123]>)/g, '$1');
       html = html.replace(/(<\\/h[123]>)<\\/p>/g, '$1');
       html = html.replace(/<p>(<div)/g, '$1');
       html = html.replace(/(<\\/div>)<\\/p>/g, '$1');
-      html = html.replace(/<p>(<hr>)<\\/p>/g, '$1');
-      html = html.replace(/<p>(<table)/g, '$1');
-      html = html.replace(/(<\\/table>)<\\/p>/g, '$1');
-      html = html.replace(/<p>(<blockquote)/g, '$1');
-      html = html.replace(/(<\\/blockquote>)<\\/p>/g, '$1');
-      
       return html;
     }
 
-    function addMsg(text, role, meta, isCouncil) {
+    function addMsg(text, role, meta, isCouncil, preHtml) {
       const div = document.createElement('div');
       div.className = 'msg ' + role + (isCouncil ? ' council' : '');
       
       let html;
       if (role === 'bot') {
-        html = mdToHtml(text);
+        // v4.13.2: Use server-rendered HTML if available, fallback to client-side
+        html = preHtml || mdToHtml(text);
         if (isCouncil) {
           html = '<span class="council-badge">COUNCIL</span> ' + html;
         }
@@ -538,7 +585,8 @@ router.get('/', (req, res) => {
           if (data.context_size) metaParts.push(Math.round(data.context_size / 1024) + 'K');
           
           const isCouncil = data.model === 'council' || (data.council_details != null);
-          addMsg(data.answer, 'bot', metaParts.join(' | '), isCouncil);
+          // v4.13.2: Use server-rendered html_answer for reliable clickable cards
+          addMsg(data.answer, 'bot', metaParts.join(' | '), isCouncil, data.html_answer);
           history.push({ role: 'user', content: q });
           history.push({ role: 'assistant', content: data.answer });
         }
