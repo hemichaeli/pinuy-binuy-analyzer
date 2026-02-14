@@ -533,20 +533,20 @@ router.get('/', (req, res) => {
       html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
       html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
       html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-      html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-      html = html.replace(/(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)/g, '<em>$1</em>');
+      html = html.replace(/\\\\*\\\\*(.+?)\\\\*\\\\*/g, '<strong>$1</strong>');
+      html = html.replace(/(?<!\\\\*)\\\\*(?!\\\\*)(.+?)(?<!\\\\*)\\\\*(?!\\\\*)/g, '<em>$1</em>');
       html = html.replace(/\\\`([^\\\`]+)\\\`/g, '<code>$1</code>');
       html = html.replace(/^---$/gm, '<hr>');
       html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
       // Simple numbered lists
-      html = html.replace(/^(\\d+)\\.\\s+(.+)$/gm, function(match, num, content) {
+      html = html.replace(/^(\\\\d+)\\\\.\\\\s+(.+)$/gm, function(match, num, content) {
         return '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#4a5e80;min-width:18px;text-align:center;">' + num + '.</span><span>' + content + '</span></div>';
       });
-      html = html.replace(/^[\\-\\*]\\s+(.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#06d6a0;">&#x2022;</span><span>$1</span></div>');
-      html = html.replace(/\\n\\n/g, '</p><p>');
-      html = html.replace(/\\n/g, '<br>');
+      html = html.replace(/^[\\\\-\\\\*]\\\\s+(.+)$/gm, '<div style="display:flex;gap:6px;margin:2px 0;"><span style="color:#06d6a0;">&#x2022;</span><span>$1</span></div>');
+      html = html.replace(/\\\\n\\\\n/g, '</p><p>');
+      html = html.replace(/\\\\n/g, '<br>');
       html = '<p>' + html + '</p>';
-      html = html.replace(/<p><\\/p>/g, '');
+      html = html.replace(/<p><\\\\/p>/g, '');
       return html;
     }
 
