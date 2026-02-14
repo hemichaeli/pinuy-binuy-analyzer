@@ -1,5 +1,5 @@
 /**
- * Dashboard Routes - v4.14.1
+ * Dashboard Routes - v4.15.0
  * Vanilla JS dashboard served from /api/dashboard/
  * JS served separately from /api/dashboard/app.js for Brave compatibility
  */
@@ -194,7 +194,7 @@ function init(){
 function render(){
   var s=D.stats,cities=D.cityBreakdown||[];
   var app=$("app");if(!app)return;
-  var h='<div class="hdr"><h1>QUANTUM Dashboard</h1><p>v4.14.1 | '+s.complexes+' \\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd | '+s.listings+' \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea | '+s.transactions+' \\u05e2\\u05e1\\u05e7\\u05d0\\u05d5\\u05ea</p></div>';
+  var h='<div class="hdr"><h1>QUANTUM Dashboard</h1><p>v4.15.0 | '+s.complexes+' \\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd | '+s.listings+' \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea | '+s.transactions+' \\u05e2\\u05e1\\u05e7\\u05d0\\u05d5\\u05ea</p></div>';
   h+='<div class="stats">';
   h+='<div class="stat"><div class="stat-v">'+s.complexes+'</div><div class="stat-l">\\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd</div></div>';
   h+='<div class="stat"><div class="stat-v" style="color:#9f7aea">'+s.opportunities+'</div><div class="stat-l">\\u05d4\\u05d6\\u05d3\\u05de\\u05e0\\u05d5\\u05d9\\u05d5\\u05ea</div></div>';
@@ -244,21 +244,18 @@ function showTab(){
 function renderOverview(){
   var s=D.stats,topIAI=D.topIAI||[],topSSI=D.topSSI||[],alerts=D.alerts||[];
   var h='<div class="tab-content">';
-  // Alerts
   h+='<div class="panel">'+panelH("\\u05d4\\u05ea\\u05e8\\u05d0\\u05d5\\u05ea \\u05d0\\u05d7\\u05e8\\u05d5\\u05e0\\u05d5\\u05ea",alerts.length+" \\u05d4\\u05ea\\u05e8\\u05d0\\u05d5\\u05ea","\\u26a1");
   if(!alerts.length){h+='<div class="empty-msg">\\u05d0\\u05d9\\u05df \\u05d4\\u05ea\\u05e8\\u05d0\\u05d5\\u05ea</div>';}else{
     h+='<div class="overflow-x"><table><thead><tr><th>\\u05de\\u05ea\\u05d7\\u05dd</th><th>\\u05e2\\u05d9\\u05e8</th><th>\\u05e1\\u05d5\\u05d2</th><th>\\u05ea\\u05d0\\u05e8\\u05d9\\u05da</th></tr></thead><tbody>';
     for(var i=0;i<Math.min(alerts.length,5);i++){var a=alerts[i];h+='<tr><td class="fw">'+cut(a.complex_name,25)+"</td><td>"+cut(a.city,12)+"</td><td>"+cut(a.type||a.alert_type,15)+"</td><td>"+cut(a.created_at?a.created_at.substring(0,10):"",10)+"</td></tr>";}
     h+="</tbody></table></div>";}
   h+="</div>";
-  // Top IAI
   h+='<div class="panel">'+panelH("Top 10 \\u05d4\\u05d6\\u05d3\\u05de\\u05e0\\u05d5\\u05d9\\u05d5\\u05ea",s.opportunities+" \\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd \\u05e2\\u05dd IAI \\u05d2\\u05d1\\u05d5\\u05d4","\\u2b50");
   if(!topIAI.length){h+='<div class="empty-msg">\\u05dc\\u05d0 \\u05e0\\u05de\\u05e6\\u05d0\\u05d5 \\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd</div>';}else{
     h+='<div class="overflow-x"><table><thead><tr><th>\\u05de\\u05ea\\u05d7\\u05dd</th><th>\\u05e2\\u05d9\\u05e8</th><th class="c">IAI</th><th>\\u05e1\\u05d8\\u05d8\\u05d5\\u05e1</th><th>\\u05d9\\u05d6\\u05dd</th></tr></thead><tbody>';
     for(var i=0;i<topIAI.length;i++){var o=topIAI[i];h+='<tr><td class="fw">'+cut(o.name,25)+"</td><td>"+cut(o.city,12)+'</td><td class="c">'+iaiH(o.iai_score)+"</td><td>"+cut(o.status,12)+"</td><td>"+cut(o.developer,15)+"</td></tr>";}
     h+="</tbody></table></div>";}
   h+="</div>";
-  // Top SSI
   h+='<div class="panel">'+panelH("\\u05de\\u05d5\\u05db\\u05e8\\u05d9\\u05dd \\u05dc\\u05d7\\u05d5\\u05e6\\u05d9\\u05dd","Top 10 \\u05dc\\u05e4\\u05d9 SSI","\\ud83d\\udea8");
   if(!topSSI.length){h+='<div class="empty-msg">\\u05dc\\u05d0 \\u05e0\\u05de\\u05e6\\u05d0\\u05d5</div>';}else{
     h+='<div class="overflow-x"><table><thead><tr><th>\\u05db\\u05ea\\u05d5\\u05d1\\u05ea</th><th>\\u05e2\\u05d9\\u05e8</th><th class="c">SSI</th><th class="c">\\u05de\\u05d7\\u05d9\\u05e8</th><th class="c">\\u05d9\\u05de\\u05d9\\u05dd</th></tr></thead><tbody>';
@@ -288,6 +285,20 @@ function renderOpps(){
 }
 
 var msgFilterOpts=null;
+var dealStatuses=[
+  {v:"\\u05d7\\u05d3\\u05e9",l:"\\u05d7\\u05d3\\u05e9",c:"#94a3b8"},
+  {v:"\\u05e0\\u05e9\\u05dc\\u05d7\\u05d4 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4",l:"\\u05e0\\u05e9\\u05dc\\u05d7\\u05d4 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4",c:"#60a5fa"},
+  {v:"\\u05d4\\u05ea\\u05e7\\u05d1\\u05dc\\u05d4 \\u05ea\\u05e9\\u05d5\\u05d1\\u05d4",l:"\\u05d4\\u05ea\\u05e7\\u05d1\\u05dc\\u05d4 \\u05ea\\u05e9\\u05d5\\u05d1\\u05d4",c:"#34d399"},
+  {v:"\\u05ea\\u05d9\\u05d5\\u05d5\\u05da",l:"\\u05ea\\u05d9\\u05d5\\u05d5\\u05da",c:"#f97316"},
+  {v:"\\u05dc\\u05dc\\u05d0 \\u05ea\\u05d9\\u05d5\\u05d5\\u05da",l:"\\u05dc\\u05dc\\u05d0 \\u05ea\\u05d9\\u05d5\\u05d5\\u05da",c:"#a78bfa"},
+  {v:"\\u05e0\\u05de\\u05db\\u05e8\\u05d4",l:"\\u05e0\\u05de\\u05db\\u05e8\\u05d4",c:"#ef4444"},
+  {v:"\\u05dc\\u05d0 \\u05e8\\u05dc\\u05d5\\u05d5\\u05e0\\u05d8\\u05d9",l:"\\u05dc\\u05d0 \\u05e8\\u05dc\\u05d5\\u05d5\\u05e0\\u05d8\\u05d9",c:"#6b7280"},
+  {v:"\\u05e0\\u05d0 \\u05dc\\u05d9\\u05e6\\u05d5\\u05e8 \\u05e7\\u05e9\\u05e8",l:"\\u05e0\\u05d0 \\u05dc\\u05d9\\u05e6\\u05d5\\u05e8 \\u05e7\\u05e9\\u05e8",c:"#facc15"},
+  {v:"\\u05d1\\u05d8\\u05d9\\u05e4\\u05d5\\u05dc",l:"\\u05d1\\u05d8\\u05d9\\u05e4\\u05d5\\u05dc",c:"#22d3ee"},
+  {v:"\\u05e1\\u05d2\\u05d5\\u05e8",l:"\\u05e1\\u05d2\\u05d5\\u05e8",c:"#1e293b"}
+];
+
+function dealColor(v){for(var i=0;i<dealStatuses.length;i++){if(dealStatuses[i].v===v)return dealStatuses[i].c;}return "#94a3b8";}
 
 function renderMsgTab(){
   var h='<div class="tab-content">';
@@ -325,10 +336,14 @@ function renderMsgFilters(opts){
   for(var i=0;i<cities.length;i++){h+='<option value="'+cities[i].city+'">'+cities[i].city+" ("+cities[i].count+")</option>";}
   h+="</select></div>";
   h+='<div class="filter-group"><span class="filter-label">\\u05d7\\u05d3\\u05e8\\u05d9\\u05dd</span><div style="display:flex;gap:4px"><select id="msg-min-rooms" class="filter-input" style="width:65px"><option value="">\\u05de-</option><option value="2">2</option><option value="2.5">2.5</option><option value="3">3</option><option value="3.5">3.5</option><option value="4">4</option><option value="5">5</option></select><select id="msg-max-rooms" class="filter-input" style="width:65px"><option value="">\\u05e2\\u05d3</option><option value="3">3</option><option value="3.5">3.5</option><option value="4">4</option><option value="4.5">4.5</option><option value="5">5</option><option value="6">6+</option></select></div></div>';
-  h+='<div class="filter-group"><span class="filter-label">\\u05e9\\u05d8\\u05d7 (\\u05de\\"\\u05e8)</span><div style="display:flex;gap:4px"><input id="msg-min-area" class="filter-input" type="number" placeholder="\\u05de-" style="width:60px"><input id="msg-max-area" class="filter-input" type="number" placeholder="\\u05e2\\u05d3" style="width:60px"></div></div>';
+  h+='<div class="filter-group"><span class="filter-label">\\u05e9\\u05d8\\u05d7 (\\u05de"\\u05e8)</span><div style="display:flex;gap:4px"><input id="msg-min-area" class="filter-input" type="number" placeholder="\\u05de-" style="width:60px"><input id="msg-max-area" class="filter-input" type="number" placeholder="\\u05e2\\u05d3" style="width:60px"></div></div>';
   h+='<div class="filter-group"><span class="filter-label">\\u05de\\u05d7\\u05d9\\u05e8</span><div style="display:flex;gap:4px"><select id="msg-min-price" class="filter-input" style="width:80px"><option value="">\\u05de-</option><option value="500000">500K</option><option value="1000000">1M</option><option value="1500000">1.5M</option><option value="2000000">2M</option></select><select id="msg-max-price" class="filter-input" style="width:80px"><option value="">\\u05e2\\u05d3</option><option value="1500000">1.5M</option><option value="2000000">2M</option><option value="2500000">2.5M</option><option value="3000000">3M</option><option value="4000000">4M</option><option value="5000000">5M</option></select></div></div>';
   h+='<div class="filter-group"><span class="filter-label">SSI \\u05de\\u05d9\\u05e0\\u05d9\\u05de\\u05dc\\u05d9</span><select id="msg-ssi" class="filter-input"><option value="">\\u05dc\\u05dc\\u05d0</option><option value="10">10+</option><option value="20">20+</option><option value="30">30+</option><option value="40">40+</option><option value="50">50+</option></select></div>';
   h+='<div class="filter-group"><span class="filter-label">\\u05e4\\u05d5\\u05e8\\u05e1\\u05dd \\u05dc\\u05e4\\u05e0\\u05d9</span><select id="msg-days" class="filter-input"><option value="">\\u05d4\\u05db\\u05dc</option><option value="1">\\u05d9\\u05d5\\u05dd+</option><option value="2">\\u05d9\\u05d5\\u05de\\u05d9\\u05d9\\u05dd+</option><option value="3">3 \\u05d9\\u05de\\u05d9\\u05dd+</option><option value="7">\\u05e9\\u05d1\\u05d5\\u05e2+</option><option value="14">\\u05e9\\u05d1\\u05d5\\u05e2\\u05d9\\u05d9\\u05dd+</option><option value="30">\\u05d7\\u05d5\\u05d3\\u05e9+</option></select></div>';
+  h+='<div class="filter-group"><span class="filter-label">\\u05e1\\u05d8\\u05d8\\u05d5\\u05e1 \\u05d3\\u05d9\\u05e8\\u05d4</span><select id="msg-deal" class="filter-input"><option value="">\\u05d4\\u05db\\u05dc</option>';
+  for(var d=0;d<dealStatuses.length;d++){h+='<option value="'+dealStatuses[d].v+'">'+dealStatuses[d].l+"</option>";}
+  h+="</select></div>";
+  h+='<div class="filter-group"><span class="filter-label">\\u05e1\\u05d8\\u05d8\\u05d5\\u05e1 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4</span><select id="msg-msgst" class="filter-input"><option value="">\\u05d4\\u05db\\u05dc</option><option value="\\u05dc\\u05d0 \\u05e0\\u05e9\\u05dc\\u05d7\\u05d4">\\u05dc\\u05d0 \\u05e0\\u05e9\\u05dc\\u05d7\\u05d4</option><option value="\\u05e0\\u05e9\\u05dc\\u05d7\\u05d4">\\u05e0\\u05e9\\u05dc\\u05d7\\u05d4</option><option value="\\u05d4\\u05ea\\u05e7\\u05d1\\u05dc\\u05d4 \\u05ea\\u05e9\\u05d5\\u05d1\\u05d4">\\u05d4\\u05ea\\u05e7\\u05d1\\u05dc\\u05d4 \\u05ea\\u05e9\\u05d5\\u05d1\\u05d4</option></select></div>';
   h+='<div class="filter-group"><span class="filter-label">\\u05de\\u05d9\\u05d5\\u05df</span><select id="msg-sort" class="filter-input"><option value="ssi">SSI (\\u05d2\\u05d1\\u05d5\\u05d4)</option><option value="price">\\u05de\\u05d7\\u05d9\\u05e8 (\\u05e0\\u05de\\u05d5\\u05da)</option><option value="rooms">\\u05d7\\u05d3\\u05e8\\u05d9\\u05dd</option><option value="area">\\u05e9\\u05d8\\u05d7</option><option value="days">\\u05d9\\u05de\\u05d9\\u05dd \\u05d1\\u05e9\\u05d5\\u05e7</option><option value="date">\\u05ea\\u05d0\\u05e8\\u05d9\\u05da \\u05e4\\u05e8\\u05e1\\u05d5\\u05dd</option></select></div>';
   h+='<div class="filter-group"><span class="filter-label">&nbsp;</span><button id="msg-search" class="btn btn-green" style="padding:8px 24px">\\u05d7\\u05e4\\u05e9 \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea</button></div>';
   h+="</div>";
@@ -357,6 +372,10 @@ function searchSellers(){
   if(ssi)p.push("min_ssi="+ssi);
   var days=$("msg-days")?$("msg-days").value:"";
   if(days)p.push("min_days_on_market="+days);
+  var deal=$("msg-deal")?$("msg-deal").value:"";
+  if(deal)p.push("deal_status="+encodeURIComponent(deal));
+  var msgst=$("msg-msgst")?$("msg-msgst").value:"";
+  if(msgst)p.push("message_status="+encodeURIComponent(msgst));
   var sort=$("msg-sort")?$("msg-sort").value:"ssi";
   p.push("sort_by="+sort);
   var sortOrd=(sort==="price")?"asc":"desc";
@@ -387,22 +406,37 @@ function renderMsgResults(sellers,container,totalStr){
   for(var i=0;i<sellers.length;i++){
     var s=sellers[i];
     var dropPct=s.total_price_drop_percent?Math.round(+s.total_price_drop_percent)+"%":"";
+    var ds=s.deal_status||"\\u05d7\\u05d3\\u05e9";
+    var ms=s.message_status||"\\u05dc\\u05d0 \\u05e0\\u05e9\\u05dc\\u05d7\\u05d4";
+    var dc=dealColor(ds);
+    var msc=(ms==="\\u05e0\\u05e9\\u05dc\\u05d7\\u05d4")?"#60a5fa":(ms==="\\u05d4\\u05ea\\u05e7\\u05d1\\u05dc\\u05d4 \\u05ea\\u05e9\\u05d5\\u05d1\\u05d4")?"#34d399":"#94a3b8";
     h+='<div class="msg-card" id="mc-'+i+'">';
     h+='<div class="msg-card-top"><div><div class="msg-card-addr">'+cut(s.address,50)+'</div><div class="msg-card-city">'+(s.complex_name||"")+" | "+(s.city||"-")+"</div></div>";
     h+='<div class="msg-card-badges"><span class="badge-ssi '+ssiCls(s.ssi_score)+'">SSI '+s.ssi_score+"</span>";
     if(s.iai_score)h+=" "+iaiH(s.iai_score);
     h+="</div></div>";
+    h+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;align-items:center">';
+    h+='<div style="display:flex;align-items:center;gap:6px"><span class="xs" style="color:#8899b4">\\u05e1\\u05d8\\u05d8\\u05d5\\u05e1 \\u05d3\\u05d9\\u05e8\\u05d4:</span><select class="filter-input deal-sel" data-lid="'+s.listing_id+'" style="font-size:11px;padding:3px 6px;background:'+dc+'22;border-color:'+dc+';color:'+dc+'">';
+    for(var d=0;d<dealStatuses.length;d++){h+='<option value="'+dealStatuses[d].v+'"'+(dealStatuses[d].v===ds?' selected':'')+'>'+dealStatuses[d].l+"</option>";}
+    h+="</select></div>";
+    h+='<div style="display:flex;align-items:center;gap:6px"><span class="xs" style="color:#8899b4">\\u05d4\\u05d5\\u05d3\\u05e2\\u05d4:</span><span style="font-size:11px;padding:2px 8px;border-radius:4px;background:'+msc+'22;color:'+msc+'">'+ms+"</span></div>";
+    if(s.last_reply_text){
+      h+='<div style="flex:1;min-width:150px"><span class="xs" style="color:#8899b4">\\u05ea\\u05e9\\u05d5\\u05d1\\u05d4 \\u05d0\\u05d7\\u05e8\\u05d5\\u05e0\\u05d4:</span> <span style="font-size:11px;color:#34d399;background:#34d39922;padding:2px 8px;border-radius:4px;display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+cut(s.last_reply_text,80)+"</span></div>";
+    }
+    h+="</div>";
     h+='<div class="msg-card-row">';
     h+='<span>\\u05de\\u05d7\\u05d9\\u05e8: <b style="color:#e2e8f0">'+fmtPrice(s.asking_price)+"</b></span>";
     if(s.original_price&&+s.original_price>+s.asking_price)h+='<span>\\u05de\\u05e7\\u05d5\\u05e8\\u05d9: <s style="color:#4a5e80">'+fmtPrice(s.original_price)+"</s></span>";
     if(dropPct)h+='<span style="color:#ff4d6a">\\u05d9\\u05e8\\u05d9\\u05d3\\u05d4: '+dropPct+"</span>";
     h+="<span>\\u05d7\\u05d3\\u05e8\\u05d9\\u05dd: "+(s.rooms||"-")+"</span>";
-    h+="<span>\\u05e9\\u05d8\\u05d7: "+(s.area_sqm?Math.round(+s.area_sqm)+'\\u05de\\"\\u05e8':"-")+"</span>";
+    h+='<span>\\u05e9\\u05d8\\u05d7: '+(s.area_sqm?Math.round(+s.area_sqm)+'\\u05de"\\u05e8':"-")+"</span>";
+    if(s.days_on_market)h+='<span>'+s.days_on_market+' \\u05d9\\u05de\\u05d9\\u05dd</span>';
     if(s.price_changes>0)h+='<span style="color:#ff8c42">'+s.price_changes+" \\u05d4\\u05d5\\u05e8\\u05d3\\u05d5\\u05ea \\u05de\\u05d7\\u05d9\\u05e8</span>";
     h+="</div>";
     if(s.strategy)h+='<div class="xs muted" style="margin-bottom:8px">\\u05d0\\u05e1\\u05d8\\u05e8\\u05d8\\u05d2\\u05d9\\u05d4: '+s.strategy+(s.potential_discount?" | \\u05d4\\u05e0\\u05d7\\u05d4 \\u05e4\\u05d5\\u05d8\\u05e0\\u05e6\\u05d9\\u05d0\\u05dc\\u05d9\\u05ea: "+s.potential_discount:"")+"</div>";
     h+='<div class="msg-card-actions">';
     if(s.url)h+='<a href="'+s.url+'" target="_blank" rel="noopener" class="btn btn-sm" style="color:#06d6a0">\\u05e4\\u05ea\\u05d7 \\u05d1\\u05d9\\u05d3 2</a>';
+    h+='<button class="btn btn-sm btn-act" data-act="send" data-i="'+i+'" style="color:#60a5fa">\\u05e9\\u05dc\\u05d7 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4</button>';
     h+='<button class="btn btn-sm btn-act" data-act="copy" data-i="'+i+'" style="color:#9f7aea">\\u05d4\\u05e2\\u05ea\\u05e7 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4</button>';
     h+='<button class="btn btn-sm btn-act" data-act="show" data-i="'+i+'" style="color:#ffc233">\\u05d4\\u05e6\\u05d2 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4</button>';
     h+="</div>";
@@ -428,10 +462,59 @@ function renderMsgResults(sellers,container,totalStr){
               else{pv.textContent=msg;pv.className="msg-template visible";}
             }
           }
+          else if(act==="send"){sendMsg(idx,msg);}
         });
       })(btns[j]);
     }
+    var sels=container.querySelectorAll(".deal-sel");
+    for(var k=0;k<sels.length;k++){
+      (function(sel){
+        sel.addEventListener("change",function(){
+          var lid=sel.getAttribute("data-lid");
+          var val=sel.value;
+          var clr=dealColor(val);
+          sel.style.background=clr+"22";sel.style.borderColor=clr;sel.style.color=clr;
+          fetch("/api/messaging/listing/"+lid+"/deal-status",{
+            method:"PUT",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({deal_status:val})
+          }).then(function(r){return r.json();}).then(function(d){
+            if(d.success)console.log("Deal status updated:",lid,val);
+          }).catch(function(e){console.error("Update failed",e);});
+        });
+      })(sels[k]);
+    }
   },100);
+}
+
+function sendMsg(idx,msg){
+  if(!msgData||!msgData[idx])return;
+  var s=msgData[idx];
+  var btn=document.querySelector('[data-act="send"][data-i="'+idx+'"]');
+  if(btn){btn.textContent="\\u05e9\\u05d5\\u05dc\\u05d7...";btn.disabled=true;btn.style.opacity="0.5";}
+  fetch("/api/messaging/send",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({listing_id:s.listing_id,message_text:msg})
+  })
+  .then(function(r){return r.json();})
+  .then(function(d){
+    if(d.result&&d.result.success){
+      if(btn){btn.textContent="\\u2713 \\u05e0\\u05e9\\u05dc\\u05d7\\u05d4";btn.style.color="#34d399";}
+    } else if(d.result&&d.result.status==="manual"){
+      if(btn){btn.textContent="\\u05e0\\u05e9\\u05de\\u05e8 (\\u05d9\\u05d3\\u05e0\\u05d9)";btn.style.color="#facc15";}
+      if(s.url){window.open(s.url,"_blank");}
+      copyText(msg);
+    } else {
+      if(btn){btn.textContent="\\u2717 \\u05e0\\u05db\\u05e9\\u05dc";btn.style.color="#ef4444";}
+    }
+    setTimeout(function(){if(btn){btn.textContent="\\u05e9\\u05dc\\u05d7 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4";btn.disabled=false;btn.style.opacity="1";btn.style.color="#60a5fa";}},4000);
+  })
+  .catch(function(e){
+    console.error(e);
+    if(btn){btn.textContent="\\u2717 \\u05e9\\u05d2\\u05d9\\u05d0\\u05d4";btn.style.color="#ef4444";}
+    setTimeout(function(){if(btn){btn.textContent="\\u05e9\\u05dc\\u05d7 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4";btn.disabled=false;btn.style.opacity="1";btn.style.color="#60a5fa";}},3000);
+  });
 }
 
 function buildMsg(seller){
@@ -442,13 +525,14 @@ function buildMsg(seller){
   return tpl.replace("{platform}",platform).replace("{address}",addr).replace("{price}",fmtPrice(seller.asking_price)).replace("{rooms}",seller.rooms||"").replace("{area}",seller.area_sqm?Math.round(+seller.area_sqm)+"":"");
 }
 
+
 function renderCities(s,cities){
   var h='<div class="tab-content"><div class="panel">'+panelH("\\u05d4\\u05d6\\u05d3\\u05de\\u05e0\\u05d5\\u05d9\\u05d5\\u05ea \\u05dc\\u05e4\\u05d9 \\u05e2\\u05e8\\u05d9\\u05dd",(s.cities||0)+" \\u05e2\\u05e8\\u05d9\\u05dd \\u05e4\\u05e2\\u05d9\\u05dc\\u05d5\\u05ea","\\u25a3");
   var t10=cities.slice(0,10),mx=1;for(var i=0;i<t10.length;i++){if(+t10[i].total>mx)mx=+t10[i].total;}
   h+='<div class="bar-chart">';for(var i=0;i<t10.length;i++){var c=t10[i],pctO=Math.round((+c.opportunities/mx)*100);h+='<div class="bar-row"><span class="bar-label">'+c.city+'</span><div class="bar-track"><div class="bar-fill" style="width:'+pctO+'%;background:#06d6a0"></div></div><span class="bar-val">'+c.opportunities+"/"+c.total+"</span></div>";}
   h+="</div></div>";
   h+='<div class="panel"><div class="overflow-x"><table><thead><tr><th>\\u05e2\\u05d9\\u05e8</th><th class="c">\\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd</th><th class="c">\\u05d4\\u05d6\\u05d3\\u05de\\u05e0\\u05d5\\u05d9\\u05d5\\u05ea</th><th class="c">\\u05dc\\u05d7\\u05d5\\u05e6\\u05d9\\u05dd</th><th class="c">IAI \\u05de\\u05de\\u05d5\\u05e6\\u05e2</th></tr></thead><tbody>';
-  for(var i=0;i<cities.length;i++){var c=cities[i];h+='<tr><td class="fw">'+c.city+'</td><td class="c">'+c.total+'</td><td class="c" style="color:#06d6a0;font-weight:700">'+c.opportunities+'</td><td class="c">'+(+c.stressed>0?'<span style="color:#ff4d6a;font-weight:700">'+c.stressed+"</span>":'<span class="dim">0</span>')+'</td><td class="c" style="color:'+(+c.avg_iai>=50?"#22c55e":"#8899b4")+'\">'+(c.avg_iai||"-")+"</td></tr>";}
+  for(var i=0;i<cities.length;i++){var c=cities[i];h+='<tr><td class="fw">'+c.city+'</td><td class="c">'+c.total+'</td><td class="c" style="color:#06d6a0;font-weight:700">'+c.opportunities+'</td><td class="c">'+(+c.stressed>0?'<span style="color:#ff4d6a;font-weight:700">'+c.stressed+"</span>":'<span class="dim">0</span>')+'</td><td class="c" style="color:'+(+c.avg_iai>=50?"#22c55e":"#8899b4")+'">'+(c.avg_iai||"-")+"</td></tr>";}
   h+="</tbody></table></div></div></div>";return h;
 }
 
