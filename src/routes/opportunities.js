@@ -177,7 +177,121 @@ router.get('/listings/search', async (req, res) => {
     const limitVal = Math.min(parseInt(limit) || 50, 200);
     const offsetVal = parseInt(offset) || 0;
 
-    let query = `
+    // Build WHERE conditions separately for reuse in count query
+    const conditions = ['l.is_active = TRUE'];
+    const params = [];
+    let paramCount = 0;
+
+    if (city) {
+      paramCount++;
+      conditions.push(`l.city = $${paramCount}`);
+      params.push(city);
+    }
+    if (min_price) {
+      paramCount++;
+      conditions.push(`l.asking_price >= $${paramCount}`);
+      params.push(parseFloat(min_price));
+    }
+    if (max_price) {
+      paramCount++;
+      conditions.push(`l.asking_price <= $${paramCount}`);
+      params.push(parseFloat(max_price));
+    }
+    if (min_rooms) {
+      paramCount++;
+      conditions.push(`l.rooms >= $${paramCount}`);
+      params.push(parseFloat(min_rooms));
+    }
+    if (max_rooms) {
+      paramCount++;
+      conditions.push(`l.rooms <= $${paramCount}`);
+      params.push(parseFloat(max_rooms));
+    }
+    if (min_area) {
+      paramCount++;
+      conditions.push(`l.area_sqm >= $${paramCount}`);
+      params.push(parseFloat(min_area));
+    }
+    if (max_area) {
+      paramCount++;
+      conditions.push(`l.area_sqm <= $${paramCount}`);
+      params.push(parseFloat(max_area));
+    }
+    if (min_ssi) {
+      paramCount++;
+      conditions.push(`l.ssi_score >= $${paramCount}`);
+      params.push(parseInt(min_ssi));
+    }
+    if (max_ssi) {
+      paramCount++;
+      conditions.push(`l.ssi_score <= $${paramCount}`);
+      params.push(parseInt(max_ssi));
+    }
+    if (min_iai) {
+      paramCount++;
+      conditions.push(`c.iai_score >= $${paramCount}`);
+      params.push(parseInt(min_iai));
+    }
+    if (min_days_on_market) {
+      paramCount++;
+      conditions.push(`l.days_on_market >= $${paramCount}`);
+      params.push(parseInt(min_days_on_market));
+    }
+    if (max_days_on_market) {
+      paramCount++;
+      conditions.push(`l.days_on_market <= $${paramCount}`);
+      params.push(parseInt(max_days_on_market));
+    }
+    if (min_price_drops) {
+      paramCount++;
+      conditions.push(`l.price_changes >= $${paramCount}`);
+      params.push(parseInt(min_price_drops));
+    }
+    if (has_price_drop === 'true') {
+      conditions.push(`l.total_price_drop_percent > 0`);
+    }
+    if (is_foreclosure === 'true') {
+      conditions.push(`l.is_foreclosure = TRUE`);
+    }
+    if (is_inheritance === 'true') {
+      conditions.push(`l.is_inheritance = TRUE`);
+    }
+    if (has_urgent_keywords === 'true') {
+      conditions.push(`l.has_urgent_keywords = TRUE`);
+    }
+    if (complex_status) {
+      paramCount++;
+      conditions.push(`c.status = $${paramCount}`);
+      params.push(complex_status);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // Sorting
+    const validSorts = {
+      'price': 'l.asking_price',
+      'ssi': 'l.ssi_score',
+      'iai': 'c.iai_score',
+      'rooms': 'l.rooms',
+      'area': 'l.area_sqm',
+      'days': 'l.days_on_market',
+      'price_drop': 'l.total_price_drop_percent',
+      'price_changes': 'l.price_changes',
+      'date': 'l.first_seen'
+    };
+    const sortCol = validSorts[sort_by] || 'l.ssi_score';
+    const sortDir = sort_order === 'asc' ? 'ASC' : 'DESC';
+
+    // Count query (no ORDER BY, no LIMIT)
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM listings l
+      JOIN complexes c ON l.complex_id = c.id
+      WHERE ${whereClause}
+    `;
+
+    // Data query with sort + pagination
+    const dataQuery = `
       SELECT 
         l.id as listing_id,
         l.source, l.url,
@@ -197,145 +311,15 @@ router.get('/listings/search', async (req, res) => {
         c.developer
       FROM listings l
       JOIN complexes c ON l.complex_id = c.id
-      WHERE l.is_active = TRUE
+      WHERE ${whereClause}
+      ORDER BY ${sortCol} ${sortDir} NULLS LAST
+      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
     `;
-    const params = [];
-    let paramCount = 0;
-
-    // City filter
-    if (city) {
-      paramCount++;
-      query += ` AND l.city = $${paramCount}`;
-      params.push(city);
-    }
-
-    // Price filters
-    if (min_price) {
-      paramCount++;
-      query += ` AND l.asking_price >= $${paramCount}`;
-      params.push(parseFloat(min_price));
-    }
-    if (max_price) {
-      paramCount++;
-      query += ` AND l.asking_price <= $${paramCount}`;
-      params.push(parseFloat(max_price));
-    }
-
-    // Rooms filters
-    if (min_rooms) {
-      paramCount++;
-      query += ` AND l.rooms >= $${paramCount}`;
-      params.push(parseFloat(min_rooms));
-    }
-    if (max_rooms) {
-      paramCount++;
-      query += ` AND l.rooms <= $${paramCount}`;
-      params.push(parseFloat(max_rooms));
-    }
-
-    // Area filters
-    if (min_area) {
-      paramCount++;
-      query += ` AND l.area_sqm >= $${paramCount}`;
-      params.push(parseFloat(min_area));
-    }
-    if (max_area) {
-      paramCount++;
-      query += ` AND l.area_sqm <= $${paramCount}`;
-      params.push(parseFloat(max_area));
-    }
-
-    // SSI filters
-    if (min_ssi) {
-      paramCount++;
-      query += ` AND l.ssi_score >= $${paramCount}`;
-      params.push(parseInt(min_ssi));
-    }
-    if (max_ssi) {
-      paramCount++;
-      query += ` AND l.ssi_score <= $${paramCount}`;
-      params.push(parseInt(max_ssi));
-    }
-
-    // IAI filter
-    if (min_iai) {
-      paramCount++;
-      query += ` AND c.iai_score >= $${paramCount}`;
-      params.push(parseInt(min_iai));
-    }
-
-    // Days on market
-    if (min_days_on_market) {
-      paramCount++;
-      query += ` AND l.days_on_market >= $${paramCount}`;
-      params.push(parseInt(min_days_on_market));
-    }
-    if (max_days_on_market) {
-      paramCount++;
-      query += ` AND l.days_on_market <= $${paramCount}`;
-      params.push(parseInt(max_days_on_market));
-    }
-
-    // Price drops count
-    if (min_price_drops) {
-      paramCount++;
-      query += ` AND l.price_changes >= $${paramCount}`;
-      params.push(parseInt(min_price_drops));
-    }
-
-    // Boolean: has any price drop
-    if (has_price_drop === 'true') {
-      query += ` AND l.total_price_drop_percent > 0`;
-    }
-
-    // Boolean filters
-    if (is_foreclosure === 'true') {
-      query += ` AND l.is_foreclosure = TRUE`;
-    }
-    if (is_inheritance === 'true') {
-      query += ` AND l.is_inheritance = TRUE`;
-    }
-    if (has_urgent_keywords === 'true') {
-      query += ` AND l.has_urgent_keywords = TRUE`;
-    }
-
-    // Complex status
-    if (complex_status) {
-      paramCount++;
-      query += ` AND c.status = $${paramCount}`;
-      params.push(complex_status);
-    }
-
-    // Sorting
-    const validSorts = {
-      'price': 'l.asking_price',
-      'ssi': 'l.ssi_score',
-      'iai': 'c.iai_score',
-      'rooms': 'l.rooms',
-      'area': 'l.area_sqm',
-      'days': 'l.days_on_market',
-      'price_drop': 'l.total_price_drop_percent',
-      'price_changes': 'l.price_changes',
-      'date': 'l.first_seen'
-    };
-    const sortCol = validSorts[sort_by] || 'l.ssi_score';
-    const sortDir = sort_order === 'asc' ? 'ASC' : 'DESC';
-    query += ` ORDER BY ${sortCol} ${sortDir} NULLS LAST`;
-
-    // Count total before limit
-    const countQuery = query.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) as total FROM');
-    
-    // Pagination
-    paramCount++;
-    query += ` LIMIT $${paramCount}`;
-    params.push(limitVal);
-    paramCount++;
-    query += ` OFFSET $${paramCount}`;
-    params.push(offsetVal);
+    const dataParams = [...params, limitVal, offsetVal];
 
     const [result, countResult] = await Promise.all([
-      pool.query(query, params),
-      pool.query(countQuery, params.slice(0, -2)) // without LIMIT/OFFSET params
+      pool.query(dataQuery, dataParams),
+      pool.query(countQuery, params)
     ]);
 
     const listings = result.rows.map(row => ({
@@ -359,7 +343,7 @@ router.get('/listings/search', async (req, res) => {
 
     res.json({
       listings,
-      total: parseInt(countResult.rows[0]?.total || result.rows.length),
+      total: parseInt(countResult.rows[0]?.total || 0),
       returned: listings.length,
       offset: offsetVal,
       limit: limitVal,
@@ -368,7 +352,7 @@ router.get('/listings/search', async (req, res) => {
       )
     });
   } catch (err) {
-    logger.error('Error searching listings', { error: err.message });
+    logger.error('Error searching listings', { error: err.message, stack: err.stack });
     res.status(500).json({ error: 'Failed to search listings' });
   }
 });
@@ -416,7 +400,6 @@ router.get('/listings/filter-options', async (req, res) => {
 });
 
 // GET /api/dashboard-json - Combined dashboard data (JSON API)
-// NOTE: Renamed from /dashboard to avoid conflict with /api/dashboard HTML route
 router.get('/dashboard-json', async (req, res) => {
   try {
     const topOpportunities = await pool.query(`
