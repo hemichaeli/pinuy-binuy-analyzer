@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.13.2';
-const BUILD = '2026-02-14-v4.13.2-server-markdown';
+const VERSION = '4.15.0';
+const BUILD = '2026-02-14-v4.15.0-messaging-system';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -52,6 +52,36 @@ async function runAutoMigrations() {
     for (const sql of phase45Columns) {
       try { await pool.query(sql); } catch (e) { /* column exists */ }
     }
+
+    // v4.15.0: Messaging system
+    const msgColumns = [
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS deal_status VARCHAR(50) DEFAULT 'חדש'",
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS message_status VARCHAR(50) DEFAULT 'לא נשלחה'",
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS last_message_sent_at TIMESTAMP",
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS last_reply_at TIMESTAMP",
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS last_reply_text TEXT",
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS notes TEXT"
+    ];
+    for (const sql of msgColumns) {
+      try { await pool.query(sql); } catch (e) { /* column exists */ }
+    }
+
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS listing_messages (
+          id SERIAL PRIMARY KEY,
+          listing_id INTEGER REFERENCES listings(id) ON DELETE CASCADE,
+          direction VARCHAR(10) NOT NULL DEFAULT 'sent',
+          message_text TEXT NOT NULL,
+          sent_at TIMESTAMP DEFAULT NOW(),
+          status VARCHAR(30) DEFAULT 'pending',
+          yad2_conversation_id VARCHAR(100),
+          error_message TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listing_messages_listing ON listing_messages(listing_id)`);
+    } catch (e) { /* table exists */ }
     
     logger.info('Auto-migrations completed');
   } catch (error) {
@@ -185,6 +215,7 @@ function loadAllRoutes() {
     ['./routes/governmentDataRoutes', '/api/government'],
     ['./routes/newsRoutes', '/api/news'],
     ['./routes/pricingRoutes', '/api/pricing'],
+    ['./routes/messagingRoutes', '/api/messaging'],
     ['./routes/admin', '/api/admin'],
   ];
   
@@ -229,7 +260,7 @@ app.get('/diagnostics', async (req, res) => {
   catch (e) { uniqueCounts = { error: e.message }; }
 
   res.json({ version: VERSION, build: BUILD, timestamp: new Date().toISOString(), routes: routeLoadResults, db_tables: dbTables, row_counts: rowCounts, complex_duplicates: duplicates, complex_unique_counts: uniqueCounts,
-    env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing' }
+    env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing', YAD2_EMAIL: process.env.YAD2_EMAIL ? 'set' : 'missing', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? 'set' : 'missing' }
   });
 });
 
@@ -242,7 +273,7 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(), build: BUILD, version: VERSION, node_version: process.version,
-    env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)' },
+    env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)' },
     features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled' },
     routes: routeLoadResults, scheduler: schedulerStatus
   });
@@ -274,7 +305,7 @@ app.get('/api/info', (req, res) => {
       health: '/health', debug: '/debug', diagnostics: '/diagnostics',
       projects: '/api/projects', opportunities: '/api/opportunities',
       stressed_sellers: '/api/ssi/stressed-sellers', scan: '/api/scan',
-      scan_ai: '/api/scan/ai',
+      scan_ai: '/api/scan/ai', messaging: '/api/messaging',
       kones: '/api/kones', perplexity: '/api/perplexity',
       notifications: '/api/notifications/status'
     }
@@ -305,6 +336,7 @@ async function start() {
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`Dashboard: /api/dashboard/`);
     logger.info(`Chat: /api/chat/`);
+    logger.info(`Messaging API: /api/messaging/`);
   });
 }
 
