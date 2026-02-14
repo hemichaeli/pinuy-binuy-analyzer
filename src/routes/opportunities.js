@@ -3,86 +3,52 @@ const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
 
-// GET /api/opportunities - High IAI score opportunities
+// GET /api/opportunities - Top investment opportunities
 router.get('/opportunities', async (req, res) => {
   try {
-    const { min_iai, status, city, limit } = req.query;
-    const minIai = parseInt(min_iai) || 50;
-    const limitVal = Math.min(parseInt(limit) || 20, 100);
-    
-    let query = `
+    const result = await pool.query(`
       SELECT 
-        c.id, c.slug, c.name, c.city, c.region, c.neighborhood,
-        c.status, c.planned_units, c.existing_units,
-        c.developer, c.developer_strength,
-        c.iai_score, c.premium_gap,
-        c.theoretical_premium_min, c.theoretical_premium_max,
-        c.actual_premium,
-        c.certainty_factor, c.yield_factor,
-        c.deposit_date, c.approval_date,
-        c.addresses,
-        c.perplexity_summary,
-        COUNT(DISTINCT l.id) FILTER (WHERE l.is_active) as active_listings,
-        MAX(l.ssi_score) as max_ssi,
-        AVG(l.ssi_score) FILTER (WHERE l.ssi_score > 0) as avg_ssi
+        c.id, c.name, c.city, c.status, c.developer, c.developer_strength,
+        c.iai_score, c.certainty_coefficient, c.avg_price_per_sqm,
+        c.planned_units, c.existing_units,
+        c.theoretical_premium_pct, c.actual_premium_pct,
+        c.slug,
+        COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE) as active_listings,
+        COUNT(DISTINCT t.id) as transactions_count,
+        AVG(l.ssi_score) FILTER (WHERE l.is_active = TRUE) as avg_ssi
       FROM complexes c
-      LEFT JOIN listings l ON c.id = l.complex_id
-      WHERE c.iai_score >= $1
-    `;
-    const params = [minIai];
-    let paramCount = 1;
-    
-    if (status) {
-      paramCount++;
-      query += ` AND c.status = $${paramCount}`;
-      params.push(status);
-    }
-    if (city) {
-      paramCount++;
-      query += ` AND c.city = $${paramCount}`;
-      params.push(city);
-    }
-    
-    query += ' GROUP BY c.id ORDER BY c.iai_score DESC';
-    paramCount++;
-    query += ` LIMIT $${paramCount}`;
-    params.push(limitVal);
-    
-    const result = await pool.query(query, params);
-    
-    const opportunities = result.rows.map(row => ({
-      ...row,
-      iai_category: row.iai_score >= 70 ? 'excellent' 
-        : row.iai_score >= 50 ? 'good' 
-        : row.iai_score >= 30 ? 'moderate' 
-        : 'low',
-      recommendation: row.iai_score >= 70 
-        ? 'רכישה מומלצת בחום' 
-        : row.iai_score >= 50 
-        ? 'שווה בדיקה מעמיקה' 
-        : row.iai_score >= 30 
-        ? 'רק אם יש יתרון ספציפי' 
-        : 'לא מומלץ'
-    }));
-    
+      LEFT JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE
+      LEFT JOIN transactions t ON t.complex_id = c.id
+      WHERE c.iai_score >= 30
+      GROUP BY c.id
+      ORDER BY c.iai_score DESC NULLS LAST
+      LIMIT 50
+    `);
+
     res.json({
-      opportunities,
-      total: opportunities.length,
-      criteria: { min_iai: minIai }
+      total: result.rows.length,
+      opportunities: result.rows.map(row => ({
+        ...row,
+        iai_category: row.iai_score >= 70 ? 'excellent'
+          : row.iai_score >= 50 ? 'good'
+          : 'moderate',
+        recommendation: row.iai_score >= 70
+          ? 'השקעה מצוינת - פוטנציאל תשואה גבוה'
+          : row.iai_score >= 50
+          ? 'השקעה טובה - יחס סיכוי-סיכון חיובי'
+          : 'השקעה סבירה - נדרש ניתוח נוסף'
+      }))
     });
-  } catch (err) {
-    logger.error('Error fetching opportunities', { error: err.message });
-    res.status(500).json({ error: 'Failed to fetch opportunities' });
+  } catch (error) {
+    logger.error('Opportunities error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// GET /api/stressed-sellers - High SSI score listings
+// GET /api/stressed-sellers - Stressed sellers list
 router.get('/stressed-sellers', async (req, res) => {
   try {
-    const { min_ssi, city, limit } = req.query;
-    const minSsi = parseInt(min_ssi) || 50;
-    const limitVal = Math.min(parseInt(limit) || 20, 100);
-    
+    const { city, min_ssi, sort_by } = req.query;
     let query = `
       SELECT 
         l.id as listing_id,
@@ -103,55 +69,86 @@ router.get('/stressed-sellers', async (req, res) => {
         c.developer
       FROM listings l
       JOIN complexes c ON l.complex_id = c.id
-      WHERE l.ssi_score >= $1 AND l.is_active = TRUE
+      WHERE l.is_active = TRUE AND l.ssi_score >= $1
     `;
-    const params = [minSsi];
+    const params = [parseInt(min_ssi) || 20];
     let paramCount = 1;
-    
+
     if (city) {
       paramCount++;
       query += ` AND l.city = $${paramCount}`;
       params.push(city);
     }
-    
-    query += ' ORDER BY l.ssi_score DESC';
-    paramCount++;
-    query += ` LIMIT $${paramCount}`;
-    params.push(limitVal);
-    
+
+    const sortOptions = {
+      'ssi': 'l.ssi_score DESC',
+      'price': 'l.asking_price ASC',
+      'days': 'l.days_on_market DESC',
+      'price_drop': 'l.total_price_drop_percent DESC'
+    };
+    query += ` ORDER BY ${sortOptions[sort_by] || 'l.ssi_score DESC'}`;
+    query += ' LIMIT 50';
+
     const result = await pool.query(query, params);
-    
-    const sellers = result.rows.map(row => ({
-      ...row,
-      ssi_category: row.ssi_score >= 70 ? 'very_stressed'
-        : row.ssi_score >= 50 ? 'stressed'
-        : row.ssi_score >= 30 ? 'normal'
-        : 'strong',
-      strategy: row.ssi_score >= 70
-        ? 'הצעה אגרסיבית 15-20% מתחת למחיר'
-        : row.ssi_score >= 50
-        ? 'הצעה 10-15% מתחת למחיר'
-        : row.ssi_score >= 30
-        ? 'משא ומתן סטנדרטי'
-        : 'קשה להוריד מחיר',
-      potential_discount: row.ssi_score >= 70 ? '15-20%'
-        : row.ssi_score >= 50 ? '10-15%'
-        : row.ssi_score >= 30 ? '5-10%'
-        : '0-5%'
-    }));
-    
     res.json({
-      stressed_sellers: sellers,
-      total: sellers.length,
-      criteria: { min_ssi: minSsi }
+      total: result.rows.length,
+      stressed_sellers: result.rows.map(row => ({
+        ...row,
+        ssi_category: row.ssi_score >= 70 ? 'very_stressed'
+          : row.ssi_score >= 50 ? 'stressed'
+          : row.ssi_score >= 30 ? 'normal'
+          : 'strong',
+        strategy: row.ssi_score >= 70
+          ? 'הצעה אגרסיבית 15-20% מתחת למחיר'
+          : row.ssi_score >= 50
+          ? 'הצעה 10-15% מתחת למחיר'
+          : row.ssi_score >= 30
+          ? 'משא ומתן סטנדרטי'
+          : 'מחיר שוק מלא',
+        potential_discount: row.ssi_score >= 70 ? '15-20%'
+          : row.ssi_score >= 50 ? '10-15%'
+          : row.ssi_score >= 30 ? '5-10%'
+          : '0-5%'
+      }))
     });
-  } catch (err) {
-    logger.error('Error fetching stressed sellers', { error: err.message });
-    res.status(500).json({ error: 'Failed to fetch stressed sellers' });
+  } catch (error) {
+    logger.error('Stressed sellers error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// =====================================================
+// GET /api/listings/filter-options - Available filter values
+router.get('/listings/filter-options', async (req, res) => {
+  try {
+    const cities = await pool.query(`
+      SELECT city, COUNT(*) as count
+      FROM listings WHERE is_active = TRUE AND city IS NOT NULL
+      GROUP BY city ORDER BY count DESC
+    `);
+    const priceRange = await pool.query(`
+      SELECT MIN(asking_price) as min_price, MAX(asking_price) as max_price,
+             AVG(asking_price) as avg_price
+      FROM listings WHERE is_active = TRUE AND asking_price > 0
+    `);
+    const roomsRange = await pool.query(`
+      SELECT MIN(rooms) as min_rooms, MAX(rooms) as max_rooms
+      FROM listings WHERE is_active = TRUE AND rooms > 0
+    `);
+    const areaRange = await pool.query(`
+      SELECT MIN(area_sqm) as min_area, MAX(area_sqm) as max_area
+      FROM listings WHERE is_active = TRUE AND area_sqm > 0
+    `);
+    res.json({
+      cities: cities.rows,
+      price_range: priceRange.rows[0],
+      rooms_range: roomsRange.rows[0],
+      area_range: areaRange.rows[0]
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/listings/search - Full listings search with comprehensive filters
 // =====================================================
 router.get('/listings/search', async (req, res) => {
@@ -169,6 +166,7 @@ router.get('/listings/search', async (req, res) => {
       is_foreclosure, is_inheritance,
       has_urgent_keywords,
       complex_status,
+      deal_status, message_status,
       sort_by,
       sort_order,
       limit, offset
@@ -177,7 +175,6 @@ router.get('/listings/search', async (req, res) => {
     const limitVal = Math.min(parseInt(limit) || 50, 200);
     const offsetVal = parseInt(offset) || 0;
 
-    // Build WHERE conditions separately for reuse in count query
     const conditions = ['l.is_active = TRUE'];
     const params = [];
     let paramCount = 0;
@@ -264,6 +261,16 @@ router.get('/listings/search', async (req, res) => {
       conditions.push(`c.status = $${paramCount}`);
       params.push(complex_status);
     }
+    if (deal_status) {
+      paramCount++;
+      conditions.push(`l.deal_status = $${paramCount}`);
+      params.push(deal_status);
+    }
+    if (message_status) {
+      paramCount++;
+      conditions.push(`l.message_status = $${paramCount}`);
+      params.push(message_status);
+    }
 
     const whereClause = conditions.join(' AND ');
 
@@ -282,7 +289,7 @@ router.get('/listings/search', async (req, res) => {
     const sortCol = validSorts[sort_by] || 'l.ssi_score';
     const sortDir = sort_order === 'asc' ? 'ASC' : 'DESC';
 
-    // Count query (no ORDER BY, no LIMIT)
+    // Count query
     const countQuery = `
       SELECT COUNT(*) as total
       FROM listings l
@@ -290,11 +297,11 @@ router.get('/listings/search', async (req, res) => {
       WHERE ${whereClause}
     `;
 
-    // Data query with sort + pagination
+    // Data query
     const dataQuery = `
       SELECT 
         l.id as listing_id,
-        l.source, l.url,
+        l.source, l.url, l.source_listing_id,
         l.asking_price, l.area_sqm, l.rooms, l.floor,
         l.price_per_sqm,
         l.days_on_market, l.price_changes, l.total_price_drop_percent,
@@ -304,6 +311,8 @@ router.get('/listings/search', async (req, res) => {
         l.ssi_score, l.ssi_time_score, l.ssi_price_score, l.ssi_indicator_score,
         l.address, l.city,
         l.first_seen, l.last_seen,
+        l.deal_status, l.message_status,
+        l.last_message_sent_at, l.last_reply_at, l.last_reply_text, l.notes,
         c.id as complex_id, c.slug as complex_slug,
         c.name as complex_name, c.city as complex_city,
         c.status as complex_status,
@@ -342,107 +351,14 @@ router.get('/listings/search', async (req, res) => {
     }));
 
     res.json({
-      listings,
-      total: parseInt(countResult.rows[0]?.total || 0),
-      returned: listings.length,
+      total: parseInt(countResult.rows[0].total),
+      showing: listings.length,
       offset: offsetVal,
-      limit: limitVal,
-      filters_applied: Object.fromEntries(
-        Object.entries(req.query).filter(([k, v]) => v && k !== 'limit' && k !== 'offset')
-      )
+      listings
     });
-  } catch (err) {
-    logger.error('Error searching listings', { error: err.message, stack: err.stack });
-    res.status(500).json({ error: 'Failed to search listings' });
-  }
-});
-
-// GET /api/listings/filter-options - Get available filter values
-router.get('/listings/filter-options', async (req, res) => {
-  try {
-    const [citiesResult, statsResult, statusResult] = await Promise.all([
-      pool.query(`
-        SELECT l.city, COUNT(*) as count 
-        FROM listings l WHERE l.is_active = TRUE AND l.city IS NOT NULL
-        GROUP BY l.city ORDER BY count DESC
-      `),
-      pool.query(`
-        SELECT 
-          MIN(l.asking_price)::numeric as min_price,
-          MAX(l.asking_price)::numeric as max_price,
-          MIN(l.rooms)::numeric as min_rooms,
-          MAX(l.rooms)::numeric as max_rooms,
-          MIN(l.area_sqm)::numeric as min_area,
-          MAX(l.area_sqm)::numeric as max_area,
-          MIN(l.ssi_score) as min_ssi,
-          MAX(l.ssi_score) as max_ssi,
-          MAX(l.days_on_market) as max_days,
-          COUNT(*) as total
-        FROM listings l WHERE l.is_active = TRUE
-      `),
-      pool.query(`
-        SELECT DISTINCT c.status, COUNT(*) as count
-        FROM listings l JOIN complexes c ON l.complex_id = c.id
-        WHERE l.is_active = TRUE AND c.status IS NOT NULL
-        GROUP BY c.status ORDER BY count DESC
-      `)
-    ]);
-
-    res.json({
-      cities: citiesResult.rows,
-      ranges: statsResult.rows[0],
-      complex_statuses: statusResult.rows
-    });
-  } catch (err) {
-    logger.error('Error fetching filter options', { error: err.message });
-    res.status(500).json({ error: 'Failed to fetch filter options' });
-  }
-});
-
-// GET /api/dashboard-json - Combined dashboard data (JSON API)
-router.get('/dashboard-json', async (req, res) => {
-  try {
-    const topOpportunities = await pool.query(`
-      SELECT id, slug, name, city, status, iai_score, premium_gap, developer, planned_units
-      FROM complexes WHERE iai_score > 0
-      ORDER BY iai_score DESC LIMIT 10
-    `);
-    
-    const topStressed = await pool.query(`
-      SELECT 
-        l.id, l.address, l.asking_price, l.ssi_score, l.days_on_market,
-        l.total_price_drop_percent, l.has_urgent_keywords,
-        c.name as complex_name, c.city, c.slug as complex_slug
-      FROM listings l JOIN complexes c ON l.complex_id = c.id
-      WHERE l.is_active = TRUE AND l.ssi_score > 0
-      ORDER BY l.ssi_score DESC LIMIT 10
-    `);
-    
-    const recentAlerts = await pool.query(`
-      SELECT a.*, c.name as complex_name, c.city, c.slug as complex_slug
-      FROM alerts a JOIN complexes c ON a.complex_id = c.id
-      ORDER BY a.created_at DESC LIMIT 10
-    `);
-    
-    const statusDist = await pool.query(`
-      SELECT status, COUNT(*) as count, SUM(planned_units) as total_units
-      FROM complexes GROUP BY status ORDER BY count DESC
-    `);
-    
-    const lastScan = await pool.query(`
-      SELECT * FROM scan_logs ORDER BY started_at DESC LIMIT 1
-    `);
-    
-    res.json({
-      top_opportunities: topOpportunities.rows,
-      top_stressed_sellers: topStressed.rows,
-      recent_alerts: recentAlerts.rows,
-      status_distribution: statusDist.rows,
-      last_scan: lastScan.rows[0] || null
-    });
-  } catch (err) {
-    logger.error('Error fetching dashboard', { error: err.message });
-    res.status(500).json({ error: 'Failed to fetch dashboard data' });
+  } catch (error) {
+    logger.error('Listings search error:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
