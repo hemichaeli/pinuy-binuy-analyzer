@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.19.0';
-const BUILD = '2026-02-15-v4.19.0-facebook-marketplace';
+const VERSION = '4.20.2';
+const BUILD = '2026-02-15-v4.20.2-intelligence-api';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -107,7 +107,7 @@ app.use(express.json({ limit: '50mb' }));
 // Rate limiting - exempt public UI routes
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
 app.use('/api/', (req, res, next) => {
-  if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard')) {
+  if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard') || req.path.startsWith('/intelligence')) {
     return next();
   }
   apiLimiter(req, res, next);
@@ -120,6 +120,7 @@ app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(`# QUANTUM - Pinuy Binuy Intelligence
 User-agent: *
 Allow: /api/perplexity/
+Allow: /api/intelligence/
 Allow: /health
 Disallow: /api/admin/
 Disallow: /api/scan/
@@ -130,12 +131,15 @@ Allow: /
 
 User-agent: ChatGPT-User
 Allow: /api/perplexity/
+Allow: /api/intelligence/
 
 User-agent: Claude-Web
 Allow: /api/perplexity/
+Allow: /api/intelligence/
 
 User-agent: GPTBot
 Allow: /api/perplexity/
+Allow: /api/intelligence/
 `);
 });
 
@@ -145,8 +149,8 @@ app.get('/.well-known/ai-plugin.json', (req, res) => {
     name_for_human: 'QUANTUM - Pinuy Binuy Intelligence',
     name_for_model: 'quantum_pinuy_binuy',
     description_for_human: 'Israeli urban renewal (Pinuy-Binuy) real estate investment data.',
-    description_for_model: 'Access Israeli Pinuy-Binui real estate data. Use /api/perplexity/brain.html for summary or /api/perplexity/brain.json for structured data.',
-    api: { type: 'openapi', url: 'https://pinuy-binuy-analyzer-production.up.railway.app/api/perplexity/brain.json' },
+    description_for_model: 'Access Israeli Pinuy-Binui real estate data. Use /api/intelligence for full summary, /api/intelligence/opportunities for investments, /api/intelligence/city/:name for city analysis.',
+    api: { type: 'openapi', url: 'https://pinuy-binuy-analyzer-production.up.railway.app/api/intelligence' },
     logo_url: 'https://pinuy-binuy-analyzer-production.up.railway.app/favicon.ico',
     contact_email: 'Office@u-r-quantum.com',
     legal_info_url: 'https://pinuy-binuy-analyzer-production.up.railway.app/'
@@ -219,6 +223,7 @@ function loadAllRoutes() {
     ['./routes/enhancedData', '/api/enhanced'],
     ['./routes/konesRoutes', '/api/kones'],
     ['./routes/perplexityRoutes', '/api/perplexity'],
+    ['./routes/intelligenceRoutes', '/api/intelligence'],
     ['./routes/chatRoutes', '/api/chat'],
     ['./routes/dashboardRoutes', '/api/dashboard'],
     ['./routes/governmentDataRoutes', '/api/government'],
@@ -294,7 +299,7 @@ app.get('/api/scheduler', (req, res) => { try { const { getSchedulerStatus } = r
 app.post('/api/scheduler/run', async (req, res) => { try { const { runWeeklyScan, getSchedulerStatus } = require('./jobs/weeklyScanner'); const status = getSchedulerStatus(); if (status.isRunning) return res.status(409).json({ error: 'Scan already running' }); res.json({ message: 'Scan triggered', note: 'Running in background' }); await runWeeklyScan(); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // Notification routes
-app.get('/api/notifications/status', (req, res) => { res.json(notificationService.getStatus ? notificationService.getStatus() : { configured: notificationService.isConfigured() }); });
+app.get('/api/notifications/status', (req, res) => { res.json(notificationService.getStatus ? notificationService.getStatus() : { configured: notificationService.isConfigured(), provider: notificationService.getProvider() }); });
 app.post('/api/notifications/test', async (req, res) => { try { await notificationService.sendTestEmail?.(); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); } });
 
 // Root - redirect to dashboard
@@ -317,6 +322,7 @@ app.get('/api/info', (req, res) => {
       stressed_sellers: '/api/ssi/stressed-sellers', scan: '/api/scan',
       scan_ai: '/api/scan/ai', messaging: '/api/messaging',
       kones: '/api/kones', perplexity: '/api/perplexity',
+      intelligence: '/api/intelligence',
       facebook: '/api/facebook',
       notifications: '/api/notifications/status'
     }
@@ -347,6 +353,7 @@ async function start() {
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`Dashboard: /api/dashboard/`);
     logger.info(`Chat: /api/chat/`);
+    logger.info(`Intelligence API: /api/intelligence/`);
     logger.info(`Facebook API: /api/facebook/`);
     logger.info(`Messaging API: /api/messaging/`);
   });
