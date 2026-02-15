@@ -1,27 +1,30 @@
-// fix-escapes.js - Fix template literal escaping in dashboardRoutes.js
-// This runs during build to correct escaped backticks, unicode, and dollar signs
-const fs = require('fs');
-const path = require('path');
+// fix-escapes.js - Runtime fix for MCP double-escaping in dashboardRoutes.js
+// Uses String.fromCharCode to avoid ANY backslash in source (MCP doubles them)
+var fs = require('fs');
+var path = require('path');
+var file = path.join(__dirname, 'src', 'routes', 'dashboardRoutes.js');
 
-const file = path.join(__dirname, 'src/routes/dashboardRoutes.js');
 if (fs.existsSync(file)) {
-  let content = fs.readFileSync(file, 'utf8');
-  const before = content.length;
-  
-  // Fix escaped backticks: \` -> `
-  content = content.replace(/\\`/g, '`');
-  
-  // Fix double-escaped unicode: \\u -> \u  
-  content = content.replace(/\\\\u/g, '\\u');
-  
-  // Fix escaped dollar signs: \$ -> $
-  content = content.replace(/\\\$/g, '$');
-  
+  var content = fs.readFileSync(file, 'utf8');
+  var before = content.length;
+  var BS = String.fromCharCode(92);  // backslash
+  var BT = String.fromCharCode(96);  // backtick
+  var DL = String.fromCharCode(36);  // dollar sign
+
+  // Fix escaped backticks: BS+BT -> BT
+  content = content.split(BS + BT).join(BT);
+
+  // Fix escaped dollar signs: BS+DL -> DL
+  content = content.split(BS + DL).join(DL);
+
+  // Fix double-escaped unicode: BS+BS+u -> BS+u (Node.js template literals handle the rest)
+  content = content.split(BS + BS + 'u').join(BS + 'u');
+
   if (content.length !== before) {
     fs.writeFileSync(file, content, 'utf8');
-    console.log('fix-escapes: Fixed dashboard escaping (' + before + ' -> ' + content.length + ' bytes)');
+    console.log('fix-escapes: Fixed dashboard (' + before + ' -> ' + content.length + ' bytes)');
   } else {
-    console.log('fix-escapes: No escaping issues found');
+    console.log('fix-escapes: No issues found');
   }
 } else {
   console.log('fix-escapes: Dashboard file not found, skipping');
