@@ -1,1 +1,1 @@
-${require('fs').readFileSync('/home/claude/dr_fixed.js', 'utf8')}
+${require('fs').readFileSync('/home/claude/dr_fixed.js','utf8')}
