@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.18.0';
-const BUILD = '2026-02-15-v4.18.0-dashboard-listings';
+const VERSION = '4.19.0';
+const BUILD = '2026-02-15-v4.19.0-facebook-marketplace';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -82,6 +82,13 @@ async function runAutoMigrations() {
       `);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_listing_messages_listing ON listing_messages(listing_id)`);
     } catch (e) { /* table exists */ }
+
+    // v4.19.0: Facebook Marketplace support
+    try {
+      await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_facebook_scan TIMESTAMP`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listings_source ON listings(source)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listings_source_city ON listings(source, city)`);
+    } catch (e) { /* columns/indexes exist */ }
     
     logger.info('Auto-migrations completed');
   } catch (error) {
@@ -165,6 +172,7 @@ app.get('/health', async (req, res) => {
     const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
     const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
     const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
+    const fbCount = await pool.query("SELECT COUNT(*) FROM listings WHERE source = 'facebook' AND is_active = TRUE");
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -174,6 +182,7 @@ app.get('/health', async (req, res) => {
       complexes: parseInt(result.rows[0].count),
       transactions: parseInt(txCount.rows[0].count),
       listings: parseInt(listingCount.rows[0].count),
+      facebook_listings: parseInt(fbCount.rows[0].count),
       unread_alerts: parseInt(alertCount.rows[0].count),
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       routes_loaded: routeLoadResults.filter(r => r.status === 'ok').length,
@@ -216,6 +225,7 @@ function loadAllRoutes() {
     ['./routes/newsRoutes', '/api/news'],
     ['./routes/pricingRoutes', '/api/pricing'],
     ['./routes/messagingRoutes', '/api/messaging'],
+    ['./routes/facebookRoutes', '/api/facebook'],
     ['./routes/admin', '/api/admin'],
   ];
   
@@ -307,6 +317,7 @@ app.get('/api/info', (req, res) => {
       stressed_sellers: '/api/ssi/stressed-sellers', scan: '/api/scan',
       scan_ai: '/api/scan/ai', messaging: '/api/messaging',
       kones: '/api/kones', perplexity: '/api/perplexity',
+      facebook: '/api/facebook',
       notifications: '/api/notifications/status'
     }
   });
@@ -336,6 +347,7 @@ async function start() {
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`Dashboard: /api/dashboard/`);
     logger.info(`Chat: /api/chat/`);
+    logger.info(`Facebook API: /api/facebook/`);
     logger.info(`Messaging API: /api/messaging/`);
   });
 }
