@@ -159,12 +159,13 @@ function parseDiscoveryResponse(text) {
 
 /**
  * Check if a complex already exists in our database
+ * Uses exact match on name+city (covered by UNIQUE INDEX)
  */
 async function complexExists(name, city) {
   const result = await pool.query(
     `SELECT id FROM complexes 
-     WHERE (LOWER(name) = LOWER($1) OR name ILIKE $2) 
-     AND city = $3`,
+     WHERE (LOWER(TRIM(name)) = LOWER(TRIM($1)) OR name ILIKE $2) 
+     AND LOWER(TRIM(city)) = LOWER(TRIM($3))`,
     [name, `%${name}%`, city]
   );
   return result.rows.length > 0;
@@ -172,6 +173,7 @@ async function complexExists(name, city) {
 
 /**
  * Add a newly discovered complex to the database
+ * Uses ON CONFLICT to prevent duplicates (backed by UNIQUE INDEX on name+city)
  */
 async function addNewComplex(complex, city, source = 'discovery') {
   const statusMap = {
@@ -189,11 +191,13 @@ async function addNewComplex(complex, city, source = 'discovery') {
   const status = statusMap[complex.status] || 'declared';
 
   try {
+    // ON CONFLICT (name, city) DO NOTHING - prevents duplicates at DB level
     const result = await pool.query(
       `INSERT INTO complexes 
        (name, city, addresses, existing_units, planned_units, developer, 
         status, plan_number, discovery_source, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+       ON CONFLICT (name, city) DO NOTHING
        RETURNING id`,
       [
         complex.name,
@@ -208,9 +212,15 @@ async function addNewComplex(complex, city, source = 'discovery') {
       ]
     );
 
+    if (result.rows.length === 0) {
+      // Already existed - ON CONFLICT fired
+      logger.debug(`Complex already exists (ON CONFLICT): ${complex.name} in ${city}`);
+      return null;
+    }
+
     return result.rows[0].id;
   } catch (err) {
-    if (err.code === '23505') { // Unique violation
+    if (err.code === '23505') { // Unique violation (belt and suspenders)
       logger.debug(`Complex already exists: ${complex.name} in ${city}`);
       return null;
     }
@@ -288,14 +298,7 @@ async function discoverDaily() {
           continue;
         }
 
-        // Check if already exists
-        const exists = await complexExists(complex.name, city);
-        if (exists) {
-          existed++;
-          continue;
-        }
-
-        // Add new complex
+        // addNewComplex handles duplicates via ON CONFLICT
         const newId = await addNewComplex(complex, city, 'discovery-daily');
         if (newId) {
           added++;
@@ -306,6 +309,8 @@ async function discoverDaily() {
           await createDiscoveryAlert(newId, complex, city);
           
           logger.info(`✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
+        } else {
+          existed++;
         }
       }
 
@@ -386,12 +391,7 @@ async function discoverAll(options = {}) {
           continue;
         }
 
-        const exists = await complexExists(complex.name, city);
-        if (exists) {
-          existed++;
-          continue;
-        }
-
+        // addNewComplex handles duplicates via ON CONFLICT
         const newId = await addNewComplex(complex, city, 'discovery-full');
         if (newId) {
           added++;
@@ -399,6 +399,8 @@ async function discoverAll(options = {}) {
           results.new_added++;
           await createDiscoveryAlert(newId, complex, city);
           logger.info(`✨ NEW: ${complex.name} (${city}) - ${complex.existing_units || '?'} units`);
+        } else {
+          existed++;
         }
       }
 
@@ -440,6 +442,7 @@ module.exports = {
   discoverInCity,
   discoverRegion,
   addNewComplex,
+  complexExists,
   getTodaysCities,
   TARGET_REGIONS,
   ALL_TARGET_CITIES,
