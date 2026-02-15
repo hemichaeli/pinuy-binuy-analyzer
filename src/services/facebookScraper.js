@@ -1,16 +1,16 @@
 /**
- * Facebook Marketplace Scraper (Phase 4.19)
+ * Facebook Marketplace Scraper (Phase 4.20 - Apify Integration)
  * 
- * Scrapes Facebook Marketplace real estate listings using Perplexity AI.
- * Facebook doesn't offer a public API for Marketplace, so we use AI-powered
- * search to find and parse listings.
+ * Scrapes Facebook Marketplace real estate listings using Apify API.
+ * Replaces Perplexity AI approach with actual Facebook scraping via Apify actors.
  * 
  * Strategy:
- * 1. Query Perplexity AI to search Facebook Marketplace for each city/complex
- * 2. Parse structured listing data from AI response
- * 3. Match listings to tracked complexes
- * 4. Store in listings table with source='facebook'
- * 5. Track price changes and generate alerts
+ * 1. Build Facebook Marketplace URLs for Israeli cities (property for sale)
+ * 2. Run Apify actor to scrape actual listings
+ * 3. Parse and normalize Apify results to our listing format
+ * 4. Match listings to tracked complexes by address
+ * 5. Store in listings table with source='facebook'
+ * 6. Track price changes and generate alerts
  */
 
 const axios = require('axios');
@@ -18,10 +18,51 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 const { detectKeywords } = require('./ssiCalculator');
 
-const PERPLEXITY_API = 'https://api.perplexity.ai/chat/completions';
-const DELAY_BETWEEN_REQUESTS = 4000; // 4s between requests (be gentle)
+// Apify configuration
+const APIFY_BASE_URL = 'https://api.apify.com/v2';
+const APIFY_ACTOR_ID = 'apify~facebook-marketplace-scraper'; // Official Apify FB Marketplace scraper
+const APIFY_TIMEOUT = 120000; // 2 minutes max wait for sync run
+const DELAY_BETWEEN_SCANS = 5000; // 5s between city scans
 
-// Facebook Marketplace Hebrew city name variations
+// Facebook Marketplace URL slugs for Israeli cities
+const FB_CITY_SLUGS = {
+  'תל אביב יפו': 'tel-aviv',
+  'תל אביב': 'tel-aviv',
+  'רמת גן': 'ramat-gan',
+  'גבעתיים': 'givatayim',
+  'חולון': 'holon',
+  'בת ים': 'bat-yam',
+  'ראשון לציון': 'rishon-lezion',
+  'פתח תקווה': 'petah-tikva',
+  'בני ברק': 'bnei-brak',
+  'הרצליה': 'herzliya',
+  'רעננה': 'raanana',
+  'כפר סבא': 'kfar-saba',
+  'נתניה': 'netanya',
+  'חיפה': 'haifa',
+  'באר שבע': 'beer-sheva',
+  'ירושלים': 'jerusalem',
+  'אשדוד': 'ashdod',
+  'אשקלון': 'ashkelon',
+  'רחובות': 'rehovot',
+  'לוד': 'lod',
+  'רמלה': 'ramla',
+  'מודיעין': 'modiin',
+  'נס ציונה': 'ness-ziona',
+  'ראש העין': 'rosh-haayin',
+  'חדרה': 'hadera',
+  'יבנה': 'yavne',
+  'נהריה': 'nahariya',
+  'עכו': 'akko',
+  'כרמיאל': 'karmiel',
+  'טבריה': 'tiberias',
+  'אילת': 'eilat',
+  'קריית גת': 'kiryat-gat',
+  'קריית אתא': 'kiryat-ata',
+  'קריית ים': 'kiryat-yam'
+};
+
+// Hebrew city name variations for matching
 const FB_CITY_NAMES = {
   'תל אביב יפו': ['תל אביב', 'תל אביב יפו', 'Tel Aviv'],
   'תל אביב': ['תל אביב', 'תל אביב יפו', 'Tel Aviv'],
@@ -59,213 +100,285 @@ function getCityNames(cityName) {
 }
 
 /**
- * Query Perplexity AI to search Facebook Marketplace listings
+ * Build Facebook Marketplace URL for a city
  */
-async function queryFacebookPerplexity(complex) {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) {
-    logger.warn('PERPLEXITY_API_KEY not set, cannot search Facebook Marketplace');
+function buildMarketplaceUrl(city, category = 'propertyforsale') {
+  const slug = FB_CITY_SLUGS[city];
+  if (!slug) {
+    const names = getCityNames(city);
+    const englishName = names.find(n => /^[a-zA-Z]/.test(n));
+    if (englishName) {
+      return `https://www.facebook.com/marketplace/${englishName.toLowerCase().replace(/\s+/g, '-')}/${category}`;
+    }
+    return null;
+  }
+  return `https://www.facebook.com/marketplace/${slug}/${category}`;
+}
+
+/**
+ * Run Apify actor and get results (synchronous - waits for completion)
+ */
+async function runApifyActor(input, options = {}) {
+  const apiToken = process.env.APIFY_API_TOKEN;
+  if (!apiToken) {
+    logger.warn('APIFY_API_TOKEN not set, cannot scrape Facebook Marketplace');
     return null;
   }
 
-  const cityNames = getCityNames(complex.city);
-  const addresses = (complex.addresses || '').split(',').map(a => a.trim()).filter(Boolean);
-  const streetNames = addresses.map(addr => addr.replace(/\d+/g, '').trim()).filter(Boolean);
-  
-  const locationHint = streetNames.length > 0 
-    ? `ברחובות: ${streetNames.slice(0, 3).join(', ')} ב${complex.city}`
-    : `ב${complex.city}`;
-
-  const prompt = `חפש מודעות דירות למכירה בפייסבוק מרקטפלייס (Facebook Marketplace) ${locationHint}.
-
-חפש גם בקבוצות פייסבוק לנדל"ן ב${complex.city} כמו:
-- "דירות למכירה ${complex.city}"
-- "נדל"ן ${complex.city}"
-- "דירות ${complex.city}"
-
-עבור כל מודעה שנמצאת, החזר את הפרטים בפורמט JSON:
-{
-  "listings": [
-    {
-      "address": "כתובת מלאה",
-      "street": "שם הרחוב",
-      "house_number": "מספר בית",
-      "asking_price": מחיר_בשקלים,
-      "rooms": מספר_חדרים,
-      "area_sqm": שטח_במטרים,
-      "floor": קומה,
-      "description": "תיאור קצר מהמודעה",
-      "url": "קישור למודעה בפייסבוק",
-      "listing_id": "מזהה מודעה או קישור",
-      "seller_name": "שם המפרסם",
-      "days_on_market": ימים_מאז_פרסום,
-      "is_urgent": true/false,
-      "is_foreclosure": true/false,
-      "is_inheritance": true/false,
-      "is_agent": true/false,
-      "phone": "טלפון אם מופיע"
-    }
-  ],
-  "total_found": מספר_כולל,
-  "groups_searched": ["שמות הקבוצות שנבדקו"]
-}
-
-חשוב מאוד:
-- רק דירות למכירה, לא להשכרה
-- מחירים בשקלים בלבד
-- שים לב למילים: דחוף, הזדמנות, כינוס, ירושה, חייב למכור, מתחת לשוק, הורדת מחיר
-- ציין אם המפרסם הוא מתווך/סוכן (is_agent)
-- אם יש מספר טלפון במודעה, הוסף אותו
-- החזר רק JSON תקין, בלי הסברים`;
+  const timeout = options.timeout || APIFY_TIMEOUT;
+  const actorId = options.actorId || APIFY_ACTOR_ID;
 
   try {
-    const response = await axios.post(PERPLEXITY_API, {
-      model: 'sonar',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a real estate data extraction expert. Return ONLY valid JSON, no markdown, no explanations. Search Facebook Marketplace Israel for real estate listings.'
-        },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 3000,
-      temperature: 0.1
-    }, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 45000
-    });
+    const response = await axios.post(
+      `${APIFY_BASE_URL}/acts/${actorId}/run-sync-get-dataset-items`,
+      input,
+      {
+        params: { token: apiToken },
+        headers: { 'Content-Type': 'application/json' },
+        timeout: timeout
+      }
+    );
 
-    const content = response.data.choices?.[0]?.message?.content || '';
-    const parsed = parsePerplexityResponse(content);
-    
-    logger.debug(`Facebook Perplexity returned ${parsed.listings.length} listings for ${complex.name} (${complex.city})`);
-    return { 
-      listings: parsed.listings, 
-      source: 'facebook_perplexity',
-      groups_searched: parsed.groups_searched || []
-    };
+    const items = response.data;
+    if (!Array.isArray(items)) {
+      logger.warn('Apify returned non-array response', { type: typeof items });
+      return [];
+    }
+
+    logger.info(`Apify actor returned ${items.length} items`);
+    return items;
+
   } catch (err) {
-    logger.warn(`Facebook Perplexity query failed for ${complex.name}`, { error: err.message });
+    if (err.response?.status === 402) {
+      logger.error('Apify: insufficient credits (402). Check your plan.');
+    } else if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+      logger.warn('Apify actor timed out, trying async approach...');
+      return await runApifyActorAsync(input, options);
+    } else {
+      logger.warn(`Apify actor failed: ${err.message}`, { 
+        status: err.response?.status,
+        data: JSON.stringify(err.response?.data || '').substring(0, 200)
+      });
+    }
     return null;
   }
 }
 
 /**
- * Query Perplexity for Facebook groups listings by city (batch approach)
+ * Run Apify actor asynchronously (for longer-running scrapes)
  */
-async function queryFacebookByCity(city) {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return null;
+async function runApifyActorAsync(input, options = {}) {
+  const apiToken = process.env.APIFY_API_TOKEN;
+  if (!apiToken) return null;
 
-  const cityNames = getCityNames(city);
-
-  const prompt = `חפש את כל הדירות למכירה בפייסבוק מרקטפלייס ובקבוצות פייסבוק של נדל"ן ב${city}.
-
-חפש בקבוצות כמו:
-- "דירות למכירה ב${city}"
-- "נדל"ן ${city}"
-- "דירות ${city} והסביבה"
-- "פינוי בינוי ${city}"
-
-החזר עד 30 מודעות בפורמט JSON:
-{
-  "listings": [
-    {
-      "address": "כתובת מלאה",
-      "street": "שם הרחוב",
-      "house_number": "מספר בית",
-      "asking_price": מחיר_בשקלים,
-      "rooms": מספר_חדרים,
-      "area_sqm": שטח_במטרים,
-      "floor": קומה,
-      "description": "תיאור קצר",
-      "url": "קישור",
-      "listing_id": "מזהה",
-      "seller_name": "שם המפרסם",
-      "days_on_market": ימים,
-      "is_urgent": true/false,
-      "is_foreclosure": true/false,
-      "is_inheritance": true/false,
-      "is_agent": true/false,
-      "phone": "טלפון"
-    }
-  ],
-  "total_found": מספר_כולל,
-  "groups_searched": ["שמות קבוצות"]
-}
-
-חשוב: רק מכירה, לא השכרה. מחירים בשקלים. שים לב למילות מצוקה: דחוף, כינוס, ירושה, חייב למכור.`;
+  const actorId = options.actorId || APIFY_ACTOR_ID;
 
   try {
-    const response = await axios.post(PERPLEXITY_API, {
-      model: 'sonar',
-      messages: [
-        {
-          role: 'system',
-          content: 'Return ONLY valid JSON. Search Facebook Marketplace and Facebook groups for Israeli real estate listings.'
-        },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 4000,
-      temperature: 0.1
-    }, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      timeout: 60000
-    });
+    const startResponse = await axios.post(
+      `${APIFY_BASE_URL}/acts/${actorId}/runs`,
+      input,
+      {
+        params: { token: apiToken },
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 30000
+      }
+    );
 
-    const content = response.data.choices?.[0]?.message?.content || '';
-    const parsed = parsePerplexityResponse(content);
-    
-    logger.info(`Facebook city scan: ${parsed.listings.length} listings found for ${city}`);
-    return { 
-      listings: parsed.listings, 
-      source: 'facebook_perplexity',
-      groups_searched: parsed.groups_searched || []
-    };
+    const runId = startResponse.data?.data?.id;
+    if (!runId) {
+      logger.warn('Apify: no run ID returned');
+      return null;
+    }
+
+    logger.info(`Apify actor started, run ID: ${runId}`);
+
+    const maxWait = 180000;
+    const pollInterval = 10000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+
+      const statusResponse = await axios.get(
+        `${APIFY_BASE_URL}/actor-runs/${runId}`,
+        { params: { token: apiToken }, timeout: 10000 }
+      );
+
+      const status = statusResponse.data?.data?.status;
+      logger.debug(`Apify run ${runId} status: ${status}`);
+
+      if (status === 'SUCCEEDED') {
+        const datasetId = statusResponse.data?.data?.defaultDatasetId;
+        if (!datasetId) return [];
+
+        const dataResponse = await axios.get(
+          `${APIFY_BASE_URL}/datasets/${datasetId}/items`,
+          { params: { token: apiToken, format: 'json' }, timeout: 30000 }
+        );
+
+        return Array.isArray(dataResponse.data) ? dataResponse.data : [];
+      }
+
+      if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
+        logger.warn(`Apify run ${runId} ended with status: ${status}`);
+        return null;
+      }
+    }
+
+    logger.warn(`Apify run ${runId} polling timed out after ${maxWait / 1000}s`);
+    return null;
+
   } catch (err) {
-    logger.warn(`Facebook city scan failed for ${city}`, { error: err.message });
+    logger.warn(`Apify async run failed: ${err.message}`);
     return null;
   }
 }
 
 /**
- * Parse Perplexity JSON response
+ * Normalize Apify listing to our internal format
  */
-function parsePerplexityResponse(content) {
+function normalizeApifyListing(item, city) {
   try {
-    const cleaned = content
-      .replace(/```json\s*/g, '')
-      .replace(/```\s*/g, '')
-      .trim();
+    let price = null;
+    const priceRaw = item.price || item.salePrice || item.listingPrice || '';
+    const priceStr = String(priceRaw).replace(/[₪,\s]/g, '').replace(/[^\d.]/g, '');
+    if (priceStr) {
+      price = parseFloat(priceStr);
+      if (price < 100000 || price > 50000000) price = null;
+    }
+
+    const title = item.title || item.name || '';
+    const location = item.location || item.address || '';
+    const description = item.description || '';
     
-    const parsed = JSON.parse(cleaned);
+    const addressText = location || title;
+    const streetMatch = addressText.match(/(רח(?:וב)?\.?\s*[^\d,]+?)[\s,]*(\d+)?/);
+    const street = streetMatch ? streetMatch[1].replace(/^רח(?:וב)?\.?\s*/, '').trim() : '';
+    const houseNumber = streetMatch ? (streetMatch[2] || '') : '';
+
+    let rooms = null;
+    const roomsMatch = (title + ' ' + description).match(/(\d+(?:\.\d)?)\s*(?:חד|חדר|rooms)/i);
+    if (roomsMatch) rooms = parseFloat(roomsMatch[1]);
+
+    let areaSqm = null;
+    const areaMatch = (title + ' ' + description).match(/(\d+)\s*(?:מ"ר|מטר|sqm|m²)/i);
+    if (areaMatch) areaSqm = parseFloat(areaMatch[1]);
+
+    let floor = null;
+    const floorMatch = (title + ' ' + description).match(/קומה\s*(\d+)/i);
+    if (floorMatch) floor = parseInt(floorMatch[1]);
+
+    const fullText = `${title} ${description} ${location}`.toLowerCase();
+    const isUrgent = /דחוף|הזדמנות|חייב למכור|מתחת לשוק|הורדת מחיר|urgent/.test(fullText);
+    const isForeclosure = /כינוס|כונס|receivership/.test(fullText);
+    const isInheritance = /ירושה|עיזבון|inheritance/.test(fullText);
+    const isAgent = /מתווך|תיווך|סוכן|agent|broker/.test(fullText);
+
+    let daysOnMarket = 0;
+    if (item.postedAt || item.datePosted || item.listingDate) {
+      const postedDate = new Date(item.postedAt || item.datePosted || item.listingDate);
+      if (!isNaN(postedDate.getTime())) {
+        daysOnMarket = Math.floor((Date.now() - postedDate.getTime()) / (1000 * 60 * 60 * 24));
+      }
+    }
+    if (item.time) {
+      const timeMatch = String(item.time).match(/(\d+)\s*(day|week|month|hour|minute|יום|שבוע|חודש)/i);
+      if (timeMatch) {
+        const num = parseInt(timeMatch[1]);
+        const unit = timeMatch[2].toLowerCase();
+        if (unit.includes('week') || unit.includes('שבוע')) daysOnMarket = num * 7;
+        else if (unit.includes('month') || unit.includes('חודש')) daysOnMarket = num * 30;
+        else if (unit.includes('day') || unit.includes('יום')) daysOnMarket = num;
+        else daysOnMarket = 0;
+      }
+    }
+
+    const sellerName = item.seller?.name || item.sellerName || item.seller || '';
+    const phone = item.seller?.phone || item.phone || '';
+
     return {
-      listings: Array.isArray(parsed.listings) ? parsed.listings : [],
-      total_found: parsed.total_found || 0,
-      groups_searched: parsed.groups_searched || []
+      address: location || `${street} ${houseNumber}`.trim() || title.substring(0, 100),
+      street, house_number: houseNumber,
+      asking_price: price, rooms, area_sqm: areaSqm, floor,
+      description: `${title}${description ? ' | ' + description.substring(0, 300) : ''}`,
+      url: item.url || item.link || item.listingUrl || null,
+      listing_id: item.id || item.listingId || item.url || null,
+      seller_name: sellerName, days_on_market: daysOnMarket,
+      is_urgent: isUrgent, is_foreclosure: isForeclosure,
+      is_inheritance: isInheritance, is_agent: isAgent,
+      phone, image: item.image || item.thumbnail || item.images?.[0] || null
     };
-  } catch (e) {
-    // Try to extract JSON from mixed content
-    const jsonMatch = content.match(/\{[\s\S]*"listings"[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          listings: Array.isArray(parsed.listings) ? parsed.listings : [],
-          total_found: parsed.total_found || 0,
-          groups_searched: parsed.groups_searched || []
-        };
-      } catch (e2) {}
-    }
-    logger.debug('Failed to parse Facebook Perplexity response', { content: content.substring(0, 200) });
-    return { listings: [], total_found: 0, groups_searched: [] };
+  } catch (err) {
+    logger.debug(`Failed to normalize Apify listing: ${err.message}`);
+    return null;
   }
+}
+
+/**
+ * Query Facebook Marketplace via Apify for a specific city
+ */
+async function queryFacebookApify(city) {
+  const marketplaceUrl = buildMarketplaceUrl(city);
+  if (!marketplaceUrl) {
+    logger.warn(`No Facebook Marketplace URL mapping for city: ${city}`);
+    return null;
+  }
+
+  logger.info(`Querying Apify for Facebook Marketplace: ${city} → ${marketplaceUrl}`);
+
+  const input = {
+    startUrls: [{ url: marketplaceUrl }],
+    maxItems: 50,
+    proxy: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] }
+  };
+
+  const items = await runApifyActor(input);
+  if (!items || items.length === 0) {
+    return { listings: [], source: 'apify_empty' };
+  }
+
+  const listings = items
+    .map(item => normalizeApifyListing(item, city))
+    .filter(l => l !== null);
+
+  logger.info(`Apify returned ${items.length} raw items, ${listings.length} normalized for ${city}`);
+  return { listings, source: 'apify', rawCount: items.length };
+}
+
+/**
+ * Query Facebook Marketplace for a specific complex
+ */
+async function queryFacebookForComplex(complex) {
+  const marketplaceUrl = buildMarketplaceUrl(complex.city);
+  if (!marketplaceUrl) return null;
+
+  const input = {
+    startUrls: [{ url: marketplaceUrl }],
+    maxItems: 30,
+    proxy: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] }
+  };
+
+  const items = await runApifyActor(input);
+  if (!items || items.length === 0) return null;
+
+  const listings = items
+    .map(item => normalizeApifyListing(item, complex.city))
+    .filter(l => l !== null);
+
+  const complexAddresses = (complex.addresses || '').split(',').map(a => a.trim()).filter(Boolean);
+  const streetNames = complexAddresses.map(addr => addr.replace(/\d+/g, '').trim()).filter(s => s.length > 2);
+
+  if (streetNames.length > 0) {
+    const matched = listings.filter(l => {
+      const listingText = `${l.address} ${l.street} ${l.description}`.toLowerCase();
+      return streetNames.some(street => listingText.includes(street.toLowerCase()));
+    });
+    if (matched.length > 0) {
+      return { listings: matched, source: 'apify', rawCount: items.length };
+    }
+  }
+
+  return { listings, source: 'apify', rawCount: items.length };
 }
 
 /**
@@ -281,12 +394,10 @@ async function matchListingToComplex(listing, city) {
 
   for (const term of searchTerms) {
     if (!term || term.length < 3) continue;
-    
     try {
       const result = await pool.query(
         `SELECT id, name, addresses FROM complexes 
-         WHERE city = $1 AND addresses ILIKE $2
-         LIMIT 1`,
+         WHERE city = $1 AND addresses ILIKE $2 LIMIT 1`,
         [city, `%${term}%`]
       );
       if (result.rows.length > 0) return result.rows[0];
@@ -310,26 +421,22 @@ async function processListing(listing, complexId, complexCity) {
     const address = listing.address || `${listing.street || ''} ${listing.house_number || ''}`.trim();
     const sourceListingId = listing.listing_id || listing.url || `fb-${complexId}-${address}-${price}`;
     
-    // Build description with seller info
     let description = listing.description || '';
     if (listing.seller_name) description += ` | מפרסם: ${listing.seller_name}`;
     if (listing.is_agent) description += ' [מתווך]';
     if (listing.phone) description += ` | טל: ${listing.phone}`;
 
-    // Check for existing listing
     const existing = await pool.query(
       `SELECT id, asking_price, original_price, price_changes, first_seen, days_on_market
        FROM listings 
        WHERE complex_id = $1 AND (
          (source_listing_id = $2 AND source_listing_id IS NOT NULL AND source_listing_id != '')
          OR (source = 'facebook' AND address = $3 AND ABS(COALESCE(asking_price,0) - $4) < 50000)
-       ) AND is_active = TRUE
-       LIMIT 1`,
+       ) AND is_active = TRUE LIMIT 1`,
       [complexId, sourceListingId, address, price || 0]
     );
 
     if (existing.rows.length > 0) {
-      // Update existing listing
       const ex = existing.rows[0];
       let priceChanges = ex.price_changes || 0;
       let totalDrop = 0;
@@ -355,41 +462,26 @@ async function processListing(listing, complexId, complexCity) {
 
       await pool.query(
         `UPDATE listings SET
-          last_seen = CURRENT_DATE,
-          asking_price = COALESCE($1, asking_price),
-          price_per_sqm = COALESCE($2, price_per_sqm),
-          price_changes = $3,
-          total_price_drop_percent = $4,
-          days_on_market = $5,
+          last_seen = CURRENT_DATE, asking_price = COALESCE($1, asking_price),
+          price_per_sqm = COALESCE($2, price_per_sqm), price_changes = $3,
+          total_price_drop_percent = $4, days_on_market = $5,
           description_snippet = COALESCE($6, description_snippet),
-          has_urgent_keywords = $7,
-          urgent_keywords_found = $8,
-          is_foreclosure = $9,
-          is_inheritance = $10,
-          url = COALESCE($11, url),
-          updated_at = NOW()
+          has_urgent_keywords = $7, urgent_keywords_found = $8,
+          is_foreclosure = $9, is_inheritance = $10,
+          url = COALESCE($11, url), updated_at = NOW()
         WHERE id = $12`,
-        [
-          price, pricePsm, priceChanges, totalDrop, daysOnMarket,
+        [price, pricePsm, priceChanges, totalDrop, daysOnMarket,
           description.substring(0, 500),
           keywords.has_urgent_keywords || listing.is_urgent,
           keywords.urgent_keywords_found,
           keywords.is_foreclosure || listing.is_foreclosure,
           keywords.is_inheritance || listing.is_inheritance,
-          listing.url,
-          ex.id
-        ]
+          listing.url, ex.id]
       );
 
-      return { 
-        action: 'updated', 
-        id: ex.id, 
-        priceChanged: priceChanges > (ex.price_changes || 0),
-        priceDrop: totalDrop > 0 ? totalDrop.toFixed(1) : null
-      };
-
+      return { action: 'updated', id: ex.id, priceChanged: priceChanges > (ex.price_changes || 0),
+        priceDrop: totalDrop > 0 ? totalDrop.toFixed(1) : null };
     } else {
-      // Insert new listing
       const keywords = detectKeywords(description);
       const daysOnMarket = parseInt(listing.days_on_market) || 0;
 
@@ -399,27 +491,20 @@ async function processListing(listing, complexId, complexCity) {
           asking_price, area_sqm, rooms, floor, price_per_sqm,
           address, city, first_seen, last_seen, days_on_market,
           original_price, description_snippet,
-          has_urgent_keywords, urgent_keywords_found, is_foreclosure, is_inheritance,
-          is_active
+          has_urgent_keywords, urgent_keywords_found, is_foreclosure, is_inheritance, is_active
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_DATE, CURRENT_DATE, $12, $13, $14, $15, $16, $17, $18, TRUE)
-        ON CONFLICT DO NOTHING
-        RETURNING id`,
-        [
-          complexId, 'facebook', sourceListingId, listing.url || null,
+        ON CONFLICT DO NOTHING RETURNING id`,
+        [complexId, 'facebook', sourceListingId, listing.url || null,
           price, areaSqm, rooms, floor, pricePsm,
-          address, complexCity, daysOnMarket,
-          price,
+          address, complexCity, daysOnMarket, price,
           description.substring(0, 500),
           keywords.has_urgent_keywords || listing.is_urgent,
           keywords.urgent_keywords_found,
           keywords.is_foreclosure || listing.is_foreclosure,
-          keywords.is_inheritance || listing.is_inheritance
-        ]
+          keywords.is_inheritance || listing.is_inheritance]
       );
 
-      if (result.rows.length > 0) {
-        return { action: 'inserted', id: result.rows[0].id };
-      }
+      if (result.rows.length > 0) return { action: 'inserted', id: result.rows[0].id };
       return { action: 'skipped' };
     }
   } catch (err) {
@@ -433,93 +518,58 @@ async function processListing(listing, complexId, complexCity) {
  */
 async function scanComplex(complexId) {
   const complexResult = await pool.query(
-    'SELECT id, name, city, addresses FROM complexes WHERE id = $1',
-    [complexId]
+    'SELECT id, name, city, addresses FROM complexes WHERE id = $1', [complexId]
   );
-  if (complexResult.rows.length === 0) {
-    throw new Error(`Complex ${complexId} not found`);
-  }
+  if (complexResult.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
 
   const complex = complexResult.rows[0];
   logger.info(`Scanning Facebook for: ${complex.name} (${complex.city})`);
 
-  const data = await queryFacebookPerplexity(complex);
+  const data = await queryFacebookForComplex(complex);
   
   if (!data || data.listings.length === 0) {
-    return {
-      complex: complex.name,
-      city: complex.city,
-      source: 'none',
-      listingsProcessed: 0,
-      newListings: 0,
-      updatedListings: 0,
-      priceChanges: 0,
-      errors: 0
-    };
+    return { complex: complex.name, city: complex.city, source: data?.source || 'none',
+      listingsProcessed: 0, newListings: 0, updatedListings: 0, priceChanges: 0, errors: 0 };
   }
 
-  let newListings = 0;
-  let updatedListings = 0;
-  let priceChanges = 0;
-  let errors = 0;
+  let newListings = 0, updatedListings = 0, priceChanges = 0, errors = 0;
 
   for (const listing of data.listings) {
     const result = await processListing(listing, complexId, complex.city);
     if (result.action === 'inserted') newListings++;
-    else if (result.action === 'updated') {
-      updatedListings++;
-      if (result.priceChanged) priceChanges++;
-    } else if (result.action === 'error') errors++;
+    else if (result.action === 'updated') { updatedListings++; if (result.priceChanged) priceChanges++; }
+    else if (result.action === 'error') errors++;
   }
 
-  // Mark old Facebook listings as inactive
   if (data.listings.length > 0) {
     await pool.query(
       `UPDATE listings SET is_active = FALSE 
        WHERE complex_id = $1 AND source = 'facebook' AND is_active = TRUE 
-       AND last_seen < CURRENT_DATE - INTERVAL '14 days'`,
-      [complexId]
+       AND last_seen < CURRENT_DATE - INTERVAL '14 days'`, [complexId]
     );
   }
 
-  // Update last scan timestamp
-  await pool.query(
-    `UPDATE complexes SET last_facebook_scan = NOW() WHERE id = $1`,
-    [complexId]
-  );
+  await pool.query(`UPDATE complexes SET last_facebook_scan = NOW() WHERE id = $1`, [complexId]);
 
-  return {
-    complex: complex.name,
-    city: complex.city,
-    source: data.source,
-    groups_searched: data.groups_searched,
-    listingsProcessed: data.listings.length,
-    newListings,
-    updatedListings,
-    priceChanges,
-    errors
-  };
+  return { complex: complex.name, city: complex.city, source: data.source, rawCount: data.rawCount,
+    listingsProcessed: data.listings.length, newListings, updatedListings, priceChanges, errors };
 }
 
 /**
- * Scan Facebook by city - find listings and match to complexes
+ * Scan Facebook by city
  */
 async function scanCity(city) {
   logger.info(`Facebook city scan starting: ${city}`);
 
-  const data = await queryFacebookByCity(city);
+  const data = await queryFacebookApify(city);
   if (!data || data.listings.length === 0) {
-    return { city, source: 'none', listings: 0, matched: 0, unmatched: 0, errors: 0 };
+    return { city, source: data?.source || 'none', listings: 0, matched: 0, unmatched: 0, errors: 0 };
   }
 
-  let matched = 0;
-  let unmatched = 0;
-  let newListings = 0;
-  let errors = 0;
+  let matched = 0, unmatched = 0, newListings = 0, errors = 0;
 
   for (const listing of data.listings) {
     try {
-      // Try to match listing to a complex
       const complex = await matchListingToComplex(listing, city);
       
       if (complex) {
@@ -528,7 +578,6 @@ async function scanCity(city) {
         if (result.action === 'inserted') newListings++;
       } else {
         unmatched++;
-        // Store unmatched listings with complex_id = NULL for manual review
         const sourceListingId = listing.listing_id || listing.url || `fb-city-${city}-${listing.address}-${listing.asking_price}`;
         const price = parseFloat(listing.asking_price) || null;
         const areaSqm = parseFloat(listing.area_sqm) || null;
@@ -547,13 +596,11 @@ async function scanCity(city) {
             has_urgent_keywords, is_foreclosure, is_inheritance, is_active
           ) VALUES (NULL, 'facebook', $1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_DATE, CURRENT_DATE, $10, $3, $11, $12, $13, $14, TRUE)
           ON CONFLICT DO NOTHING`,
-          [
-            sourceListingId, listing.url || null,
-            price, areaSqm, parseFloat(listing.rooms) || null, parseInt(listing.floor) || null, pricePsm,
+          [sourceListingId, listing.url || null, price, areaSqm,
+            parseFloat(listing.rooms) || null, parseInt(listing.floor) || null, pricePsm,
             listing.address || '', city, parseInt(listing.days_on_market) || 0,
             (description || '').substring(0, 500),
-            listing.is_urgent || false, listing.is_foreclosure || false, listing.is_inheritance || false
-          ]
+            listing.is_urgent || false, listing.is_foreclosure || false, listing.is_inheritance || false]
         );
         if (price) newListings++;
       }
@@ -563,89 +610,56 @@ async function scanCity(city) {
     }
   }
 
-  logger.info(`Facebook city scan complete: ${city} - ${data.listings.length} found, ${matched} matched, ${unmatched} unmatched, ${newListings} new`);
+  logger.info(`Facebook city scan complete: ${city} - ${data.listings.length} found, ${matched} matched, ${unmatched} unmatched`);
 
-  return {
-    city,
-    source: data.source,
-    groups_searched: data.groups_searched,
-    totalListings: data.listings.length,
-    matched,
-    unmatched,
-    newListings,
-    errors
-  };
+  return { city, source: data.source, rawCount: data.rawCount,
+    totalListings: data.listings.length, matched, unmatched, newListings, errors };
 }
 
 /**
- * Scan Facebook for all complexes (batch)
+ * Scan Facebook for all cities (batch)
  */
 async function scanAll(options = {}) {
   const { staleOnly = true, limit = 30, city = null } = options;
 
-  let query = 'SELECT id, name, city, addresses, iai_score FROM complexes WHERE 1=1';
+  let citiesQuery = 'SELECT DISTINCT city FROM complexes WHERE 1=1';
   const params = [];
   let paramCount = 0;
 
-  if (city) {
-    paramCount++;
-    query += ` AND city = $${paramCount}`;
-    params.push(city);
-  }
-
+  if (city) { paramCount++; citiesQuery += ` AND city = $${paramCount}`; params.push(city); }
   if (staleOnly) {
-    query += ` AND (last_facebook_scan IS NULL OR last_facebook_scan < NOW() - INTERVAL '5 days')`;
+    citiesQuery += ` AND (last_facebook_scan IS NULL OR last_facebook_scan < NOW() - INTERVAL '5 days')`;
   }
+  paramCount++; citiesQuery += ` LIMIT $${paramCount}`; params.push(limit);
 
-  query += ` ORDER BY iai_score DESC NULLS LAST`;
-  
-  paramCount++;
-  query += ` LIMIT $${paramCount}`;
-  params.push(limit);
+  const cities = await pool.query(citiesQuery, params);
+  const total = cities.rows.length;
 
-  const complexes = await pool.query(query, params);
-  const total = complexes.rows.length;
+  logger.info(`Facebook batch scan: ${total} cities to scan`);
 
-  logger.info(`Facebook batch scan: ${total} complexes to scan`);
-
-  let succeeded = 0;
-  let failed = 0;
-  let totalNew = 0;
-  let totalUpdated = 0;
+  let succeeded = 0, failed = 0, totalNew = 0, totalMatched = 0;
   const details = [];
 
-  for (const complex of complexes.rows) {
+  for (const row of cities.rows) {
     try {
-      const result = await scanComplex(complex.id);
+      const result = await scanCity(row.city);
       succeeded++;
-      totalNew += result.newListings;
-      totalUpdated += result.updatedListings;
+      totalNew += result.newListings || 0;
+      totalMatched += result.matched || 0;
       details.push({ status: 'ok', ...result });
 
-      await new Promise(r => setTimeout(r, DELAY_BETWEEN_REQUESTS));
+      await pool.query(`UPDATE complexes SET last_facebook_scan = NOW() WHERE city = $1`, [row.city]);
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_SCANS));
     } catch (err) {
       failed++;
-      details.push({
-        status: 'error',
-        complex: complex.name,
-        city: complex.city,
-        error: err.message
-      });
-      logger.warn(`Facebook scan failed for ${complex.name}`, { error: err.message });
-      await new Promise(r => setTimeout(r, 1000));
+      details.push({ status: 'error', city: row.city, error: err.message });
+      logger.warn(`Facebook scan failed for city ${row.city}`, { error: err.message });
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 
-  logger.info(`Facebook batch scan complete: ${succeeded}/${total} ok, ${totalNew} new, ${totalUpdated} updated`);
-
-  return {
-    total,
-    succeeded,
-    failed,
-    totalNew,
-    totalUpdated,
-    details
-  };
+  logger.info(`Facebook batch scan complete: ${succeeded}/${total} cities ok, ${totalNew} new, ${totalMatched} matched`);
+  return { total, succeeded, failed, totalNew, totalMatched, details };
 }
 
 /**
@@ -654,30 +668,41 @@ async function scanAll(options = {}) {
 async function getStats() {
   const result = await pool.query(`
     SELECT 
-      COUNT(*) as total_listings,
-      COUNT(*) FILTER (WHERE is_active) as active_listings,
+      COUNT(*) as total_listings, COUNT(*) FILTER (WHERE is_active) as active_listings,
       COUNT(*) FILTER (WHERE complex_id IS NOT NULL) as matched_listings,
       COUNT(*) FILTER (WHERE complex_id IS NULL) as unmatched_listings,
       COUNT(*) FILTER (WHERE has_urgent_keywords) as urgent_listings,
       COUNT(*) FILTER (WHERE is_foreclosure) as foreclosure_listings,
-      COUNT(DISTINCT city) as cities,
-      MIN(first_seen) as earliest_listing,
-      MAX(last_seen) as latest_scan
-    FROM listings 
-    WHERE source = 'facebook'
+      COUNT(DISTINCT city) as cities, MIN(first_seen) as earliest_listing,
+      MAX(last_seen) as latest_scan,
+      AVG(asking_price) FILTER (WHERE asking_price > 0) as avg_price,
+      COUNT(DISTINCT complex_id) FILTER (WHERE complex_id IS NOT NULL) as complexes_with_listings
+    FROM listings WHERE source = 'facebook'
   `);
 
-  return result.rows[0];
+  const cityBreakdown = await pool.query(`
+    SELECT city, COUNT(*) as total, COUNT(*) FILTER (WHERE is_active) as active,
+      COUNT(*) FILTER (WHERE complex_id IS NOT NULL) as matched
+    FROM listings WHERE source = 'facebook' GROUP BY city ORDER BY total DESC
+  `);
+
+  return { ...result.rows[0], cities_breakdown: cityBreakdown.rows };
+}
+
+/**
+ * Get available cities with Marketplace URL mappings
+ */
+function getAvailableCities() {
+  return Object.entries(FB_CITY_SLUGS).map(([hebrew, slug]) => ({
+    city: hebrew, slug,
+    url: `https://www.facebook.com/marketplace/${slug}/propertyforsale`
+  }));
 }
 
 module.exports = {
-  scanComplex,
-  scanCity,
-  scanAll,
-  queryFacebookPerplexity,
-  queryFacebookByCity,
-  processListing,
-  matchListingToComplex,
-  getStats,
-  getCityNames
+  scanComplex, scanCity, scanAll,
+  queryFacebookApify, queryFacebookForComplex,
+  processListing, matchListingToComplex,
+  getStats, getCityNames, getAvailableCities,
+  buildMarketplaceUrl, normalizeApifyListing
 };
