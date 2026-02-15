@@ -1,15 +1,31 @@
+// STARTUP TRACE - debug silent crash
+console.log('[TRACE] index.js starting...');
+process.on('uncaughtException', (err) => { console.error('[FATAL] Uncaught exception:', err.message, err.stack); process.exit(1); });
+process.on('unhandledRejection', (err) => { console.error('[FATAL] Unhandled rejection:', err.message || err, err.stack || ''); process.exit(1); });
+
+console.log('[TRACE] Loading dotenv...');
 require('dotenv').config();
 
+console.log('[TRACE] Loading dns...');
 const dns = require('dns');
 dns.setDefaultResultOrder('verbatim');
 
+console.log('[TRACE] Loading express...');
 const express = require('express');
+console.log('[TRACE] Loading cors...');
 const cors = require('cors');
+console.log('[TRACE] Loading helmet...');
 const helmet = require('helmet');
+console.log('[TRACE] Loading rate-limit...');
 const rateLimit = require('express-rate-limit');
+console.log('[TRACE] Loading logger...');
 const { logger } = require('./services/logger');
+console.log('[TRACE] Loading pool...');
 const pool = require('./db/pool');
+console.log('[TRACE] Loading notification service...');
 const notificationService = require('./services/notificationService');
+
+console.log('[TRACE] All requires done, setting up app...');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -55,8 +71,8 @@ async function runAutoMigrations() {
 
     // v4.15.0: Messaging system
     const msgColumns = [
-      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS deal_status VARCHAR(50) DEFAULT 'חדש'",
-      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS message_status VARCHAR(50) DEFAULT 'לא נשלחה'",
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS deal_status VARCHAR(50) DEFAULT '\u05D7\u05D3\u05E9'",
+      "ALTER TABLE listings ADD COLUMN IF NOT EXISTS message_status VARCHAR(50) DEFAULT '\u05DC\u05D0 \u05E0\u05E9\u05DC\u05D7\u05D4'",
       "ALTER TABLE listings ADD COLUMN IF NOT EXISTS last_message_sent_at TIMESTAMP",
       "ALTER TABLE listings ADD COLUMN IF NOT EXISTS last_reply_at TIMESTAMP",
       "ALTER TABLE listings ADD COLUMN IF NOT EXISTS last_reply_text TEXT",
@@ -200,6 +216,7 @@ app.get('/health', async (req, res) => {
 // Route loading
 function loadRoute(routePath, mountPath) {
   try {
+    console.log(`[TRACE] Loading route ${mountPath}...`);
     const route = require(routePath);
     app.use(mountPath, route);
     logger.info(`Route loaded: ${mountPath}`);
@@ -208,6 +225,7 @@ function loadRoute(routePath, mountPath) {
   } catch (error) {
     const errorDetail = `${error.message} | Stack: ${error.stack?.split('\n').slice(0, 3).join(' -> ')}`;
     logger.error(`Route FAILED ${mountPath}: ${errorDetail}`);
+    console.error(`[TRACE] Route FAILED ${mountPath}: ${error.message}`);
     routeLoadResults.push({ path: mountPath, file: routePath, status: 'failed', error: error.message, stack: error.stack?.split('\n').slice(0, 5) });
     return false;
   }
@@ -330,10 +348,13 @@ app.get('/api/info', (req, res) => {
 });
 
 async function start() {
+  console.log('[TRACE] start() called');
   logger.info(`Starting QUANTUM Backend v${VERSION}`);
   logger.info(`Build: ${BUILD}`);
   
+  console.log('[TRACE] Running auto-migrations...');
   await runAutoMigrations();
+  console.log('[TRACE] Auto-migrations done, loading routes...');
   loadAllRoutes();
   
   const loaded = routeLoadResults.filter(r => r.status === 'ok');
@@ -348,7 +369,9 @@ async function start() {
   
   try { const { startScheduler } = require('./jobs/weeklyScanner'); startScheduler(); } catch (e) { logger.warn('Scheduler failed to start:', e.message); }
   
+  console.log('[TRACE] About to listen on port', PORT);
   app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[TRACE] Server listening on port ${PORT}`);
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`Dashboard: /api/dashboard/`);
@@ -359,5 +382,9 @@ async function start() {
   });
 }
 
-start();
+console.log('[TRACE] Calling start()...');
+start().catch(err => {
+  console.error('[FATAL] start() failed:', err.message, err.stack);
+  process.exit(1);
+});
 module.exports = app;
