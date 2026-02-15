@@ -19,7 +19,7 @@ cmds = ["npm ci"]
 cmds = []
 
 [start]
-cmd = "npm start"
+cmd = "node start.js"
 
 [variables]
 PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
