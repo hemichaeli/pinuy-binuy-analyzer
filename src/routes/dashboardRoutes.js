@@ -1,7 +1,8 @@
 /**
- * Dashboard Routes - v4.15.0
+ * Dashboard Routes - v4.16.0
  * Vanilla JS dashboard served from /api/dashboard/
  * JS served separately from /api/dashboard/app.js for Brave compatibility
+ * v4.16: Messaging stats panel, bulk select/send, notes, message history
  */
 
 const express = require('express');
@@ -149,6 +150,27 @@ td{padding:7px 6px;border-bottom:1px solid rgba(26,39,68,.5);color:#c8d6e5}
 .msg-card-actions{display:flex;gap:8px;flex-wrap:wrap}
 .msg-template{background:#141d2e;border:1px solid #1a2744;border-radius:8px;padding:12px;font-size:12px;color:#e2e8f0;line-height:1.6;margin-top:8px;white-space:pre-wrap;display:none}
 .msg-template.visible{display:block}
+.msg-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.msg-stat{background:linear-gradient(135deg,#0d1320,#141d2e);border:1px solid #1a2744;border-radius:10px;padding:10px;text-align:center}
+.msg-stat-v{font-size:20px;font-weight:800}
+.msg-stat-l{font-size:9px;color:#4a5e80;margin-top:2px}
+.bulk-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;background:#141d2e;border:1px solid #1a2744;border-radius:10px;margin-bottom:12px}
+.bulk-bar .btn{font-size:11px;padding:5px 14px}
+.bulk-count{font-size:12px;color:#8899b4;margin-right:auto}
+.msg-cb{width:18px;height:18px;accent-color:#06d6a0;cursor:pointer;flex-shrink:0;margin-top:2px}
+.notes-area{margin-top:8px;display:flex;gap:6px;align-items:flex-start}
+.notes-input{background:#141d2e;border:1px solid #1a2744;border-radius:6px;padding:6px 10px;font-size:11px;color:#e2e8f0;width:100%;resize:none;min-height:32px;line-height:1.4;font-family:inherit}
+.notes-input:focus{border-color:rgba(6,214,160,.4);outline:none}
+.notes-saved{font-size:10px;color:#06d6a0;opacity:0;transition:opacity .3s}
+.notes-saved.show{opacity:1}
+.history-panel{margin-top:8px;padding:10px;background:#141d2e;border:1px solid #1a2744;border-radius:8px;display:none;max-height:200px;overflow-y:auto}
+.history-panel.visible{display:block}
+.history-msg{padding:6px 0;border-bottom:1px solid #1a2744;font-size:11px}
+.history-msg:last-child{border-bottom:none}
+.history-msg .dir{font-weight:700;margin-left:6px}
+.history-msg .dir.sent{color:#60a5fa}
+.history-msg .dir.recv{color:#34d399}
+.conn-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;vertical-align:middle}
 `;
 
 // =====================================================
@@ -194,7 +216,7 @@ function init(){
 function render(){
   var s=D.stats,cities=D.cityBreakdown||[];
   var app=$("app");if(!app)return;
-  var h='<div class="hdr"><h1>QUANTUM Dashboard</h1><p>v4.15.0 | '+s.complexes+' \\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd | '+s.listings+' \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea | '+s.transactions+' \\u05e2\\u05e1\\u05e7\\u05d0\\u05d5\\u05ea</p></div>';
+  var h='<div class="hdr"><h1>QUANTUM Dashboard</h1><p>v4.16.0 | '+s.complexes+' \\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd | '+s.listings+' \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea | '+s.transactions+' \\u05e2\\u05e1\\u05e7\\u05d0\\u05d5\\u05ea</p></div>';
   h+='<div class="stats">';
   h+='<div class="stat"><div class="stat-v">'+s.complexes+'</div><div class="stat-l">\\u05de\\u05ea\\u05d7\\u05de\\u05d9\\u05dd</div></div>';
   h+='<div class="stat"><div class="stat-v" style="color:#9f7aea">'+s.opportunities+'</div><div class="stat-l">\\u05d4\\u05d6\\u05d3\\u05de\\u05e0\\u05d5\\u05d9\\u05d5\\u05ea</div></div>';
@@ -302,6 +324,7 @@ function dealColor(v){for(var i=0;i<dealStatuses.length;i++){if(dealStatuses[i].
 
 function renderMsgTab(){
   var h='<div class="tab-content">';
+  h+='<div id="msg-stats-panel"><div class="empty-msg">\\u05d8\\u05d5\\u05e2\\u05df \\u05e1\\u05d8\\u05d8\\u05d9\\u05e1\\u05d8\\u05d9\\u05e7\\u05d5\\u05ea...</div></div>';
   h+='<div class="panel panel-gold">'+panelH("\\u05d7\\u05d9\\u05e4\\u05d5\\u05e9 \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea \\u05d5\\u05e9\\u05dc\\u05d9\\u05d7\\u05ea \\u05d4\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea","\\u05e1\\u05e0\\u05df \\u05dc\\u05e4\\u05d9 \\u05e2\\u05d9\\u05e8, \\u05d7\\u05d3\\u05e8\\u05d9\\u05dd, \\u05e9\\u05d8\\u05d7, \\u05de\\u05d7\\u05d9\\u05e8, \\u05d9\\u05de\\u05d9\\u05dd \\u05d1\\u05e9\\u05d5\\u05e7 \\u05d5\\u05e2\\u05d5\\u05d3","\\u2709");
   h+='<div id="msg-filters-area"><div class="empty-msg">\\u05d8\\u05d5\\u05e2\\u05df \\u05e4\\u05d9\\u05dc\\u05d8\\u05e8\\u05d9\\u05dd...</div></div>';
   h+="</div>";
@@ -313,6 +336,7 @@ function renderMsgTab(){
 
 function bindMsgTab(){
   setTimeout(function(){
+    loadMsgStats();
     if(!msgFilterOpts){
       fetch("/api/listings/filter-options")
         .then(function(r){return r.json();})
@@ -402,7 +426,9 @@ function searchSellers(){
 
 function renderMsgResults(sellers,container,totalStr){
   if(!sellers.length){container.innerHTML='<div class="empty-msg">\\u05dc\\u05d0 \\u05e0\\u05de\\u05e6\\u05d0\\u05d5 \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea \\u05d1\\u05e4\\u05d9\\u05dc\\u05d8\\u05e8\\u05d9\\u05dd \\u05e9\\u05e0\\u05d1\\u05d7\\u05e8\\u05d5</div>';return;}
+  selectedListings={};
   var h='<div class="panel">'+panelH("\\u05e0\\u05de\\u05e6\\u05d0\\u05d5 "+sellers.length+" \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea"+(totalStr||""),"","\\u26a1")+"</div>";
+  h+='<div class="bulk-bar"><button class="btn btn-sm" onclick="selectAllMsg()" style="color:#06d6a0">\\u05d1\\u05d7\\u05e8 \\u05d4\\u05db\\u05dc</button><button class="btn btn-sm" onclick="deselectAllMsg()" style="color:#8899b4">\\u05e0\\u05e7\\u05d4 \\u05d4\\u05db\\u05dc</button><span id="bulk-count" class="bulk-count">0 \\u05e0\\u05d1\\u05d7\\u05e8\\u05d5</span><button id="bulk-send-btn" class="btn btn-green btn-sm" onclick="sendBulk()" disabled style="opacity:0.4">\\u05e9\\u05dc\\u05d7 \\u05e0\\u05d1\\u05d7\\u05e8\\u05d9\\u05dd</button></div>';
   for(var i=0;i<sellers.length;i++){
     var s=sellers[i];
     var dropPct=s.total_price_drop_percent?Math.round(+s.total_price_drop_percent)+"%":"";
@@ -411,7 +437,7 @@ function renderMsgResults(sellers,container,totalStr){
     var dc=dealColor(ds);
     var msc=(ms==="\\u05e0\\u05e9\\u05dc\\u05d7\\u05d4")?"#60a5fa":(ms==="\\u05d4\\u05ea\\u05e7\\u05d1\\u05dc\\u05d4 \\u05ea\\u05e9\\u05d5\\u05d1\\u05d4")?"#34d399":"#94a3b8";
     h+='<div class="msg-card" id="mc-'+i+'">';
-    h+='<div class="msg-card-top"><div><div class="msg-card-addr">'+cut(s.address,50)+'</div><div class="msg-card-city">'+(s.complex_name||"")+" | "+(s.city||"-")+"</div></div>";
+    h+='<div class="msg-card-top"><input type="checkbox" class="msg-cb" id="cb-'+s.listing_id+'" onchange="toggleSelect('+s.listing_id+')"><div><div class="msg-card-addr">'+cut(s.address,50)+'</div><div class="msg-card-city">'+(s.complex_name||"")+" | "+(s.city||"-")+"</div></div>";
     h+='<div class="msg-card-badges"><span class="badge-ssi '+ssiCls(s.ssi_score)+'">SSI '+s.ssi_score+"</span>";
     if(s.iai_score)h+=" "+iaiH(s.iai_score);
     h+="</div></div>";
@@ -439,7 +465,10 @@ function renderMsgResults(sellers,container,totalStr){
     h+='<button class="btn btn-sm btn-act" data-act="send" data-i="'+i+'" style="color:#60a5fa">\\u05e9\\u05dc\\u05d7 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4</button>';
     h+='<button class="btn btn-sm btn-act" data-act="copy" data-i="'+i+'" style="color:#9f7aea">\\u05d4\\u05e2\\u05ea\\u05e7 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4</button>';
     h+='<button class="btn btn-sm btn-act" data-act="show" data-i="'+i+'" style="color:#ffc233">\\u05d4\\u05e6\\u05d2 \\u05d4\\u05d5\\u05d3\\u05e2\\u05d4</button>';
+    h+='<button class="btn btn-sm" onclick="toggleHistory('+s.listing_id+')" style="color:#22d3ee">\\u05d4\\u05d9\\u05e1\\u05d8\\u05d5\\u05e8\\u05d9\\u05d4</button>';
     h+="</div>";
+    h+='<div class="notes-area"><textarea class="notes-input" id="notes-'+s.listing_id+'" placeholder="\\u05d4\\u05e2\\u05e8\\u05d5\\u05ea..." onblur="saveNotes('+s.listing_id+')">'+(s.notes||"")+'</textarea><span class="notes-saved" id="ns-'+s.listing_id+'">\\u2713</span></div>';
+    h+='<div class="history-panel" id="hist-'+s.listing_id+'"></div>';
     h+='<div class="msg-template" id="mp-'+i+'"></div>';
     h+="</div>";
   }
@@ -526,6 +555,120 @@ function buildMsg(seller){
 }
 
 
+function loadMsgStats(){
+  var sp=$("msg-stats-panel");
+  if(!sp)return;
+  fetch("/api/messaging/stats")
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var ls=d.listings||{};var ms=d.messages||{};var mr=d.messenger||{};
+      var connDot=mr.isLoggedIn?'<span class="conn-dot" style="background:#34d399"></span>':'<span class="conn-dot" style="background:#ef4444"></span>';
+      var connTxt=mr.isLoggedIn?"\\u05de\\u05d7\\u05d5\\u05d1\\u05e8":"\\u05de\\u05e0\\u05d5\\u05ea\\u05e7";
+      var h='<div class="msg-stats-grid">';
+      h+='<div class="msg-stat"><div class="msg-stat-v" style="color:#94a3b8">'+(ls.new_leads||0)+'</div><div class="msg-stat-l">\\u05dc\\u05d9\\u05d3\\u05d9\\u05dd \\u05d7\\u05d3\\u05e9\\u05d9\\u05dd</div></div>';
+      h+='<div class="msg-stat"><div class="msg-stat-v" style="color:#60a5fa">'+(ls.sent||0)+'</div><div class="msg-stat-l">\\u05d4\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea \\u05e0\\u05e9\\u05dc\\u05d7\\u05d5</div></div>';
+      h+='<div class="msg-stat"><div class="msg-stat-v" style="color:#34d399">'+(ls.replied||0)+'</div><div class="msg-stat-l">\\u05ea\\u05e9\\u05d5\\u05d1\\u05d5\\u05ea</div></div>';
+      h+='<div class="msg-stat"><div class="msg-stat-v" style="color:#f97316">'+(ls.brokered||0)+'</div><div class="msg-stat-l">\\u05ea\\u05d9\\u05d5\\u05d5\\u05da</div></div>';
+      h+='</div>';
+      h+='<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#8899b4;align-items:center">';
+      h+='<span>\\u05d1\\u05d8\\u05d9\\u05e4\\u05d5\\u05dc: <b style="color:#22d3ee">'+(ls.in_progress||0)+'</b></span>';
+      h+='<span>\\u05e0\\u05d0 \\u05dc\\u05d9\\u05e6\\u05d5\\u05e8 \\u05e7\\u05e9\\u05e8: <b style="color:#facc15">'+(ls.call_requested||0)+'</b></span>';
+      h+='<span>\\u05e0\\u05de\\u05db\\u05e8\\u05d5: <b style="color:#ef4444">'+(ls.sold||0)+'</b></span>';
+      h+='<span>\\u05dc\\u05d0 \\u05e8\\u05dc\\u05d5\\u05d5\\u05e0\\u05d8\\u05d9: <b>'+(ls.irrelevant||0)+'</b></span>';
+      h+='<span style="margin-right:auto">yad2: '+connTxt+connDot+'</span>';
+      h+='</div>';
+      sp.innerHTML=h;
+    })
+    .catch(function(){sp.innerHTML='';});
+}
+
+var selectedListings={};
+function toggleSelect(id){
+  if(selectedListings[id]){delete selectedListings[id];}else{selectedListings[id]=true;}
+  updateBulkCount();
+}
+function selectAllMsg(){
+  if(!msgData)return;
+  for(var i=0;i<msgData.length;i++){
+    var lid=msgData[i].listing_id;
+    selectedListings[lid]=true;
+    var cb=$("cb-"+lid);if(cb)cb.checked=true;
+  }
+  updateBulkCount();
+}
+function deselectAllMsg(){
+  selectedListings={};
+  if(!msgData)return;
+  for(var i=0;i<msgData.length;i++){
+    var cb=$("cb-"+msgData[i].listing_id);if(cb)cb.checked=false;
+  }
+  updateBulkCount();
+}
+function updateBulkCount(){
+  var cnt=Object.keys(selectedListings).length;
+  var el=$("bulk-count");if(el)el.textContent=cnt+" \\u05e0\\u05d1\\u05d7\\u05e8\\u05d5";
+  var btn=$("bulk-send-btn");if(btn){btn.disabled=cnt===0;btn.style.opacity=cnt===0?"0.4":"1";}
+}
+function sendBulk(){
+  var ids=Object.keys(selectedListings).map(function(k){return parseInt(k,10);});
+  if(!ids.length){showToast("\\u05dc\\u05d0 \\u05e0\\u05d1\\u05d7\\u05e8\\u05d5 \\u05de\\u05d5\\u05d3\\u05e2\\u05d5\\u05ea");return;}
+  var tplEl=$("msg-tpl");
+  var tpl=tplEl?tplEl.value:defaultTpl;
+  var btn=$("bulk-send-btn");
+  if(btn){btn.textContent="\\u05e9\\u05d5\\u05dc\\u05d7 "+ids.length+"...";btn.disabled=true;btn.style.opacity="0.4";}
+  fetch("/api/messaging/send-bulk",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({listing_ids:ids,message_template:tpl})
+  })
+  .then(function(r){return r.json();})
+  .then(function(d){
+    showToast("\\u05e0\\u05e9\\u05dc\\u05d7\\u05d5: "+d.sent+" | \\u05e0\\u05db\\u05e9\\u05dc\\u05d5: "+d.failed);
+    if(btn){btn.textContent="\\u05e9\\u05dc\\u05d7 \\u05e0\\u05d1\\u05d7\\u05e8\\u05d9\\u05dd";btn.disabled=false;btn.style.opacity="1";}
+    deselectAllMsg();
+    loadMsgStats();
+  })
+  .catch(function(e){
+    showToast("\\u05e9\\u05d2\\u05d9\\u05d0\\u05d4: "+e.message);
+    if(btn){btn.textContent="\\u05e9\\u05dc\\u05d7 \\u05e0\\u05d1\\u05d7\\u05e8\\u05d9\\u05dd";btn.disabled=false;btn.style.opacity="1";}
+  });
+}
+function saveNotes(lid){
+  var el=$("notes-"+lid);
+  if(!el)return;
+  var val=el.value;
+  fetch("/api/messaging/listing/"+lid+"/deal-status",{
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({notes:val})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.success){var sv=$("ns-"+lid);if(sv){sv.className="notes-saved show";setTimeout(function(){sv.className="notes-saved";},1500);}}
+  }).catch(function(){});
+}
+function toggleHistory(lid){
+  var panel=$("hist-"+lid);
+  if(!panel)return;
+  if(panel.className.indexOf("visible")>=0){panel.className="history-panel";return;}
+  panel.innerHTML='<div style="color:#8899b4;font-size:11px">\\u05d8\\u05d5\\u05e2\\u05df...</div>';
+  panel.className="history-panel visible";
+  fetch("/api/messaging/listing/"+lid+"/messages")
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var msgs=d.messages||[];
+      if(!msgs.length){panel.innerHTML='<div style="color:#8899b4;font-size:11px">\\u05d0\\u05d9\\u05df \\u05d4\\u05d9\\u05e1\\u05d8\\u05d5\\u05e8\\u05d9\\u05d4</div>';return;}
+      var hh='';
+      for(var i=0;i<msgs.length;i++){
+        var m=msgs[i];
+        var dirCls=m.direction==="sent"?"sent":"recv";
+        var dirTxt=m.direction==="sent"?"\\u05e0\\u05e9\\u05dc\\u05d7":"\\u05d4\\u05ea\\u05e7\\u05d1\\u05dc";
+        var dt=m.created_at?m.created_at.substring(0,16).replace("T"," "):"";
+        hh+='<div class="history-msg"><span class="dir '+dirCls+'">'+dirTxt+'</span><span style="color:#4a5e80;font-size:10px">'+dt+'</span><div style="color:#c8d6e5;margin-top:2px">'+cut(m.message_text,200)+'</div><div style="color:#4a5e80;font-size:10px">\\u05e1\\u05d8\\u05d8\\u05d5\\u05e1: '+(m.status||"-")+'</div></div>';
+      }
+      panel.innerHTML=hh;
+    })
+    .catch(function(){panel.innerHTML='<div style="color:#ef4444;font-size:11px">\\u05e9\\u05d2\\u05d9\\u05d0\\u05d4 \\u05d1\\u05d8\\u05e2\\u05d9\\u05e0\\u05d4</div>';});
+}
+
 function renderCities(s,cities){
   var h='<div class="tab-content"><div class="panel">'+panelH("\\u05d4\\u05d6\\u05d3\\u05de\\u05e0\\u05d5\\u05d9\\u05d5\\u05ea \\u05dc\\u05e4\\u05d9 \\u05e2\\u05e8\\u05d9\\u05dd",(s.cities||0)+" \\u05e2\\u05e8\\u05d9\\u05dd \\u05e4\\u05e2\\u05d9\\u05dc\\u05d5\\u05ea","\\u25a3");
   var t10=cities.slice(0,10),mx=1;for(var i=0;i<t10.length;i++){if(+t10[i].total>mx)mx=+t10[i].total;}
@@ -547,6 +690,12 @@ function renderAlerts(){
 }
 
 document.addEventListener("DOMContentLoaded",init);
+window.selectAllMsg=selectAllMsg;
+window.deselectAllMsg=deselectAllMsg;
+window.sendBulk=sendBulk;
+window.toggleSelect=toggleSelect;
+window.saveNotes=saveNotes;
+window.toggleHistory=toggleHistory;
 
 })();`;
 
