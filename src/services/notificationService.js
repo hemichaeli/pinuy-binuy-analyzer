@@ -1,24 +1,27 @@
 /**
- * Notification Service (Task 7) - v2 with Resend API
+ * Notification Service v3 - Smart Email Delivery
  * 
- * Sends alerts via email to:
- * 1. Trello board (creates cards automatically via email-to-board)
- * 2. Office email for human review
+ * Sends alerts and scan status via email to:
+ * 1. Personal email (hemi.michaeli@gmail.com) - always works
+ * 2. Office email (Office@u-r-quantum.com) 
+ * 3. Trello board (creates cards automatically via email-to-board)
  * 
- * Uses Resend HTTP API (works on Railway, no SMTP port needed)
- * Fallback to SMTP if RESEND_API_KEY not set but SMTP vars are
- * 
- * Email subject -> Trello card title
- * Email body -> Trello card description
+ * Smart provider selection:
+ * - Tries Resend first (no SMTP port needed on Railway)
+ * - Falls back to SMTP if Resend fails (e.g., sandbox domain restrictions)
+ * - Logs all delivery attempts for debugging
  */
 
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 
-// Notification targets
-const TRELLO_EMAIL = process.env.TRELLO_BOARD_EMAIL || 'uth_limited+c9otswetpgdfphdpoehc@boards.trello.com';
+// Notification targets - personal email first (always works with Resend sandbox)
+const PERSONAL_EMAIL = process.env.PERSONAL_EMAIL || 'hemi.michaeli@gmail.com';
 const OFFICE_EMAIL = process.env.OFFICE_EMAIL || 'Office@u-r-quantum.com';
-const NOTIFICATION_EMAILS = [TRELLO_EMAIL, OFFICE_EMAIL].filter(Boolean);
+const TRELLO_EMAIL = process.env.TRELLO_BOARD_EMAIL || 'uth_limited+c9otswetpgdfphdpoehc@boards.trello.com';
+
+// All notification targets
+const NOTIFICATION_EMAILS = [PERSONAL_EMAIL, OFFICE_EMAIL, TRELLO_EMAIL].filter(Boolean);
 
 // Severity -> emoji mapping for email subjects
 const SEVERITY_EMOJI = {
@@ -33,7 +36,8 @@ const ALERT_TYPE_LABEL = {
   committee_approval: 'אישור ועדה',
   opportunity: 'הזדמנות השקעה',
   stressed_seller: 'מוכר לחוץ',
-  price_drop: 'ירידת מחיר'
+  price_drop: 'ירידת מחיר',
+  new_complex: 'מתחם חדש'
 };
 
 /**
@@ -41,7 +45,7 @@ const ALERT_TYPE_LABEL = {
  */
 async function sendViaResend(to, subject, htmlBody, textBody) {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { sent: false, error: 'RESEND_API_KEY not set' };
+  if (!apiKey) return { sent: false, error: 'RESEND_API_KEY not set', provider: 'resend' };
 
   const fromAddress = process.env.EMAIL_FROM || 'QUANTUM <onboarding@resend.dev>';
 
@@ -64,20 +68,20 @@ async function sendViaResend(to, subject, htmlBody, textBody) {
     const data = await response.json();
 
     if (response.ok) {
-      logger.info(`Resend email sent to ${to}: ${subject}`, { id: data.id });
+      logger.info(`✉️ Resend: sent to ${to}`, { id: data.id });
       return { sent: true, messageId: data.id, provider: 'resend' };
     } else {
-      logger.error(`Resend API error for ${to}`, { status: response.status, error: data });
-      return { sent: false, error: data.message || JSON.stringify(data), statusCode: response.status, provider: 'resend' };
+      logger.warn(`Resend failed for ${to}: ${data.message || response.status}`, { status: response.status });
+      return { sent: false, error: data.message || `HTTP ${response.status}`, statusCode: response.status, provider: 'resend' };
     }
   } catch (err) {
-    logger.error(`Resend request failed for ${to}`, { error: err.message });
+    logger.error(`Resend error for ${to}`, { error: err.message });
     return { sent: false, error: err.message, provider: 'resend' };
   }
 }
 
 /**
- * Send email via SMTP (nodemailer) - fallback
+ * Send email via SMTP (nodemailer)
  */
 async function sendViaSMTP(to, subject, htmlBody, textBody) {
   const smtpHost = process.env.SMTP_HOST;
@@ -85,7 +89,7 @@ async function sendViaSMTP(to, subject, htmlBody, textBody) {
   const smtpPass = process.env.SMTP_PASS;
 
   if (!smtpHost || !smtpUser || !smtpPass) {
-    return { sent: false, error: 'SMTP not configured' };
+    return { sent: false, error: 'SMTP not configured', provider: 'smtp' };
   }
 
   try {
@@ -108,7 +112,7 @@ async function sendViaSMTP(to, subject, htmlBody, textBody) {
       text: textBody || htmlBody.replace(/<[^>]*>/g, '')
     });
 
-    logger.info(`SMTP email sent to ${to}: ${subject}`, { messageId: info.messageId });
+    logger.info(`✉️ SMTP: sent to ${to}`, { messageId: info.messageId });
     return { sent: true, messageId: info.messageId, provider: 'smtp' };
   } catch (err) {
     logger.error(`SMTP failed for ${to}`, { error: err.message, code: err.code });
@@ -118,17 +122,24 @@ async function sendViaSMTP(to, subject, htmlBody, textBody) {
 
 /**
  * Send a single email - tries Resend first, falls back to SMTP
+ * Smart: if Resend fails (e.g., 403 sandbox), automatically tries SMTP
  */
 async function sendEmail(to, subject, htmlBody, textBody) {
-  // Prefer Resend (works on Railway)
+  // Try Resend first
   if (process.env.RESEND_API_KEY) {
-    return sendViaResend(to, subject, htmlBody, textBody);
+    const resendResult = await sendViaResend(to, subject, htmlBody, textBody);
+    if (resendResult.sent) return resendResult;
+    
+    // Resend failed - fall back to SMTP
+    logger.info(`Resend failed for ${to}, trying SMTP fallback...`);
   }
-  // Fallback to SMTP
+  
+  // Try SMTP (either as fallback or primary)
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     return sendViaSMTP(to, subject, htmlBody, textBody);
   }
-  return { sent: false, error: 'No email provider configured. Set RESEND_API_KEY or SMTP_HOST/USER/PASS' };
+  
+  return { sent: false, error: 'No email provider available', provider: 'none' };
 }
 
 /**
@@ -201,24 +212,26 @@ async function sendAlertNotification(alert) {
 
   let sentCount = 0;
 
-  if (TRELLO_EMAIL) {
-    const result = await sendEmail(TRELLO_EMAIL, subject, trelloFormat.body, trelloFormat.body);
-    if (result.sent) sentCount++;
-  }
+  // Send to all notification emails
+  for (const email of NOTIFICATION_EMAILS) {
+    try {
+      const isPersonalOrOffice = email !== TRELLO_EMAIL;
+      const body = isPersonalOrOffice ? `
+        <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px;">
+          <h2 style="color: #1f2937;">QUANTUM - התראה חדשה</h2>
+          ${htmlBody}
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+          <p style="font-size: 11px; color: #9ca3af;">
+            QUANTUM v4.20 | <a href="https://pinuy-binuy-analyzer-production.up.railway.app/api/dashboard">Dashboard</a>
+          </p>
+        </div>
+      ` : trelloFormat.body;
 
-  if (OFFICE_EMAIL) {
-    const fullHTML = `
-      <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px;">
-        <h2 style="color: #1f2937;">QUANTUM - התראה חדשה</h2>
-        ${htmlBody}
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
-        <p style="font-size: 11px; color: #9ca3af;">
-          Pinuy Binuy Investment Analyzer | <a href="https://ravishing-spirit-production-27e1.up.railway.app/api/dashboard">Dashboard</a>
-        </p>
-      </div>
-    `;
-    const result = await sendEmail(OFFICE_EMAIL, subject, fullHTML);
-    if (result.sent) sentCount++;
+      const result = await sendEmail(email, subject, body, email === TRELLO_EMAIL ? trelloFormat.body : undefined);
+      if (result.sent) sentCount++;
+    } catch (err) {
+      logger.warn(`Failed to send alert to ${email}`, { error: err.message });
+    }
   }
 
   if (sentCount > 0) {
@@ -363,8 +376,8 @@ async function sendWeeklyDigest(scanResult) {
   html += `
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0 8px;">
       <p style="font-size: 11px; color: #9ca3af; text-align: center;">
-        QUANTUM - Pinuy Binuy Investment Analyzer v3.0 |
-        <a href="https://ravishing-spirit-production-27e1.up.railway.app/api/dashboard">Dashboard</a>
+        QUANTUM v4.20 - Direct API Mode |
+        <a href="https://pinuy-binuy-analyzer-production.up.railway.app/api/dashboard">Dashboard</a>
       </p>
     </div>
   `;
@@ -377,16 +390,20 @@ async function sendWeeklyDigest(scanResult) {
     topOpps.rows.map(o => `- ${o.name} (${o.city}) IAI=${o.iai_score}`).join('\n');
 
   let sent = 0;
+  // Send HTML to personal and office
+  for (const email of [PERSONAL_EMAIL, OFFICE_EMAIL]) {
+    if (email) {
+      const result = await sendEmail(email, subject, html);
+      if (result.sent) sent++;
+    }
+  }
+  // Send text to Trello
   if (TRELLO_EMAIL) {
     const result = await sendEmail(TRELLO_EMAIL, subject, trelloText, trelloText);
     if (result.sent) sent++;
   }
-  if (OFFICE_EMAIL) {
-    const result = await sendEmail(OFFICE_EMAIL, subject, html);
-    if (result.sent) sent++;
-  }
 
-  logger.info(`Weekly digest sent to ${sent} recipients`);
+  logger.info(`Weekly digest sent to ${sent}/${NOTIFICATION_EMAILS.length} recipients`);
   return { sent, recipients: NOTIFICATION_EMAILS };
 }
 
@@ -394,9 +411,7 @@ async function sendWeeklyDigest(scanResult) {
  * Check if notifications are configured
  */
 function isConfigured() {
-  // Resend takes priority
   if (process.env.RESEND_API_KEY) return true;
-  // Fallback to SMTP
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
@@ -404,9 +419,10 @@ function isConfigured() {
  * Get active provider info
  */
 function getProvider() {
-  if (process.env.RESEND_API_KEY) return 'resend';
-  if (process.env.SMTP_HOST) return 'smtp';
-  return 'none';
+  const providers = [];
+  if (process.env.RESEND_API_KEY) providers.push('resend');
+  if (process.env.SMTP_HOST) providers.push('smtp');
+  return providers.length ? providers.join('+') : 'none';
 }
 
 module.exports = {
@@ -417,5 +433,8 @@ module.exports = {
   sendEmail,
   isConfigured,
   getProvider,
-  NOTIFICATION_EMAILS
+  NOTIFICATION_EMAILS,
+  PERSONAL_EMAIL,
+  OFFICE_EMAIL,
+  TRELLO_EMAIL
 };
