@@ -14,8 +14,8 @@ const notificationService = require('./services/notificationService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.20.2';
-const BUILD = '2026-02-15-v4.20.2-intelligence-api';
+const VERSION = '4.21.0';
+const BUILD = '2026-02-15-v4.21.0-dashboard-modals-clickable';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
