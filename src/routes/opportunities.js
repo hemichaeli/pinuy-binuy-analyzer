@@ -139,39 +139,61 @@ router.get('/stressed-sellers', async (req, res) => {
 // GET /api/listings/filter-options - Available filter values
 router.get('/listings/filter-options', async (req, res) => {
   try {
-    const cities = await pool.query(`
-      SELECT city, COUNT(*) as count
-      FROM listings WHERE is_active = TRUE AND city IS NOT NULL
-      GROUP BY city ORDER BY count DESC
-    `);
-    const priceRange = await pool.query(`
-      SELECT MIN(asking_price) as min_price, MAX(asking_price) as max_price,
-             AVG(asking_price) as avg_price
-      FROM listings WHERE is_active = TRUE AND asking_price > 0
-    `);
-    const roomsRange = await pool.query(`
-      SELECT MIN(rooms) as min_rooms, MAX(rooms) as max_rooms
-      FROM listings WHERE is_active = TRUE AND rooms > 0
-    `);
-    const areaRange = await pool.query(`
-      SELECT MIN(area_sqm) as min_area, MAX(area_sqm) as max_area
-      FROM listings WHERE is_active = TRUE AND area_sqm > 0
-    `);
-    const dealStatuses = await pool.query(`
-      SELECT deal_status, COUNT(*) as count
-      FROM listings WHERE is_active = TRUE
-      GROUP BY deal_status ORDER BY count DESC
-    `);
-    const messageStatuses = await pool.query(`
-      SELECT message_status, COUNT(*) as count
-      FROM listings WHERE is_active = TRUE
-      GROUP BY message_status ORDER BY count DESC
-    `);
+    const { city } = req.query;
+    
+    // Base condition - optionally filter by city for dynamic complex list
+    const cityCondition = city ? ` AND l.city = '${city.replace(/'/g, "''")}'` : '';
+    
+    const [cities, complexes, priceRange, roomsRange, areaRange, floorRange, dealStatuses, messageStatuses] = await Promise.all([
+      pool.query(`
+        SELECT city, COUNT(*) as count
+        FROM listings WHERE is_active = TRUE AND city IS NOT NULL
+        GROUP BY city ORDER BY count DESC
+      `),
+      pool.query(`
+        SELECT c.id, c.name, c.city, c.status, c.iai_score, COUNT(l.id) as listing_count
+        FROM complexes c
+        JOIN listings l ON l.complex_id = c.id AND l.is_active = TRUE${cityCondition}
+        GROUP BY c.id
+        HAVING COUNT(l.id) > 0
+        ORDER BY c.city, c.name
+      `),
+      pool.query(`
+        SELECT MIN(asking_price) as min_price, MAX(asking_price) as max_price,
+               AVG(asking_price) as avg_price
+        FROM listings WHERE is_active = TRUE AND asking_price > 0
+      `),
+      pool.query(`
+        SELECT MIN(rooms) as min_rooms, MAX(rooms) as max_rooms
+        FROM listings WHERE is_active = TRUE AND rooms > 0
+      `),
+      pool.query(`
+        SELECT MIN(area_sqm) as min_area, MAX(area_sqm) as max_area
+        FROM listings WHERE is_active = TRUE AND area_sqm > 0
+      `),
+      pool.query(`
+        SELECT MIN(floor) as min_floor, MAX(floor) as max_floor
+        FROM listings WHERE is_active = TRUE AND floor IS NOT NULL
+      `),
+      pool.query(`
+        SELECT deal_status, COUNT(*) as count
+        FROM listings WHERE is_active = TRUE
+        GROUP BY deal_status ORDER BY count DESC
+      `),
+      pool.query(`
+        SELECT message_status, COUNT(*) as count
+        FROM listings WHERE is_active = TRUE
+        GROUP BY message_status ORDER BY count DESC
+      `)
+    ]);
+
     res.json({
       cities: cities.rows,
+      complexes: complexes.rows,
       price_range: priceRange.rows[0],
       rooms_range: roomsRange.rows[0],
       area_range: areaRange.rows[0],
+      floor_range: floorRange.rows[0],
       deal_statuses: dealStatuses.rows,
       message_statuses: messageStatuses.rows
     });
@@ -185,9 +207,11 @@ router.get('/listings/search', async (req, res) => {
   try {
     const {
       city,
+      complex_id,
       min_price, max_price,
       min_rooms, max_rooms,
       min_area, max_area,
+      min_floor, max_floor,
       min_ssi, max_ssi,
       min_iai,
       min_days_on_market, max_days_on_market,
@@ -213,6 +237,11 @@ router.get('/listings/search', async (req, res) => {
       paramCount++;
       conditions.push(`l.city = $${paramCount}`);
       params.push(city);
+    }
+    if (complex_id) {
+      paramCount++;
+      conditions.push(`l.complex_id = $${paramCount}`);
+      params.push(parseInt(complex_id));
     }
     if (min_price) {
       paramCount++;
@@ -243,6 +272,16 @@ router.get('/listings/search', async (req, res) => {
       paramCount++;
       conditions.push(`l.area_sqm <= $${paramCount}`);
       params.push(parseFloat(max_area));
+    }
+    if (min_floor) {
+      paramCount++;
+      conditions.push(`l.floor >= $${paramCount}`);
+      params.push(parseInt(min_floor));
+    }
+    if (max_floor) {
+      paramCount++;
+      conditions.push(`l.floor <= $${paramCount}`);
+      params.push(parseInt(max_floor));
     }
     if (min_ssi) {
       paramCount++;
@@ -310,6 +349,7 @@ router.get('/listings/search', async (req, res) => {
       'iai': 'c.iai_score',
       'rooms': 'l.rooms',
       'area': 'l.area_sqm',
+      'floor': 'l.floor',
       'days': 'l.days_on_market',
       'price_drop': 'l.total_price_drop_percent',
       'price_changes': 'l.price_changes',
