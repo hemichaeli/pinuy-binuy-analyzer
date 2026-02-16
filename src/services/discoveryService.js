@@ -198,15 +198,56 @@ function parseDiscoveryResponse(text) {
   }
 }
 
+// Strip common Hebrew prefixes to get core name for fuzzy matching
+function stripPrefixes(name) {
+  const prefixes = ['מתחם', 'פינוי בינוי', 'שכונת', 'שכונה', 'רחוב', 'שדרות', 'דרך', 'מיזם', 'מותג עירוני', 'מתחמי'];
+  let stripped = name.trim();
+  for (const p of prefixes) {
+    if (stripped.startsWith(p + ' ')) {
+      stripped = stripped.slice(p.length).trim();
+    }
+  }
+  // Also strip trailing parenthetical info like "(10 מתחמים)"
+  stripped = stripped.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  return stripped;
+}
+
 async function complexExists(name, city) {
   city = normalizeCity(city);
+  const coreName = stripPrefixes(name);
+  
+  // Get all complexes in this city for comparison
   const result = await pool.query(
-    `SELECT id FROM complexes 
-     WHERE (LOWER(TRIM(name)) = LOWER(TRIM($1)) OR name ILIKE $2) 
-     AND LOWER(TRIM(city)) = LOWER(TRIM($3))`,
-    [name, `%${name}%`, city]
+    `SELECT id, name FROM complexes 
+     WHERE LOWER(TRIM(city)) = LOWER(TRIM($1))`,
+    [city]
   );
-  return result.rows.length > 0;
+  
+  const lowerName = name.toLowerCase().trim();
+  const lowerCore = coreName.toLowerCase().trim();
+  
+  for (const row of result.rows) {
+    const existingName = row.name.toLowerCase().trim();
+    const existingCore = stripPrefixes(row.name).toLowerCase().trim();
+    
+    // Exact match
+    if (existingName === lowerName) return true;
+    
+    // Core name match (ignoring prefixes like מתחם, פינוי בינוי, etc.)
+    if (existingCore === lowerCore && lowerCore.length >= 3) return true;
+    
+    // Bidirectional substring: new contains old OR old contains new
+    if (lowerCore.length >= 3 && existingCore.length >= 3) {
+      if (existingCore.includes(lowerCore) || lowerCore.includes(existingCore)) return true;
+    }
+    
+    // Full name substring check (at least 4 chars to avoid false positives)
+    if (lowerName.length >= 4 && existingName.length >= 4) {
+      if (existingName.includes(lowerName) || lowerName.includes(existingName)) return true;
+    }
+  }
+  
+  return false;
 }
 
 async function addNewComplex(complex, city, source = 'discovery') {
@@ -417,6 +458,7 @@ module.exports = {
   discoverRegion,
   addNewComplex,
   complexExists,
+  stripPrefixes,
   normalizeCity,
   getTodaysCities,
   TARGET_REGIONS,
