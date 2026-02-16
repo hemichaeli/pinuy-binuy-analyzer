@@ -1,6 +1,10 @@
 /**
- * QUANTUM Dashboard v4.24.0 - Complete Messaging Feature (Fixed)
+ * QUANTUM Dashboard v4.24.1 - Fix Template Newline Escaping
  * 
+ * FIX: Message template strings had literal newlines breaking JS parsing
+ * Template bodies now use \\n instead of actual newlines in single-quoted strings
+ * 
+ * Previous (v4.24.0): Complete Messaging Feature
  * NEW: Checkbox selection for listings (individual + select all filtered)
  * NEW: Message templates (3 Hebrew templates + custom freetext)
  * NEW: Template modal with preview and edit
@@ -142,6 +146,12 @@ router.post('/listings/message-sent', async (req, res) => {
 // --- Dashboard HTML ---
 
 router.get('/', (req, res) => {
+  const msgTemplatesJSON = JSON.stringify([
+    {id:'inquiry',title:'\u05D1\u05D9\u05E8\u05D5\u05E8 \u05DB\u05DC\u05DC\u05D9',body:'\u05E9\u05DC\u05D5\u05DD, \u05E8\u05D0\u05D9\u05EA\u05D9 \u05D0\u05EA \u05D4\u05DE\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA \u05D5\u05D4\u05D9\u05D0 \u05DE\u05E2\u05E0\u05D9\u05D9\u05E0\u05EA \u05D0\u05D5\u05EA\u05D9 \u05DE\u05D0\u05D5\u05D3.\n\u05D0\u05E0\u05D9 \u05DE\u05EA\u05DE\u05D7\u05D4 \u05D1\u05E0\u05D3\u05DC"\u05DF \u05D1\u05D0\u05D6\u05D5\u05E8 \u05D5\u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05DE\u05D5\u05E2 \u05E4\u05E8\u05D8\u05D9\u05DD \u05E0\u05D5\u05E1\u05E4\u05D9\u05DD \u05E2\u05DC \u05D4\u05E0\u05DB\u05E1.\n\u05D0\u05E4\u05E9\u05E8 \u05DC\u05EA\u05D0\u05DD \u05E9\u05D9\u05D7\u05D4?\n\u05EA\u05D5\u05D3\u05D4!'},
+    {id:'buyer',title:'\u05E7\u05D5\u05E0\u05D4 \u05E8\u05E6\u05D9\u05E0\u05D9',body:'\u05D4\u05D9\u05D9, \u05E9\u05DC\u05D5\u05DD!\n\u05D0\u05E0\u05D9 \u05DE\u05D7\u05E4\u05E9 \u05E0\u05DB\u05E1 \u05D1\u05D0\u05D6\u05D5\u05E8 \u05D5\u05D4\u05DE\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA \u05EA\u05E4\u05E1\u05D4 \u05D0\u05EA \u05EA\u05E9\u05D5\u05DE\u05EA \u05D4\u05DC\u05D1.\n\u05D9\u05E9 \u05DC\u05D9 \u05EA\u05E7\u05E6\u05D9\u05D1 \u05DE\u05D0\u05D5\u05E9\u05E8 \u05D5\u05D0\u05E0\u05D9 \u05D9\u05DB\u05D5\u05DC \u05DC\u05D4\u05EA\u05E7\u05D3\u05DD \u05DE\u05D4\u05E8.\n\u05DE\u05EA\u05D9 \u05E0\u05D5\u05D7 \u05DC\u05DA \u05DC\u05D1\u05D5\u05D0 \u05DC\u05E8\u05D0\u05D5\u05EA \u05D0\u05EA \u05D4\u05E0\u05DB\u05E1?\n\u05EA\u05D5\u05D3\u05D4 \u05E8\u05D1\u05D4'},
+    {id:'direct',title:'\u05D2\u05D9\u05E9\u05D4 \u05D9\u05E9\u05D9\u05E8\u05D4',body:'\u05E9\u05DC\u05D5\u05DD,\n\u05D0\u05E0\u05D9 \u05DE\u05EA\u05E2\u05E0\u05D9\u05D9\u05DF \u05D1\u05E0\u05DB\u05E1 \u05E9\u05E4\u05E8\u05E1\u05DE\u05EA \u05DC\u05DE\u05DB\u05D9\u05E8\u05D4 \u05D5\u05E8\u05E6\u05D9\u05EA\u05D9 \u05DC\u05D1\u05D3\u05D5\u05E7 \u05D0\u05DD \u05D4\u05D5\u05D0 \u05E2\u05D3\u05D9\u05D9\u05DF \u05D6\u05DE\u05D9\u05DF.\n\u05D0\u05DD \u05DB\u05DF, \u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05DE\u05D5\u05E2 \u05E4\u05E8\u05D8\u05D9\u05DD \u05E0\u05D5\u05E1\u05E4\u05D9\u05DD.\n\u05EA\u05D5\u05D3\u05D4'}
+  ]);
+
   res.type('html').send(`<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
@@ -358,7 +368,7 @@ tr.msg-sent td{opacity:.5}
   </header>
   <nav class="nav" id="nav"></nav>
   <main class="main" id="main"></main>
-  <footer class="footer"><span id="footer-text">QUANTUM v4.24.0</span></footer>
+  <footer class="footer"><span id="footer-text">QUANTUM v4.24.1</span></footer>
 </div>
 
 <!-- Detail Modal -->
@@ -394,11 +404,7 @@ var D=null,LD=null,currentTab='overview',aggRunning=false;
 var sortStates={};
 var filterStates={};
 var selectedListings=new Set();
-var msgTemplates=[
-  {id:'inquiry',title:'\u05D1\u05D9\u05E8\u05D5\u05E8 \u05DB\u05DC\u05DC\u05D9',body:'\u05E9\u05DC\u05D5\u05DD, \u05E8\u05D0\u05D9\u05EA\u05D9 \u05D0\u05EA \u05D4\u05DE\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA \u05D5\u05D4\u05D9\u05D0 \u05DE\u05E2\u05E0\u05D9\u05D9\u05E0\u05EA \u05D0\u05D5\u05EA\u05D9 \u05DE\u05D0\u05D5\u05D3.\n\u05D0\u05E0\u05D9 \u05DE\u05EA\u05DE\u05D7\u05D4 \u05D1\u05E0\u05D3\u05DC\"\u05DF \u05D1\u05D0\u05D6\u05D5\u05E8 \u05D5\u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05DE\u05D5\u05E2 \u05E4\u05E8\u05D8\u05D9\u05DD \u05E0\u05D5\u05E1\u05E4\u05D9\u05DD \u05E2\u05DC \u05D4\u05E0\u05DB\u05E1.\n\u05D0\u05E4\u05E9\u05E8 \u05DC\u05EA\u05D0\u05DD \u05E9\u05D9\u05D7\u05D4?\n\u05EA\u05D5\u05D3\u05D4!'},
-  {id:'buyer',title:'\u05E7\u05D5\u05E0\u05D4 \u05E8\u05E6\u05D9\u05E0\u05D9',body:'\u05D4\u05D9\u05D9, \u05E9\u05DC\u05D5\u05DD!\n\u05D0\u05E0\u05D9 \u05DE\u05D7\u05E4\u05E9 \u05E0\u05DB\u05E1 \u05D1\u05D0\u05D6\u05D5\u05E8 \u05D5\u05D4\u05DE\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA \u05EA\u05E4\u05E1\u05D4 \u05D0\u05EA \u05EA\u05E9\u05D5\u05DE\u05EA \u05D4\u05DC\u05D1.\n\u05D9\u05E9 \u05DC\u05D9 \u05EA\u05E7\u05E6\u05D9\u05D1 \u05DE\u05D0\u05D5\u05E9\u05E8 \u05D5\u05D0\u05E0\u05D9 \u05D9\u05DB\u05D5\u05DC \u05DC\u05D4\u05EA\u05E7\u05D3\u05DD \u05DE\u05D4\u05E8.\n\u05DE\u05EA\u05D9 \u05E0\u05D5\u05D7 \u05DC\u05DA \u05DC\u05D1\u05D5\u05D0 \u05DC\u05E8\u05D0\u05D5\u05EA \u05D0\u05EA \u05D4\u05E0\u05DB\u05E1?\n\u05EA\u05D5\u05D3\u05D4 \u05E8\u05D1\u05D4'},
-  {id:'direct',title:'\u05D2\u05D9\u05E9\u05D4 \u05D9\u05E9\u05D9\u05E8\u05D4',body:'\u05E9\u05DC\u05D5\u05DD,\n\u05D0\u05E0\u05D9 \u05DE\u05EA\u05E2\u05E0\u05D9\u05D9\u05DF \u05D1\u05E0\u05DB\u05E1 \u05E9\u05E4\u05E8\u05E1\u05DE\u05EA \u05DC\u05DE\u05DB\u05D9\u05E8\u05D4 \u05D5\u05E8\u05E6\u05D9\u05EA\u05D9 \u05DC\u05D1\u05D3\u05D5\u05E7 \u05D0\u05DD \u05D4\u05D5\u05D0 \u05E2\u05D3\u05D9\u05D9\u05DF \u05D6\u05DE\u05D9\u05DF.\n\u05D0\u05DD \u05DB\u05DF, \u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05DE\u05D5\u05E2 \u05E4\u05E8\u05D8\u05D9\u05DD \u05E0\u05D5\u05E1\u05E4\u05D9\u05DD.\n\u05EA\u05D5\u05D3\u05D4'}
-];
+var msgTemplates=${msgTemplatesJSON};
 
 // --- Source normalization ---
 function normSrc(s){
@@ -571,7 +577,7 @@ function loadData(){
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('time-label').textContent=new Date().toLocaleTimeString('he-IL');
     var s=D.stats||{};
-    document.getElementById('footer-text').textContent='QUANTUM v4.24.0 | '+(s.total_complexes||0)+' \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD | '+(s.cities||0)+' \u05E2\u05E8\u05D9\u05DD';
+    document.getElementById('footer-text').textContent='QUANTUM v4.24.1 | '+(s.total_complexes||0)+' \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD | '+(s.cities||0)+' \u05E2\u05E8\u05D9\u05DD';
     renderNav();renderTab();
   }).catch(function(e){
     console.error(e);
@@ -826,7 +832,7 @@ function renderCities(s,cities){
   h+='<th class="c" data-sort-tab="cities" data-sort-key="avg_iai">'+sortArrow('cities','avg_iai')+'IAI</th>';
   h+='</tr></thead><tbody>';
   var sorted=cities.slice();if(sortStates.cities&&sortStates.cities.key)sorted=sortData(sorted,'cities',sortStates.cities.key,sortStates.cities.dir);
-  for(var i=0;i<sorted.length;i++){var c=sorted[i];h+='<tr><td class="fw">'+c.city+'</td><td class="c">'+c.total+'</td><td class="c" style="color:#06d6a0;font-weight:700">'+c.opportunities+'</td><td class="c">'+(+c.stressed>0?'<span style="color:#ff4d6a;font-weight:700">'+c.stressed+'</span>':'<span class="dim">0</span>')+'</td><td class="c" style="color:'+(+c.avg_iai>=50?'#22c55e':'#8899b4')+'">'+( c.avg_iai||'-')+'</td></tr>';}
+  for(var i=0;i<sorted.length;i++){var c=sorted[i];h+='<tr><td class="fw">'+c.city+'</td><td class="c">'+c.total+'</td><td class="c" style="color:#06d6a0;font-weight:700">'+c.opportunities+'</td><td class="c">'+(+c.stressed>0?'<span style="color:#ff4d6a;font-weight:700">'+c.stressed+'</span>':'<span class="dim">0</span>')+'</td><td class="c" style="color:'+(+c.avg_iai>=50?'#22c55e':'#8899b4')+'">'+(c.avg_iai||'-')+'</td></tr>';}
   h+='</tbody></table></div></div></div>';return h;
 }
 
