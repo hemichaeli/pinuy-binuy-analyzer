@@ -84,8 +84,11 @@ function getTodaysCities() {
   return cities;
 }
 
-function buildDiscoveryPrompt(city) {
-  return `חפש מתחמי פינוי בינוי והתחדשות עירונית חדשים ב${city}.
+function buildDiscoveryPrompt(city, existingNames = []) {
+  const excludeSection = existingNames.length > 0
+    ? `\n\nחשוב מאוד: המתחמים הבאים כבר קיימים במערכת שלי עבור ${city}. אל תחזיר אותם שוב, גם לא בשמות דומים או וריאציות:\n${existingNames.map(n => '- ' + n).join('\n')}\n\nהחזר רק מתחמים שלא מופיעים ברשימה הזו.`
+    : '';
+  return `חפש מתחמי פינוי בינוי והתחדשות עירונית חדשים ב${city}.${excludeSection}
 
 אני מחפש מתחמים שעונים לקריטריונים:
 - מינימום ${MIN_HOUSING_UNITS} יחידות דיור קיימות (לפי חוק פינוי בינוי)
@@ -137,7 +140,22 @@ async function discoverInCity(city) {
   if (!apiKey) throw new Error('PERPLEXITY_API_KEY not set');
 
   const axios = require('axios');
-  const prompt = buildDiscoveryPrompt(city);
+  
+  // Get existing complex names for this city to avoid rediscovery
+  const normalizedCity = normalizeCity(city);
+  let existingNames = [];
+  try {
+    const existing = await pool.query(
+      'SELECT name FROM complexes WHERE LOWER(TRIM(city)) = LOWER(TRIM($1)) ORDER BY name',
+      [normalizedCity]
+    );
+    existingNames = existing.rows.map(r => r.name);
+    logger.debug(`${city}: ${existingNames.length} existing complexes to exclude`);
+  } catch (e) {
+    logger.warn(`Failed to get existing names for ${city}: ${e.message}`);
+  }
+  
+  const prompt = buildDiscoveryPrompt(city, existingNames);
 
   try {
     const response = await axios.post('https://api.perplexity.ai/chat/completions', {
@@ -294,6 +312,14 @@ async function discoverDaily() {
 
       for (const complex of complexes) {
         if (complex.existing_units && complex.existing_units < MIN_HOUSING_UNITS) continue;
+        
+        // Fuzzy duplicate check before insertion
+        const alreadyExists = await complexExists(complex.name, city);
+        if (alreadyExists) {
+          existed++;
+          continue;
+        }
+        
         const newId = await addNewComplex(complex, city, 'discovery-daily');
         if (newId) {
           added++; results.total_discovered++; results.new_added++;
@@ -347,6 +373,14 @@ async function discoverAll(options = {}) {
 
       for (const complex of complexes) {
         if (complex.existing_units && complex.existing_units < MIN_HOUSING_UNITS) continue;
+        
+        // Fuzzy duplicate check before insertion
+        const alreadyExists = await complexExists(complex.name, city);
+        if (alreadyExists) {
+          existed++;
+          continue;
+        }
+        
         const newId = await addNewComplex(complex, city, 'discovery-full');
         if (newId) {
           added++; results.total_discovered++; results.new_added++;
