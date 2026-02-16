@@ -1,8 +1,8 @@
 /**
- * QUANTUM Dashboard v4.24.1 - Fix Template Newline Escaping
+ * QUANTUM Dashboard v4.24.2 - Smart URL Fallback Fix
  * 
- * FIX: Message template strings had literal newlines breaking JS parsing
- * Template bodies now use \\n instead of actual newlines in single-quoted strings
+ * FIX: smartUrl now generates address-based search URLs instead of city-only
+ * FIX: Message template newline escaping (from v4.24.1)
  * 
  * Previous (v4.24.0): Complete Messaging Feature
  * NEW: Checkbox selection for listings (individual + select all filtered)
@@ -146,12 +146,6 @@ router.post('/listings/message-sent', async (req, res) => {
 // --- Dashboard HTML ---
 
 router.get('/', (req, res) => {
-  const msgTemplatesJSON = JSON.stringify([
-    {id:'inquiry',title:'\u05D1\u05D9\u05E8\u05D5\u05E8 \u05DB\u05DC\u05DC\u05D9',body:'\u05E9\u05DC\u05D5\u05DD, \u05E8\u05D0\u05D9\u05EA\u05D9 \u05D0\u05EA \u05D4\u05DE\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA \u05D5\u05D4\u05D9\u05D0 \u05DE\u05E2\u05E0\u05D9\u05D9\u05E0\u05EA \u05D0\u05D5\u05EA\u05D9 \u05DE\u05D0\u05D5\u05D3.\n\u05D0\u05E0\u05D9 \u05DE\u05EA\u05DE\u05D7\u05D4 \u05D1\u05E0\u05D3\u05DC"\u05DF \u05D1\u05D0\u05D6\u05D5\u05E8 \u05D5\u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05DE\u05D5\u05E2 \u05E4\u05E8\u05D8\u05D9\u05DD \u05E0\u05D5\u05E1\u05E4\u05D9\u05DD \u05E2\u05DC \u05D4\u05E0\u05DB\u05E1.\n\u05D0\u05E4\u05E9\u05E8 \u05DC\u05EA\u05D0\u05DD \u05E9\u05D9\u05D7\u05D4?\n\u05EA\u05D5\u05D3\u05D4!'},
-    {id:'buyer',title:'\u05E7\u05D5\u05E0\u05D4 \u05E8\u05E6\u05D9\u05E0\u05D9',body:'\u05D4\u05D9\u05D9, \u05E9\u05DC\u05D5\u05DD!\n\u05D0\u05E0\u05D9 \u05DE\u05D7\u05E4\u05E9 \u05E0\u05DB\u05E1 \u05D1\u05D0\u05D6\u05D5\u05E8 \u05D5\u05D4\u05DE\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA \u05EA\u05E4\u05E1\u05D4 \u05D0\u05EA \u05EA\u05E9\u05D5\u05DE\u05EA \u05D4\u05DC\u05D1.\n\u05D9\u05E9 \u05DC\u05D9 \u05EA\u05E7\u05E6\u05D9\u05D1 \u05DE\u05D0\u05D5\u05E9\u05E8 \u05D5\u05D0\u05E0\u05D9 \u05D9\u05DB\u05D5\u05DC \u05DC\u05D4\u05EA\u05E7\u05D3\u05DD \u05DE\u05D4\u05E8.\n\u05DE\u05EA\u05D9 \u05E0\u05D5\u05D7 \u05DC\u05DA \u05DC\u05D1\u05D5\u05D0 \u05DC\u05E8\u05D0\u05D5\u05EA \u05D0\u05EA \u05D4\u05E0\u05DB\u05E1?\n\u05EA\u05D5\u05D3\u05D4 \u05E8\u05D1\u05D4'},
-    {id:'direct',title:'\u05D2\u05D9\u05E9\u05D4 \u05D9\u05E9\u05D9\u05E8\u05D4',body:'\u05E9\u05DC\u05D5\u05DD,\n\u05D0\u05E0\u05D9 \u05DE\u05EA\u05E2\u05E0\u05D9\u05D9\u05DF \u05D1\u05E0\u05DB\u05E1 \u05E9\u05E4\u05E8\u05E1\u05DE\u05EA \u05DC\u05DE\u05DB\u05D9\u05E8\u05D4 \u05D5\u05E8\u05E6\u05D9\u05EA\u05D9 \u05DC\u05D1\u05D3\u05D5\u05E7 \u05D0\u05DD \u05D4\u05D5\u05D0 \u05E2\u05D3\u05D9\u05D9\u05DF \u05D6\u05DE\u05D9\u05DF.\n\u05D0\u05DD \u05DB\u05DF, \u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05DE\u05D5\u05E2 \u05E4\u05E8\u05D8\u05D9\u05DD \u05E0\u05D5\u05E1\u05E4\u05D9\u05DD.\n\u05EA\u05D5\u05D3\u05D4'}
-  ]);
-
   res.type('html').send(`<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
@@ -368,7 +362,7 @@ tr.msg-sent td{opacity:.5}
   </header>
   <nav class="nav" id="nav"></nav>
   <main class="main" id="main"></main>
-  <footer class="footer"><span id="footer-text">QUANTUM v4.24.1</span></footer>
+  <footer class="footer"><span id="footer-text">QUANTUM v4.24.2</span></footer>
 </div>
 
 <!-- Detail Modal -->
@@ -404,7 +398,11 @@ var D=null,LD=null,currentTab='overview',aggRunning=false;
 var sortStates={};
 var filterStates={};
 var selectedListings=new Set();
-var msgTemplates=${msgTemplatesJSON};
+var msgTemplates=[
+  {id:'inquiry',title:'\\u05D1\\u05D9\\u05E8\\u05D5\\u05E8 \\u05DB\\u05DC\\u05DC\\u05D9',body:'\\u05E9\\u05DC\\u05D5\\u05DD, \\u05E8\\u05D0\\u05D9\\u05EA\\u05D9 \\u05D0\\u05EA \\u05D4\\u05DE\\u05D5\\u05D3\\u05E2\\u05D4 \\u05E9\\u05DC\\u05DA \\u05D5\\u05D4\\u05D9\\u05D0 \\u05DE\\u05E2\\u05E0\\u05D9\\u05D9\\u05E0\\u05EA \\u05D0\\u05D5\\u05EA\\u05D9 \\u05DE\\u05D0\\u05D5\\u05D3.\\n\\u05D0\\u05E0\\u05D9 \\u05DE\\u05EA\\u05DE\\u05D7\\u05D4 \\u05D1\\u05E0\\u05D3\\u05DC\\"\\u05DF \\u05D1\\u05D0\\u05D6\\u05D5\\u05E8 \\u05D5\\u05D0\\u05E9\\u05DE\\u05D7 \\u05DC\\u05E9\\u05DE\\u05D5\\u05E2 \\u05E4\\u05E8\\u05D8\\u05D9\\u05DD \\u05E0\\u05D5\\u05E1\\u05E4\\u05D9\\u05DD \\u05E2\\u05DC \\u05D4\\u05E0\\u05DB\\u05E1.\\n\\u05D0\\u05E4\\u05E9\\u05E8 \\u05DC\\u05EA\\u05D0\\u05DD \\u05E9\\u05D9\\u05D7\\u05D4?\\n\\u05EA\\u05D5\\u05D3\\u05D4!'},
+  {id:'buyer',title:'\\u05E7\\u05D5\\u05E0\\u05D4 \\u05E8\\u05E6\\u05D9\\u05E0\\u05D9',body:'\\u05D4\\u05D9\\u05D9, \\u05E9\\u05DC\\u05D5\\u05DD!\\n\\u05D0\\u05E0\\u05D9 \\u05DE\\u05D7\\u05E4\\u05E9 \\u05E0\\u05DB\\u05E1 \\u05D1\\u05D0\\u05D6\\u05D5\\u05E8 \\u05D5\\u05D4\\u05DE\\u05D5\\u05D3\\u05E2\\u05D4 \\u05E9\\u05DC\\u05DA \\u05EA\\u05E4\\u05E1\\u05D4 \\u05D0\\u05EA \\u05EA\\u05E9\\u05D5\\u05DE\\u05EA \\u05D4\\u05DC\\u05D1.\\n\\u05D9\\u05E9 \\u05DC\\u05D9 \\u05EA\\u05E7\\u05E6\\u05D9\\u05D1 \\u05DE\\u05D0\\u05D5\\u05E9\\u05E8 \\u05D5\\u05D0\\u05E0\\u05D9 \\u05D9\\u05DB\\u05D5\\u05DC \\u05DC\\u05D4\\u05EA\\u05E7\\u05D3\\u05DD \\u05DE\\u05D4\\u05E8.\\n\\u05DE\\u05EA\\u05D9 \\u05E0\\u05D5\\u05D7 \\u05DC\\u05DA \\u05DC\\u05D1\\u05D5\\u05D0 \\u05DC\\u05E8\\u05D0\\u05D5\\u05EA \\u05D0\\u05EA \\u05D4\\u05E0\\u05DB\\u05E1?\\n\\u05EA\\u05D5\\u05D3\\u05D4 \\u05E8\\u05D1\\u05D4'},
+  {id:'direct',title:'\\u05D2\\u05D9\\u05E9\\u05D4 \\u05D9\\u05E9\\u05D9\\u05E8\\u05D4',body:'\\u05E9\\u05DC\\u05D5\\u05DD,\\n\\u05D0\\u05E0\\u05D9 \\u05DE\\u05EA\\u05E2\\u05E0\\u05D9\\u05D9\\u05DF \\u05D1\\u05E0\\u05DB\\u05E1 \\u05E9\\u05E4\\u05E8\\u05E1\\u05DE\\u05EA \\u05DC\\u05DE\\u05DB\\u05D9\\u05E8\\u05D4 \\u05D5\\u05E8\\u05E6\\u05D9\\u05EA\\u05D9 \\u05DC\\u05D1\\u05D3\\u05D5\\u05E7 \\u05D0\\u05DD \\u05D4\\u05D5\\u05D0 \\u05E2\\u05D3\\u05D9\\u05D9\\u05DF \\u05D6\\u05DE\\u05D9\\u05DF.\\n\\u05D0\\u05DD \\u05DB\\u05DF, \\u05D0\\u05E9\\u05DE\\u05D7 \\u05DC\\u05E9\\u05DE\\u05D5\\u05E2 \\u05E4\\u05E8\\u05D8\\u05D9\\u05DD \\u05E0\\u05D5\\u05E1\\u05E4\\u05D9\\u05DD.\\n\\u05EA\\u05D5\\u05D3\\u05D4'}
+];
 
 // --- Source normalization ---
 function normSrc(s){
@@ -421,36 +419,47 @@ function normSrc(s){
 
 // --- Utility functions ---
 function ssiCls(sc){if(!sc&&sc!==0)return'';return sc>=80?'badge-critical':sc>=60?'badge-high':sc>=40?'badge-med':'badge-low';}
-function ssiLbl(sc){if(!sc&&sc!==0)return'-';var t=sc>=80?'\u05E7\u05E8\u05D9\u05D8\u05D9':sc>=60?'\u05D2\u05D1\u05D5\u05D4':sc>=40?'\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9':'\u05E0\u05DE\u05D5\u05DA';return sc+' '+t;}
+function ssiLbl(sc){if(!sc&&sc!==0)return'-';var t=sc>=80?'\\u05E7\\u05E8\\u05D9\\u05D8\\u05D9':sc>=60?'\\u05D2\\u05D1\\u05D5\\u05D4':sc>=40?'\\u05D1\\u05D9\\u05E0\\u05D5\\u05E0\\u05D9':'\\u05E0\\u05DE\\u05D5\\u05DA';return sc+' '+t;}
 function iaiH(sc){if(!sc&&sc!==0)return'<span class="dim">-</span>';var c=sc>=70?'#22c55e':sc>=50?'#06d6a0':sc>=30?'#ffc233':'#4a5e80';return'<span style="color:'+c+';font-weight:700;font-size:13px">'+sc+'</span>';}
 function dotH(sev){var c=sev==='high'||sev==='critical'?'dot-red':sev==='medium'?'dot-orange':'dot-green';return'<span class="dot '+c+'"></span>';}
 function cut(s,n){return s?(s.length>n?s.substring(0,n)+'...':s):'-';}
 function fmtD(d){try{return new Date(d).toLocaleDateString('he-IL');}catch(e){return'-';}}
 function fmtP(v){if(!v)return'-';var n=parseFloat(v);return n>=1000000?(n/1000000).toFixed(2)+'M':(n>=1000?(n/1000).toFixed(0)+'K':n.toFixed(0));}
 function fmtN(v){if(!v&&v!==0)return'-';return parseFloat(v).toLocaleString('he-IL');}
-function fmtPrice(v){if(!v)return'-';var n=parseFloat(v);return '\u20AA'+n.toLocaleString('he-IL');}
+function fmtPrice(v){if(!v)return'-';var n=parseFloat(v);return '\\u20AA'+n.toLocaleString('he-IL');}
 function pf(v){return Array.isArray(v)?v:(typeof v==='string'?JSON.parse(v||'[]'):[]);}
 
 // Platform display
-var PLAT={yad2:{name:'\u05D9\u05D3 2',cls:'src-yad2',icon:'\u25A0'},facebook:{name:'Facebook',cls:'src-facebook',icon:'f'},madlan:{name:'\u05DE\u05D3\u05DC\u05DF',cls:'src-madlan',icon:'M'},homeless:{name:'Homeless',cls:'src-homeless',icon:'H'},kones:{name:'\u05DB\u05D9\u05E0\u05D5\u05E1',cls:'src-kones',icon:'\u2696'},ai_scan:{name:'\u05E1\u05E8\u05D9\u05E7\u05EA AI',cls:'src-ai',icon:'\u2726'}};
-function srcBadge(src){var ns=normSrc(src);var p=PLAT[ns]||{name:src||'?',cls:'src-other',icon:'\u25CE'};return'<span class="badge-src '+p.cls+'">'+p.icon+' '+p.name+'</span>';}
+var PLAT={yad2:{name:'\\u05D9\\u05D3 2',cls:'src-yad2',icon:'\\u25A0'},facebook:{name:'Facebook',cls:'src-facebook',icon:'f'},madlan:{name:'\\u05DE\\u05D3\\u05DC\\u05DF',cls:'src-madlan',icon:'M'},homeless:{name:'Homeless',cls:'src-homeless',icon:'H'},kones:{name:'\\u05DB\\u05D9\\u05E0\\u05D5\\u05E1',cls:'src-kones',icon:'\\u2696'},ai_scan:{name:'\\u05E1\\u05E8\\u05D9\\u05E7\\u05EA AI',cls:'src-ai',icon:'\\u2726'}};
+function srcBadge(src){var ns=normSrc(src);var p=PLAT[ns]||{name:src||'?',cls:'src-other',icon:'\\u25CE'};return'<span class="badge-src '+p.cls+'">'+p.icon+' '+p.name+'</span>';}
 
-// Smart URL - construct search link if no direct URL
+// Smart URL v2 - address-based search fallback
 function smartUrl(l){
   if(l.url)return l.url;
-  var city=encodeURIComponent(l.complex_city||l.city||'');
-  var addr=encodeURIComponent(l.address||l.complex_name||'');
+  var city=l.complex_city||l.city||'';
+  var addr=l.address||'';
+  var complex=l.complex_name||'';
   var ns=normSrc(l.source);
-  if(ns==='yad2')return'https://www.yad2.co.il/realestate/forsale?city='+city;
-  if(ns==='madlan')return'https://www.madlan.co.il/for-sale/'+city;
-  return'https://www.yad2.co.il/realestate/forsale?text='+addr;
+  // Build search text: prefer address, fallback to complex+city
+  var searchParts=[];
+  if(addr)searchParts.push(addr);
+  else{if(complex)searchParts.push(complex);if(city)searchParts.push(city);}
+  var searchText=searchParts.join(' ');
+  if(!searchText)return'https://www.yad2.co.il/realestate/forsale';
+  // Madlan: city slug path + address search
+  if(ns==='madlan'&&city){
+    var slug=city.replace(/\\s+/g,'-');
+    return'https://www.madlan.co.il/for-sale/'+encodeURIComponent(slug)+(addr?'?text='+encodeURIComponent(addr.split(',')[0]):'');
+  }
+  // yad2 & all others: text search with full address
+  return'https://www.yad2.co.il/realestate/forsale?text='+encodeURIComponent(searchText);
 }
 function listingLink(l){
   var url=smartUrl(l);
   var isDirect=!!l.url;
-  var label=isDirect?'\u05E6\u05E4\u05D4 \u05D1\u05DE\u05D5\u05D3\u05E2\u05D4':'\u05D7\u05E4\u05E9 \u05D1\u05D0\u05EA\u05E8';
+  var label=isDirect?'\\u05E6\\u05E4\\u05D4 \\u05D1\\u05DE\\u05D5\\u05D3\\u05E2\\u05D4':'\\u05D7\\u05E4\\u05E9 \\u05D1\\u05D0\\u05EA\\u05E8';
   var cls=isDirect?'btn-link':'btn-link btn-link-search';
-  return'<a href="'+url+'" target="_blank" rel="noopener" class="'+cls+'">'+(isDirect?'\u2197':'\uD83D\uDD0D')+' '+label+'</a>';
+  return'<a href="'+url+'" target="_blank" rel="noopener" class="'+cls+'">'+(isDirect?'\\u2197':'\\uD83D\\uDD0D')+' '+label+'</a>';
 }
 
 // --- Sorting ---
@@ -469,7 +478,7 @@ function sortData(arr,tabId,key,forcedDir){
   });
   return sorted;
 }
-function sortArrow(tabId,key){if(!sortStates[tabId]||sortStates[tabId].key!==key)return'';return'<span class="sort-arrow">'+(sortStates[tabId].dir===-1?'\u25BC':'\u25B2')+'</span>';}
+function sortArrow(tabId,key){if(!sortStates[tabId]||sortStates[tabId].key!==key)return'';return'<span class="sort-arrow">'+(sortStates[tabId].dir===-1?'\\u25BC':'\\u25B2')+'</span>';}
 function thSorted(tabId,key){return(sortStates[tabId]&&sortStates[tabId].key===key)?' sorted':'';}
 
 // --- Modal ---
@@ -485,44 +494,44 @@ function openComplexModal(id,name){
   fetch('/api/dashboard/complex/'+id).then(function(r){return r.json();}).then(function(d){
     var c=d.complex,ls=d.listings||[],als=d.alerts||[];
     var h='';
-    h+='<div class="modal-section"><div class="modal-section-title">\u05E4\u05E8\u05D8\u05D9 \u05DE\u05EA\u05D7\u05DD</div>';
-    h+=mRow('\u05E2\u05D9\u05E8',c.city);
-    h+=mRow('\u05DB\u05EA\u05D5\u05D1\u05D5\u05EA',c.addresses);
-    h+=mRow('\u05E1\u05D8\u05D8\u05D5\u05E1',c.status);
-    h+=mRow('\u05D9\u05D6\u05DD',c.developer);
-    h+=mRow('\u05EA\u05DB\u05E0\u05D9\u05EA',c.plan_number);
-    h+=mRow('\u05D9\u05D7"\u05D3 \u05E7\u05D9\u05D9\u05DE\u05D5\u05EA',c.existing_units);
-    h+=mRow('\u05D9\u05D7"\u05D3 \u05DE\u05EA\u05D5\u05DB\u05E0\u05E0\u05D5\u05EA',c.planned_units);
+    h+='<div class="modal-section"><div class="modal-section-title">\\u05E4\\u05E8\\u05D8\\u05D9 \\u05DE\\u05EA\\u05D7\\u05DD</div>';
+    h+=mRow('\\u05E2\\u05D9\\u05E8',c.city);
+    h+=mRow('\\u05DB\\u05EA\\u05D5\\u05D1\\u05D5\\u05EA',c.addresses);
+    h+=mRow('\\u05E1\\u05D8\\u05D8\\u05D5\\u05E1',c.status);
+    h+=mRow('\\u05D9\\u05D6\\u05DD',c.developer);
+    h+=mRow('\\u05EA\\u05DB\\u05E0\\u05D9\\u05EA',c.plan_number);
+    h+=mRow('\\u05D9\\u05D7"\\u05D3 \\u05E7\\u05D9\\u05D9\\u05DE\\u05D5\\u05EA',c.existing_units);
+    h+=mRow('\\u05D9\\u05D7"\\u05D3 \\u05DE\\u05EA\\u05D5\\u05DB\\u05E0\\u05E0\\u05D5\\u05EA',c.planned_units);
     h+=mRow('IAI',c.iai_score);
-    h+=mRow('\u05E4\u05E8\u05DE\u05D9\u05D4',c.actual_premium?c.actual_premium+'%':'-');
-    h+=mRow('\u05DB\u05D9\u05E0\u05D5\u05E1 \u05E0\u05DB\u05E1\u05D9\u05DD',c.is_receivership?'\u05DB\u05DF':'\u05DC\u05D0');
+    h+=mRow('\\u05E4\\u05E8\\u05DE\\u05D9\\u05D4',c.actual_premium?c.actual_premium+'%':'-');
+    h+=mRow('\\u05DB\\u05D9\\u05E0\\u05D5\\u05E1 \\u05E0\\u05DB\\u05E1\\u05D9\\u05DD',c.is_receivership?'\\u05DB\\u05DF':'\\u05DC\\u05D0');
     h+='</div>';
     
     if(c.iai_score>=30||c.enhanced_ssi_score>=40){
-      h+='<div class="modal-section"><div class="modal-section-title">\u05DC\u05DE\u05D4 \u05D6\u05D5 \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA?</div><div class="modal-factors">';
-      if(c.iai_score>=70)h+='<div class="modal-factor">\u2B50 IAI \u05DE\u05E6\u05D5\u05D9\u05DF ('+c.iai_score+') - \u05E4\u05D5\u05D8\u05E0\u05E6\u05D9\u05D0\u05DC \u05D2\u05D1\u05D5\u05D4 \u05DC\u05E8\u05D5\u05D5\u05D7</div>';
-      else if(c.iai_score>=50)h+='<div class="modal-factor">\u2605 IAI \u05D8\u05D5\u05D1 ('+c.iai_score+') - \u05E9\u05D5\u05D5\u05D4 \u05D1\u05D3\u05D9\u05E7\u05D4</div>';
-      if(c.status==='approved')h+='<div class="modal-factor">\u2705 \u05EA\u05DB\u05E0\u05D9\u05EA \u05D0\u05D5\u05E9\u05E8\u05D4 - \u05E1\u05D9\u05DB\u05D5\u05DF \u05E0\u05DE\u05D5\u05DA \u05DC\u05D4\u05EA\u05E7\u05D3\u05DE\u05D5\u05EA</div>';
-      if(c.is_receivership)h+='<div class="modal-factor">\u2696\uFE0F \u05DB\u05D9\u05E0\u05D5\u05E1 \u05E0\u05DB\u05E1\u05D9\u05DD - \u05D0\u05E4\u05E9\u05E8\u05D5\u05EA \u05DC\u05DE\u05D7\u05D9\u05E8 \u05DE\u05EA\u05D7\u05EA \u05DC\u05E9\u05D5\u05E7</div>';
-      if(c.actual_premium&&parseFloat(c.actual_premium)>0)h+='<div class="modal-factor">\uD83D\uDCC8 \u05E4\u05E8\u05DE\u05D9\u05D4 '+c.actual_premium+'% - \u05E4\u05E2\u05E8 \u05D1\u05D9\u05DF \u05DE\u05D7\u05D9\u05E8 \u05E0\u05D5\u05DB\u05D7\u05D9 \u05DC\u05E9\u05D5\u05D5\u05D9 \u05E2\u05EA\u05D9\u05D3\u05D9</div>';
+      h+='<div class="modal-section"><div class="modal-section-title">\\u05DC\\u05DE\\u05D4 \\u05D6\\u05D5 \\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05EA?</div><div class="modal-factors">';
+      if(c.iai_score>=70)h+='<div class="modal-factor">\\u2B50 IAI \\u05DE\\u05E6\\u05D5\\u05D9\\u05DF ('+c.iai_score+') - \\u05E4\\u05D5\\u05D8\\u05E0\\u05E6\\u05D9\\u05D0\\u05DC \\u05D2\\u05D1\\u05D5\\u05D4 \\u05DC\\u05E8\\u05D5\\u05D5\\u05D7</div>';
+      else if(c.iai_score>=50)h+='<div class="modal-factor">\\u2605 IAI \\u05D8\\u05D5\\u05D1 ('+c.iai_score+') - \\u05E9\\u05D5\\u05D5\\u05D4 \\u05D1\\u05D3\\u05D9\\u05E7\\u05D4</div>';
+      if(c.status==='approved')h+='<div class="modal-factor">\\u2705 \\u05EA\\u05DB\\u05E0\\u05D9\\u05EA \\u05D0\\u05D5\\u05E9\\u05E8\\u05D4 - \\u05E1\\u05D9\\u05DB\\u05D5\\u05DF \\u05E0\\u05DE\\u05D5\\u05DA \\u05DC\\u05D4\\u05EA\\u05E7\\u05D3\\u05DE\\u05D5\\u05EA</div>';
+      if(c.is_receivership)h+='<div class="modal-factor">\\u2696\\uFE0F \\u05DB\\u05D9\\u05E0\\u05D5\\u05E1 \\u05E0\\u05DB\\u05E1\\u05D9\\u05DD - \\u05D0\\u05E4\\u05E9\\u05E8\\u05D5\\u05EA \\u05DC\\u05DE\\u05D7\\u05D9\\u05E8 \\u05DE\\u05EA\\u05D7\\u05EA \\u05DC\\u05E9\\u05D5\\u05E7</div>';
+      if(c.actual_premium&&parseFloat(c.actual_premium)>0)h+='<div class="modal-factor">\\uD83D\\uDCC8 \\u05E4\\u05E8\\u05DE\\u05D9\\u05D4 '+c.actual_premium+'% - \\u05E4\\u05E2\\u05E8 \\u05D1\\u05D9\\u05DF \\u05DE\\u05D7\\u05D9\\u05E8 \\u05E0\\u05D5\\u05DB\\u05D7\\u05D9 \\u05DC\\u05E9\\u05D5\\u05D5\\u05D9 \\u05E2\\u05EA\\u05D9\\u05D3\\u05D9</div>';
       var factors=pf(c.ssi_enhancement_factors||[]);
       factors.forEach(function(f){h+='<div class="modal-factor">'+f+'</div>';});
       h+='</div></div>';
     }
     
     if(ls.length){
-      h+='<div class="modal-section"><div class="modal-section-title">\u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05E4\u05E2\u05D9\u05DC\u05D5\u05EA ('+ls.length+')</div>';
+      h+='<div class="modal-section"><div class="modal-section-title">\\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA \\u05E4\\u05E2\\u05D9\\u05DC\\u05D5\\u05EA ('+ls.length+')</div>';
       ls.forEach(function(l){
         h+='<div class="modal-listing"><div class="modal-listing-head">';
         h+=srcBadge(l.source);
         h+='<span style="font-weight:700;color:#06d6a0">'+(l.asking_price?fmtPrice(l.asking_price):'-')+'</span>';
         h+='</div><div class="modal-listing-details">';
-        if(l.rooms)h+='<span>'+l.rooms+' \u05D7\u05D3\u05E8\u05D9\u05DD</span>';
-        if(l.area_sqm)h+='<span>'+l.area_sqm+' \u05DE"\u05E8</span>';
-        if(l.floor!=null)h+='<span>\u05E7\u05D5\u05DE\u05D4 '+l.floor+'</span>';
-        if(l.days_on_market)h+='<span>'+l.days_on_market+' \u05D9\u05DE\u05D9\u05DD</span>';
-        if(l.price_changes)h+='<span style="color:#ff4d6a">'+l.price_changes+' \u05D9\u05E8\u05D9\u05D3\u05D5\u05EA \u05DE\u05D7\u05D9\u05E8</span>';
-        if(l.total_price_drop_percent&&parseFloat(l.total_price_drop_percent)>0)h+='<span style="color:#ff4d6a">\u05D9\u05E8\u05D9\u05D3\u05D4: '+parseFloat(l.total_price_drop_percent).toFixed(1)+'%</span>';
+        if(l.rooms)h+='<span>'+l.rooms+' \\u05D7\\u05D3\\u05E8\\u05D9\\u05DD</span>';
+        if(l.area_sqm)h+='<span>'+l.area_sqm+' \\u05DE"\\u05E8</span>';
+        if(l.floor!=null)h+='<span>\\u05E7\\u05D5\\u05DE\\u05D4 '+l.floor+'</span>';
+        if(l.days_on_market)h+='<span>'+l.days_on_market+' \\u05D9\\u05DE\\u05D9\\u05DD</span>';
+        if(l.price_changes)h+='<span style="color:#ff4d6a">'+l.price_changes+' \\u05D9\\u05E8\\u05D9\\u05D3\\u05D5\\u05EA \\u05DE\\u05D7\\u05D9\\u05E8</span>';
+        if(l.total_price_drop_percent&&parseFloat(l.total_price_drop_percent)>0)h+='<span style="color:#ff4d6a">\\u05D9\\u05E8\\u05D9\\u05D3\\u05D4: '+parseFloat(l.total_price_drop_percent).toFixed(1)+'%</span>';
         h+='</div>';
         if(l.address)h+='<div style="font-size:11px;color:#4a5e80;margin-top:4px">'+l.address+'</div>';
         h+='<div style="margin-top:6px">'+listingLink(l)+'</div>';
@@ -532,7 +541,7 @@ function openComplexModal(id,name){
     }
     
     if(als.length){
-      h+='<div class="modal-section"><div class="modal-section-title">\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA \u05D0\u05D7\u05E8\u05D5\u05E0\u05D5\u05EA</div>';
+      h+='<div class="modal-section"><div class="modal-section-title">\\u05D4\\u05EA\\u05E8\\u05D0\\u05D5\\u05EA \\u05D0\\u05D7\\u05E8\\u05D5\\u05E0\\u05D5\\u05EA</div>';
       als.forEach(function(a){
         h+='<div style="padding:6px 0;border-bottom:1px solid rgba(26,39,68,.3);font-size:12px">'+dotH(a.severity)+' <span style="margin-right:6px">'+a.title+'</span><span class="xs dim">'+fmtD(a.created_at)+'</span></div>';
       });
@@ -541,30 +550,30 @@ function openComplexModal(id,name){
     
     document.getElementById('modal-content').innerHTML=h;
   }).catch(function(e){
-    document.getElementById('modal-content').innerHTML='<div style="color:#ff4d6a;padding:20px;text-align:center">\u05E9\u05D2\u05D9\u05D0\u05D4: '+e.message+'</div>';
+    document.getElementById('modal-content').innerHTML='<div style="color:#ff4d6a;padding:20px;text-align:center">\\u05E9\\u05D2\\u05D9\\u05D0\\u05D4: '+e.message+'</div>';
   });
 }
 
 function openAlertModal(alert){
   var h='';
-  h+='<div class="modal-section"><div class="modal-section-title">\u05E4\u05E8\u05D8\u05D9 \u05D4\u05EA\u05E8\u05D0\u05D4</div>';
-  h+=mRow('\u05E1\u05D5\u05D2',alert.alert_type);
-  h+=mRow('\u05D7\u05D5\u05DE\u05E8\u05D4',alert.severity);
-  h+=mRow('\u05EA\u05D0\u05E8\u05D9\u05DA',fmtD(alert.created_at));
-  h+=mRow('\u05DE\u05EA\u05D7\u05DD',alert.complex_name||'-');
-  h+=mRow('\u05E2\u05D9\u05E8',alert.city||'-');
+  h+='<div class="modal-section"><div class="modal-section-title">\\u05E4\\u05E8\\u05D8\\u05D9 \\u05D4\\u05EA\\u05E8\\u05D0\\u05D4</div>';
+  h+=mRow('\\u05E1\\u05D5\\u05D2',alert.alert_type);
+  h+=mRow('\\u05D7\\u05D5\\u05DE\\u05E8\\u05D4',alert.severity);
+  h+=mRow('\\u05EA\\u05D0\\u05E8\\u05D9\\u05DA',fmtD(alert.created_at));
+  h+=mRow('\\u05DE\\u05EA\\u05D7\\u05DD',alert.complex_name||'-');
+  h+=mRow('\\u05E2\\u05D9\\u05E8',alert.city||'-');
   h+='</div>';
-  h+='<div class="modal-section"><div class="modal-section-title">\u05D4\u05D5\u05D3\u05E2\u05D4</div>';
+  h+='<div class="modal-section"><div class="modal-section-title">\\u05D4\\u05D5\\u05D3\\u05E2\\u05D4</div>';
   h+='<div style="font-size:13px;line-height:1.7;color:#e2e8f0">'+(alert.message||alert.title)+'</div></div>';
   if(alert.data){
     var ad=typeof alert.data==='string'?JSON.parse(alert.data):alert.data;
-    if(ad.addresses)h+=mRow('\u05DB\u05EA\u05D5\u05D1\u05D5\u05EA',ad.addresses);
-    if(ad.source)h+=mRow('\u05DE\u05E7\u05D5\u05E8',ad.source);
+    if(ad.addresses)h+=mRow('\\u05DB\\u05EA\\u05D5\\u05D1\\u05D5\\u05EA',ad.addresses);
+    if(ad.source)h+=mRow('\\u05DE\\u05E7\\u05D5\\u05E8',ad.source);
   }
   if(alert.complex_id){
-    h+='<div style="margin-top:14px"><button class="btn btn-ssi" data-cid="'+alert.complex_id+'" data-cname="'+((alert.complex_name||'').replace(/"/g,'&quot;'))+'" onclick="closeModal();openComplexModal(Number(this.dataset.cid),this.dataset.cname)">\u05E6\u05E4\u05D4 \u05D1\u05DE\u05EA\u05D7\u05DD</button></div>';
+    h+='<div style="margin-top:14px"><button class="btn btn-ssi" data-cid="'+alert.complex_id+'" data-cname="'+((alert.complex_name||'').replace(/"/g,'&quot;'))+'" onclick="closeModal();openComplexModal(Number(this.dataset.cid),this.dataset.cname)">\\u05E6\\u05E4\\u05D4 \\u05D1\\u05DE\\u05EA\\u05D7\\u05DD</button></div>';
   }
-  openModal(alert.title||'\u05D4\u05EA\u05E8\u05D0\u05D4',h);
+  openModal(alert.title||'\\u05D4\\u05EA\\u05E8\\u05D0\\u05D4',h);
 }
 
 function mRow(label,value){return'<div class="modal-row"><span class="modal-row-label">'+label+'</span><span class="modal-row-value">'+(value||'-')+'</span></div>';}
@@ -577,11 +586,11 @@ function loadData(){
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('time-label').textContent=new Date().toLocaleTimeString('he-IL');
     var s=D.stats||{};
-    document.getElementById('footer-text').textContent='QUANTUM v4.24.1 | '+(s.total_complexes||0)+' \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD | '+(s.cities||0)+' \u05E2\u05E8\u05D9\u05DD';
+    document.getElementById('footer-text').textContent='QUANTUM v4.24.2 | '+(s.total_complexes||0)+' \\u05DE\\u05EA\\u05D7\\u05DE\\u05D9\\u05DD | '+(s.cities||0)+' \\u05E2\\u05E8\\u05D9\\u05DD';
     renderNav();renderTab();
   }).catch(function(e){
     console.error(e);
-    document.getElementById('loading').innerHTML='<div class="loading-logo-wrap"><img src="/api/dashboard/logo.png" class="loading-logo" alt="Q" style="animation:none;filter:grayscale(1) opacity(0.5)"><div class="orbit-ring" style="animation:none;border-color:rgba(255,77,106,0.3)"></div></div><div style="color:#ff4d6a;font-size:14px;text-align:center">\u05E9\u05D2\u05D9\u05D0\u05D4</div><button class="btn" data-action="refresh" style="margin-top:8px">\u05E0\u05E1\u05D4</button>';
+    document.getElementById('loading').innerHTML='<div class="loading-logo-wrap"><img src="/api/dashboard/logo.png" class="loading-logo" alt="Q" style="animation:none;filter:grayscale(1) opacity(0.5)"><div class="orbit-ring" style="animation:none;border-color:rgba(255,77,106,0.3)"></div></div><div style="color:#ff4d6a;font-size:14px;text-align:center">\\u05E9\\u05D2\\u05D9\\u05D0\\u05D4</div><button class="btn" data-action="refresh" style="margin-top:8px">\\u05E0\\u05E1\\u05D4</button>';
   });
 }
 function loadListings(){
@@ -601,12 +610,12 @@ function runSSI(){
 
 // --- Navigation ---
 var tabs=[
-  {id:'overview',l:'\u05E1\u05E7\u05D9\u05E8\u05D4'},
-  {id:'listings',l:'\u05DE\u05D5\u05D3\u05E2\u05D5\u05EA'},
-  {id:'ssi',l:'\u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DC\u05D7\u05D5\u05E6\u05D9\u05DD'},
-  {id:'opp',l:'\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA'},
-  {id:'cities',l:'\u05E2\u05E8\u05D9\u05DD'},
-  {id:'alerts',l:'\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA'}
+  {id:'overview',l:'\\u05E1\\u05E7\\u05D9\\u05E8\\u05D4'},
+  {id:'listings',l:'\\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA'},
+  {id:'ssi',l:'\\u05DE\\u05D5\\u05DB\\u05E8\\u05D9\\u05DD \\u05DC\\u05D7\\u05D5\\u05E6\\u05D9\\u05DD'},
+  {id:'opp',l:'\\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA'},
+  {id:'cities',l:'\\u05E2\\u05E8\\u05D9\\u05DD'},
+  {id:'alerts',l:'\\u05D4\\u05EA\\u05E8\\u05D0\\u05D5\\u05EA'}
 ];
 function renderNav(){
   var h='';
@@ -634,7 +643,7 @@ function panelH(title,sub,icon){return'<div class="panel-head">'+(icon?'<span cl
 
 // ==================== LISTINGS ====================
 function renderListings(){
-  if(!LD)return'<div class="tab-content"><div class="empty-msg" style="padding:40px">\u05D8\u05D5\u05E2\u05DF \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA...</div></div>';
+  if(!LD)return'<div class="tab-content"><div class="empty-msg" style="padding:40px">\\u05D8\\u05D5\\u05E2\\u05DF \\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA...</div></div>';
   var listings=LD.listings||[],cities=LD.cities||[],sources=LD.sources||[];
   var fs=filterStates.listings||{};
   var filtered=listings.filter(function(l){
@@ -654,46 +663,46 @@ function renderListings(){
   if(sortStates.listings&&sortStates.listings.key)filtered=sortData(filtered,'listings',sortStates.listings.key,sortStates.listings.dir);
 
   var h='<div class="tab-content">';
-  h+='<div class="section-note"><strong>\u05DE\u05D5\u05D3\u05E2\u05D5\u05EA</strong> - \u05DB\u05DC \u05D4\u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05D4\u05E4\u05E2\u05D9\u05DC\u05D5\u05EA \u05E9\u05E0\u05DE\u05E6\u05D0\u05D5 \u05D1\u05DE\u05EA\u05D7\u05DE\u05D9 \u05E4\u05D9\u05E0\u05D5\u05D9-\u05D1\u05D9\u05E0\u05D5\u05D9. \u05DC\u05D7\u05E5 \u05E2\u05DC \u05E9\u05D5\u05E8\u05D4 \u05DC\u05E6\u05E4\u05D9\u05D9\u05D4 \u05D1\u05DE\u05D5\u05D3\u05E2\u05D4 \u05D4\u05DE\u05E7\u05D5\u05E8\u05D9\u05EA. <strong>\u05E1\u05E8\u05D9\u05E7\u05EA AI</strong> = \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05E9\u05E0\u05DE\u05E6\u05D0\u05D5 \u05E2"\u05D9 \u05E1\u05E8\u05D9\u05E7\u05D4 \u05D7\u05DB\u05DE\u05D4 \u05D5\u05DC\u05D0 \u05DE\u05E4\u05DC\u05D8\u05E4\u05D5\u05E8\u05DE\u05D4 \u05D9\u05E9\u05D9\u05E8\u05D4.</div>';
+  h+='<div class="section-note"><strong>\\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA</strong> - \\u05DB\\u05DC \\u05D4\\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA \\u05D4\\u05E4\\u05E2\\u05D9\\u05DC\\u05D5\\u05EA \\u05E9\\u05E0\\u05DE\\u05E6\\u05D0\\u05D5 \\u05D1\\u05DE\\u05EA\\u05D7\\u05DE\\u05D9 \\u05E4\\u05D9\\u05E0\\u05D5\\u05D9-\\u05D1\\u05D9\\u05E0\\u05D5\\u05D9. \\u05DC\\u05D7\\u05E5 \\u05E2\\u05DC \\u05E9\\u05D5\\u05E8\\u05D4 \\u05DC\\u05E6\\u05E4\\u05D9\\u05D9\\u05D4 \\u05D1\\u05DE\\u05D5\\u05D3\\u05E2\\u05D4 \\u05D4\\u05DE\\u05E7\\u05D5\\u05E8\\u05D9\\u05EA. <strong>\\u05E1\\u05E8\\u05D9\\u05E7\\u05EA AI</strong> = \\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA \\u05E9\\u05E0\\u05DE\\u05E6\\u05D0\\u05D5 \\u05E2"\\u05D9 \\u05E1\\u05E8\\u05D9\\u05E7\\u05D4 \\u05D7\\u05DB\\u05DE\\u05D4 \\u05D5\\u05DC\\u05D0 \\u05DE\\u05E4\\u05DC\\u05D8\\u05E4\\u05D5\\u05E8\\u05DE\\u05D4 \\u05D9\\u05E9\\u05D9\\u05E8\\u05D4.</div>';
 
   h+='<div class="grid grid-4">';
-  h+=statCard('\u05E1\u05D4"\u05DB',filtered.length,LD.total+' \u05E1\u05D4"\u05DB','#06d6a0','\u25A4');
+  h+=statCard('\\u05E1\\u05D4"\\u05DB',filtered.length,LD.total+' \\u05E1\\u05D4"\\u05DB','#06d6a0','\\u25A4');
   var urgCnt=filtered.filter(function(l){return l.has_urgent_keywords;}).length;
-  h+=statCard('\u05D3\u05D7\u05D5\u05E4\u05D5\u05EA',urgCnt,'','#ff4d6a','!');
+  h+=statCard('\\u05D3\\u05D7\\u05D5\\u05E4\\u05D5\\u05EA',urgCnt,'','#ff4d6a','!');
   var srcCounts={};filtered.forEach(function(l){var ns=normSrc(l.source);srcCounts[ns]=(srcCounts[ns]||0)+1;});
   var topSrc=Object.keys(srcCounts).sort(function(a,b){return srcCounts[b]-srcCounts[a];});
-  h+=statCard('\u05E4\u05DC\u05D8\u05E4\u05D5\u05E8\u05DE\u05D5\u05EA',topSrc.length,topSrc.map(function(s){return(PLAT[s]?PLAT[s].name:s)+':'+srcCounts[s];}).join(', '),'#3b82f6','\u25CE');
+  h+=statCard('\\u05E4\\u05DC\\u05D8\\u05E4\\u05D5\\u05E8\\u05DE\\u05D5\\u05EA',topSrc.length,topSrc.map(function(s){return(PLAT[s]?PLAT[s].name:s)+':'+srcCounts[s];}).join(', '),'#3b82f6','\\u25CE');
   var avgPPM=0,ppmC=0;filtered.forEach(function(l){if(l.price_per_sqm){avgPPM+=parseFloat(l.price_per_sqm);ppmC++;}});
-  h+=statCard('\u05DE\u05D7\u05D9\u05E8/\u05DE"\u05E8',ppmC?fmtN(Math.round(avgPPM/ppmC)):'-','\u05DE\u05DE\u05D5\u05E6\u05E2','#ffc233','\u20AA');
+  h+=statCard('\\u05DE\\u05D7\\u05D9\\u05E8/\\u05DE"\\u05E8',ppmC?fmtN(Math.round(avgPPM/ppmC)):'-','\\u05DE\\u05DE\\u05D5\\u05E6\\u05E2','#ffc233','\\u20AA');
   h+='</div>';
 
   h+='<div class="panel"><div class="filter-row">';
-  h+='<span class="filter-label">\u05E2\u05D9\u05E8:</span><select data-filter="listings-city"><option value="">\u05DB\u05DC</option>';
+  h+='<span class="filter-label">\\u05E2\\u05D9\\u05E8:</span><select data-filter="listings-city"><option value="">\\u05DB\\u05DC</option>';
   cities.forEach(function(c){h+='<option value="'+c+'"'+(fs.city===c?' selected':'')+'>'+c+'</option>';});
   h+='</select>';
-  h+='<span class="filter-label">\u05E4\u05DC\u05D8\u05E4\u05D5\u05E8\u05DE\u05D4:</span><select data-filter="listings-source"><option value="">\u05DB\u05DC</option>';
+  h+='<span class="filter-label">\\u05E4\\u05DC\\u05D8\\u05E4\\u05D5\\u05E8\\u05DE\\u05D4:</span><select data-filter="listings-source"><option value="">\\u05DB\\u05DC</option>';
   var uSrc={};sources.forEach(function(s){var ns=normSrc(s);uSrc[ns]=1;});
   Object.keys(uSrc).forEach(function(ns){h+='<option value="'+ns+'"'+(fs.source===ns?' selected':'')+'>'+(PLAT[ns]?PLAT[ns].name:ns)+'</option>';});
   h+='</select>';
-  h+='<span class="filter-label">\u05D7\u05D3\u05E8\u05D9\u05DD:</span>';
-  h+='<input type="number" placeholder="\u05DE\u05D9\u05DF" data-filter="listings-minRooms" value="'+(fs.minRooms||'')+'" style="width:55px">';
-  h+='-<input type="number" placeholder="\u05DE\u05E7\u05E1" data-filter="listings-maxRooms" value="'+(fs.maxRooms||'')+'" style="width:55px">';
-  h+='<span class="filter-label">\u05DE\u05D7\u05D9\u05E8:</span>';
-  h+='<input type="number" placeholder="\u05DE\u05D9\u05DF" data-filter="listings-minPrice" value="'+(fs.minPrice||'')+'" step="100000" style="width:80px">';
-  h+='-<input type="number" placeholder="\u05DE\u05E7\u05E1" data-filter="listings-maxPrice" value="'+(fs.maxPrice||'')+'" step="100000" style="width:80px">';
-  h+='<span class="filter-label">\u05DE\u05EA\u05D7\u05DD:</span>';
-  h+='<input type="text" placeholder="\u05D7\u05D9\u05E4\u05D5\u05E9..." data-filter="listings-complex" value="'+(fs.complex||'')+'" style="width:100px">';
+  h+='<span class="filter-label">\\u05D7\\u05D3\\u05E8\\u05D9\\u05DD:</span>';
+  h+='<input type="number" placeholder="\\u05DE\\u05D9\\u05DF" data-filter="listings-minRooms" value="'+(fs.minRooms||'')+'" style="width:55px">';
+  h+='-<input type="number" placeholder="\\u05DE\\u05E7\\u05E1" data-filter="listings-maxRooms" value="'+(fs.maxRooms||'')+'" style="width:55px">';
+  h+='<span class="filter-label">\\u05DE\\u05D7\\u05D9\\u05E8:</span>';
+  h+='<input type="number" placeholder="\\u05DE\\u05D9\\u05DF" data-filter="listings-minPrice" value="'+(fs.minPrice||'')+'" step="100000" style="width:80px">';
+  h+='-<input type="number" placeholder="\\u05DE\\u05E7\\u05E1" data-filter="listings-maxPrice" value="'+(fs.maxPrice||'')+'" step="100000" style="width:80px">';
+  h+='<span class="filter-label">\\u05DE\\u05EA\\u05D7\\u05DD:</span>';
+  h+='<input type="text" placeholder="\\u05D7\\u05D9\\u05E4\\u05D5\\u05E9..." data-filter="listings-complex" value="'+(fs.complex||'')+'" style="width:100px">';
   h+='</div>';
 
   h+='<div class="overflow-x"><table><thead><tr>';
-  h+='<th class="cb-cell"><input type="checkbox" id="cb-all" title="\u05D1\u05D7\u05E8 \u05D4\u05DB\u05DC"></th>';
-  var cols=[{k:'source',l:'\u05DE\u05E7\u05D5\u05E8',c:true},{k:'complex_city',l:'\u05E2\u05D9\u05E8'},{k:'complex_name',l:'\u05DE\u05EA\u05D7\u05DD'},{k:'rooms',l:'\u05D7\u05D3\u05E8\u05D9\u05DD',c:true},{k:'area_sqm',l:'\u05E9\u05D8\u05D7',c:true},{k:'floor',l:'\u05E7\u05D5\u05DE\u05D4',c:true},{k:'asking_price',l:'\u05DE\u05D7\u05D9\u05E8',c:true},{k:'days_on_market',l:'\u05D9\u05DE\u05D9\u05DD',c:true},{k:'price_changes',l:'\u05D9\u05E8\u05D9\u05D3\u05D5\u05EA',c:true},{k:'message_status',l:'\u05D4\u05D5\u05D3\u05E2\u05D4',c:true},{k:'_link',l:'\u05E7\u05D9\u05E9\u05D5\u05E8',c:true}];
+  h+='<th class="cb-cell"><input type="checkbox" id="cb-all" title="\\u05D1\\u05D7\\u05E8 \\u05D4\\u05DB\\u05DC"></th>';
+  var cols=[{k:'source',l:'\\u05DE\\u05E7\\u05D5\\u05E8',c:true},{k:'complex_city',l:'\\u05E2\\u05D9\\u05E8'},{k:'complex_name',l:'\\u05DE\\u05EA\\u05D7\\u05DD'},{k:'rooms',l:'\\u05D7\\u05D3\\u05E8\\u05D9\\u05DD',c:true},{k:'area_sqm',l:'\\u05E9\\u05D8\\u05D7',c:true},{k:'floor',l:'\\u05E7\\u05D5\\u05DE\\u05D4',c:true},{k:'asking_price',l:'\\u05DE\\u05D7\\u05D9\\u05E8',c:true},{k:'days_on_market',l:'\\u05D9\\u05DE\\u05D9\\u05DD',c:true},{k:'price_changes',l:'\\u05D9\\u05E8\\u05D9\\u05D3\\u05D5\\u05EA',c:true},{k:'message_status',l:'\\u05D4\\u05D5\\u05D3\\u05E2\\u05D4',c:true},{k:'_link',l:'\\u05E7\\u05D9\\u05E9\\u05D5\\u05E8',c:true}];
   for(var i=0;i<cols.length;i++){var col=cols[i];h+='<th class="'+(col.c?'c ':'')+thSorted('listings',col.k)+'" data-sort-tab="listings" data-sort-key="'+col.k+'">'+sortArrow('listings',col.k)+col.l+'</th>';}
   h+='</tr></thead><tbody>';
-  if(!filtered.length)h+='<tr><td colspan="'+(cols.length+1)+'" class="empty-msg">\u05DC\u05D0 \u05E0\u05DE\u05E6\u05D0\u05D5</td></tr>';
+  if(!filtered.length)h+='<tr><td colspan="'+(cols.length+1)+'" class="empty-msg">\\u05DC\\u05D0 \\u05E0\\u05DE\\u05E6\\u05D0\\u05D5</td></tr>';
   else for(var i=0;i<filtered.length;i++){
     var l=filtered[i];
-    var isSent=l.message_status&&l.message_status!=='\u05DC\u05D0 \u05E0\u05E9\u05DC\u05D7\u05D4';
+    var isSent=l.message_status&&l.message_status!=='\\u05DC\\u05D0 \\u05E0\\u05E9\\u05DC\\u05D7\\u05D4';
     var isChecked=selectedListings.has(l.id);
     h+='<tr class="clickable'+(isSent?' msg-sent':'')+'" data-listing-url="'+smartUrl(l)+'" data-lid="'+l.id+'">';
     h+='<td class="cb-cell" data-no-modal="1"><input type="checkbox" class="listing-cb" data-lid="'+l.id+'"'+(isChecked?' checked':'')+'></td>';
@@ -703,17 +712,17 @@ function renderListings(){
     h+='<td class="c">'+(l.rooms||'-')+'</td>';
     h+='<td class="c">'+(l.area_sqm?fmtN(l.area_sqm):'-')+'</td>';
     h+='<td class="c">'+(l.floor!=null?l.floor:'-')+'</td>';
-    h+='<td class="c nw fw" style="color:#06d6a0">'+(l.asking_price?'\u20AA'+fmtP(l.asking_price):'-')+'</td>';
+    h+='<td class="c nw fw" style="color:#06d6a0">'+(l.asking_price?'\\u20AA'+fmtP(l.asking_price):'-')+'</td>';
     h+='<td class="c">'+(l.days_on_market||'-')+'</td>';
     h+='<td class="c">'+(l.price_changes?'<span style="color:#ff4d6a;font-weight:700">'+l.price_changes+'</span>':'-')+'</td>';
-    h+='<td class="c">'+(isSent?'<span class="badge-msg badge-msg-sent">\u2713 \u05E0\u05E9\u05DC\u05D7\u05D4</span>':'<span class="badge-msg badge-msg-pending">\u05D8\u05E8\u05DD</span>')+'</td>';
+    h+='<td class="c">'+(isSent?'<span class="badge-msg badge-msg-sent">\\u2713 \\u05E0\\u05E9\\u05DC\\u05D7\\u05D4</span>':'<span class="badge-msg badge-msg-pending">\\u05D8\\u05E8\\u05DD</span>')+'</td>';
     h+='<td class="c">'+listingLink(l)+'</td>';
     h+='</tr>';
   }
   h+='</tbody></table></div>';
   // Message action bar
   if(selectedListings.size>0){
-    h+='<div class="msg-bar"><div class="msg-bar-info"><span class="msg-bar-count">'+selectedListings.size+'</span> \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05E0\u05D1\u05D7\u05E8\u05D5</div><div class="msg-bar-btns"><button class="btn-msg btn-msg-clear" data-action="clear-selection">\u05E0\u05E7\u05D4 \u05D1\u05D7\u05D9\u05E8\u05D4</button><button class="btn-msg btn-msg-send" data-action="open-tmpl">\u2709 \u05E9\u05DC\u05D7 \u05D4\u05D5\u05D3\u05E2\u05D4</button></div></div>';
+    h+='<div class="msg-bar"><div class="msg-bar-info"><span class="msg-bar-count">'+selectedListings.size+'</span> \\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA \\u05E0\\u05D1\\u05D7\\u05E8\\u05D5</div><div class="msg-bar-btns"><button class="btn-msg btn-msg-clear" data-action="clear-selection">\\u05E0\\u05E7\\u05D4 \\u05D1\\u05D7\\u05D9\\u05E8\\u05D4</button><button class="btn-msg btn-msg-send" data-action="open-tmpl">\\u2709 \\u05E9\\u05DC\\u05D7 \\u05D4\\u05D5\\u05D3\\u05E2\\u05D4</button></div></div>';
   }
   h+='</div></div>';
   return h;
@@ -723,19 +732,19 @@ function renderListings(){
 // ==================== OVERVIEW ====================
 function renderOverview(s,dist,topSSI,alerts,cities,ls){
   var h='<div class="tab-content"><div class="grid grid-6">';
-  h+=statCard('\u05DE\u05EA\u05D7\u05DE\u05D9\u05DD',s.total_complexes,s.cities+' \u05E2\u05E8\u05D9\u05DD','#06d6a0','Q');
-  h+=statCard('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA',s.opportunities,s.excellent+' \u05DE\u05E6\u05D5\u05D9\u05E0\u05D5\u05EA (70+)','#ffc233','\u2605');
-  h+=statCard('\u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DC\u05D7\u05D5\u05E6\u05D9\u05DD',s.stressed_sellers,s.high_stress+' \u05D1\u05E8\u05DE\u05D4 \u05D2\u05D1\u05D5\u05D4\u05D4','#ff4d6a','!');
-  h+=statCard('\u05DE\u05D5\u05D3\u05E2\u05D5\u05EA',ls.active||'0',(ls.urgent||'0')+' \u05D3\u05D7\u05D5\u05E4\u05D5\u05EA','#22c55e','\u25A4');
-  h+=statCard('\u05DB\u05D9\u05E0\u05D5\u05E1\u05D9\u05DD',(D.konesStats||{}).total||'0','','#9f7aea','\u2696');
-  h+=statCard('IAI \u05DE\u05DE\u05D5\u05E6\u05E2',s.avg_iai||'-','','#3b82f6','\u25B3');
+  h+=statCard('\\u05DE\\u05EA\\u05D7\\u05DE\\u05D9\\u05DD',s.total_complexes,s.cities+' \\u05E2\\u05E8\\u05D9\\u05DD','#06d6a0','Q');
+  h+=statCard('\\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA',s.opportunities,s.excellent+' \\u05DE\\u05E6\\u05D5\\u05D9\\u05E0\\u05D5\\u05EA (70+)','#ffc233','\\u2605');
+  h+=statCard('\\u05DE\\u05D5\\u05DB\\u05E8\\u05D9\\u05DD \\u05DC\\u05D7\\u05D5\\u05E6\\u05D9\\u05DD',s.stressed_sellers,s.high_stress+' \\u05D1\\u05E8\\u05DE\\u05D4 \\u05D2\\u05D1\\u05D5\\u05D4\\u05D4','#ff4d6a','!');
+  h+=statCard('\\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA',ls.active||'0',(ls.urgent||'0')+' \\u05D3\\u05D7\\u05D5\\u05E4\\u05D5\\u05EA','#22c55e','\\u25A4');
+  h+=statCard('\\u05DB\\u05D9\\u05E0\\u05D5\\u05E1\\u05D9\\u05DD',(D.konesStats||{}).total||'0','','#9f7aea','\\u2696');
+  h+=statCard('IAI \\u05DE\\u05DE\\u05D5\\u05E6\\u05E2',s.avg_iai||'-','','#3b82f6','\\u25B3');
   h+='</div>';
 
   var goldOpp=topSSI.filter(function(x){return x.iai_score>=40;}).slice(0,5);
   if(goldOpp.length>0){
-    h+='<div class="panel panel-gold">'+panelH('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05D6\u05D4\u05D1','\u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05E2\u05DD IAI \u05D2\u05D1\u05D5\u05D4 + \u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DC\u05D7\u05D5\u05E6\u05D9\u05DD. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.','\u25C6');
+    h+='<div class="panel panel-gold">'+panelH('\\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA \\u05D6\\u05D4\\u05D1','\\u05DE\\u05EA\\u05D7\\u05DE\\u05D9\\u05DD \\u05E2\\u05DD IAI \\u05D2\\u05D1\\u05D5\\u05D4 + \\u05DE\\u05D5\\u05DB\\u05E8\\u05D9\\u05DD \\u05DC\\u05D7\\u05D5\\u05E6\\u05D9\\u05DD. \\u05DC\\u05D7\\u05E5 \\u05DC\\u05E4\\u05E8\\u05D8\\u05D9\\u05DD.','\\u25C6');
     h+='<div class="overflow-x"><table><thead><tr>';
-    h+='<th class="c">SSI</th><th class="c">IAI</th><th>\u05DE\u05EA\u05D7\u05DD</th><th>\u05E2\u05D9\u05E8</th><th>\u05D2\u05D5\u05E8\u05DE\u05D9\u05DD</th></tr></thead><tbody>';
+    h+='<th class="c">SSI</th><th class="c">IAI</th><th>\\u05DE\\u05EA\\u05D7\\u05DD</th><th>\\u05E2\\u05D9\\u05E8</th><th>\\u05D2\\u05D5\\u05E8\\u05DE\\u05D9\\u05DD</th></tr></thead><tbody>';
     for(var i=0;i<goldOpp.length;i++){
       var r=goldOpp[i],f=pf(r.ssi_enhancement_factors).slice(0,2).join(' | ');
       h+='<tr class="clickable" data-complex-id="'+r.id+'" data-complex-name="'+((r.name||'').replace(/"/g,'&quot;'))+'">';
@@ -749,11 +758,11 @@ function renderOverview(s,dist,topSSI,alerts,cities,ls){
   }
 
   h+='<div class="grid grid-2">';
-  h+='<div class="panel">'+panelH('\u05D4\u05EA\u05E4\u05DC\u05D2\u05D5\u05EA SSI','','\u25C9')+'<div class="pie-legend">';
-  var di=[{l:'\u05D2\u05D1\u05D5\u05D4 (60+)',v:+(dist.high||0)+ +(dist.critical||0),c:'#ff4d6a'},{l:'\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9 (40-59)',v:+(dist.medium||0),c:'#ff8c42'},{l:'\u05E0\u05DE\u05D5\u05DA (20-39)',v:+(dist.low||0),c:'#ffc233'},{l:'\u05DE\u05D6\u05E2\u05E8\u05D9 (<20)',v:+(dist.minimal||0),c:'#4a5e80'}];
+  h+='<div class="panel">'+panelH('\\u05D4\\u05EA\\u05E4\\u05DC\\u05D2\\u05D5\\u05EA SSI','','\\u25C9')+'<div class="pie-legend">';
+  var di=[{l:'\\u05D2\\u05D1\\u05D5\\u05D4 (60+)',v:+(dist.high||0)+ +(dist.critical||0),c:'#ff4d6a'},{l:'\\u05D1\\u05D9\\u05E0\\u05D5\\u05E0\\u05D9 (40-59)',v:+(dist.medium||0),c:'#ff8c42'},{l:'\\u05E0\\u05DE\\u05D5\\u05DA (20-39)',v:+(dist.low||0),c:'#ffc233'},{l:'\\u05DE\\u05D6\\u05E2\\u05E8\\u05D9 (<20)',v:+(dist.minimal||0),c:'#4a5e80'}];
   for(var i=0;i<di.length;i++){h+='<div class="pie-row"><div class="pie-info"><div class="pie-dot" style="background:'+di[i].c+'"></div><span class="sm muted">'+di[i].l+'</span></div><span style="font-weight:700;color:'+di[i].c+';font-size:14px">'+di[i].v+'</span></div>';}
   h+='</div></div>';
-  h+='<div class="panel">'+panelH('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05DC\u05E4\u05D9 \u05E2\u05D9\u05E8','','\u25A3');
+  h+='<div class="panel">'+panelH('\\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA \\u05DC\\u05E4\\u05D9 \\u05E2\\u05D9\\u05E8','','\\u25A3');
   var ct=cities.slice(0,10),mx=1;for(var i=0;i<ct.length;i++){if(+ct[i].opportunities>mx)mx=+ct[i].opportunities;}
   h+='<div class="bar-chart">';for(var i=0;i<ct.length;i++){var pct=Math.round((+ct[i].opportunities/mx)*100);h+='<div class="bar-row"><span class="bar-label">'+ct[i].city+'</span><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:#06d6a0"></div></div><span class="bar-val">'+ct[i].opportunities+'</span></div>';}
   h+='</div></div></div></div>';
@@ -763,22 +772,22 @@ function renderOverview(s,dist,topSSI,alerts,cities,ls){
 // ==================== SSI ====================
 function renderSSITab(s,dist,topSSI){
   var h='<div class="tab-content">';
-  h+='<div class="section-note"><strong>\u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DC\u05D7\u05D5\u05E6\u05D9\u05DD (SSI)</strong> - \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05E9\u05D1\u05D4\u05DD \u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DE\u05E6\u05D9\u05D2\u05D9\u05DD \u05E1\u05D9\u05DE\u05E0\u05D9 <strong>\u05DC\u05D7\u05E5 \u05DC\u05DE\u05DB\u05D5\u05E8</strong>: \u05D6\u05DE\u05DF \u05E8\u05D1 \u05D1\u05E9\u05D5\u05E7, \u05D9\u05E8\u05D9\u05D3\u05D5\u05EA \u05DE\u05D7\u05D9\u05E8 \u05D7\u05D5\u05D6\u05E8\u05D5\u05EA, \u05DE\u05D9\u05DC\u05D5\u05EA \u05DE\u05E4\u05EA\u05D7 \u05DB\u05DE\u05D5 "\u05D3\u05D7\u05D5\u05E3" \u05D0\u05D5 "\u05DE\u05D5\u05DB\u05E8\u05D7 \u05DC\u05DE\u05DB\u05D5\u05E8". \u05DB\u05D0\u05DF \u05D9\u05E9 \u05E4\u05D5\u05D8\u05E0\u05E6\u05D9\u05D0\u05DC \u05DC\u05DE\u05E9\u05D0 \u05D5\u05DE\u05EA\u05DF \u05DE\u05EA\u05D7\u05EA \u05DC\u05E9\u05D5\u05E7. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.</div>';
+  h+='<div class="section-note"><strong>\\u05DE\\u05D5\\u05DB\\u05E8\\u05D9\\u05DD \\u05DC\\u05D7\\u05D5\\u05E6\\u05D9\\u05DD (SSI)</strong> - \\u05DE\\u05EA\\u05D7\\u05DE\\u05D9\\u05DD \\u05E9\\u05D1\\u05D4\\u05DD \\u05DE\\u05D5\\u05DB\\u05E8\\u05D9\\u05DD \\u05DE\\u05E6\\u05D9\\u05D2\\u05D9\\u05DD \\u05E1\\u05D9\\u05DE\\u05E0\\u05D9 <strong>\\u05DC\\u05D7\\u05E5 \\u05DC\\u05DE\\u05DB\\u05D5\\u05E8</strong>: \\u05D6\\u05DE\\u05DF \\u05E8\\u05D1 \\u05D1\\u05E9\\u05D5\\u05E7, \\u05D9\\u05E8\\u05D9\\u05D3\\u05D5\\u05EA \\u05DE\\u05D7\\u05D9\\u05E8 \\u05D7\\u05D5\\u05D6\\u05E8\\u05D5\\u05EA, \\u05DE\\u05D9\\u05DC\\u05D5\\u05EA \\u05DE\\u05E4\\u05EA\\u05D7 \\u05DB\\u05DE\\u05D5 "\\u05D3\\u05D7\\u05D5\\u05E3" \\u05D0\\u05D5 "\\u05DE\\u05D5\\u05DB\\u05E8\\u05D7 \\u05DC\\u05DE\\u05DB\\u05D5\\u05E8". \\u05DB\\u05D0\\u05DF \\u05D9\\u05E9 \\u05E4\\u05D5\\u05D8\\u05E0\\u05E6\\u05D9\\u05D0\\u05DC \\u05DC\\u05DE\\u05E9\\u05D0 \\u05D5\\u05DE\\u05EA\\u05DF \\u05DE\\u05EA\\u05D7\\u05EA \\u05DC\\u05E9\\u05D5\\u05E7. \\u05DC\\u05D7\\u05E5 \\u05DC\\u05E4\\u05E8\\u05D8\\u05D9\\u05DD.</div>';
   h+='<div class="grid grid-4">';
-  h+=statCard('\u05DC\u05D7\u05E5 \u05D2\u05D1\u05D5\u05D4',+(dist.high||0)+ +(dist.critical||0),'','#ff4d6a','!');
-  h+=statCard('\u05DC\u05D7\u05E5 \u05D1\u05D9\u05E0\u05D5\u05E0\u05D9',dist.medium||'0','','#ff8c42','\u25B2');
-  h+=statCard('\u05DC\u05D7\u05E5 \u05E0\u05DE\u05D5\u05DA',dist.low||'0','','#ffc233','\u25B3');
-  h+=statCard('SSI \u05DE\u05DE\u05D5\u05E6\u05E2',s.avg_ssi||'-','','#06d6a0','\u25CE');
-  h+='</div><div class="panel">'+panelH('\u05D3\u05D9\u05E8\u05D5\u05D2 SSI - \u05DE\u05D3\u05D3 \u05DC\u05D7\u05E5 \u05DE\u05D5\u05DB\u05E8\u05D9\u05DD','\u05DB\u05DB\u05DC \u05E9\u05D4\u05E6\u05D9\u05D5\u05DF \u05D2\u05D1\u05D5\u05D4 \u05D9\u05D5\u05EA\u05E8, \u05D4\u05DE\u05D5\u05DB\u05E8 \u05DC\u05D7\u05D5\u05E5 \u05D9\u05D5\u05EA\u05E8 - \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA \u05DC\u05DE\u05D5"\u05DE','\u26A1');
-  if(!topSSI.length)h+='<div class="empty-msg">\u05DC\u05D0 \u05E0\u05DE\u05E6\u05D0\u05D5</div>';
+  h+=statCard('\\u05DC\\u05D7\\u05E5 \\u05D2\\u05D1\\u05D5\\u05D4',+(dist.high||0)+ +(dist.critical||0),'','#ff4d6a','!');
+  h+=statCard('\\u05DC\\u05D7\\u05E5 \\u05D1\\u05D9\\u05E0\\u05D5\\u05E0\\u05D9',dist.medium||'0','','#ff8c42','\\u25B2');
+  h+=statCard('\\u05DC\\u05D7\\u05E5 \\u05E0\\u05DE\\u05D5\\u05DA',dist.low||'0','','#ffc233','\\u25B3');
+  h+=statCard('SSI \\u05DE\\u05DE\\u05D5\\u05E6\\u05E2',s.avg_ssi||'-','','#06d6a0','\\u25CE');
+  h+='</div><div class="panel">'+panelH('\\u05D3\\u05D9\\u05E8\\u05D5\\u05D2 SSI - \\u05DE\\u05D3\\u05D3 \\u05DC\\u05D7\\u05E5 \\u05DE\\u05D5\\u05DB\\u05E8\\u05D9\\u05DD','\\u05DB\\u05DB\\u05DC \\u05E9\\u05D4\\u05E6\\u05D9\\u05D5\\u05DF \\u05D2\\u05D1\\u05D5\\u05D4 \\u05D9\\u05D5\\u05EA\\u05E8, \\u05D4\\u05DE\\u05D5\\u05DB\\u05E8 \\u05DC\\u05D7\\u05D5\\u05E5 \\u05D9\\u05D5\\u05EA\\u05E8 - \\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05EA \\u05DC\\u05DE\\u05D5"\\u05DE','\\u26A1');
+  if(!topSSI.length)h+='<div class="empty-msg">\\u05DC\\u05D0 \\u05E0\\u05DE\\u05E6\\u05D0\\u05D5</div>';
   else{
     h+='<div class="overflow-x"><table><thead><tr>';
     h+='<th class="c">#</th><th class="c" data-sort-tab="ssi" data-sort-key="enhanced_ssi_score">'+sortArrow('ssi','enhanced_ssi_score')+'SSI</th>';
-    h+='<th data-sort-tab="ssi" data-sort-key="name">'+sortArrow('ssi','name')+'\u05DE\u05EA\u05D7\u05DD</th>';
-    h+='<th data-sort-tab="ssi" data-sort-key="city">'+sortArrow('ssi','city')+'\u05E2\u05D9\u05E8</th>';
+    h+='<th data-sort-tab="ssi" data-sort-key="name">'+sortArrow('ssi','name')+'\\u05DE\\u05EA\\u05D7\\u05DD</th>';
+    h+='<th data-sort-tab="ssi" data-sort-key="city">'+sortArrow('ssi','city')+'\\u05E2\\u05D9\\u05E8</th>';
     h+='<th class="c" data-sort-tab="ssi" data-sort-key="iai_score">'+sortArrow('ssi','iai_score')+'IAI</th>';
-    h+='<th data-sort-tab="ssi" data-sort-key="status">'+sortArrow('ssi','status')+'\u05E1\u05D8\u05D8\u05D5\u05E1</th>';
-    h+='<th>\u05D2\u05D5\u05E8\u05DE\u05D9\u05DD</th></tr></thead><tbody>';
+    h+='<th data-sort-tab="ssi" data-sort-key="status">'+sortArrow('ssi','status')+'\\u05E1\\u05D8\\u05D8\\u05D5\\u05E1</th>';
+    h+='<th>\\u05D2\\u05D5\\u05E8\\u05DE\\u05D9\\u05DD</th></tr></thead><tbody>';
     var sorted=topSSI.map(function(r,i){r._idx=i+1;return r;});
     if(sortStates.ssi&&sortStates.ssi.key)sorted=sortData(sorted,'ssi',sortStates.ssi.key,sortStates.ssi.dir);
     for(var i=0;i<sorted.length;i++){
@@ -794,19 +803,19 @@ function renderSSITab(s,dist,topSSI){
 // ==================== OPPORTUNITIES ====================
 function renderOpp(s,topIAI){
   var h='<div class="tab-content">';
-  h+='<div class="section-note"><strong>\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05D4\u05E9\u05E7\u05E2\u05D4 (IAI)</strong> - \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05E2\u05DD \u05E4\u05D5\u05D8\u05E0\u05E6\u05D9\u05D0\u05DC \u05D4\u05E9\u05E7\u05E2\u05D4 \u05D2\u05D1\u05D5\u05D4 \u05DC\u05E4\u05D9 \u05E9\u05DC\u05D1 \u05D4\u05EA\u05DB\u05E0\u05D9\u05EA, \u05E4\u05E8\u05DE\u05D9\u05D4 \u05D1\u05D9\u05DF \u05DE\u05D7\u05D9\u05E8 \u05E0\u05D5\u05DB\u05D7\u05D9 \u05DC\u05E2\u05EA\u05D9\u05D3\u05D9, \u05D5\u05D0\u05D9\u05DB\u05D5\u05EA \u05D4\u05D9\u05D6\u05DD. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.</div>';
+  h+='<div class="section-note"><strong>\\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA \\u05D4\\u05E9\\u05E7\\u05E2\\u05D4 (IAI)</strong> - \\u05DE\\u05EA\\u05D7\\u05DE\\u05D9\\u05DD \\u05E2\\u05DD \\u05E4\\u05D5\\u05D8\\u05E0\\u05E6\\u05D9\\u05D0\\u05DC \\u05D4\\u05E9\\u05E7\\u05E2\\u05D4 \\u05D2\\u05D1\\u05D5\\u05D4 \\u05DC\\u05E4\\u05D9 \\u05E9\\u05DC\\u05D1 \\u05D4\\u05EA\\u05DB\\u05E0\\u05D9\\u05EA, \\u05E4\\u05E8\\u05DE\\u05D9\\u05D4 \\u05D1\\u05D9\\u05DF \\u05DE\\u05D7\\u05D9\\u05E8 \\u05E0\\u05D5\\u05DB\\u05D7\\u05D9 \\u05DC\\u05E2\\u05EA\\u05D9\\u05D3\\u05D9, \\u05D5\\u05D0\\u05D9\\u05DB\\u05D5\\u05EA \\u05D4\\u05D9\\u05D6\\u05DD. \\u05DC\\u05D7\\u05E5 \\u05DC\\u05E4\\u05E8\\u05D8\\u05D9\\u05DD.</div>';
   h+='<div class="grid grid-3">';
-  h+=statCard('\u05E1\u05D4"\u05DB',s.opportunities,'IAI 30+','#ffc233','\u2605');
-  h+=statCard('\u05DE\u05E6\u05D5\u05D9\u05E0\u05D5\u05EA',s.excellent,'IAI 70+','#22c55e','\u25C6');
-  h+=statCard('IAI \u05DE\u05DE\u05D5\u05E6\u05E2',s.avg_iai||'-','','#06d6a0','\u25B3');
-  h+='</div><div class="panel">'+panelH('\u05D8\u05D5\u05E4 \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA','\u05DC\u05D7\u05E5 \u05E2\u05DC \u05E9\u05D5\u05E8\u05D4 \u05DC\u05E6\u05E4\u05D9\u05D9\u05D4 \u05D1\u05DE\u05EA\u05D7\u05DD','\u2605');
+  h+=statCard('\\u05E1\\u05D4"\\u05DB',s.opportunities,'IAI 30+','#ffc233','\\u2605');
+  h+=statCard('\\u05DE\\u05E6\\u05D5\\u05D9\\u05E0\\u05D5\\u05EA',s.excellent,'IAI 70+','#22c55e','\\u25C6');
+  h+=statCard('IAI \\u05DE\\u05DE\\u05D5\\u05E6\\u05E2',s.avg_iai||'-','','#06d6a0','\\u25B3');
+  h+='</div><div class="panel">'+panelH('\\u05D8\\u05D5\\u05E4 \\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA','\\u05DC\\u05D7\\u05E5 \\u05E2\\u05DC \\u05E9\\u05D5\\u05E8\\u05D4 \\u05DC\\u05E6\\u05E4\\u05D9\\u05D9\\u05D4 \\u05D1\\u05DE\\u05EA\\u05D7\\u05DD','\\u2605');
   h+='<div class="overflow-x"><table><thead><tr>';
   h+='<th class="c">#</th><th class="c" data-sort-tab="opp" data-sort-key="iai_score">'+sortArrow('opp','iai_score')+'IAI</th>';
-  h+='<th data-sort-tab="opp" data-sort-key="name">'+sortArrow('opp','name')+'\u05DE\u05EA\u05D7\u05DD</th>';
-  h+='<th data-sort-tab="opp" data-sort-key="city">'+sortArrow('opp','city')+'\u05E2\u05D9\u05E8</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="name">'+sortArrow('opp','name')+'\\u05DE\\u05EA\\u05D7\\u05DD</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="city">'+sortArrow('opp','city')+'\\u05E2\\u05D9\\u05E8</th>';
   h+='<th class="c" data-sort-tab="opp" data-sort-key="enhanced_ssi_score">'+sortArrow('opp','enhanced_ssi_score')+'SSI</th>';
-  h+='<th data-sort-tab="opp" data-sort-key="developer">'+sortArrow('opp','developer')+'\u05D9\u05D6\u05DD</th>';
-  h+='<th data-sort-tab="opp" data-sort-key="status">'+sortArrow('opp','status')+'\u05E1\u05D8\u05D8\u05D5\u05E1</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="developer">'+sortArrow('opp','developer')+'\\u05D9\\u05D6\\u05DD</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="status">'+sortArrow('opp','status')+'\\u05E1\\u05D8\\u05D8\\u05D5\\u05E1</th>';
   h+='</tr></thead><tbody>';
   var sorted=topIAI.map(function(r,i){r._idx=i+1;return r;});
   if(sortStates.opp&&sortStates.opp.key)sorted=sortData(sorted,'opp',sortStates.opp.key,sortStates.opp.dir);
@@ -820,15 +829,15 @@ function renderOpp(s,topIAI){
 
 // ==================== CITIES ====================
 function renderCities(s,cities){
-  var h='<div class="tab-content"><div class="panel">'+panelH('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05DC\u05E4\u05D9 \u05E2\u05E8\u05D9\u05DD',(s.cities||0)+' \u05E2\u05E8\u05D9\u05DD','\u25A3');
+  var h='<div class="tab-content"><div class="panel">'+panelH('\\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA \\u05DC\\u05E4\\u05D9 \\u05E2\\u05E8\\u05D9\\u05DD',(s.cities||0)+' \\u05E2\\u05E8\\u05D9\\u05DD','\\u25A3');
   var t10=cities.slice(0,10),mx=1;for(var i=0;i<t10.length;i++){if(+t10[i].total>mx)mx=+t10[i].total;}
   h+='<div class="bar-chart">';for(var i=0;i<t10.length;i++){var c=t10[i],p=Math.round((+c.opportunities/mx)*100);h+='<div class="bar-row"><span class="bar-label">'+c.city+'</span><div class="bar-track"><div class="bar-fill" style="width:'+p+'%;background:#06d6a0"></div></div><span class="bar-val">'+c.opportunities+'/'+c.total+'</span></div>';}
   h+='</div></div>';
   h+='<div class="panel"><div class="overflow-x"><table><thead><tr>';
-  h+='<th data-sort-tab="cities" data-sort-key="city">'+sortArrow('cities','city')+'\u05E2\u05D9\u05E8</th>';
-  h+='<th class="c" data-sort-tab="cities" data-sort-key="total">'+sortArrow('cities','total')+'\u05DE\u05EA\u05D7\u05DE\u05D9\u05DD</th>';
-  h+='<th class="c" data-sort-tab="cities" data-sort-key="opportunities">'+sortArrow('cities','opportunities')+'\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA</th>';
-  h+='<th class="c" data-sort-tab="cities" data-sort-key="stressed">'+sortArrow('cities','stressed')+'\u05DC\u05D7\u05D5\u05E6\u05D9\u05DD</th>';
+  h+='<th data-sort-tab="cities" data-sort-key="city">'+sortArrow('cities','city')+'\\u05E2\\u05D9\\u05E8</th>';
+  h+='<th class="c" data-sort-tab="cities" data-sort-key="total">'+sortArrow('cities','total')+'\\u05DE\\u05EA\\u05D7\\u05DE\\u05D9\\u05DD</th>';
+  h+='<th class="c" data-sort-tab="cities" data-sort-key="opportunities">'+sortArrow('cities','opportunities')+'\\u05D4\\u05D6\\u05D3\\u05DE\\u05E0\\u05D5\\u05D9\\u05D5\\u05EA</th>';
+  h+='<th class="c" data-sort-tab="cities" data-sort-key="stressed">'+sortArrow('cities','stressed')+'\\u05DC\\u05D7\\u05D5\\u05E6\\u05D9\\u05DD</th>';
   h+='<th class="c" data-sort-tab="cities" data-sort-key="avg_iai">'+sortArrow('cities','avg_iai')+'IAI</th>';
   h+='</tr></thead><tbody>';
   var sorted=cities.slice();if(sortStates.cities&&sortStates.cities.key)sorted=sortData(sorted,'cities',sortStates.cities.key,sortStates.cities.dir);
@@ -839,16 +848,16 @@ function renderCities(s,cities){
 // ==================== ALERTS ====================
 function renderAlerts(alerts){
   var h='<div class="tab-content">';
-  h+='<div class="section-note"><strong>\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA</strong> - \u05E9\u05D9\u05E0\u05D5\u05D9\u05D9\u05DD \u05D7\u05E9\u05D5\u05D1\u05D9\u05DD \u05E9\u05D4\u05DE\u05E2\u05E8\u05DB\u05EA \u05D6\u05D9\u05D4\u05EA\u05D4: \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05D7\u05D3\u05E9\u05D9\u05DD, \u05E9\u05D9\u05E0\u05D5\u05D9\u05D9 \u05E1\u05D8\u05D8\u05D5\u05E1, \u05D9\u05E8\u05D9\u05D3\u05D5\u05EA \u05DE\u05D7\u05D9\u05E8, \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05D7\u05D3\u05E9\u05D5\u05EA. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.</div>';
-  h+='<div class="panel">'+panelH('\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA \u05D0\u05D7\u05E8\u05D5\u05E0\u05D5\u05EA','','\u25CF');
-  if(!alerts.length)h+='<div class="empty-msg">\u05D0\u05D9\u05DF \u05D4\u05EA\u05E8\u05D0\u05D5\u05EA</div>';
+  h+='<div class="section-note"><strong>\\u05D4\\u05EA\\u05E8\\u05D0\\u05D5\\u05EA</strong> - \\u05E9\\u05D9\\u05E0\\u05D5\\u05D9\\u05D9\\u05DD \\u05D7\\u05E9\\u05D5\\u05D1\\u05D9\\u05DD \\u05E9\\u05D4\\u05DE\\u05E2\\u05E8\\u05DB\\u05EA \\u05D6\\u05D9\\u05D4\\u05EA\\u05D4: \\u05DE\\u05EA\\u05D7\\u05DE\\u05D9\\u05DD \\u05D7\\u05D3\\u05E9\\u05D9\\u05DD, \\u05E9\\u05D9\\u05E0\\u05D5\\u05D9\\u05D9 \\u05E1\\u05D8\\u05D8\\u05D5\\u05E1, \\u05D9\\u05E8\\u05D9\\u05D3\\u05D5\\u05EA \\u05DE\\u05D7\\u05D9\\u05E8, \\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA \\u05D7\\u05D3\\u05E9\\u05D5\\u05EA. \\u05DC\\u05D7\\u05E5 \\u05DC\\u05E4\\u05E8\\u05D8\\u05D9\\u05DD.</div>';
+  h+='<div class="panel">'+panelH('\\u05D4\\u05EA\\u05E8\\u05D0\\u05D5\\u05EA \\u05D0\\u05D7\\u05E8\\u05D5\\u05E0\\u05D5\\u05EA','','\\u25CF');
+  if(!alerts.length)h+='<div class="empty-msg">\\u05D0\\u05D9\\u05DF \\u05D4\\u05EA\\u05E8\\u05D0\\u05D5\\u05EA</div>';
   else{
     h+='<div class="overflow-x"><table><thead><tr>';
-    h+='<th class="c"> </th><th data-sort-tab="alerts" data-sort-key="title">'+sortArrow('alerts','title')+'\u05DB\u05D5\u05EA\u05E8\u05EA</th>';
-    h+='<th data-sort-tab="alerts" data-sort-key="complex_name">'+sortArrow('alerts','complex_name')+'\u05DE\u05EA\u05D7\u05DD</th>';
-    h+='<th data-sort-tab="alerts" data-sort-key="city">'+sortArrow('alerts','city')+'\u05E2\u05D9\u05E8</th>';
-    h+='<th data-sort-tab="alerts" data-sort-key="alert_type">'+sortArrow('alerts','alert_type')+'\u05E1\u05D5\u05D2</th>';
-    h+='<th data-sort-tab="alerts" data-sort-key="created_at">'+sortArrow('alerts','created_at')+'\u05EA\u05D0\u05E8\u05D9\u05DA</th>';
+    h+='<th class="c"> </th><th data-sort-tab="alerts" data-sort-key="title">'+sortArrow('alerts','title')+'\\u05DB\\u05D5\\u05EA\\u05E8\\u05EA</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="complex_name">'+sortArrow('alerts','complex_name')+'\\u05DE\\u05EA\\u05D7\\u05DD</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="city">'+sortArrow('alerts','city')+'\\u05E2\\u05D9\\u05E8</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="alert_type">'+sortArrow('alerts','alert_type')+'\\u05E1\\u05D5\\u05D2</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="created_at">'+sortArrow('alerts','created_at')+'\\u05EA\\u05D0\\u05E8\\u05D9\\u05DA</th>';
     h+='</tr></thead><tbody>';
     var sorted=alerts.slice();if(sortStates.alerts&&sortStates.alerts.key)sorted=sortData(sorted,'alerts',sortStates.alerts.key,sortStates.alerts.dir);
     for(var i=0;i<sorted.length;i++){
@@ -868,16 +877,16 @@ function openTmplModal(){
   for(var i=0;i<msgTemplates.length;i++){
     var t=msgTemplates[i];
     h+='<div class="tmpl-card" data-tmpl-id="'+t.id+'">';
-    h+='<div class="tmpl-card-title">\u2709 '+t.title+'</div>';
+    h+='<div class="tmpl-card-title">\\u2709 '+t.title+'</div>';
     h+='<div class="tmpl-card-body">'+t.body+'</div>';
     h+='</div>';
   }
   h+='<div class="tmpl-card" data-tmpl-id="custom">';
-  h+='<div class="tmpl-card-title">\u270F\uFE0F \u05D4\u05D5\u05D3\u05E2\u05D4 \u05D7\u05D5\u05E4\u05E9\u05D9\u05EA</div>';
-  h+='<textarea class="tmpl-edit-area" id="custom-msg" placeholder="\u05DB\u05EA\u05D5\u05D1 \u05D0\u05EA \u05D4\u05D4\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA..."></textarea>';
+  h+='<div class="tmpl-card-title">\\u270F\\uFE0F \\u05D4\\u05D5\\u05D3\\u05E2\\u05D4 \\u05D7\\u05D5\\u05E4\\u05E9\\u05D9\\u05EA</div>';
+  h+='<textarea class="tmpl-edit-area" id="custom-msg" placeholder="\\u05DB\\u05EA\\u05D5\\u05D1 \\u05D0\\u05EA \\u05D4\\u05D4\\u05D5\\u05D3\\u05E2\\u05D4 \\u05E9\\u05DC\\u05DA..."></textarea>';
   h+='</div>';
   document.getElementById('tmpl-content').innerHTML=h;
-  document.getElementById('tmpl-counter').textContent=selectedListings.size+' \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05E0\u05D1\u05D7\u05E8\u05D5';
+  document.getElementById('tmpl-counter').textContent=selectedListings.size+' \\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA \\u05E0\\u05D1\\u05D7\\u05E8\\u05D5';
   document.getElementById('tmpl-send').disabled=true;
   selectedTmpl=null;
   document.getElementById('tmpl-modal').classList.add('open');
@@ -920,7 +929,7 @@ function executeBulkSend(){
     // Update local data
     if(LD&&LD.listings){
       LD.listings.forEach(function(l){
-        if(selectedListings.has(l.id)){l.message_status='\u05E0\u05E9\u05DC\u05D7\u05D4';}
+        if(selectedListings.has(l.id)){l.message_status='\\u05E0\\u05E9\\u05DC\\u05D7\\u05D4';}
       });
     }
     selectedListings.clear();
@@ -928,10 +937,10 @@ function executeBulkSend(){
     renderTab();
   }).catch(function(e){console.error(e);closeTmplModal();});
   // Show progress
-  document.getElementById('tmpl-send').textContent='\u05E0\u05E9\u05DC\u05D7... ('+urls.length+' \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA)';
+  document.getElementById('tmpl-send').textContent='\\u05E0\\u05E9\\u05DC\\u05D7... ('+urls.length+' \\u05DE\\u05D5\\u05D3\\u05E2\\u05D5\\u05EA)';
   document.getElementById('tmpl-send').disabled=true;
   if(urls.length>10){
-    document.getElementById('tmpl-counter').textContent='\u26A0 \u05E0\u05E4\u05EA\u05D7\u05D5 10 \u05DE\u05EA\u05D5\u05DA '+urls.length+'. \u05D4\u05D4\u05D5\u05D3\u05E2\u05D4 \u05D4\u05D5\u05E2\u05EA\u05E7\u05D4 \u05DC\u05DB\u05DC '+urls.length+'.';
+    document.getElementById('tmpl-counter').textContent='\\u26A0 \\u05E0\\u05E4\\u05EA\\u05D7\\u05D5 10 \\u05DE\\u05EA\\u05D5\\u05DA '+urls.length+'. \\u05D4\\u05D4\\u05D5\\u05D3\\u05E2\\u05D4 \\u05D4\\u05D5\\u05E2\\u05EA\\u05E7\\u05D4 \\u05DC\\u05DB\\u05DC '+urls.length+'.';
   }
 }
 
