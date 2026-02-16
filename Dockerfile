@@ -45,6 +45,9 @@ RUN npm install --omit=dev
 # Copy application code
 COPY . .
 
+# Build-time patches (v4.24.2): fix column names in weeklyScanner kones query
+RUN sed -i "s/SELECT id, name, city, street, address FROM complexes/SELECT id, name, city, neighborhood, addresses FROM complexes/" src/jobs/weeklyScanner.js
+
 # Expose port
 EXPOSE 3000
 
