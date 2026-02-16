@@ -1,6 +1,5 @@
-<FILE_CONTENT>
 /**
- * QUANTUM Dashboard v4.23.0 - Messaging Feature
+ * QUANTUM Dashboard v4.24.0 - Complete Messaging Feature (Fixed)
  * 
  * NEW: Checkbox selection for listings (individual + select all filtered)
  * NEW: Message templates (3 Hebrew templates + custom freetext)
@@ -359,7 +358,7 @@ tr.msg-sent td{opacity:.5}
   </header>
   <nav class="nav" id="nav"></nav>
   <main class="main" id="main"></main>
-  <footer class="footer"><span id="footer-text">QUANTUM v4.23.0</span></footer>
+  <footer class="footer"><span id="footer-text">QUANTUM v4.24.0</span></footer>
 </div>
 
 <!-- Detail Modal -->
@@ -572,7 +571,7 @@ function loadData(){
     document.getElementById('app').classList.remove('hidden');
     document.getElementById('time-label').textContent=new Date().toLocaleTimeString('he-IL');
     var s=D.stats||{};
-    document.getElementById('footer-text').textContent='QUANTUM v4.23.0 | '+(s.total_complexes||0)+' \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD | '+(s.cities||0)+' \u05E2\u05E8\u05D9\u05DD';
+    document.getElementById('footer-text').textContent='QUANTUM v4.24.0 | '+(s.total_complexes||0)+' \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD | '+(s.cities||0)+' \u05E2\u05E8\u05D9\u05DD';
     renderNav();renderTab();
   }).catch(function(e){
     console.error(e);
@@ -713,4 +712,295 @@ function renderListings(){
   h+='</div></div>';
   return h;
 }
-</FILE_CONTENT>
+
+
+// ==================== OVERVIEW ====================
+function renderOverview(s,dist,topSSI,alerts,cities,ls){
+  var h='<div class="tab-content"><div class="grid grid-6">';
+  h+=statCard('\u05DE\u05EA\u05D7\u05DE\u05D9\u05DD',s.total_complexes,s.cities+' \u05E2\u05E8\u05D9\u05DD','#06d6a0','Q');
+  h+=statCard('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA',s.opportunities,s.excellent+' \u05DE\u05E6\u05D5\u05D9\u05E0\u05D5\u05EA (70+)','#ffc233','\u2605');
+  h+=statCard('\u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DC\u05D7\u05D5\u05E6\u05D9\u05DD',s.stressed_sellers,s.high_stress+' \u05D1\u05E8\u05DE\u05D4 \u05D2\u05D1\u05D5\u05D4\u05D4','#ff4d6a','!');
+  h+=statCard('\u05DE\u05D5\u05D3\u05E2\u05D5\u05EA',ls.active||'0',(ls.urgent||'0')+' \u05D3\u05D7\u05D5\u05E4\u05D5\u05EA','#22c55e','\u25A4');
+  h+=statCard('\u05DB\u05D9\u05E0\u05D5\u05E1\u05D9\u05DD',(D.konesStats||{}).total||'0','','#9f7aea','\u2696');
+  h+=statCard('IAI \u05DE\u05DE\u05D5\u05E6\u05E2',s.avg_iai||'-','','#3b82f6','\u25B3');
+  h+='</div>';
+
+  var goldOpp=topSSI.filter(function(x){return x.iai_score>=40;}).slice(0,5);
+  if(goldOpp.length>0){
+    h+='<div class="panel panel-gold">'+panelH('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05D6\u05D4\u05D1','\u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05E2\u05DD IAI \u05D2\u05D1\u05D5\u05D4 + \u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DC\u05D7\u05D5\u05E6\u05D9\u05DD. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.','\u25C6');
+    h+='<div class="overflow-x"><table><thead><tr>';
+    h+='<th class="c">SSI</th><th class="c">IAI</th><th>\u05DE\u05EA\u05D7\u05DD</th><th>\u05E2\u05D9\u05E8</th><th>\u05D2\u05D5\u05E8\u05DE\u05D9\u05DD</th></tr></thead><tbody>';
+    for(var i=0;i<goldOpp.length;i++){
+      var r=goldOpp[i],f=pf(r.ssi_enhancement_factors).slice(0,2).join(' | ');
+      h+='<tr class="clickable" data-complex-id="'+r.id+'" data-complex-name="'+((r.name||'').replace(/"/g,'&quot;'))+'">';
+      h+='<td class="c nw"><span class="badge-ssi '+ssiCls(r.enhanced_ssi_score)+'">'+ssiLbl(r.enhanced_ssi_score)+'</span></td>';
+      h+='<td class="c nw">'+iaiH(r.iai_score)+'</td>';
+      h+='<td class="fw">'+cut(r.name||r.addresses,40)+'</td>';
+      h+='<td class="nw">'+(r.city||'-')+'</td>';
+      h+='<td class="xs muted">'+(f||'-')+'</td></tr>';
+    }
+    h+='</tbody></table></div></div>';
+  }
+
+  h+='<div class="grid grid-2">';
+  h+='<div class="panel">'+panelH('\u05D4\u05EA\u05E4\u05DC\u05D2\u05D5\u05EA SSI','','\u25C9')+'<div class="pie-legend">';
+  var di=[{l:'\u05D2\u05D1\u05D5\u05D4 (60+)',v:+(dist.high||0)+ +(dist.critical||0),c:'#ff4d6a'},{l:'\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9 (40-59)',v:+(dist.medium||0),c:'#ff8c42'},{l:'\u05E0\u05DE\u05D5\u05DA (20-39)',v:+(dist.low||0),c:'#ffc233'},{l:'\u05DE\u05D6\u05E2\u05E8\u05D9 (<20)',v:+(dist.minimal||0),c:'#4a5e80'}];
+  for(var i=0;i<di.length;i++){h+='<div class="pie-row"><div class="pie-info"><div class="pie-dot" style="background:'+di[i].c+'"></div><span class="sm muted">'+di[i].l+'</span></div><span style="font-weight:700;color:'+di[i].c+';font-size:14px">'+di[i].v+'</span></div>';}
+  h+='</div></div>';
+  h+='<div class="panel">'+panelH('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05DC\u05E4\u05D9 \u05E2\u05D9\u05E8','','\u25A3');
+  var ct=cities.slice(0,10),mx=1;for(var i=0;i<ct.length;i++){if(+ct[i].opportunities>mx)mx=+ct[i].opportunities;}
+  h+='<div class="bar-chart">';for(var i=0;i<ct.length;i++){var pct=Math.round((+ct[i].opportunities/mx)*100);h+='<div class="bar-row"><span class="bar-label">'+ct[i].city+'</span><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%;background:#06d6a0"></div></div><span class="bar-val">'+ct[i].opportunities+'</span></div>';}
+  h+='</div></div></div></div>';
+  return h;
+}
+
+// ==================== SSI ====================
+function renderSSITab(s,dist,topSSI){
+  var h='<div class="tab-content">';
+  h+='<div class="section-note"><strong>\u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DC\u05D7\u05D5\u05E6\u05D9\u05DD (SSI)</strong> - \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05E9\u05D1\u05D4\u05DD \u05DE\u05D5\u05DB\u05E8\u05D9\u05DD \u05DE\u05E6\u05D9\u05D2\u05D9\u05DD \u05E1\u05D9\u05DE\u05E0\u05D9 <strong>\u05DC\u05D7\u05E5 \u05DC\u05DE\u05DB\u05D5\u05E8</strong>: \u05D6\u05DE\u05DF \u05E8\u05D1 \u05D1\u05E9\u05D5\u05E7, \u05D9\u05E8\u05D9\u05D3\u05D5\u05EA \u05DE\u05D7\u05D9\u05E8 \u05D7\u05D5\u05D6\u05E8\u05D5\u05EA, \u05DE\u05D9\u05DC\u05D5\u05EA \u05DE\u05E4\u05EA\u05D7 \u05DB\u05DE\u05D5 "\u05D3\u05D7\u05D5\u05E3" \u05D0\u05D5 "\u05DE\u05D5\u05DB\u05E8\u05D7 \u05DC\u05DE\u05DB\u05D5\u05E8". \u05DB\u05D0\u05DF \u05D9\u05E9 \u05E4\u05D5\u05D8\u05E0\u05E6\u05D9\u05D0\u05DC \u05DC\u05DE\u05E9\u05D0 \u05D5\u05DE\u05EA\u05DF \u05DE\u05EA\u05D7\u05EA \u05DC\u05E9\u05D5\u05E7. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.</div>';
+  h+='<div class="grid grid-4">';
+  h+=statCard('\u05DC\u05D7\u05E5 \u05D2\u05D1\u05D5\u05D4',+(dist.high||0)+ +(dist.critical||0),'','#ff4d6a','!');
+  h+=statCard('\u05DC\u05D7\u05E5 \u05D1\u05D9\u05E0\u05D5\u05E0\u05D9',dist.medium||'0','','#ff8c42','\u25B2');
+  h+=statCard('\u05DC\u05D7\u05E5 \u05E0\u05DE\u05D5\u05DA',dist.low||'0','','#ffc233','\u25B3');
+  h+=statCard('SSI \u05DE\u05DE\u05D5\u05E6\u05E2',s.avg_ssi||'-','','#06d6a0','\u25CE');
+  h+='</div><div class="panel">'+panelH('\u05D3\u05D9\u05E8\u05D5\u05D2 SSI - \u05DE\u05D3\u05D3 \u05DC\u05D7\u05E5 \u05DE\u05D5\u05DB\u05E8\u05D9\u05DD','\u05DB\u05DB\u05DC \u05E9\u05D4\u05E6\u05D9\u05D5\u05DF \u05D2\u05D1\u05D5\u05D4 \u05D9\u05D5\u05EA\u05E8, \u05D4\u05DE\u05D5\u05DB\u05E8 \u05DC\u05D7\u05D5\u05E5 \u05D9\u05D5\u05EA\u05E8 - \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA \u05DC\u05DE\u05D5"\u05DE','\u26A1');
+  if(!topSSI.length)h+='<div class="empty-msg">\u05DC\u05D0 \u05E0\u05DE\u05E6\u05D0\u05D5</div>';
+  else{
+    h+='<div class="overflow-x"><table><thead><tr>';
+    h+='<th class="c">#</th><th class="c" data-sort-tab="ssi" data-sort-key="enhanced_ssi_score">'+sortArrow('ssi','enhanced_ssi_score')+'SSI</th>';
+    h+='<th data-sort-tab="ssi" data-sort-key="name">'+sortArrow('ssi','name')+'\u05DE\u05EA\u05D7\u05DD</th>';
+    h+='<th data-sort-tab="ssi" data-sort-key="city">'+sortArrow('ssi','city')+'\u05E2\u05D9\u05E8</th>';
+    h+='<th class="c" data-sort-tab="ssi" data-sort-key="iai_score">'+sortArrow('ssi','iai_score')+'IAI</th>';
+    h+='<th data-sort-tab="ssi" data-sort-key="status">'+sortArrow('ssi','status')+'\u05E1\u05D8\u05D8\u05D5\u05E1</th>';
+    h+='<th>\u05D2\u05D5\u05E8\u05DE\u05D9\u05DD</th></tr></thead><tbody>';
+    var sorted=topSSI.map(function(r,i){r._idx=i+1;return r;});
+    if(sortStates.ssi&&sortStates.ssi.key)sorted=sortData(sorted,'ssi',sortStates.ssi.key,sortStates.ssi.dir);
+    for(var i=0;i<sorted.length;i++){
+      var r=sorted[i],f=pf(r.ssi_enhancement_factors).slice(0,2).join(' | ');
+      h+='<tr class="clickable" data-complex-id="'+r.id+'" data-complex-name="'+((r.name||'').replace(/"/g,'&quot;'))+'">';
+      h+='<td class="c xs dim">'+r._idx+'</td><td class="c nw"><span class="badge-ssi '+ssiCls(r.enhanced_ssi_score)+'">'+ssiLbl(r.enhanced_ssi_score)+'</span></td><td class="f6">'+cut(r.name||r.addresses,42)+'</td><td class="nw">'+(r.city||'-')+'</td><td class="c nw">'+iaiH(r.iai_score)+'</td><td class="xs dim nw">'+(r.status||'-')+'</td><td class="xs muted">'+(f||'-')+'</td></tr>';
+    }
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';return h;
+}
+
+// ==================== OPPORTUNITIES ====================
+function renderOpp(s,topIAI){
+  var h='<div class="tab-content">';
+  h+='<div class="section-note"><strong>\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05D4\u05E9\u05E7\u05E2\u05D4 (IAI)</strong> - \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05E2\u05DD \u05E4\u05D5\u05D8\u05E0\u05E6\u05D9\u05D0\u05DC \u05D4\u05E9\u05E7\u05E2\u05D4 \u05D2\u05D1\u05D5\u05D4 \u05DC\u05E4\u05D9 \u05E9\u05DC\u05D1 \u05D4\u05EA\u05DB\u05E0\u05D9\u05EA, \u05E4\u05E8\u05DE\u05D9\u05D4 \u05D1\u05D9\u05DF \u05DE\u05D7\u05D9\u05E8 \u05E0\u05D5\u05DB\u05D7\u05D9 \u05DC\u05E2\u05EA\u05D9\u05D3\u05D9, \u05D5\u05D0\u05D9\u05DB\u05D5\u05EA \u05D4\u05D9\u05D6\u05DD. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.</div>';
+  h+='<div class="grid grid-3">';
+  h+=statCard('\u05E1\u05D4"\u05DB',s.opportunities,'IAI 30+','#ffc233','\u2605');
+  h+=statCard('\u05DE\u05E6\u05D5\u05D9\u05E0\u05D5\u05EA',s.excellent,'IAI 70+','#22c55e','\u25C6');
+  h+=statCard('IAI \u05DE\u05DE\u05D5\u05E6\u05E2',s.avg_iai||'-','','#06d6a0','\u25B3');
+  h+='</div><div class="panel">'+panelH('\u05D8\u05D5\u05E4 \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA','\u05DC\u05D7\u05E5 \u05E2\u05DC \u05E9\u05D5\u05E8\u05D4 \u05DC\u05E6\u05E4\u05D9\u05D9\u05D4 \u05D1\u05DE\u05EA\u05D7\u05DD','\u2605');
+  h+='<div class="overflow-x"><table><thead><tr>';
+  h+='<th class="c">#</th><th class="c" data-sort-tab="opp" data-sort-key="iai_score">'+sortArrow('opp','iai_score')+'IAI</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="name">'+sortArrow('opp','name')+'\u05DE\u05EA\u05D7\u05DD</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="city">'+sortArrow('opp','city')+'\u05E2\u05D9\u05E8</th>';
+  h+='<th class="c" data-sort-tab="opp" data-sort-key="enhanced_ssi_score">'+sortArrow('opp','enhanced_ssi_score')+'SSI</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="developer">'+sortArrow('opp','developer')+'\u05D9\u05D6\u05DD</th>';
+  h+='<th data-sort-tab="opp" data-sort-key="status">'+sortArrow('opp','status')+'\u05E1\u05D8\u05D8\u05D5\u05E1</th>';
+  h+='</tr></thead><tbody>';
+  var sorted=topIAI.map(function(r,i){r._idx=i+1;return r;});
+  if(sortStates.opp&&sortStates.opp.key)sorted=sortData(sorted,'opp',sortStates.opp.key,sortStates.opp.dir);
+  for(var i=0;i<sorted.length;i++){
+    var r=sorted[i];
+    h+='<tr class="clickable" data-complex-id="'+r.id+'" data-complex-name="'+((r.name||'').replace(/"/g,'&quot;'))+'">';
+    h+='<td class="c xs dim">'+r._idx+'</td><td class="c nw">'+iaiH(r.iai_score)+'</td><td class="f6">'+cut(r.name||r.addresses,45)+'</td><td class="nw">'+(r.city||'-')+'</td><td class="c nw">'+(r.enhanced_ssi_score?'<span class="badge-ssi '+ssiCls(r.enhanced_ssi_score)+'">'+ssiLbl(r.enhanced_ssi_score)+'</span>':'<span class="dim">-</span>')+'</td><td class="sm muted nw">'+cut(r.developer,20)+'</td><td class="xs dim nw">'+(r.status||'-')+'</td></tr>';
+  }
+  h+='</tbody></table></div></div></div>';return h;
+}
+
+// ==================== CITIES ====================
+function renderCities(s,cities){
+  var h='<div class="tab-content"><div class="panel">'+panelH('\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA \u05DC\u05E4\u05D9 \u05E2\u05E8\u05D9\u05DD',(s.cities||0)+' \u05E2\u05E8\u05D9\u05DD','\u25A3');
+  var t10=cities.slice(0,10),mx=1;for(var i=0;i<t10.length;i++){if(+t10[i].total>mx)mx=+t10[i].total;}
+  h+='<div class="bar-chart">';for(var i=0;i<t10.length;i++){var c=t10[i],p=Math.round((+c.opportunities/mx)*100);h+='<div class="bar-row"><span class="bar-label">'+c.city+'</span><div class="bar-track"><div class="bar-fill" style="width:'+p+'%;background:#06d6a0"></div></div><span class="bar-val">'+c.opportunities+'/'+c.total+'</span></div>';}
+  h+='</div></div>';
+  h+='<div class="panel"><div class="overflow-x"><table><thead><tr>';
+  h+='<th data-sort-tab="cities" data-sort-key="city">'+sortArrow('cities','city')+'\u05E2\u05D9\u05E8</th>';
+  h+='<th class="c" data-sort-tab="cities" data-sort-key="total">'+sortArrow('cities','total')+'\u05DE\u05EA\u05D7\u05DE\u05D9\u05DD</th>';
+  h+='<th class="c" data-sort-tab="cities" data-sort-key="opportunities">'+sortArrow('cities','opportunities')+'\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA</th>';
+  h+='<th class="c" data-sort-tab="cities" data-sort-key="stressed">'+sortArrow('cities','stressed')+'\u05DC\u05D7\u05D5\u05E6\u05D9\u05DD</th>';
+  h+='<th class="c" data-sort-tab="cities" data-sort-key="avg_iai">'+sortArrow('cities','avg_iai')+'IAI</th>';
+  h+='</tr></thead><tbody>';
+  var sorted=cities.slice();if(sortStates.cities&&sortStates.cities.key)sorted=sortData(sorted,'cities',sortStates.cities.key,sortStates.cities.dir);
+  for(var i=0;i<sorted.length;i++){var c=sorted[i];h+='<tr><td class="fw">'+c.city+'</td><td class="c">'+c.total+'</td><td class="c" style="color:#06d6a0;font-weight:700">'+c.opportunities+'</td><td class="c">'+(+c.stressed>0?'<span style="color:#ff4d6a;font-weight:700">'+c.stressed+'</span>':'<span class="dim">0</span>')+'</td><td class="c" style="color:'+(+c.avg_iai>=50?'#22c55e':'#8899b4')+'">'+( c.avg_iai||'-')+'</td></tr>';}
+  h+='</tbody></table></div></div></div>';return h;
+}
+
+// ==================== ALERTS ====================
+function renderAlerts(alerts){
+  var h='<div class="tab-content">';
+  h+='<div class="section-note"><strong>\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA</strong> - \u05E9\u05D9\u05E0\u05D5\u05D9\u05D9\u05DD \u05D7\u05E9\u05D5\u05D1\u05D9\u05DD \u05E9\u05D4\u05DE\u05E2\u05E8\u05DB\u05EA \u05D6\u05D9\u05D4\u05EA\u05D4: \u05DE\u05EA\u05D7\u05DE\u05D9\u05DD \u05D7\u05D3\u05E9\u05D9\u05DD, \u05E9\u05D9\u05E0\u05D5\u05D9\u05D9 \u05E1\u05D8\u05D8\u05D5\u05E1, \u05D9\u05E8\u05D9\u05D3\u05D5\u05EA \u05DE\u05D7\u05D9\u05E8, \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05D7\u05D3\u05E9\u05D5\u05EA. \u05DC\u05D7\u05E5 \u05DC\u05E4\u05E8\u05D8\u05D9\u05DD.</div>';
+  h+='<div class="panel">'+panelH('\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA \u05D0\u05D7\u05E8\u05D5\u05E0\u05D5\u05EA','','\u25CF');
+  if(!alerts.length)h+='<div class="empty-msg">\u05D0\u05D9\u05DF \u05D4\u05EA\u05E8\u05D0\u05D5\u05EA</div>';
+  else{
+    h+='<div class="overflow-x"><table><thead><tr>';
+    h+='<th class="c"> </th><th data-sort-tab="alerts" data-sort-key="title">'+sortArrow('alerts','title')+'\u05DB\u05D5\u05EA\u05E8\u05EA</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="complex_name">'+sortArrow('alerts','complex_name')+'\u05DE\u05EA\u05D7\u05DD</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="city">'+sortArrow('alerts','city')+'\u05E2\u05D9\u05E8</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="alert_type">'+sortArrow('alerts','alert_type')+'\u05E1\u05D5\u05D2</th>';
+    h+='<th data-sort-tab="alerts" data-sort-key="created_at">'+sortArrow('alerts','created_at')+'\u05EA\u05D0\u05E8\u05D9\u05DA</th>';
+    h+='</tr></thead><tbody>';
+    var sorted=alerts.slice();if(sortStates.alerts&&sortStates.alerts.key)sorted=sortData(sorted,'alerts',sortStates.alerts.key,sortStates.alerts.dir);
+    for(var i=0;i<sorted.length;i++){
+      var a=sorted[i];
+      h+='<tr class="clickable" data-alert-idx="'+i+'">';
+      h+='<td class="c">'+dotH(a.severity)+'</td><td class="sm f6">'+cut(a.title,55)+'</td><td class="sm muted nw">'+(a.complex_name||'-')+'</td><td class="sm nw">'+(a.city||'-')+'</td><td class="xs dim nw">'+(a.alert_type||'-')+'</td><td class="xs dim nw">'+(a.created_at?fmtD(a.created_at):'-')+'</td></tr>';
+    }
+    h+='</tbody></table></div>';
+  }
+  h+='</div></div>';return h;
+}
+
+// ==================== TEMPLATE MODAL ====================
+var selectedTmpl=null;
+function openTmplModal(){
+  var h='';
+  for(var i=0;i<msgTemplates.length;i++){
+    var t=msgTemplates[i];
+    h+='<div class="tmpl-card" data-tmpl-id="'+t.id+'">';
+    h+='<div class="tmpl-card-title">\u2709 '+t.title+'</div>';
+    h+='<div class="tmpl-card-body">'+t.body+'</div>';
+    h+='</div>';
+  }
+  h+='<div class="tmpl-card" data-tmpl-id="custom">';
+  h+='<div class="tmpl-card-title">\u270F\uFE0F \u05D4\u05D5\u05D3\u05E2\u05D4 \u05D7\u05D5\u05E4\u05E9\u05D9\u05EA</div>';
+  h+='<textarea class="tmpl-edit-area" id="custom-msg" placeholder="\u05DB\u05EA\u05D5\u05D1 \u05D0\u05EA \u05D4\u05D4\u05D5\u05D3\u05E2\u05D4 \u05E9\u05DC\u05DA..."></textarea>';
+  h+='</div>';
+  document.getElementById('tmpl-content').innerHTML=h;
+  document.getElementById('tmpl-counter').textContent=selectedListings.size+' \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05E0\u05D1\u05D7\u05E8\u05D5';
+  document.getElementById('tmpl-send').disabled=true;
+  selectedTmpl=null;
+  document.getElementById('tmpl-modal').classList.add('open');
+}
+function closeTmplModal(){document.getElementById('tmpl-modal').classList.remove('open');}
+
+function getSelectedMsg(){
+  if(!selectedTmpl)return null;
+  if(selectedTmpl==='custom'){
+    var el=document.getElementById('custom-msg');
+    return el?el.value.trim():'';
+  }
+  var t=msgTemplates.find(function(t){return t.id===selectedTmpl;});
+  return t?t.body:'';
+}
+
+function executeBulkSend(){
+  var msg=getSelectedMsg();
+  if(!msg||!selectedListings.size)return;
+  // Copy message to clipboard
+  navigator.clipboard.writeText(msg).catch(function(){});
+  // Get selected listing URLs
+  var listings=LD?LD.listings:[];
+  var urls=[];
+  selectedListings.forEach(function(lid){
+    var l=listings.find(function(x){return x.id===lid;});
+    if(l)urls.push(smartUrl(l));
+  });
+  // Open URLs (max 10 at once to avoid popup blocking)
+  var toOpen=urls.slice(0,10);
+  for(var i=0;i<toOpen.length;i++){
+    setTimeout(function(u){window.open(u,'_blank');},i*600,toOpen[i]);
+  }
+  // Report status to server
+  fetch('/api/dashboard/listings/message-sent',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({listing_ids:Array.from(selectedListings),template:selectedTmpl,message:msg})
+  }).then(function(r){return r.json();}).then(function(d){
+    // Update local data
+    if(LD&&LD.listings){
+      LD.listings.forEach(function(l){
+        if(selectedListings.has(l.id)){l.message_status='\u05E0\u05E9\u05DC\u05D7\u05D4';}
+      });
+    }
+    selectedListings.clear();
+    closeTmplModal();
+    renderTab();
+  }).catch(function(e){console.error(e);closeTmplModal();});
+  // Show progress
+  document.getElementById('tmpl-send').textContent='\u05E0\u05E9\u05DC\u05D7... ('+urls.length+' \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA)';
+  document.getElementById('tmpl-send').disabled=true;
+  if(urls.length>10){
+    document.getElementById('tmpl-counter').textContent='\u26A0 \u05E0\u05E4\u05EA\u05D7\u05D5 10 \u05DE\u05EA\u05D5\u05DA '+urls.length+'. \u05D4\u05D4\u05D5\u05D3\u05E2\u05D4 \u05D4\u05D5\u05E2\u05EA\u05E7\u05D4 \u05DC\u05DB\u05DC '+urls.length+'.';
+  }
+}
+
+// ==================== EVENT DELEGATION ====================
+document.addEventListener('click',function(e){
+  // Modal close
+  if(e.target.id==='modal-close'||e.target===document.getElementById('modal')){closeModal();return;}
+  // Template modal close
+  if(e.target.id==='tmpl-close'||e.target===document.getElementById('tmpl-modal')){closeTmplModal();return;}
+  // Template card selection
+  var tmplCard=e.target.closest('.tmpl-card[data-tmpl-id]');
+  if(tmplCard){
+    document.querySelectorAll('.tmpl-card').forEach(function(c){c.classList.remove('selected');});
+    tmplCard.classList.add('selected');
+    selectedTmpl=tmplCard.getAttribute('data-tmpl-id');
+    document.getElementById('tmpl-send').disabled=false;
+    return;
+  }
+  // Template send
+  if(e.target.id==='tmpl-send'){executeBulkSend();return;}
+  // Tabs
+  var tb=e.target.closest('[data-tab]');
+  if(tb){switchTab(tb.getAttribute('data-tab'));return;}
+  // Actions
+  var ac=e.target.closest('[data-action]');
+  if(ac){
+    var a=ac.getAttribute('data-action');
+    if(a==='ssi')runSSI();
+    else if(a==='refresh'){loadData();if(LD)loadListings();}
+    else if(a==='clear-selection'){selectedListings.clear();renderTab();}
+    else if(a==='open-tmpl'){openTmplModal();}
+    return;
+  }
+  // Sorting
+  var sh=e.target.closest('[data-sort-tab]');
+  if(sh){var tabId=sh.getAttribute('data-sort-tab'),key=sh.getAttribute('data-sort-key');if(key==='_link')return;sortData([],tabId,key);renderTab();return;}
+  // Alert row
+  var alertRow=e.target.closest('[data-alert-idx]');
+  if(alertRow){var idx=parseInt(alertRow.getAttribute('data-alert-idx'));var alerts=D.recentAlerts||[];if(alerts[idx])openAlertModal(alerts[idx]);return;}
+  // Checkbox click - prevent row click
+  if(e.target.classList.contains('listing-cb')){
+    var lid=parseInt(e.target.getAttribute('data-lid'));
+    if(e.target.checked)selectedListings.add(lid);else selectedListings.delete(lid);
+    renderTab();return;
+  }
+  if(e.target.id==='cb-all'){
+    var cbs=document.querySelectorAll('.listing-cb');
+    if(e.target.checked){cbs.forEach(function(cb){selectedListings.add(parseInt(cb.getAttribute('data-lid')));});}
+    else{cbs.forEach(function(cb){selectedListings.delete(parseInt(cb.getAttribute('data-lid')));});}
+    renderTab();return;
+  }
+  // No-modal zones
+  if(e.target.closest('[data-no-modal]')||e.target.closest('a')||e.target.closest('.listing-cb'))return;
+  // Listing row click - open URL
+  var lr=e.target.closest('[data-listing-url]');
+  if(lr){window.open(lr.getAttribute('data-listing-url'),'_blank');return;}
+  // Complex modal
+  var cr=e.target.closest('[data-complex-id]');
+  if(cr){var cid=cr.getAttribute('data-complex-id'),cname=cr.getAttribute('data-complex-name');openComplexModal(cid,cname);return;}
+});
+document.addEventListener('change',function(e){var f=e.target.closest('[data-filter]');if(f){var parts=f.getAttribute('data-filter').split('-');var tab=parts[0],field=parts.slice(1).join('');if(!filterStates[tab])filterStates[tab]={};filterStates[tab][field]=f.value;renderTab();}});
+document.addEventListener('input',function(e){
+  var f=e.target.closest('[data-filter]');
+  if(f&&f.tagName==='INPUT'){var parts=f.getAttribute('data-filter').split('-');var tab=parts[0],field=parts.slice(1).join('');if(!filterStates[tab])filterStates[tab]={};filterStates[tab][field]=f.value;clearTimeout(f._debounce);f._debounce=setTimeout(function(){renderTab();},400);}
+  // Enable send button when custom message has text
+  if(e.target.id==='custom-msg'){
+    if(selectedTmpl==='custom'){document.getElementById('tmpl-send').disabled=!e.target.value.trim();}
+  }
+});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeTmplModal();}});
+
+loadData();
+</script>
+</body>
+</html>`);
+});
+
+module.exports = router;
