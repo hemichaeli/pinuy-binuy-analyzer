@@ -102,13 +102,136 @@ router.get('/schema/:table', async (req, res) => {
 router.post('/sql', async (req, res) => {
   try {
     const { query, params } = req.body;
-    const allowed = /^(SELECT|ALTER|CREATE (INDEX|TABLE)|UPDATE complexes SET|UPDATE listings SET)/i;
+    const allowed = /^(SELECT|ALTER|CREATE (INDEX|TABLE)|UPDATE complexes SET|UPDATE listings SET|DELETE FROM complexes|DELETE FROM alerts|DELETE FROM listings)/i;
     if (!allowed.test(query.trim())) {
-      return res.status(403).json({ error: 'Only SELECT, ALTER, CREATE INDEX/TABLE, and UPDATE listings/complexes queries allowed' });
+      return res.status(403).json({ error: 'Only SELECT, ALTER, CREATE, UPDATE, and DELETE (complexes/alerts/listings) queries allowed' });
     }
     const result = await pool.query(query, params || []);
     res.json({ rowCount: result.rowCount, rows: result.rows?.slice(0, 100) });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/cleanup-cities - Normalize city name variants and remove duplicates
+router.post('/cleanup-cities', async (req, res) => {
+  try {
+    const { dryRun } = req.body;
+    const isDryRun = dryRun !== false;
+    const results = [];
+
+    // City normalization map
+    const CITY_MAP = {
+      'ראשלצ': 'ראשון לציון',
+      'ראשון-לציון': 'ראשון לציון',
+      'ראשון לציון (כפילות)': 'ראשון לציון',
+      'ת"א': 'תל אביב',
+      'תל-אביב': 'תל אביב',
+      'תל אביב יפו': 'תל אביב',
+      'תל אביב-יפו': 'תל אביב',
+      'פ"ת': 'פתח תקווה',
+      'פתח-תקווה': 'פתח תקווה',
+      'ר"ג': 'רמת גן',
+      'רמת-גן': 'רמת גן',
+      'ב"ב': 'בני ברק',
+      'בני-ברק': 'בני ברק',
+      'ק. אונו': 'קריית אונו',
+      'קרית אונו': 'קריית אונו',
+      'ק. ביאליק': 'קריית ביאליק',
+      'קרית ביאליק': 'קריית ביאליק',
+      'ק. ים': 'קריית ים',
+      'קרית ים': 'קריית ים',
+      'ק. מוצקין': 'קריית מוצקין',
+      'קרית מוצקין': 'קריית מוצקין',
+      'ק. אתא': 'קריית אתא',
+      'קרית אתא': 'קריית אתא'
+    };
+
+    // Find non-standard cities
+    const allCities = await pool.query('SELECT DISTINCT city FROM complexes ORDER BY city');
+    const toNormalize = [];
+    for (const row of allCities.rows) {
+      const canonical = CITY_MAP[row.city];
+      if (canonical) {
+        const count = await pool.query('SELECT COUNT(*) FROM complexes WHERE city = $1', [row.city]);
+        toNormalize.push({ from: row.city, to: canonical, count: parseInt(count.rows[0].count) });
+      }
+    }
+
+    if (isDryRun) {
+      return res.json({
+        mode: 'DRY RUN',
+        cities_to_normalize: toNormalize,
+        note: 'Send { "dryRun": false } to execute. Will normalize cities then run dedup.'
+      });
+    }
+
+    // Step 1: Drop unique index temporarily
+    try {
+      await pool.query('DROP INDEX IF EXISTS idx_complexes_name_city');
+      results.push('Dropped unique index idx_complexes_name_city');
+    } catch (e) {
+      results.push(`Index drop: ${e.message}`);
+    }
+
+    // Step 2: Normalize cities
+    for (const item of toNormalize) {
+      const upd = await pool.query('UPDATE complexes SET city = $1 WHERE city = $2', [item.to, item.from]);
+      results.push(`${item.from} → ${item.to}: ${upd.rowCount} updated`);
+    }
+
+    // Step 3: Run dedup (same logic as /dedup endpoint)
+    const toDelete = await pool.query(`
+      WITH ranked AS (
+        SELECT id, name, city,
+          ROW_NUMBER() OVER (
+            PARTITION BY name, city 
+            ORDER BY 
+              CASE WHEN perplexity_summary IS NOT NULL THEN 1 ELSE 0 END DESC,
+              CASE WHEN iai_score > 0 THEN 1 ELSE 0 END DESC,
+              updated_at DESC NULLS LAST,
+              id ASC
+          ) as rn
+        FROM complexes
+      )
+      SELECT id, name, city FROM ranked WHERE rn > 1
+    `);
+
+    for (const row of toDelete.rows) {
+      const kept = await pool.query(
+        'SELECT id FROM complexes WHERE name = $1 AND city = $2 AND id != $3 ORDER BY updated_at DESC LIMIT 1',
+        [row.name, row.city, row.id]
+      );
+      if (kept.rows.length > 0) {
+        const keptId = kept.rows[0].id;
+        await pool.query('UPDATE listings SET complex_id = $1 WHERE complex_id = $2', [keptId, row.id]);
+        await pool.query('UPDATE transactions SET complex_id = $1 WHERE complex_id = $2', [keptId, row.id]);
+        await pool.query('UPDATE alerts SET complex_id = $1 WHERE complex_id = $2', [keptId, row.id]);
+        try { await pool.query('UPDATE buildings SET complex_id = $1 WHERE complex_id = $2', [keptId, row.id]); } catch (e) {}
+      }
+    }
+
+    const deleteResult = await pool.query('DELETE FROM complexes WHERE id = ANY($1)', [toDelete.rows.map(r => r.id)]);
+    results.push(`Dedup: deleted ${deleteResult.rowCount} duplicates`);
+
+    // Step 4: Recreate unique index
+    try {
+      await pool.query('CREATE UNIQUE INDEX idx_complexes_name_city ON complexes(name, city)');
+      results.push('Recreated unique index idx_complexes_name_city');
+    } catch (e) {
+      results.push(`Index recreate: ${e.message}`);
+    }
+
+    const finalCount = await pool.query('SELECT COUNT(*) FROM complexes');
+    res.json({
+      mode: 'EXECUTED',
+      results,
+      remaining_complexes: parseInt(finalCount.rows[0].count)
+    });
+
+    logger.info('City cleanup completed', { results });
+  } catch (err) {
+    logger.error('City cleanup failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
