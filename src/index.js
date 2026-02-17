@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.22.0';
-const BUILD = '2026-02-17-v4.22.0-deep-enrichment-inforu';
+const VERSION = '4.23.0';
+const BUILD = '2026-02-17-v4.23.0-premium-calculator';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -141,8 +141,30 @@ async function runAutoMigrations() {
     for (const sql of enrichColumns) {
       try { await pool.query(sql); } catch (e) { /* column exists */ }
     }
+
+    // v4.23.0: INFORU sent_messages table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS sent_messages (
+          id SERIAL PRIMARY KEY,
+          phone VARCHAR(20) NOT NULL,
+          message TEXT NOT NULL,
+          template_key VARCHAR(50),
+          status VARCHAR(20) DEFAULT 'pending',
+          inforu_status INTEGER,
+          error_message TEXT,
+          listing_id INTEGER,
+          complex_id INTEGER,
+          sender_name VARCHAR(20) DEFAULT 'QUANTUM',
+          sent_at TIMESTAMP DEFAULT NOW(),
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_sent_messages_phone ON sent_messages(phone)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_sent_messages_complex ON sent_messages(complex_id)`);
+    } catch (e) { /* table exists */ }
     
-    logger.info('Auto-migrations completed (v4.22.0)');
+    logger.info('Auto-migrations completed (v4.23.0)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -288,6 +310,7 @@ function loadAllRoutes() {
     ['./routes/admin', '/api/admin'],
     ['./routes/enrichmentRoutes', '/api/enrichment'],
     ['./routes/inforuRoutes', '/api/inforu'],
+    ['./routes/premiumRoutes', '/api/premium'],
   ];
   
   let loaded = 0, failed = 0;
@@ -382,6 +405,7 @@ app.get('/api/info', (req, res) => {
       facebook: '/api/facebook',
       enrichment: '/api/enrichment',
       inforu: '/api/inforu',
+      premium: '/api/premium',
       notifications: '/api/notifications/status'
     }
   });
@@ -419,6 +443,7 @@ async function start() {
     logger.info(`Intelligence API: /api/intelligence/`);
     logger.info(`Enrichment API: /api/enrichment/`);
     logger.info(`INFORU API: /api/inforu/`);
+    logger.info(`Premium API: /api/premium/`);
   });
 }
 
