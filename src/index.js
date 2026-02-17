@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.23.0';
-const BUILD = '2026-02-17-v4.23.0-premium-calculator';
+const VERSION = '4.24.0';
+const BUILD = '2026-02-17-v4.24.0-signature-enrichment';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -163,8 +163,20 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_sent_messages_phone ON sent_messages(phone)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_sent_messages_complex ON sent_messages(complex_id)`);
     } catch (e) { /* table exists */ }
+
+    // v4.24.0: Signature enrichment columns (source tracking)
+    const sigColumns = [
+      "ALTER TABLE complexes ADD COLUMN IF NOT EXISTS signature_source VARCHAR(20)",
+      "ALTER TABLE complexes ADD COLUMN IF NOT EXISTS signature_source_detail TEXT",
+      "ALTER TABLE complexes ADD COLUMN IF NOT EXISTS signature_confidence INTEGER",
+      "ALTER TABLE complexes ADD COLUMN IF NOT EXISTS signature_date TEXT",
+      "ALTER TABLE complexes ADD COLUMN IF NOT EXISTS signature_context TEXT"
+    ];
+    for (const sql of sigColumns) {
+      try { await pool.query(sql); } catch (e) { /* column exists */ }
+    }
     
-    logger.info('Auto-migrations completed (v4.23.0)');
+    logger.info('Auto-migrations completed (v4.24.0)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -311,6 +323,7 @@ function loadAllRoutes() {
     ['./routes/enrichmentRoutes', '/api/enrichment'],
     ['./routes/inforuRoutes', '/api/inforu'],
     ['./routes/premiumRoutes', '/api/premium'],
+    ['./routes/signatureRoutes', '/api/signatures'],
   ];
   
   let loaded = 0, failed = 0;
@@ -406,6 +419,7 @@ app.get('/api/info', (req, res) => {
       enrichment: '/api/enrichment',
       inforu: '/api/inforu',
       premium: '/api/premium',
+      signatures: '/api/signatures',
       notifications: '/api/notifications/status'
     }
   });
@@ -444,6 +458,7 @@ async function start() {
     logger.info(`Enrichment API: /api/enrichment/`);
     logger.info(`INFORU API: /api/inforu/`);
     logger.info(`Premium API: /api/premium/`);
+    logger.info(`Signatures API: /api/signatures/`);
   });
 }
 
