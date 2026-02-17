@@ -50,7 +50,8 @@ router.post('/send', async (req, res) => {
     }
 
     const result = await inforuService.sendSms(phone, finalMessage, {
-      senderName, templateKey: template, listingId: req.body.listingId, complexId: req.body.complexId
+      senderName, templateKey: template,
+      listingId: req.body.listingId, complexId: req.body.complexId
     });
     res.json(result);
   } catch (err) {
@@ -67,8 +68,9 @@ router.post('/bulk', async (req, res) => {
     if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'Recipients array required' });
     }
-    if (recipients.length > 100) return res.status(400).json({ error: 'Maximum 100 recipients per batch' });
-
+    if (recipients.length > 100) {
+      return res.status(400).json({ error: 'Maximum 100 recipients per batch' });
+    }
     const result = await inforuService.bulkSend(template, recipients, {
       batchSize: batchSize || 10, delayMs: delayMs || 2000, senderName
     });
