@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.21.0';
-const BUILD = '2026-02-15-v4.21.0-dashboard-modals-clickable';
+const VERSION = '4.22.0';
+const BUILD = '2026-02-17-v4.22.0-deep-enrichment-inforu';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -105,8 +105,44 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_listings_source ON listings(source)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_listings_source_city ON listings(source, city)`);
     } catch (e) { /* columns/indexes exist */ }
+
+    // v4.22.0: Deep enrichment columns
+    const enrichColumns = [
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS neighborhood TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS num_buildings INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS signature_percent DECIMAL(5,2)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS plan_stage TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS permit_expected DATE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS objections_count INTEGER DEFAULT 0',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_objections BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS objections_status TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS accurate_price_sqm INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS city_avg_price_sqm INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_trend VARCHAR(20)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS yearly_price_change DECIMAL(5,2)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS estimated_premium_price INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_vs_city_avg INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_confidence_score INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_last_updated TIMESTAMP',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS price_sources TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_reputation_score INTEGER',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_red_flags TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS developer_news_sentiment VARCHAR(20)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_negative_news BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS news_sentiment VARCHAR(20)',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS news_summary TEXT',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_enforcement_cases BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_bankruptcy_proceedings BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS has_property_liens BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_receivership BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_inheritance_property BOOLEAN DEFAULT FALSE',
+      'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_news_check TIMESTAMP'
+    ];
+    for (const sql of enrichColumns) {
+      try { await pool.query(sql); } catch (e) { /* column exists */ }
+    }
     
-    logger.info('Auto-migrations completed');
+    logger.info('Auto-migrations completed (v4.22.0)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -250,6 +286,8 @@ function loadAllRoutes() {
     ['./routes/messagingRoutes', '/api/messaging'],
     ['./routes/facebookRoutes', '/api/facebook'],
     ['./routes/admin', '/api/admin'],
+    ['./routes/enrichmentRoutes', '/api/enrichment'],
+    ['./routes/inforuRoutes', '/api/inforu'],
   ];
   
   let loaded = 0, failed = 0;
@@ -293,7 +331,7 @@ app.get('/diagnostics', async (req, res) => {
   catch (e) { uniqueCounts = { error: e.message }; }
 
   res.json({ version: VERSION, build: BUILD, timestamp: new Date().toISOString(), routes: routeLoadResults, db_tables: dbTables, row_counts: rowCounts, complex_duplicates: duplicates, complex_unique_counts: uniqueCounts,
-    env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing', YAD2_EMAIL: process.env.YAD2_EMAIL ? 'set' : 'missing', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? 'set' : 'missing' }
+    env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing', YAD2_EMAIL: process.env.YAD2_EMAIL ? 'set' : 'missing', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? 'set' : 'missing', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? 'set' : 'missing' }
   });
 });
 
@@ -306,7 +344,7 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(), build: BUILD, version: VERSION, node_version: process.version,
-    env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)' },
+    env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? '(set)' : '(not set)' },
     features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled' },
     routes: routeLoadResults, scheduler: schedulerStatus
   });
@@ -325,7 +363,7 @@ app.get('/', (req, res) => {
   res.redirect(302, '/api/dashboard/');
 });
 
-// API info endpoint (moved from root)
+// API info endpoint
 app.get('/api/info', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
@@ -342,6 +380,8 @@ app.get('/api/info', (req, res) => {
       kones: '/api/kones', perplexity: '/api/perplexity',
       intelligence: '/api/intelligence',
       facebook: '/api/facebook',
+      enrichment: '/api/enrichment',
+      inforu: '/api/inforu',
       notifications: '/api/notifications/status'
     }
   });
@@ -377,8 +417,8 @@ async function start() {
     logger.info(`Dashboard: /api/dashboard/`);
     logger.info(`Chat: /api/chat/`);
     logger.info(`Intelligence API: /api/intelligence/`);
-    logger.info(`Facebook API: /api/facebook/`);
-    logger.info(`Messaging API: /api/messaging/`);
+    logger.info(`Enrichment API: /api/enrichment/`);
+    logger.info(`INFORU API: /api/inforu/`);
   });
 }
 
