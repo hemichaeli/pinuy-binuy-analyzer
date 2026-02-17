@@ -5,19 +5,16 @@ const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 const PERPLEXITY_URL = 'https://api.perplexity.ai/chat/completions';
 
 /**
- * Signature Percent Enrichment Service
+ * Signature Percent Enrichment Service v2
  * 
  * Two-tier source system:
- *   Tier 1 (HIGH confidence): Committee protocols (פרוטוקולים של ועדות מקומיות/מחוזיות)
- *   Tier 2 (LOW confidence):  Press/social media (עיתונות, רשתות חברתיות, פורומים)
+ *   Tier 1 (HIGH confidence): Committee protocols (green in dashboard)
+ *   Tier 2 (LOW confidence):  Press/social media (yellow in dashboard)
  * 
- * Colors in dashboard:
- *   Green = protocol source (reliable)
- *   Yellow = press/social source (treat with caution)
- *   Gray = no data
+ * Improved: Single combined query with broader search terms
  */
 
-async function queryPerplexity(prompt) {
+async function queryPerplexity(prompt, model = 'sonar') {
   const response = await fetch(PERPLEXITY_URL, {
     method: 'POST',
     headers: {
@@ -25,24 +22,19 @@ async function queryPerplexity(prompt) {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'sonar',
+      model,
       messages: [
-        { role: 'system', content: 'You are a data extraction assistant. Return ONLY valid JSON, no markdown, no explanation.' },
+        { role: 'system', content: 'You are a data extraction assistant for Israeli real estate. Return ONLY valid JSON, no markdown, no explanation. If you cannot find the specific data, return null values.' },
         { role: 'user', content: prompt }
       ],
       temperature: 0.1,
-      max_tokens: 1000
+      max_tokens: 1500
     })
   });
 
-  if (!response.ok) {
-    throw new Error(`Perplexity API error: ${response.status}`);
-  }
-
+  if (!response.ok) throw new Error(`Perplexity API error: ${response.status}`);
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content || '';
-  
-  // Extract JSON from response
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON in response');
   return JSON.parse(jsonMatch[0]);
@@ -50,13 +42,11 @@ async function queryPerplexity(prompt) {
 
 /**
  * Enrich signature_percent for a single complex
- * Queries two Perplexity searches:
- *   1. Committee protocols (high confidence)
- *   2. Press/social media (low confidence)
+ * Uses a single comprehensive search with broader terms
  */
 async function enrichSignature(complexId) {
   const complexResult = await pool.query(
-    'SELECT id, name, city, developer, address FROM complexes WHERE id = $1',
+    'SELECT id, name, city, developer, address, plan_number FROM complexes WHERE id = $1',
     [complexId]
   );
 
@@ -65,94 +55,84 @@ async function enrichSignature(complexId) {
   }
 
   const complex = complexResult.rows[0];
-  const searchName = `${complex.name} ${complex.city}`;
+  const searchTerms = [complex.name, complex.city];
+  if (complex.developer) searchTerms.push(complex.developer);
+  if (complex.plan_number) searchTerms.push(complex.plan_number);
+  const searchStr = searchTerms.filter(Boolean).join(' ');
+
   let bestResult = null;
 
-  // === TIER 1: Committee Protocols ===
   try {
-    const protocolData = await queryPerplexity(`
-חפש בפרוטוקולים של ועדות תכנון (ועדה מקומית, ועדה מחוזית, ועדת משנה) מידע על אחוז החתימות בפרויקט פינוי-בינוי "${complex.name}" ב${complex.city}.
+    const data = await queryPerplexity(`
+Search for the tenant signature percentage (אחוז חתימות דיירים / אחוז הסכמה) in the Israeli Pinuy-Binuy (urban renewal) project: "${complex.name}" in ${complex.city}.
+${complex.developer ? `Developer: ${complex.developer}` : ''}
+${complex.plan_number ? `Plan number: ${complex.plan_number}` : ''}
 
-חפש ב:
-- פרוטוקולים של ועדות מקומיות לתכנון ובנייה
-- פרוטוקולים של ועדות מחוזיות
-- החלטות רשות מקרקעי ישראל
-- פרוטוקולים של ועדות ערר
-- מסמכי תכנית (תב"ע) שמציינים אחוז חתימות
+Search across ALL these source types:
+1. Committee protocols (פרוטוקולי ועדות תכנון - מקומית, מחוזית, ערר)
+2. Government planning documents (mavat.iplan.gov.il, תב"ע)
+3. News articles (גלובס, כלכליסט, דה מרקר, ynet נדל"ן, וואלה נדל"ן)
+4. Real estate sites (מדלן, הומלס, יד2 מגזין)
+5. Social media / forums (פייסבוק קבוצות פינוי בינוי, תפוז נדל"ן)
+6. Developer websites and reports
+7. Municipal council meeting minutes (ישיבות מועצה)
 
-החזר JSON בפורמט:
+Look for phrases like:
+- "XX% מהדיירים חתמו" / "הושגו XX% חתימות"  
+- "הושגה הסכמה של XX%"
+- "XX% בעלי דירות הסכימו"
+- "נותרו XX% דיירים סרבנים" (then calculate: 100 - XX = signature%)
+- "עסקת הפינוי בינוי הגיעה ל-XX% חתימות"
+- Any mention of "רוב מיוחס" (typically 80%+) or "רוב רגיל" (typically 66%+)
+
+Return JSON:
 {
-  "signature_percent": <מספר 0-100 או null אם לא נמצא>,
-  "source_type": "protocol",
-  "source_detail": "<שם הוועדה + תאריך הפרוטוקול>",
-  "committee_type": "<מקומית/מחוזית/משנה/ערר>",
-  "date_mentioned": "<תאריך אם נמצא>",
-  "context": "<משפט קצר מהפרוטוקול שמציין את האחוז>",
-  "confidence": <1-100>
+  "signature_percent": <number 0-100, or null if truly not found>,
+  "source_type": "<protocol|government|news|forum|developer|municipal>",
+  "source_name": "<specific source name>",
+  "source_url": "<URL if available, or null>",
+  "date_found": "<date of the source if available>",
+  "context": "<exact Hebrew quote mentioning the percentage, max 200 chars>",
+  "confidence_note": "<why you believe this data, or why uncertain>"
 }
 
-אם לא נמצא מידע בפרוטוקולים, החזר {"signature_percent": null, "source_type": "protocol", "confidence": 0}
+IMPORTANT: If you find any mention at all of signatures or agreement percentages for this project, report it even if not 100% certain. We prefer approximate data over no data.
+If "רוב מיוחס" is mentioned without a specific number, use 80 as estimate.
+If "רוב רגיל" mentioned without number, use 67 as estimate.
+If "almost all signed" / "כמעט כולם חתמו", use 90 as estimate.
+If truly nothing found, return {"signature_percent": null, "source_type": null, "confidence_note": "No data found"}
 `);
 
-    if (protocolData.signature_percent !== null && protocolData.signature_percent > 0) {
+    if (data.signature_percent !== null && data.signature_percent > 0) {
+      // Determine tier based on source type
+      const protocolSources = ['protocol', 'government', 'municipal'];
+      const isProtocol = protocolSources.includes(data.source_type);
+      
+      // Confidence scoring
+      let confidence = 50;
+      if (isProtocol) confidence = 85;
+      else if (data.source_type === 'news') confidence = 60;
+      else if (data.source_type === 'developer') confidence = 55;
+      else if (data.source_type === 'forum') confidence = 40;
+
+      // If it's an estimate (רוב מיוחס etc), lower confidence
+      if (data.confidence_note?.includes('estimate') || data.confidence_note?.includes('הערכה')) {
+        confidence = Math.max(confidence - 20, 25);
+      }
+
       bestResult = {
-        signature_percent: parseFloat(protocolData.signature_percent),
-        signature_source: 'protocol',
-        signature_source_detail: protocolData.source_detail || protocolData.committee_type || 'ועדה',
-        signature_confidence: Math.min(protocolData.confidence || 85, 95),
-        signature_date: protocolData.date_mentioned || null,
-        signature_context: protocolData.context || null
+        signature_percent: parseFloat(data.signature_percent),
+        signature_source: isProtocol ? 'protocol' : 'press',
+        signature_source_detail: data.source_name || data.source_type || 'unknown',
+        signature_confidence: confidence,
+        signature_date: data.date_found || null,
+        signature_context: data.context || null
       };
-      logger.info(`Signature from PROTOCOL for ${searchName}: ${bestResult.signature_percent}% (confidence: ${bestResult.signature_confidence})`);
+
+      logger.info(`Signature found for ${searchStr}: ${bestResult.signature_percent}% from ${bestResult.signature_source} (confidence: ${bestResult.signature_confidence})`);
     }
   } catch (err) {
-    logger.warn(`Protocol search failed for ${searchName}: ${err.message}`);
-  }
-
-  // Wait between API calls
-  await new Promise(r => setTimeout(r, 3000));
-
-  // === TIER 2: Press / Social Media (only if no protocol found) ===
-  if (!bestResult) {
-    try {
-      const pressData = await queryPerplexity(`
-חפש בחדשות, עיתונות, אתרי נדל"ן, פורומים ורשתות חברתיות מידע על אחוז החתימות בפרויקט פינוי-בינוי "${complex.name}" ב${complex.city}.
-
-חפש ב:
-- כתבות בעיתונות (גלובס, כלכליסט, דה מרקר, ynet נדל"ן)
-- אתרי נדל"ן (מדלן, יד2, הומלס)
-- פורומים (תפוז נדל"ן, פייסבוק קבוצות פינוי בינוי)
-- אתרי היזמים עצמם
-- דיווחים של חברות הייעוץ
-
-החזר JSON בפורמט:
-{
-  "signature_percent": <מספר 0-100 או null אם לא נמצא>,
-  "source_type": "press",
-  "source_name": "<שם המקור - עיתון/אתר/פורום>",
-  "source_url": "<URL אם זמין>",
-  "date_published": "<תאריך הפרסום>",
-  "context": "<ציטוט קצר שמציין את האחוז>",
-  "confidence": <1-100>
-}
-
-אם לא נמצא מידע, החזר {"signature_percent": null, "source_type": "press", "confidence": 0}
-`);
-
-      if (pressData.signature_percent !== null && pressData.signature_percent > 0) {
-        bestResult = {
-          signature_percent: parseFloat(pressData.signature_percent),
-          signature_source: 'press',
-          signature_source_detail: pressData.source_name || 'עיתונות',
-          signature_confidence: Math.min(pressData.confidence || 50, 70), // Cap press at 70
-          signature_date: pressData.date_published || null,
-          signature_context: pressData.context || null
-        };
-        logger.info(`Signature from PRESS for ${searchName}: ${bestResult.signature_percent}% (confidence: ${bestResult.signature_confidence})`);
-      }
-    } catch (err) {
-      logger.warn(`Press search failed for ${searchName}: ${err.message}`);
-    }
+    logger.warn(`Signature search failed for ${searchStr}: ${err.message}`);
   }
 
   // === UPDATE DB ===
@@ -177,33 +157,17 @@ async function enrichSignature(complexId) {
       complexId
     ]);
 
-    return {
-      complexId,
-      name: complex.name,
-      city: complex.city,
-      status: 'enriched',
-      ...bestResult
-    };
+    return { complexId, name: complex.name, city: complex.city, status: 'enriched', ...bestResult };
   }
 
-  return {
-    complexId,
-    name: complex.name,
-    city: complex.city,
-    status: 'no_data',
-    signature_percent: null,
-    signature_source: null
-  };
+  return { complexId, name: complex.name, city: complex.city, status: 'no_data', signature_percent: null, signature_source: null };
 }
 
 /**
- * Batch enrich signatures for multiple complexes
+ * Batch enrich signatures
  */
 async function enrichSignaturesBatch({ limit = 20, minIai = 0, staleOnly = true } = {}) {
-  let query = `
-    SELECT id, name, city FROM complexes 
-    WHERE 1=1
-  `;
+  let query = `SELECT id, name, city FROM complexes WHERE 1=1`;
   const params = [];
 
   if (staleOnly) {
@@ -219,13 +183,7 @@ async function enrichSignaturesBatch({ limit = 20, minIai = 0, staleOnly = true 
 
   const complexes = await pool.query(query, params);
   
-  const results = {
-    total: complexes.rows.length,
-    enriched: 0,
-    noData: 0,
-    errors: 0,
-    details: []
-  };
+  const results = { total: complexes.rows.length, enriched: 0, noData: 0, errors: 0, details: [] };
 
   for (const c of complexes.rows) {
     try {
@@ -233,17 +191,12 @@ async function enrichSignaturesBatch({ limit = 20, minIai = 0, staleOnly = true 
       results.details.push(result);
       if (result.status === 'enriched') results.enriched++;
       else results.noData++;
-      
-      // Rate limiting between complexes
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 3000));
     } catch (err) {
       results.errors++;
       results.details.push({ complexId: c.id, name: c.name, status: 'error', error: err.message });
-      logger.error(`Signature enrichment failed for ${c.name}: ${err.message}`);
     }
   }
-
-  // After batch, calculate premium for any newly priced items
   return results;
 }
 
@@ -254,10 +207,10 @@ async function getSignatureStats() {
   const result = await pool.query(`
     SELECT 
       COUNT(*) as total,
-      COUNT(signature_percent) as has_signature,
+      COUNT(CASE WHEN signature_percent IS NOT NULL AND signature_source IS NOT NULL THEN 1 END) as has_signature,
       COUNT(CASE WHEN signature_source = 'protocol' THEN 1 END) as from_protocol,
       COUNT(CASE WHEN signature_source = 'press' THEN 1 END) as from_press,
-      AVG(CASE WHEN signature_percent IS NOT NULL THEN signature_percent END) as avg_signature,
+      AVG(CASE WHEN signature_percent IS NOT NULL AND signature_source IS NOT NULL THEN signature_percent END) as avg_signature,
       AVG(CASE WHEN signature_confidence IS NOT NULL THEN signature_confidence END) as avg_confidence,
       COUNT(CASE WHEN signature_percent >= 80 THEN 1 END) as above_80,
       COUNT(CASE WHEN signature_percent >= 60 AND signature_percent < 80 THEN 1 END) as between_60_80,
@@ -267,8 +220,4 @@ async function getSignatureStats() {
   return result.rows[0];
 }
 
-module.exports = {
-  enrichSignature,
-  enrichSignaturesBatch,
-  getSignatureStats
-};
+module.exports = { enrichSignature, enrichSignaturesBatch, getSignatureStats };
