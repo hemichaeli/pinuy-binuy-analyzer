@@ -9,6 +9,7 @@ try {
   logger.warn('Deep enrichment service not available', { error: err.message });
 }
 
+// Enrich single complex (synchronous)
 router.post('/complex/:id', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
@@ -23,30 +24,58 @@ router.post('/complex/:id', async (req, res) => {
   }
 });
 
+// Start async batch enrichment - returns immediately with job ID
 router.post('/batch', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
     const { limit = 20, city, minIai = 0, staleOnly = true } = req.body;
-    logger.info(`Starting batch enrichment: limit=${limit}, city=${city || 'all'}, minIai=${minIai}`);
-    const results = await deepEnrichmentService.enrichAll({ limit, city, minIai, staleOnly });
-    res.json(results);
+    logger.info(`Starting async batch enrichment: limit=${limit}, city=${city || 'all'}, minIai=${minIai}`);
+    const result = await deepEnrichmentService.enrichAll({ limit, city, minIai, staleOnly });
+    res.json(result);
   } catch (err) {
     logger.error('Batch enrichment failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
 
+// Get batch job status
+router.get('/batch/:jobId', async (req, res) => {
+  if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
+  const status = deepEnrichmentService.getBatchStatus(req.params.jobId);
+  if (!status) return res.status(404).json({ error: 'Job not found' });
+  res.json({
+    jobId: req.params.jobId,
+    status: status.status,
+    progress: `${status.enriched}/${status.total}`,
+    percent: status.total > 0 ? Math.round((status.enriched / status.total) * 100) : 0,
+    currentComplex: status.currentComplex,
+    totalFieldsUpdated: status.totalFieldsUpdated,
+    errors: status.errors,
+    startedAt: status.startedAt,
+    completedAt: status.completedAt,
+    details: status.status === 'completed' ? status.details : undefined
+  });
+});
+
+// List all batch jobs
+router.get('/jobs', async (req, res) => {
+  if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
+  res.json(deepEnrichmentService.getAllBatchJobs());
+});
+
+// Quick enrich top IAI complexes
 router.post('/top', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
-    const results = await deepEnrichmentService.enrichAll({ limit: 10, minIai: 60, staleOnly: false });
-    res.json(results);
+    const result = await deepEnrichmentService.enrichAll({ limit: 10, minIai: 60, staleOnly: false });
+    res.json(result);
   } catch (err) {
     logger.error('Top enrichment failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
 
+// Coverage status
 router.get('/status', async (req, res) => {
   try {
     const pool = require('../db/pool');
