@@ -2,6 +2,7 @@
  * Distressed Seller Routes - Phase 4.10 SSI Enhancement
  * API endpoints for identifying distressed sellers
  * NEW: batch-aggregate (listing->complex), gov-enrich, dashboard data
+ * v4.25.0: Expanded dashboard-data with enriched fields
  */
 
 const express = require('express');
@@ -333,8 +334,9 @@ router.post('/gov-enrich', async (req, res) => {
 });
 
 // =====================================================
-// NEW: GET /api/ssi/dashboard-data
+// GET /api/ssi/dashboard-data
 // Aggregated data for the QUANTUM dashboard
+// v4.25.0: Expanded with enriched fields
 // =====================================================
 router.get('/dashboard-data', async (req, res) => {
   try {
@@ -349,25 +351,34 @@ router.get('/dashboard-data', async (req, res) => {
           COUNT(*) FILTER (WHERE enhanced_ssi_score >= 60) as high_stress,
           COUNT(DISTINCT city) as cities,
           ROUND(AVG(iai_score) FILTER (WHERE iai_score > 0), 1) as avg_iai,
-          ROUND(AVG(enhanced_ssi_score) FILTER (WHERE enhanced_ssi_score > 0), 1) as avg_ssi
+          ROUND(AVG(enhanced_ssi_score) FILTER (WHERE enhanced_ssi_score > 0), 1) as avg_ssi,
+          COUNT(*) FILTER (WHERE actual_premium IS NOT NULL) as with_premium,
+          COUNT(*) FILTER (WHERE signature_percent IS NOT NULL) as with_signature,
+          COUNT(*) FILTER (WHERE plan_stage IS NOT NULL) as with_plan_stage
         FROM complexes
       `),
-      // Top SSI complexes
+      // Top SSI complexes - expanded with enriched fields
       pool.query(`
         SELECT id, name, city, addresses, iai_score, enhanced_ssi_score,
-               ssi_enhancement_factors, status, developer
+               ssi_enhancement_factors, status, developer,
+               actual_premium, signature_percent, signature_source,
+               plan_stage, news_sentiment, developer_status, developer_risk_level,
+               price_per_sqm, city_avg_price_sqm
         FROM complexes 
         WHERE enhanced_ssi_score > 0
         ORDER BY enhanced_ssi_score DESC 
-        LIMIT 15
+        LIMIT 20
       `),
-      // Top IAI complexes
+      // Top IAI complexes - expanded with enriched fields
       pool.query(`
-        SELECT id, name, city, addresses, iai_score, enhanced_ssi_score, status, developer
+        SELECT id, name, city, addresses, iai_score, enhanced_ssi_score, status, developer,
+               actual_premium, signature_percent, signature_source, signature_confidence,
+               plan_stage, news_sentiment, developer_status, developer_risk_level,
+               price_per_sqm, city_avg_price_sqm, num_buildings, multiplier
         FROM complexes 
-        WHERE iai_score >= 50
-        ORDER BY iai_score DESC 
-        LIMIT 15
+        WHERE iai_score >= 30
+        ORDER BY iai_score DESC, COALESCE(actual_premium, 0) DESC
+        LIMIT 30
       `),
       // Recent alerts
       pool.query(`
@@ -377,13 +388,15 @@ router.get('/dashboard-data', async (req, res) => {
         ORDER BY a.created_at DESC 
         LIMIT 20
       `),
-      // City breakdown
+      // City breakdown - expanded
       pool.query(`
         SELECT city, 
           COUNT(*) as total,
           COUNT(*) FILTER (WHERE iai_score >= 30) as opportunities,
           COUNT(*) FILTER (WHERE enhanced_ssi_score >= 40) as stressed,
-          ROUND(AVG(iai_score) FILTER (WHERE iai_score > 0), 1) as avg_iai
+          ROUND(AVG(iai_score) FILTER (WHERE iai_score > 0), 1) as avg_iai,
+          ROUND(AVG(actual_premium) FILTER (WHERE actual_premium IS NOT NULL), 0) as avg_premium,
+          COUNT(*) FILTER (WHERE signature_percent >= 80) as high_signature
         FROM complexes 
         WHERE city IS NOT NULL
         GROUP BY city 
@@ -450,7 +463,7 @@ router.get('/dashboard-data', async (req, res) => {
 router.get('/status', (req, res) => {
   const service = getDistressedSellerService();
   res.json({
-    version: '4.10.0',
+    version: '4.25.0',
     service: 'SSI Enhancement - Distressed Seller Identification',
     available: !!service,
     weights: service?.SSI_WEIGHTS || null,
