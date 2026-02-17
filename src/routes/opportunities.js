@@ -28,9 +28,18 @@ router.get('/opportunities', async (req, res) => {
         c.theoretical_premium_min, c.theoretical_premium_max,
         c.actual_premium, c.premium_gap,
         c.slug,
+        c.neighborhood, c.address,
+        c.plan_stage, c.plan_number,
+        c.developer_status, c.developer_risk,
+        c.news_sentiment, c.news_summary, c.has_negative_news,
+        c.price_per_sqm, c.city_avg_price_sqm, c.price_trend,
+        c.signature_percent, c.signature_source, c.signature_confidence, c.signature_date,
+        c.num_buildings, c.num_units_existing,
+        c.deposit_date, c.approval_date,
         COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE) as active_listings,
         COUNT(DISTINCT t.id) as transactions_count,
         AVG(l.ssi_score) FILTER (WHERE l.is_active = TRUE) as avg_ssi,
+        MAX(l.ssi_score) FILTER (WHERE l.is_active = TRUE) as max_ssi,
         COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE AND l.deal_status = 'new') as new_leads,
         COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE AND l.message_status = 'sent') as messages_sent,
         COUNT(DISTINCT l.id) FILTER (WHERE l.is_active = TRUE AND l.message_status = 'replied') as messages_replied
@@ -54,7 +63,14 @@ router.get('/opportunities', async (req, res) => {
           ? 'השקעה מצוינת - פוטנציאל תשואה גבוה'
           : row.iai_score >= 50
           ? 'השקעה טובה - יחס סיכוי-סיכון חיובי'
-          : 'השקעה סבירה - נדרש ניתוח נוסף'
+          : 'השקעה סבירה - נדרש ניתוח נוסף',
+        signature_color: row.signature_source === 'protocol' ? 'green'
+          : row.signature_percent ? 'yellow'
+          : 'gray',
+        enrichment_score: [
+          row.plan_stage, row.developer_status, row.news_sentiment,
+          row.price_per_sqm, row.signature_percent, row.neighborhood
+        ].filter(Boolean).length
       }))
     });
   } catch (error) {
@@ -85,7 +101,9 @@ router.get('/stressed-sellers', async (req, res) => {
         c.name as complex_name, c.city as complex_city,
         c.status as complex_status,
         c.iai_score,
-        c.developer
+        c.developer,
+        c.plan_stage, c.developer_status, c.news_sentiment,
+        c.actual_premium, c.signature_percent, c.signature_source
       FROM listings l
       JOIN complexes c ON l.complex_id = c.id
       WHERE l.is_active = TRUE AND l.ssi_score >= $1
@@ -384,7 +402,9 @@ router.get('/listings/search', async (req, res) => {
         c.name as complex_name, c.city as complex_city,
         c.status as complex_status,
         c.iai_score,
-        c.developer
+        c.developer,
+        c.plan_stage, c.developer_status, c.news_sentiment,
+        c.actual_premium, c.signature_percent, c.signature_source
       FROM listings l
       JOIN complexes c ON l.complex_id = c.id
       WHERE ${whereClause}
