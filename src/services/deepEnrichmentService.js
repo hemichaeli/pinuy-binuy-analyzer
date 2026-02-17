@@ -3,40 +3,73 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 /**
- * Deep Enrichment Service v1.0
+ * Deep Enrichment Service v1.1
  * Fills ALL missing fields in complexes table using multiple data sources:
  * 1. Perplexity AI (addresses, developer info, neighborhood, news, prices)
  * 2. nadlan.gov.il API (actual transaction prices -> actual_premium calculation)
  * 3. Internal data (calculate city_avg from existing transactions)
  * 
- * Targets 69 null fields per complex
+ * v1.1: Added retry with backoff for 429 rate limits, async batch tracking
  */
 
 const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
 const PERPLEXITY_MODEL = 'sonar';
 const NADLAN_API_URL = 'https://www.nadlan.gov.il/Nadlan.REST/Main/GetAssestAndDeals';
-const DELAY_MS = 4000;
+const DELAY_MS = 8000;         // 8s between phases (was 4s)
+const BETWEEN_COMPLEX_MS = 5000; // 5s between complexes (was 2s)
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 15000;  // 15s initial backoff on 429
+
+// In-memory batch job tracker
+const batchJobs = {};
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function queryPerplexity(prompt, systemPrompt) {
+function getBatchStatus(jobId) {
+  return batchJobs[jobId] || null;
+}
+
+function getAllBatchJobs() {
+  return Object.entries(batchJobs).map(([id, job]) => ({
+    jobId: id,
+    status: job.status,
+    progress: `${job.enriched}/${job.total}`,
+    fieldsUpdated: job.totalFieldsUpdated,
+    errors: job.errors,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt
+  }));
+}
+
+async function queryPerplexity(prompt, systemPrompt, retryCount = 0) {
   const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) throw new Error('PERPLEXITY_API_KEY not set');
 
-  const response = await axios.post(PERPLEXITY_API_URL, {
-    model: PERPLEXITY_MODEL,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt }
-    ],
-    temperature: 0.1,
-    max_tokens: 4000
-  }, {
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    timeout: 60000
-  });
+  try {
+    const response = await axios.post(PERPLEXITY_API_URL, {
+      model: PERPLEXITY_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1,
+      max_tokens: 4000
+    }, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      timeout: 60000
+    });
 
-  return response.data.choices[0].message.content;
+    return response.data.choices[0].message.content;
+  } catch (err) {
+    // Retry on 429 with exponential backoff
+    if (err.response && err.response.status === 429 && retryCount < MAX_RETRIES) {
+      const backoffMs = BASE_BACKOFF_MS * Math.pow(2, retryCount);
+      logger.info(`Rate limited (429), retry ${retryCount + 1}/${MAX_RETRIES} after ${backoffMs/1000}s`);
+      await sleep(backoffMs);
+      return queryPerplexity(prompt, systemPrompt, retryCount + 1);
+    }
+    throw err;
+  }
 }
 
 function parseJson(text) {
@@ -441,6 +474,7 @@ async function deepEnrichComplex(complexId) {
 
 // ============================================================
 // Batch: Enrich all complexes (prioritize high IAI first)
+// Returns job ID for async tracking
 // ============================================================
 async function enrichAll(options = {}) {
   const { limit = 20, city, minIai = 0, staleOnly = true } = options;
@@ -462,33 +496,63 @@ async function enrichAll(options = {}) {
   query += ` LIMIT $${params.length}`;
 
   const complexes = await pool.query(query, params);
-  logger.info(`Deep enrichment batch: ${complexes.rows.length} complexes`);
-
-  const results = {
+  
+  // Create job tracker
+  const jobId = `batch_${Date.now()}`;
+  batchJobs[jobId] = {
+    status: 'running',
     total: complexes.rows.length,
     enriched: 0,
     totalFieldsUpdated: 0,
     errors: 0,
-    details: []
+    currentComplex: null,
+    details: [],
+    startedAt: new Date().toISOString(),
+    completedAt: null
   };
 
-  for (const c of complexes.rows) {
+  logger.info(`Deep enrichment batch ${jobId}: ${complexes.rows.length} complexes`);
+
+  // Process in background (don't await)
+  processEnrichmentBatch(jobId, complexes.rows).catch(err => {
+    logger.error(`Batch ${jobId} crashed`, { error: err.message });
+    batchJobs[jobId].status = 'error';
+    batchJobs[jobId].completedAt = new Date().toISOString();
+  });
+
+  return {
+    jobId,
+    status: 'started',
+    total: complexes.rows.length,
+    message: `Batch enrichment started. Track progress at GET /api/enrichment/batch/${jobId}`
+  };
+}
+
+async function processEnrichmentBatch(jobId, complexes) {
+  const job = batchJobs[jobId];
+
+  for (const c of complexes) {
     try {
+      job.currentComplex = `${c.name} (${c.city})`;
       const result = await deepEnrichComplex(c.id);
-      results.enriched++;
-      results.totalFieldsUpdated += result.fieldsUpdated;
-      if (result.errors) results.errors++;
-      results.details.push(result);
-      await sleep(2000);
+      job.enriched++;
+      job.totalFieldsUpdated += result.fieldsUpdated;
+      if (result.errors) job.errors++;
+      job.details.push(result);
+      await sleep(BETWEEN_COMPLEX_MS);
     } catch (err) {
-      results.errors++;
-      results.details.push({ complexId: c.id, name: c.name, status: 'error', error: err.message });
+      job.errors++;
+      job.details.push({ complexId: c.id, name: c.name, status: 'error', error: err.message });
       logger.error(`Deep enrichment failed for ${c.name}`, { error: err.message });
+      // Continue with next complex even on error
+      await sleep(BETWEEN_COMPLEX_MS);
     }
   }
 
-  logger.info(`Deep enrichment complete: ${results.enriched}/${results.total} enriched, ${results.totalFieldsUpdated} fields updated`);
-  return results;
+  job.status = 'completed';
+  job.currentComplex = null;
+  job.completedAt = new Date().toISOString();
+  logger.info(`Batch ${jobId} complete: ${job.enriched}/${job.total} enriched, ${job.totalFieldsUpdated} fields updated`);
 }
 
-module.exports = { deepEnrichComplex, enrichAll };
+module.exports = { deepEnrichComplex, enrichAll, getBatchStatus, getAllBatchJobs };
