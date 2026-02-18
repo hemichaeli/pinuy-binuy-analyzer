@@ -3,23 +3,22 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 /**
- * Deep Enrichment Service v4.0 - TURBO PARALLEL ENGINE
+ * Deep Enrichment Service v5.0 - APEX ENGINE
  * 
  * Architecture:
  *   ENGINE A - Perplexity sonar-pro (Phases 1-4): Focused web research queries
- *   ENGINE B - Claude Sonnet 4.5 + web_search (Phases 5-6): Independent deep research
- *   SYNTHESIS - Claude Sonnet 4.5 (batch) / Opus 4.6 (single): Cross-validates & synthesizes
- *   DATA      - nadlan.gov.il (Phase 8): Actual transaction prices (overrides estimates)
+ *   ENGINE B - Claude Opus 4.6 + web_search + extended thinking (full) / Sonnet 4.5 (standard)
+ *   SYNTHESIS - Claude Opus 4.6 + web_search + extended thinking (full) / Sonnet 4.5 (standard)
+ *   DATA      - nadlan.gov.il (Phase 8): Actual transaction prices
  *   CALC      - City average (Phase 9): From DB transactions
  * 
- * v4.0 TURBO: Engines A+B run in PARALLEL, reduced delays, Sonnet synthesis for batch
+ * v5.0 APEX: Opus 4.6 with extended thinking + web search for research AND synthesis
+ * v4.0 TURBO: Engines A+B parallel, Sonnet synthesis for batch
  * v3.0: Both engines sequential, Opus 4.6 synthesis
- * v2.0: Perplexity researched, Sonnet synthesized
- * v1.x: Perplexity-only with basic sonar
  * 
  * MODES:
- *   'full'    - Both engines parallel + Opus synthesis (highest quality, ~2 min)
- *   'standard'- Both engines parallel + Sonnet synthesis (good quality, ~1.5 min) [DEFAULT for batch]
+ *   'full'    - Both engines parallel + Opus 4.6 extended thinking + web search (~3-4 min) [HIGHEST QUALITY]
+ *   'standard'- Both engines parallel + Sonnet 4.5 synthesis (~1.5 min) [DEFAULT for batch]
  *   'fast'    - Perplexity only + Sonnet synthesis (~45s)
  *   'turbo'   - Perplexity only, no synthesis, direct parse (~30s)
  */
@@ -27,17 +26,24 @@ const { logger } = require('./logger');
 const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
 const PERPLEXITY_MODEL = 'sonar-pro';
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const CLAUDE_RESEARCH_MODEL = 'claude-sonnet-4-5-20250929';
-const CLAUDE_SYNTHESIS_MODEL_FAST = 'claude-sonnet-4-5-20250929';
-const CLAUDE_SYNTHESIS_MODEL_FULL = 'claude-opus-4-6';
+
+// Models
+const CLAUDE_OPUS = 'claude-opus-4-6';
+const CLAUDE_SONNET = 'claude-sonnet-4-5-20250929';
+
 const NADLAN_API_URL = 'https://www.nadlan.gov.il/Nadlan.REST/Main/GetAssestAndDeals';
 
-// v4.0 TURBO: Reduced delays
-const DELAY_MS = 4000;            // 4s between Perplexity phases (was 8s)
-const CLAUDE_DELAY_MS = 5000;     // 5s between Claude phases (was 10s)
-const BETWEEN_COMPLEX_MS = 5000;  // 5s between complexes (was 15s)
+// v5.0 APEX: Optimized delays
+const DELAY_MS = 4000;            // 4s between Perplexity phases
+const CLAUDE_DELAY_MS = 5000;     // 5s between Claude phases
+const BETWEEN_COMPLEX_MS = 5000;  // 5s between complexes
 const MAX_RETRIES = 4;
 const BASE_BACKOFF_MS = 30000;
+
+// Extended thinking config
+const THINKING_BUDGET_TOKENS = 12000;
+const MAX_TOKENS_WITH_THINKING = 32000;
+const MAX_TOKENS_STANDARD = 16000;
 
 const batchJobs = {};
 
@@ -57,8 +63,24 @@ function getAllBatchJobs() {
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     mode: job.mode || 'standard',
-    engine: job.engine || 'v4.0-turbo'
+    engine: job.engine || 'v5.0-apex'
   }));
+}
+
+/**
+ * Extract text from Claude API response, filtering out thinking blocks
+ */
+function extractTextFromResponse(content) {
+  if (!content) return '';
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter(block => block.type === 'text')
+      .map(block => block.text || '')
+      .filter(Boolean)
+      .join('\n');
+  }
+  return String(content);
 }
 
 // ============================================================
@@ -96,50 +118,60 @@ async function queryPerplexity(prompt, systemPrompt, retryCount = 0) {
 }
 
 // ============================================================
-// ENGINE B: Claude Sonnet 4.5 + Web Search
+// ENGINE B: Claude Research (Opus 4.6 for full, Sonnet 4.5 for standard)
+// With web_search + extended thinking in full mode
 // ============================================================
-async function queryClaudeResearch(prompt, systemPrompt, retryCount = 0) {
+async function queryClaudeResearch(prompt, systemPrompt, useOpus = false, retryCount = 0) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
+  const model = useOpus ? CLAUDE_OPUS : CLAUDE_SONNET;
+
+  const requestBody = {
+    model,
+    max_tokens: useOpus ? MAX_TOKENS_WITH_THINKING : MAX_TOKENS_STANDARD,
+    system: systemPrompt,
+    tools: [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search'
+      }
+    ],
+    messages: [
+      { role: 'user', content: prompt }
+    ]
+  };
+
+  // Add extended thinking for Opus
+  if (useOpus) {
+    requestBody.thinking = {
+      type: 'enabled',
+      budget_tokens: THINKING_BUDGET_TOKENS
+    };
+  }
+
   try {
-    const response = await axios.post(ANTHROPIC_API_URL, {
-      model: CLAUDE_RESEARCH_MODEL,
-      max_tokens: 16000,
-      system: systemPrompt,
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search'
-        }
-      ],
-      messages: [
-        { role: 'user', content: prompt }
-      ]
-    }, {
+    const response = await axios.post(ANTHROPIC_API_URL, requestBody, {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json'
       },
-      timeout: 180000
+      timeout: 300000 // 5 min for Opus + thinking
     });
 
-    const content = response.data.content;
-    if (Array.isArray(content)) {
-      return content.map(block => block.text || '').filter(Boolean).join('\n');
-    }
-    return content;
+    return extractTextFromResponse(response.data.content);
   } catch (err) {
     if (err.response && (err.response.status === 429 || err.response.status === 529) && retryCount < MAX_RETRIES) {
       const backoffMs = BASE_BACKOFF_MS * Math.pow(2, retryCount);
-      logger.info(`Claude Research rate limited, retry ${retryCount + 1}/${MAX_RETRIES} after ${backoffMs/1000}s`);
+      logger.info(`Claude Research (${model}) rate limited, retry ${retryCount + 1}/${MAX_RETRIES} after ${backoffMs/1000}s`);
       await sleep(backoffMs);
-      return queryClaudeResearch(prompt, systemPrompt, retryCount + 1);
+      return queryClaudeResearch(prompt, systemPrompt, useOpus, retryCount + 1);
     }
     if (err.response) {
       logger.error(`Claude Research API error ${err.response.status}`, { 
         status: err.response.status, 
+        model,
         data: JSON.stringify(err.response.data).substring(0, 500) 
       });
     }
@@ -148,36 +180,48 @@ async function queryClaudeResearch(prompt, systemPrompt, retryCount = 0) {
 }
 
 // ============================================================
-// SYNTHESIS: Claude (Sonnet for batch, Opus for single)
+// SYNTHESIS: Claude (Opus 4.6 + thinking + web search for full, Sonnet for standard)
 // ============================================================
 async function queryClaudeSynthesis(prompt, systemPrompt, useOpus = false, retryCount = 0) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
-  const model = useOpus ? CLAUDE_SYNTHESIS_MODEL_FULL : CLAUDE_SYNTHESIS_MODEL_FAST;
+  const model = useOpus ? CLAUDE_OPUS : CLAUDE_SONNET;
+
+  const requestBody = {
+    model,
+    max_tokens: useOpus ? MAX_TOKENS_WITH_THINKING : MAX_TOKENS_STANDARD,
+    system: systemPrompt,
+    messages: [
+      { role: 'user', content: prompt }
+    ]
+  };
+
+  // Opus synthesis gets web search + extended thinking
+  if (useOpus) {
+    requestBody.tools = [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search'
+      }
+    ];
+    requestBody.thinking = {
+      type: 'enabled',
+      budget_tokens: THINKING_BUDGET_TOKENS
+    };
+  }
 
   try {
-    const response = await axios.post(ANTHROPIC_API_URL, {
-      model,
-      max_tokens: 16000,
-      system: systemPrompt,
-      messages: [
-        { role: 'user', content: prompt }
-      ]
-    }, {
+    const response = await axios.post(ANTHROPIC_API_URL, requestBody, {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json'
       },
-      timeout: 180000
+      timeout: 300000
     });
 
-    const content = response.data.content;
-    if (Array.isArray(content)) {
-      return content.map(block => block.text || '').filter(Boolean).join('\n');
-    }
-    return content;
+    return extractTextFromResponse(response.data.content);
   } catch (err) {
     if (err.response && (err.response.status === 429 || err.response.status === 529) && retryCount < MAX_RETRIES) {
       const backoffMs = BASE_BACKOFF_MS * Math.pow(2, retryCount);
@@ -332,7 +376,7 @@ Return JSON only.`;
 }
 
 // ============================================================
-// ENGINE B PROMPTS: Claude Sonnet 4.5 + Web Search
+// ENGINE B PROMPTS: Claude Research
 // ============================================================
 
 const CLAUDE_RESEARCH_SYSTEM = `You are an elite Israeli real estate intelligence analyst for QUANTUM.
@@ -480,22 +524,25 @@ Return ONLY the JSON.`;
 // SYNTHESIS PROMPT
 // ============================================================
 
-const SYNTHESIS_SYSTEM = `You are QUANTUM's intelligence engine - the most advanced real estate analysis system in Israel.
+const SYNTHESIS_SYSTEM = `You are QUANTUM's supreme intelligence engine - the most advanced real estate analysis system in Israel.
+You are Claude Opus 4.6 with extended thinking and web search capabilities.
 
 You receive raw research data from TWO independent research engines:
 - ENGINE A (Perplexity sonar-pro): 4 focused web research queries
-- ENGINE B (Claude Sonnet 4.5 + web search): 2 comprehensive web research missions
+- ENGINE B (Claude Opus 4.6 + web search): 2 comprehensive web research missions
 
 Your mission:
-1. CROSS-VALIDATE: Compare findings between Engine A and Engine B. Where they agree, confidence is HIGH.
-2. SYNTHESIZE: Merge ALL data into a single unified intelligence report.
-3. FILL GAPS: Where one engine found data the other missed, incorporate it.
-4. DETECT CONTRADICTIONS: Flag any conflicts between the two engines.
-5. SCORE confidence (0-100): Both agree=80-100, one strong=50-70, one weak=20-40
-6. IDENTIFY: Red flags, opportunities, and investment signals.
+1. THINK DEEPLY: Use your extended thinking to analyze contradictions and patterns others miss.
+2. CROSS-VALIDATE: Compare findings between Engine A and Engine B. Where they agree, confidence is HIGH.
+3. VERIFY: If data seems contradictory or suspicious, use your web_search to verify independently.
+4. SYNTHESIZE: Merge ALL data into a single unified intelligence report.
+5. FILL GAPS: Where one engine found data the other missed, incorporate it.
+6. SCORE confidence (0-100): Both agree=80-100, one strong=50-70, one weak=20-40
+7. IDENTIFY: Red flags, opportunities, and investment signals others would miss.
 
 Return ONLY valid JSON. All prices in ILS. Hebrew content expected where natural.
-Be precise. Be conservative. Never invent specific numbers.`;
+Be precise. Be conservative. Never invent specific numbers.
+You are the final authority - your output directly updates the investment database.`;
 
 function buildSynthesisPrompt(complex, perplexityResults, claudeResearchResults) {
   return `DUAL-ENGINE SYNTHESIS for Pinuy-Binuy complex:
@@ -525,12 +572,14 @@ Phase 2 (Developer Intelligence): ${JSON.stringify(perplexityResults.phase2)}
 Phase 3 (Pricing & Market): ${JSON.stringify(perplexityResults.phase3)}
 Phase 4 (News & Legal): ${JSON.stringify(perplexityResults.phase4)}
 
-===== ENGINE B: CLAUDE SONNET 4.5 RESEARCH =====
+===== ENGINE B: CLAUDE OPUS 4.6 RESEARCH =====
 Research A (Complex Profile): ${JSON.stringify(claudeResearchResults.profileResearch)}
 Research B (Market Intelligence): ${JSON.stringify(claudeResearchResults.marketResearch)}
 
 ===== YOUR TASK =====
-Cross-validate Engine A and Engine B findings. Produce the definitive intelligence report.
+Think deeply. Cross-validate Engine A and Engine B findings.
+If anything seems contradictory, use web_search to verify independently.
+Produce the definitive intelligence report.
 
 Return JSON:
 {
@@ -698,22 +747,26 @@ async function runEngineA(complex) {
 }
 
 // ============================================================
-// ENGINE B: Run all Claude research phases (with internal delays)
+// ENGINE B: Run Claude research phases
+// In full mode: Opus 4.6 + web_search + extended thinking
+// In standard mode: Sonnet 4.5 + web_search
 // ============================================================
-async function runEngineB(complex) {
+async function runEngineB(complex, useOpus = false) {
   const results = { profileResearch: null, marketResearch: null };
   const errors = [];
+  const modelLabel = useOpus ? 'Opus 4.6 + thinking' : 'Sonnet 4.5';
 
   try {
     const raw = await queryClaudeResearch(
       buildClaudeResearchQuery_ComplexProfile(complex),
-      CLAUDE_RESEARCH_SYSTEM
+      CLAUDE_RESEARCH_SYSTEM,
+      useOpus
     );
     results.profileResearch = parseJson(raw);
-    logger.info(`[B.5] ${complex.name}: complex profile research complete`);
+    logger.info(`[B.5 ${modelLabel}] ${complex.name}: complex profile research complete`);
   } catch (err) {
-    errors.push(`B.5 Claude profile: ${err.message}`);
-    logger.warn(`B.5 failed for ${complex.name}`, { error: err.message });
+    errors.push(`B.5 Claude profile (${modelLabel}): ${err.message}`);
+    logger.warn(`B.5 failed for ${complex.name}`, { error: err.message, model: modelLabel });
   }
 
   await sleep(CLAUDE_DELAY_MS);
@@ -721,24 +774,24 @@ async function runEngineB(complex) {
   try {
     const raw = await queryClaudeResearch(
       buildClaudeResearchQuery_MarketIntel(complex),
-      CLAUDE_RESEARCH_SYSTEM
+      CLAUDE_RESEARCH_SYSTEM,
+      useOpus
     );
     results.marketResearch = parseJson(raw);
-    logger.info(`[B.6] ${complex.name}: market intel research complete`);
+    logger.info(`[B.6 ${modelLabel}] ${complex.name}: market intel research complete`);
   } catch (err) {
-    errors.push(`B.6 Claude market: ${err.message}`);
-    logger.warn(`B.6 failed for ${complex.name}`, { error: err.message });
+    errors.push(`B.6 Claude market (${modelLabel}): ${err.message}`);
+    logger.warn(`B.6 failed for ${complex.name}`, { error: err.message, model: modelLabel });
   }
 
   return { results, errors };
 }
 
 // ============================================================
-// MAIN: Deep Enrich a Single Complex (v4.0 TURBO)
+// MAIN: Deep Enrich a Single Complex (v5.0 APEX)
 // ============================================================
 async function deepEnrichComplex(complexId, options = {}) {
   const { mode = 'standard' } = options;
-  // mode: 'full' (Opus synthesis), 'standard' (Sonnet synthesis), 'fast' (Perplexity only + Sonnet), 'turbo' (Perplexity only, no synthesis)
   
   const res = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
   if (res.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
@@ -748,7 +801,14 @@ async function deepEnrichComplex(complexId, options = {}) {
   const skipEngineB = mode === 'fast' || mode === 'turbo';
   const skipSynthesis = mode === 'turbo';
 
-  logger.info(`[v4.0 TURBO] Enriching: ${complex.name} (${complex.city}) [ID: ${complexId}] [mode: ${mode}]`);
+  const modeDesc = {
+    'full': 'APEX (Opus 4.6 + thinking + web search)',
+    'standard': 'PARALLEL (Sonnet 4.5)',
+    'fast': 'FAST (Perplexity + Sonnet)',
+    'turbo': 'TURBO (Perplexity only)'
+  }[mode] || mode;
+
+  logger.info(`[v5.0 ${modeDesc}] Enriching: ${complex.name} (${complex.city}) [ID: ${complexId}]`);
 
   const updates = {};
   let allErrors = [];
@@ -756,20 +816,20 @@ async function deepEnrichComplex(complexId, options = {}) {
   let claudeResearchResults = { profileResearch: null, marketResearch: null };
 
   // =====================================================
-  // v4.0: RUN ENGINES IN PARALLEL (or just A for fast/turbo)
+  // RUN ENGINES IN PARALLEL (or just A for fast/turbo)
   // =====================================================
   if (skipEngineB) {
-    // Fast/turbo mode: Engine A only
     logger.info(`[ENGINE A ONLY] ${mode} mode: ${complex.name}`);
     const engineA = await runEngineA(complex);
     perplexityResults = engineA.results;
     allErrors.push(...engineA.errors);
   } else {
     // Standard/full mode: PARALLEL execution
-    logger.info(`[PARALLEL] Running Engine A + Engine B simultaneously: ${complex.name}`);
+    // In full mode, Engine B uses Opus 4.6 + extended thinking
+    logger.info(`[PARALLEL] Engine A (Perplexity) + Engine B (${useOpus ? 'Opus 4.6 + thinking' : 'Sonnet 4.5'}): ${complex.name}`);
     const [engineA, engineB] = await Promise.all([
       runEngineA(complex),
-      runEngineB(complex)
+      runEngineB(complex, useOpus)
     ]);
     perplexityResults = engineA.results;
     claudeResearchResults = engineB.results;
@@ -784,8 +844,8 @@ async function deepEnrichComplex(complexId, options = {}) {
   const hasEngineB = Object.values(claudeResearchResults).some(v => v !== null);
 
   if (!skipSynthesis && (hasEngineA || hasEngineB)) {
-    const synthModel = useOpus ? 'Opus 4.6' : 'Sonnet 4.5';
-    logger.info(`[SYNTHESIS ${synthModel}] Starting for ${complex.name} (A: ${hasEngineA}, B: ${hasEngineB})`);
+    const synthDesc = useOpus ? 'Opus 4.6 + thinking + web_search' : 'Sonnet 4.5';
+    logger.info(`[SYNTHESIS ${synthDesc}] Starting for ${complex.name} (A: ${hasEngineA}, B: ${hasEngineB})`);
     try {
       const synthesisRaw = await queryClaudeSynthesis(
         buildSynthesisPrompt(complex, perplexityResults, claudeResearchResults),
@@ -848,9 +908,9 @@ async function deepEnrichComplex(complexId, options = {}) {
     if (os.total_planned_units?.value) updates.total_planned_units = os.total_planned_units.value;
 
     updates.price_confidence_score = os.overall_data_quality || 50;
-    const engineLabel = skipEngineB ? 'sonar-pro' : 'sonar-pro + sonnet-4.5-research';
-    const synthLabel = useOpus ? 'opus-4.6-synthesis' : 'sonnet-4.5-synthesis';
-    updates.price_sources = JSON.stringify([engineLabel, synthLabel, 'nadlan_gov']);
+    const engineBLabel = useOpus ? 'opus-4.6-research' : 'sonnet-4.5-research';
+    const synthLabel = useOpus ? 'opus-4.6-extended-synthesis' : 'sonnet-4.5-synthesis';
+    updates.price_sources = JSON.stringify(['sonar-pro', engineBLabel, synthLabel, 'nadlan_gov']);
 
     if (os.red_flags && os.red_flags.length > 0) {
       updates.developer_red_flags = JSON.stringify(os.red_flags);
@@ -860,7 +920,7 @@ async function deepEnrichComplex(complexId, options = {}) {
     }
     if (os.engine_agreement) {
       updates.enrichment_metadata = JSON.stringify({
-        engine: `v4.0-${mode}`,
+        engine: `v5.0-${mode}`,
         engine_agreement: os.engine_agreement,
         distress_signals: os.distress_signals || null,
         opportunities: os.opportunities || [],
@@ -873,7 +933,7 @@ async function deepEnrichComplex(complexId, options = {}) {
     updates.last_news_check = new Date().toISOString();
 
   } else {
-    // Fallback: raw engine data (turbo mode or synthesis failure)
+    // Fallback: raw engine data
     logger.warn(`[FALLBACK] No synthesis for ${complex.name}, using raw data`);
 
     const profile = claudeResearchResults.profileResearch;
@@ -1042,7 +1102,7 @@ async function deepEnrichComplex(complexId, options = {}) {
 
     try {
       await pool.query(sql, values);
-      logger.info(`[v4.0 DONE] ${complex.name}: ${validUpdates.length} fields [${mode}]`, {
+      logger.info(`[v5.0 DONE] ${complex.name}: ${validUpdates.length} fields [${mode}]`, {
         fields: validUpdates.map(([k]) => k)
       });
     } catch (err) {
@@ -1058,10 +1118,10 @@ async function deepEnrichComplex(complexId, options = {}) {
     fieldsUpdated: validUpdates.length,
     updatedFields: validUpdates.map(([k]) => k),
     mode,
-    engine: `v4.0-${mode}`,
+    engine: `v5.0-${mode}`,
     engineA: hasEngineA ? 'sonar-pro' : 'failed',
-    engineB: skipEngineB ? 'skipped' : (hasEngineB ? 'sonnet-4.5 + web_search' : 'failed'),
-    synthesis: skipSynthesis ? 'none' : (synthesis ? (useOpus ? 'opus-4.6' : 'sonnet-4.5') : 'failed'),
+    engineB: skipEngineB ? 'skipped' : (hasEngineB ? (useOpus ? 'opus-4.6 + thinking + web_search' : 'sonnet-4.5 + web_search') : 'failed'),
+    synthesis: skipSynthesis ? 'none' : (synthesis ? (useOpus ? 'opus-4.6 + thinking + web_search' : 'sonnet-4.5') : 'failed'),
     dataQuality: synthesis?.overall_data_quality || null,
     engineAgreement: synthesis?.engine_agreement || null,
     redFlags: synthesis?.red_flags || [],
@@ -1097,11 +1157,11 @@ async function enrichAll(options = {}) {
 
   const jobId = `batch_${Date.now()}`;
   const modeLabel = {
-    'full': 'v4.0: parallel + opus-4.6-synthesis',
-    'standard': 'v4.0: parallel + sonnet-4.5-synthesis',
-    'fast': 'v4.0: perplexity + sonnet-4.5-synthesis',
-    'turbo': 'v4.0: perplexity-only (no synthesis)'
-  }[mode] || 'v4.0-standard';
+    'full': 'v5.0 APEX: parallel + opus-4.6-extended-thinking + web-search',
+    'standard': 'v5.0: parallel + sonnet-4.5-synthesis',
+    'fast': 'v5.0: perplexity + sonnet-4.5-synthesis',
+    'turbo': 'v5.0: perplexity-only (no synthesis)'
+  }[mode] || 'v5.0-standard';
 
   batchJobs[jobId] = {
     status: 'running',
@@ -1117,7 +1177,7 @@ async function enrichAll(options = {}) {
     completedAt: null
   };
 
-  logger.info(`[v4.0 TURBO] Batch ${jobId}: ${complexes.rows.length} complexes (mode: ${mode})`);
+  logger.info(`[v5.0 APEX] Batch ${jobId}: ${complexes.rows.length} complexes (mode: ${mode})`);
 
   processEnrichmentBatch(jobId, complexes.rows, mode).catch(err => {
     logger.error(`Batch ${jobId} crashed`, { error: err.message });
@@ -1131,7 +1191,7 @@ async function enrichAll(options = {}) {
     total: complexes.rows.length,
     mode,
     engine: modeLabel,
-    message: `v4.0 TURBO batch started (${mode}). Track: GET /api/enrichment/batch/${jobId}`
+    message: `v5.0 APEX batch started (${mode}). Track: GET /api/enrichment/batch/${jobId}`
   };
 }
 
@@ -1158,7 +1218,7 @@ async function processEnrichmentBatch(jobId, complexes, mode = 'standard') {
   job.status = 'completed';
   job.currentComplex = null;
   job.completedAt = new Date().toISOString();
-  logger.info(`[v4.0] Batch ${jobId} complete: ${job.enriched}/${job.total}, ${job.totalFieldsUpdated} fields (${mode})`);
+  logger.info(`[v5.0] Batch ${jobId} complete: ${job.enriched}/${job.total}, ${job.totalFieldsUpdated} fields (${mode})`);
 }
 
 module.exports = { deepEnrichComplex, enrichAll, getBatchStatus, getAllBatchJobs };
