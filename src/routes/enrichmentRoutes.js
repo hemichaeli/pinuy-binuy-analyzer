@@ -10,13 +10,15 @@ try {
 }
 
 // Enrich single complex (synchronous)
+// POST /api/enrichment/complex/:id?mode=standard|full|fast|turbo
 router.post('/complex/:id', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
     const complexId = parseInt(req.params.id);
     if (isNaN(complexId)) return res.status(400).json({ error: 'Invalid complex ID' });
-    logger.info(`Starting deep enrichment for complex ${complexId}`);
-    const result = await deepEnrichmentService.deepEnrichComplex(complexId);
+    const mode = req.body.mode || req.query.mode || 'standard';
+    logger.info(`Starting deep enrichment for complex ${complexId} [mode: ${mode}]`);
+    const result = await deepEnrichmentService.deepEnrichComplex(complexId, { mode });
     res.json(result);
   } catch (err) {
     logger.error('Deep enrichment failed', { error: err.message });
@@ -25,12 +27,14 @@ router.post('/complex/:id', async (req, res) => {
 });
 
 // Start async batch enrichment - returns immediately with job ID
+// POST /api/enrichment/batch {limit, city, minIai, staleOnly, mode}
+// mode: 'standard' (default), 'full', 'fast', 'turbo'
 router.post('/batch', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
-    const { limit = 20, city, minIai = 0, staleOnly = true } = req.body;
-    logger.info(`Starting async batch enrichment: limit=${limit}, city=${city || 'all'}, minIai=${minIai}`);
-    const result = await deepEnrichmentService.enrichAll({ limit, city, minIai, staleOnly });
+    const { limit = 20, city, minIai = 0, staleOnly = true, mode = 'standard' } = req.body;
+    logger.info(`Starting async batch enrichment: limit=${limit}, city=${city || 'all'}, minIai=${minIai}, mode=${mode}`);
+    const result = await deepEnrichmentService.enrichAll({ limit, city, minIai, staleOnly, mode });
     res.json(result);
   } catch (err) {
     logger.error('Batch enrichment failed', { error: err.message });
@@ -49,6 +53,8 @@ router.get('/batch/:jobId', async (req, res) => {
     progress: `${status.enriched}/${status.total}`,
     percent: status.total > 0 ? Math.round((status.enriched / status.total) * 100) : 0,
     currentComplex: status.currentComplex,
+    mode: status.mode || 'standard',
+    engine: status.engine,
     totalFieldsUpdated: status.totalFieldsUpdated,
     errors: status.errors,
     startedAt: status.startedAt,
@@ -63,11 +69,11 @@ router.get('/jobs', async (req, res) => {
   res.json(deepEnrichmentService.getAllBatchJobs());
 });
 
-// Quick enrich top IAI complexes
+// Quick enrich top IAI complexes (full quality)
 router.post('/top', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
-    const result = await deepEnrichmentService.enrichAll({ limit: 10, minIai: 60, staleOnly: false });
+    const result = await deepEnrichmentService.enrichAll({ limit: 10, minIai: 60, staleOnly: false, mode: 'full' });
     res.json(result);
   } catch (err) {
     logger.error('Top enrichment failed', { error: err.message });
