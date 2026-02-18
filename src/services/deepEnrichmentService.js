@@ -3,34 +3,41 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 /**
- * Deep Enrichment Service v3.0 - TRUE DUAL ENGINE
+ * Deep Enrichment Service v4.0 - TURBO PARALLEL ENGINE
  * 
  * Architecture:
  *   ENGINE A - Perplexity sonar-pro (Phases 1-4): Focused web research queries
  *   ENGINE B - Claude Sonnet 4.5 + web_search (Phases 5-6): Independent deep research
- *   SYNTHESIS - Claude Opus 4.6 (Phase 7): Cross-validates & synthesizes BOTH engines
+ *   SYNTHESIS - Claude Sonnet 4.5 (batch) / Opus 4.6 (single): Cross-validates & synthesizes
  *   DATA      - nadlan.gov.il (Phase 8): Actual transaction prices (overrides estimates)
  *   CALC      - City average (Phase 9): From DB transactions
  * 
- * Both research engines work INDEPENDENTLY on the same complex.
- * Opus 4.6 receives ALL outputs and produces a unified, cross-validated result.
- * 
- * v3.0: Both engines research independently, Opus 4.6 synthesizes
+ * v4.0 TURBO: Engines A+B run in PARALLEL, reduced delays, Sonnet synthesis for batch
+ * v3.0: Both engines sequential, Opus 4.6 synthesis
  * v2.0: Perplexity researched, Sonnet synthesized
  * v1.x: Perplexity-only with basic sonar
+ * 
+ * MODES:
+ *   'full'    - Both engines parallel + Opus synthesis (highest quality, ~2 min)
+ *   'standard'- Both engines parallel + Sonnet synthesis (good quality, ~1.5 min) [DEFAULT for batch]
+ *   'fast'    - Perplexity only + Sonnet synthesis (~45s)
+ *   'turbo'   - Perplexity only, no synthesis, direct parse (~30s)
  */
 
 const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
 const PERPLEXITY_MODEL = 'sonar-pro';
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_RESEARCH_MODEL = 'claude-sonnet-4-5-20250929';
-const CLAUDE_SYNTHESIS_MODEL = 'claude-opus-4-6';
+const CLAUDE_SYNTHESIS_MODEL_FAST = 'claude-sonnet-4-5-20250929';
+const CLAUDE_SYNTHESIS_MODEL_FULL = 'claude-opus-4-6';
 const NADLAN_API_URL = 'https://www.nadlan.gov.il/Nadlan.REST/Main/GetAssestAndDeals';
-const DELAY_MS = 8000;        // 8s between Perplexity phases
-const CLAUDE_DELAY_MS = 10000; // 10s between Claude phases (450K ITPM allows fast calls)
-const BETWEEN_COMPLEX_MS = 15000; // 15s between complexes
+
+// v4.0 TURBO: Reduced delays
+const DELAY_MS = 4000;            // 4s between Perplexity phases (was 8s)
+const CLAUDE_DELAY_MS = 5000;     // 5s between Claude phases (was 10s)
+const BETWEEN_COMPLEX_MS = 5000;  // 5s between complexes (was 15s)
 const MAX_RETRIES = 4;
-const BASE_BACKOFF_MS = 30000; // 30s base backoff for rate limits (doubles each retry)
+const BASE_BACKOFF_MS = 30000;
 
 const batchJobs = {};
 
@@ -49,7 +56,8 @@ function getAllBatchJobs() {
     errors: job.errors,
     startedAt: job.startedAt,
     completedAt: job.completedAt,
-    engine: 'v3.0: sonar-pro + sonnet-4.5-research + opus-4.6-synthesis'
+    mode: job.mode || 'standard',
+    engine: job.engine || 'v4.0-turbo'
   }));
 }
 
@@ -88,7 +96,7 @@ async function queryPerplexity(prompt, systemPrompt, retryCount = 0) {
 }
 
 // ============================================================
-// ENGINE B: Claude Sonnet 4.5 + Web Search - Independent Research
+// ENGINE B: Claude Sonnet 4.5 + Web Search
 // ============================================================
 async function queryClaudeResearch(prompt, systemPrompt, retryCount = 0) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -140,15 +148,17 @@ async function queryClaudeResearch(prompt, systemPrompt, retryCount = 0) {
 }
 
 // ============================================================
-// SYNTHESIS: Claude Opus 4.6 (No web search, pure reasoning)
+// SYNTHESIS: Claude (Sonnet for batch, Opus for single)
 // ============================================================
-async function queryClaudeSynthesis(prompt, systemPrompt, retryCount = 0) {
+async function queryClaudeSynthesis(prompt, systemPrompt, useOpus = false, retryCount = 0) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 
+  const model = useOpus ? CLAUDE_SYNTHESIS_MODEL_FULL : CLAUDE_SYNTHESIS_MODEL_FAST;
+
   try {
     const response = await axios.post(ANTHROPIC_API_URL, {
-      model: CLAUDE_SYNTHESIS_MODEL,
+      model,
       max_tokens: 16000,
       system: systemPrompt,
       messages: [
@@ -171,13 +181,14 @@ async function queryClaudeSynthesis(prompt, systemPrompt, retryCount = 0) {
   } catch (err) {
     if (err.response && (err.response.status === 429 || err.response.status === 529) && retryCount < MAX_RETRIES) {
       const backoffMs = BASE_BACKOFF_MS * Math.pow(2, retryCount);
-      logger.info(`Opus Synthesis rate limited, retry ${retryCount + 1}/${MAX_RETRIES} after ${backoffMs/1000}s`);
+      logger.info(`Synthesis rate limited (${model}), retry ${retryCount + 1}/${MAX_RETRIES} after ${backoffMs/1000}s`);
       await sleep(backoffMs);
-      return queryClaudeSynthesis(prompt, systemPrompt, retryCount + 1);
+      return queryClaudeSynthesis(prompt, systemPrompt, useOpus, retryCount + 1);
     }
     if (err.response) {
-      logger.error(`Opus Synthesis API error ${err.response.status}`, { 
+      logger.error(`Synthesis API error ${err.response.status}`, { 
         status: err.response.status, 
+        model,
         data: JSON.stringify(err.response.data).substring(0, 500) 
       });
     }
@@ -321,7 +332,7 @@ Return JSON only.`;
 }
 
 // ============================================================
-// ENGINE B PROMPTS: Claude Sonnet 4.5 + Web Search (Phases 5-6)
+// ENGINE B PROMPTS: Claude Sonnet 4.5 + Web Search
 // ============================================================
 
 const CLAUDE_RESEARCH_SYSTEM = `You are an elite Israeli real estate intelligence analyst for QUANTUM.
@@ -466,32 +477,27 @@ Return ONLY the JSON.`;
 }
 
 // ============================================================
-// SYNTHESIS PROMPT: Claude Opus 4.6 (Phase 7)
+// SYNTHESIS PROMPT
 // ============================================================
 
-const OPUS_SYNTHESIS_SYSTEM = `You are QUANTUM's supreme intelligence engine - the most advanced real estate analysis system in Israel.
+const SYNTHESIS_SYSTEM = `You are QUANTUM's intelligence engine - the most advanced real estate analysis system in Israel.
 
 You receive raw research data from TWO independent research engines:
 - ENGINE A (Perplexity sonar-pro): 4 focused web research queries
 - ENGINE B (Claude Sonnet 4.5 + web search): 2 comprehensive web research missions
 
 Your mission:
-1. CROSS-VALIDATE: Compare findings between Engine A and Engine B. Where they agree, confidence is HIGH. Where they disagree, investigate why and pick the most reliable.
+1. CROSS-VALIDATE: Compare findings between Engine A and Engine B. Where they agree, confidence is HIGH.
 2. SYNTHESIZE: Merge ALL data into a single unified intelligence report.
-3. FILL GAPS: Where one engine found data the other missed, incorporate it with appropriate confidence.
+3. FILL GAPS: Where one engine found data the other missed, incorporate it.
 4. DETECT CONTRADICTIONS: Flag any conflicts between the two engines.
-5. SCORE EVERYTHING: Assign confidence scores (0-100) based on:
-   - Both engines agree = 80-100
-   - One engine only, strong source = 50-70
-   - One engine only, weak source = 20-40
-   - Inferred/estimated = 10-20
-6. IDENTIFY: Red flags, opportunities, and investment signals others would miss.
+5. SCORE confidence (0-100): Both agree=80-100, one strong=50-70, one weak=20-40
+6. IDENTIFY: Red flags, opportunities, and investment signals.
 
 Return ONLY valid JSON. All prices in ILS. Hebrew content expected where natural.
-Be precise. Be conservative. Never invent specific numbers.
-You are the final authority - your output directly updates the investment database.`;
+Be precise. Be conservative. Never invent specific numbers.`;
 
-function buildOpusSynthesisPrompt(complex, perplexityResults, claudeResearchResults) {
+function buildSynthesisPrompt(complex, perplexityResults, claudeResearchResults) {
   return `DUAL-ENGINE SYNTHESIS for Pinuy-Binuy complex:
 
 COMPLEX: "${complex.name}" in ${complex.city}
@@ -528,7 +534,7 @@ Cross-validate Engine A and Engine B findings. Produce the definitive intelligen
 
 Return JSON:
 {
-  "neighborhood": {"value": "string or null", "confidence": 0-100, "source": "engine_a/engine_b/both", "notes": "any discrepancy"},
+  "neighborhood": {"value": "string or null", "confidence": 0-100, "source": "engine_a/engine_b/both"},
   "num_buildings": {"value": "number or null", "confidence": 0-100, "source": "engine_a/engine_b/both"},
   "total_existing_units": {"value": "number or null", "confidence": 0-100, "source": "engine_a/engine_b/both"},
   "total_planned_units": {"value": "number or null", "confidence": 0-100, "source": "engine_a/engine_b/both"},
@@ -560,16 +566,16 @@ Return JSON:
     "opportunity_signals": []
   },
   "engine_agreement": {
-    "fields_both_agree": ["list of fields where both engines found matching data"],
-    "fields_engine_a_only": ["fields only Perplexity found"],
-    "fields_engine_b_only": ["fields only Claude found"],
-    "contradictions": [{"field": "field_name", "engine_a_value": "x", "engine_b_value": "y", "resolution": "which was chosen and why"}]
+    "fields_both_agree": [],
+    "fields_engine_a_only": [],
+    "fields_engine_b_only": [],
+    "contradictions": []
   },
-  "red_flags": ["list of concerns"],
-  "opportunities": ["list of positive investment signals"],
-  "validation_notes": ["data quality issues, contradictions found"],
+  "red_flags": [],
+  "opportunities": [],
+  "validation_notes": [],
   "overall_data_quality": 0-100,
-  "synthesis_summary": "3-4 sentence Hebrew summary: complex status, investment potential, key findings from both engines"
+  "synthesis_summary": "3-4 sentence Hebrew summary"
 }`;
 }
 
@@ -619,9 +625,6 @@ async function fetchNadlanTransactions(street, city) {
   }
 }
 
-// ============================================================
-// Calculate city average from transactions DB
-// ============================================================
 async function calculateCityAverage(city) {
   try {
     const result = await pool.query(
@@ -641,28 +644,15 @@ async function calculateCityAverage(city) {
 }
 
 // ============================================================
-// MAIN: Deep Enrich a Single Complex (TRUE DUAL ENGINE v3.0)
+// ENGINE A: Run all Perplexity phases (with internal delays)
 // ============================================================
-async function deepEnrichComplex(complexId) {
-  const res = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
-  if (res.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
-  const complex = res.rows[0];
-
-  logger.info(`[v3.0 TRUE DUAL ENGINE] Enriching: ${complex.name} (${complex.city}) [ID: ${complexId}]`);
-
-  const updates = {};
-  let errors = [];
-  const perplexityResults = { phase1: null, phase2: null, phase3: null, phase4: null };
-  const claudeResearchResults = { profileResearch: null, marketResearch: null };
-
-  // =====================================================
-  // ENGINE A: Perplexity sonar-pro (Phases 1-4)
-  // =====================================================
-  logger.info(`[ENGINE A] Perplexity sonar-pro research: ${complex.name}`);
+async function runEngineA(complex) {
+  const results = { phase1: null, phase2: null, phase3: null, phase4: null };
+  const errors = [];
 
   try {
     const raw = await queryPerplexity(buildAddressQuery(complex), PERPLEXITY_SYSTEM);
-    perplexityResults.phase1 = parseJson(raw);
+    results.phase1 = parseJson(raw);
     logger.info(`[A.1] ${complex.name}: address data collected`);
   } catch (err) {
     errors.push(`A.1 address: ${err.message}`);
@@ -674,7 +664,7 @@ async function deepEnrichComplex(complexId) {
   if (complex.developer) {
     try {
       const raw = await queryPerplexity(buildDeveloperQuery(complex), PERPLEXITY_SYSTEM);
-      perplexityResults.phase2 = parseJson(raw);
+      results.phase2 = parseJson(raw);
       logger.info(`[A.2] ${complex.name}: developer data collected`);
     } catch (err) {
       errors.push(`A.2 developer: ${err.message}`);
@@ -686,7 +676,7 @@ async function deepEnrichComplex(complexId) {
 
   try {
     const raw = await queryPerplexity(buildPricingQuery(complex), PERPLEXITY_SYSTEM);
-    perplexityResults.phase3 = parseJson(raw);
+    results.phase3 = parseJson(raw);
     logger.info(`[A.3] ${complex.name}: pricing data collected`);
   } catch (err) {
     errors.push(`A.3 pricing: ${err.message}`);
@@ -697,26 +687,29 @@ async function deepEnrichComplex(complexId) {
 
   try {
     const raw = await queryPerplexity(buildNewsQuery(complex), PERPLEXITY_SYSTEM);
-    perplexityResults.phase4 = parseJson(raw);
+    results.phase4 = parseJson(raw);
     logger.info(`[A.4] ${complex.name}: news data collected`);
   } catch (err) {
     errors.push(`A.4 news: ${err.message}`);
     logger.warn(`A.4 failed for ${complex.name}`, { error: err.message });
   }
 
-  await sleep(CLAUDE_DELAY_MS);
+  return { results, errors };
+}
 
-  // =====================================================
-  // ENGINE B: Claude Sonnet 4.5 + Web Search (Phases 5-6)
-  // =====================================================
-  logger.info(`[ENGINE B] Claude Sonnet 4.5 web research: ${complex.name}`);
+// ============================================================
+// ENGINE B: Run all Claude research phases (with internal delays)
+// ============================================================
+async function runEngineB(complex) {
+  const results = { profileResearch: null, marketResearch: null };
+  const errors = [];
 
   try {
     const raw = await queryClaudeResearch(
       buildClaudeResearchQuery_ComplexProfile(complex),
       CLAUDE_RESEARCH_SYSTEM
     );
-    claudeResearchResults.profileResearch = parseJson(raw);
+    results.profileResearch = parseJson(raw);
     logger.info(`[B.5] ${complex.name}: complex profile research complete`);
   } catch (err) {
     errors.push(`B.5 Claude profile: ${err.message}`);
@@ -730,47 +723,92 @@ async function deepEnrichComplex(complexId) {
       buildClaudeResearchQuery_MarketIntel(complex),
       CLAUDE_RESEARCH_SYSTEM
     );
-    claudeResearchResults.marketResearch = parseJson(raw);
+    results.marketResearch = parseJson(raw);
     logger.info(`[B.6] ${complex.name}: market intel research complete`);
   } catch (err) {
     errors.push(`B.6 Claude market: ${err.message}`);
     logger.warn(`B.6 failed for ${complex.name}`, { error: err.message });
   }
 
-  await sleep(CLAUDE_DELAY_MS);
+  return { results, errors };
+}
+
+// ============================================================
+// MAIN: Deep Enrich a Single Complex (v4.0 TURBO)
+// ============================================================
+async function deepEnrichComplex(complexId, options = {}) {
+  const { mode = 'standard' } = options;
+  // mode: 'full' (Opus synthesis), 'standard' (Sonnet synthesis), 'fast' (Perplexity only + Sonnet), 'turbo' (Perplexity only, no synthesis)
+  
+  const res = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
+  if (res.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
+  const complex = res.rows[0];
+
+  const useOpus = mode === 'full';
+  const skipEngineB = mode === 'fast' || mode === 'turbo';
+  const skipSynthesis = mode === 'turbo';
+
+  logger.info(`[v4.0 TURBO] Enriching: ${complex.name} (${complex.city}) [ID: ${complexId}] [mode: ${mode}]`);
+
+  const updates = {};
+  let allErrors = [];
+  let perplexityResults = { phase1: null, phase2: null, phase3: null, phase4: null };
+  let claudeResearchResults = { profileResearch: null, marketResearch: null };
 
   // =====================================================
-  // SYNTHESIS: Claude Opus 4.6 (Phase 7)
+  // v4.0: RUN ENGINES IN PARALLEL (or just A for fast/turbo)
   // =====================================================
-  let opusSynthesis = null;
+  if (skipEngineB) {
+    // Fast/turbo mode: Engine A only
+    logger.info(`[ENGINE A ONLY] ${mode} mode: ${complex.name}`);
+    const engineA = await runEngineA(complex);
+    perplexityResults = engineA.results;
+    allErrors.push(...engineA.errors);
+  } else {
+    // Standard/full mode: PARALLEL execution
+    logger.info(`[PARALLEL] Running Engine A + Engine B simultaneously: ${complex.name}`);
+    const [engineA, engineB] = await Promise.all([
+      runEngineA(complex),
+      runEngineB(complex)
+    ]);
+    perplexityResults = engineA.results;
+    claudeResearchResults = engineB.results;
+    allErrors.push(...engineA.errors, ...engineB.errors);
+  }
+
+  // =====================================================
+  // SYNTHESIS
+  // =====================================================
+  let synthesis = null;
   const hasEngineA = Object.values(perplexityResults).some(v => v !== null);
   const hasEngineB = Object.values(claudeResearchResults).some(v => v !== null);
 
-  if (hasEngineA || hasEngineB) {
-    logger.info(`[OPUS SYNTHESIS] Starting for ${complex.name} (A: ${hasEngineA}, B: ${hasEngineB})`);
+  if (!skipSynthesis && (hasEngineA || hasEngineB)) {
+    const synthModel = useOpus ? 'Opus 4.6' : 'Sonnet 4.5';
+    logger.info(`[SYNTHESIS ${synthModel}] Starting for ${complex.name} (A: ${hasEngineA}, B: ${hasEngineB})`);
     try {
       const synthesisRaw = await queryClaudeSynthesis(
-        buildOpusSynthesisPrompt(complex, perplexityResults, claudeResearchResults),
-        OPUS_SYNTHESIS_SYSTEM
+        buildSynthesisPrompt(complex, perplexityResults, claudeResearchResults),
+        SYNTHESIS_SYSTEM,
+        useOpus
       );
-      opusSynthesis = parseJson(synthesisRaw);
+      synthesis = parseJson(synthesisRaw);
 
-      const agr = opusSynthesis?.engine_agreement;
-      logger.info(`[OPUS] ${complex.name}: quality=${opusSynthesis?.overall_data_quality || '?'}, ` +
+      const agr = synthesis?.engine_agreement;
+      logger.info(`[SYNTH] ${complex.name}: quality=${synthesis?.overall_data_quality || '?'}, ` +
         `agree=${agr?.fields_both_agree?.length || 0}, ` +
         `contradictions=${agr?.contradictions?.length || 0}`);
     } catch (err) {
-      errors.push(`Opus synthesis: ${err.message}`);
-      logger.warn(`Opus synthesis failed for ${complex.name}`, { error: err.message });
+      allErrors.push(`Synthesis: ${err.message}`);
+      logger.warn(`Synthesis failed for ${complex.name}`, { error: err.message });
     }
   }
 
   // =====================================================
   // APPLY RESULTS
   // =====================================================
-
-  if (opusSynthesis) {
-    const os = opusSynthesis;
+  if (synthesis) {
+    const os = synthesis;
 
     if (os.neighborhood?.value) updates.neighborhood = os.neighborhood.value;
     if (os.num_buildings?.value) updates.num_buildings = os.num_buildings.value;
@@ -810,7 +848,9 @@ async function deepEnrichComplex(complexId) {
     if (os.total_planned_units?.value) updates.total_planned_units = os.total_planned_units.value;
 
     updates.price_confidence_score = os.overall_data_quality || 50;
-    updates.price_sources = JSON.stringify(['sonar-pro', 'sonnet-4.5-research', 'opus-4.6-synthesis', 'nadlan_gov']);
+    const engineLabel = skipEngineB ? 'sonar-pro' : 'sonar-pro + sonnet-4.5-research';
+    const synthLabel = useOpus ? 'opus-4.6-synthesis' : 'sonnet-4.5-synthesis';
+    updates.price_sources = JSON.stringify([engineLabel, synthLabel, 'nadlan_gov']);
 
     if (os.red_flags && os.red_flags.length > 0) {
       updates.developer_red_flags = JSON.stringify(os.red_flags);
@@ -820,7 +860,7 @@ async function deepEnrichComplex(complexId) {
     }
     if (os.engine_agreement) {
       updates.enrichment_metadata = JSON.stringify({
-        engine: 'v3.0-dual',
+        engine: `v4.0-${mode}`,
         engine_agreement: os.engine_agreement,
         distress_signals: os.distress_signals || null,
         opportunities: os.opportunities || [],
@@ -833,8 +873,8 @@ async function deepEnrichComplex(complexId) {
     updates.last_news_check = new Date().toISOString();
 
   } else {
-    // Fallback: raw engine data
-    logger.warn(`[FALLBACK] No Opus synthesis for ${complex.name}, using raw data`);
+    // Fallback: raw engine data (turbo mode or synthesis failure)
+    logger.warn(`[FALLBACK] No synthesis for ${complex.name}, using raw data`);
 
     const profile = claudeResearchResults.profileResearch;
     const market = claudeResearchResults.marketResearch;
@@ -896,7 +936,7 @@ async function deepEnrichComplex(complexId) {
       }
       updates.price_confidence_score = 40;
       updates.price_last_updated = new Date().toISOString();
-      updates.price_sources = JSON.stringify(['sonar-pro', 'sonnet-4.5-research']);
+      updates.price_sources = JSON.stringify(['sonar-pro', skipEngineB ? 'direct' : 'sonnet-4.5-research']);
     }
 
     if (market?.news_analysis || p4) {
@@ -962,14 +1002,14 @@ async function deepEnrichComplex(complexId) {
         if (avgPriceSqm > 0) {
           updates.accurate_price_sqm = avgPriceSqm;
           updates.price_confidence_score = Math.min(95, 50 + recentTx.length * 5);
-          updates.price_sources = JSON.stringify(['nadlan_gov', 'sonar-pro', 'sonnet-4.5-research', 'opus-4.6-synthesis']);
+          updates.price_sources = JSON.stringify(['nadlan_gov', 'sonar-pro', 'synthesis']);
         }
       }
 
       logger.info(`[Phase 8 nadlan] ${complex.name}: ${newCount} new transactions`);
     }
   } catch (err) {
-    errors.push(`Phase 8 nadlan: ${err.message}`);
+    allErrors.push(`Phase 8 nadlan: ${err.message}`);
   }
 
   // =====================================================
@@ -1002,13 +1042,12 @@ async function deepEnrichComplex(complexId) {
 
     try {
       await pool.query(sql, values);
-      const engineLabel = opusSynthesis ? 'DUAL ENGINE + Opus' : 'FALLBACK';
-      logger.info(`[v3.0 DONE] ${complex.name}: ${validUpdates.length} fields (${engineLabel})`, {
+      logger.info(`[v4.0 DONE] ${complex.name}: ${validUpdates.length} fields [${mode}]`, {
         fields: validUpdates.map(([k]) => k)
       });
     } catch (err) {
       logger.error(`DB update failed for ${complex.name}`, { error: err.message, sql: sql.substring(0, 200) });
-      errors.push(`DB update: ${err.message}`);
+      allErrors.push(`DB update: ${err.message}`);
     }
   }
 
@@ -1018,20 +1057,17 @@ async function deepEnrichComplex(complexId) {
     city: complex.city,
     fieldsUpdated: validUpdates.length,
     updatedFields: validUpdates.map(([k]) => k),
-    engine: opusSynthesis
-      ? 'v3.0: sonar-pro + sonnet-4.5-research + opus-4.6-synthesis'
-      : hasEngineB
-        ? 'v3.0-partial: sonar-pro + sonnet-4.5 (no synthesis)'
-        : 'v3.0-fallback: sonar-pro only',
+    mode,
+    engine: `v4.0-${mode}`,
     engineA: hasEngineA ? 'sonar-pro' : 'failed',
-    engineB: hasEngineB ? 'sonnet-4.5 + web_search' : 'failed',
-    synthesis: opusSynthesis ? 'opus-4.6' : 'none',
-    dataQuality: opusSynthesis?.overall_data_quality || null,
-    engineAgreement: opusSynthesis?.engine_agreement || null,
-    redFlags: opusSynthesis?.red_flags || [],
-    opportunities: opusSynthesis?.opportunities || [],
-    errors: errors.length > 0 ? errors : null,
-    status: errors.length === 0 ? 'success' : 'partial'
+    engineB: skipEngineB ? 'skipped' : (hasEngineB ? 'sonnet-4.5 + web_search' : 'failed'),
+    synthesis: skipSynthesis ? 'none' : (synthesis ? (useOpus ? 'opus-4.6' : 'sonnet-4.5') : 'failed'),
+    dataQuality: synthesis?.overall_data_quality || null,
+    engineAgreement: synthesis?.engine_agreement || null,
+    redFlags: synthesis?.red_flags || [],
+    opportunities: synthesis?.opportunities || [],
+    errors: allErrors.length > 0 ? allErrors : null,
+    status: allErrors.length === 0 ? 'success' : 'partial'
   };
 }
 
@@ -1039,7 +1075,7 @@ async function deepEnrichComplex(complexId) {
 // Batch Processing
 // ============================================================
 async function enrichAll(options = {}) {
-  const { limit = 20, city, minIai = 0, staleOnly = true } = options;
+  const { limit = 20, city, minIai = 0, staleOnly = true, mode = 'standard' } = options;
 
   let query = 'SELECT id, name, city, iai_score FROM complexes WHERE iai_score >= $1';
   const params = [minIai];
@@ -1060,6 +1096,13 @@ async function enrichAll(options = {}) {
   const complexes = await pool.query(query, params);
 
   const jobId = `batch_${Date.now()}`;
+  const modeLabel = {
+    'full': 'v4.0: parallel + opus-4.6-synthesis',
+    'standard': 'v4.0: parallel + sonnet-4.5-synthesis',
+    'fast': 'v4.0: perplexity + sonnet-4.5-synthesis',
+    'turbo': 'v4.0: perplexity-only (no synthesis)'
+  }[mode] || 'v4.0-standard';
+
   batchJobs[jobId] = {
     status: 'running',
     total: complexes.rows.length,
@@ -1067,15 +1110,16 @@ async function enrichAll(options = {}) {
     totalFieldsUpdated: 0,
     errors: 0,
     currentComplex: null,
-    engine: 'v3.0: sonar-pro + sonnet-4.5-research + opus-4.6-synthesis',
+    mode,
+    engine: modeLabel,
     details: [],
     startedAt: new Date().toISOString(),
     completedAt: null
   };
 
-  logger.info(`[v3.0] Batch ${jobId}: ${complexes.rows.length} complexes (TRUE DUAL ENGINE)`);
+  logger.info(`[v4.0 TURBO] Batch ${jobId}: ${complexes.rows.length} complexes (mode: ${mode})`);
 
-  processEnrichmentBatch(jobId, complexes.rows).catch(err => {
+  processEnrichmentBatch(jobId, complexes.rows, mode).catch(err => {
     logger.error(`Batch ${jobId} crashed`, { error: err.message });
     batchJobs[jobId].status = 'error';
     batchJobs[jobId].completedAt = new Date().toISOString();
@@ -1085,18 +1129,19 @@ async function enrichAll(options = {}) {
     jobId,
     status: 'started',
     total: complexes.rows.length,
-    engine: 'v3.0: sonar-pro + sonnet-4.5-research + opus-4.6-synthesis',
-    message: `True dual-engine batch started. Track: GET /api/enrichment/batch/${jobId}`
+    mode,
+    engine: modeLabel,
+    message: `v4.0 TURBO batch started (${mode}). Track: GET /api/enrichment/batch/${jobId}`
   };
 }
 
-async function processEnrichmentBatch(jobId, complexes) {
+async function processEnrichmentBatch(jobId, complexes, mode = 'standard') {
   const job = batchJobs[jobId];
 
   for (const c of complexes) {
     try {
       job.currentComplex = `${c.name} (${c.city})`;
-      const result = await deepEnrichComplex(c.id);
+      const result = await deepEnrichComplex(c.id, { mode });
       job.enriched++;
       job.totalFieldsUpdated += result.fieldsUpdated;
       if (result.errors) job.errors++;
@@ -1113,7 +1158,7 @@ async function processEnrichmentBatch(jobId, complexes) {
   job.status = 'completed';
   job.currentComplex = null;
   job.completedAt = new Date().toISOString();
-  logger.info(`[v3.0] Batch ${jobId} complete: ${job.enriched}/${job.total}, ${job.totalFieldsUpdated} fields`);
+  logger.info(`[v4.0] Batch ${jobId} complete: ${job.enriched}/${job.total}, ${job.totalFieldsUpdated} fields (${mode})`);
 }
 
 module.exports = { deepEnrichComplex, enrichAll, getBatchStatus, getAllBatchJobs };
