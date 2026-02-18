@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.24.0';
-const BUILD = '2026-02-17-v4.24.0-signature-enrichment';
+const VERSION = '4.24.1';
+const BUILD = '2026-02-18-v4.24.1-widen-columns';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -175,8 +175,40 @@ async function runAutoMigrations() {
     for (const sql of sigColumns) {
       try { await pool.query(sql); } catch (e) { /* column exists */ }
     }
+
+    // v4.24.1: Widen all VARCHAR columns to TEXT to prevent enrichment data loss
+    // The enrichment engine (Perplexity + Claude) returns longer strings than
+    // the original VARCHAR(100)/VARCHAR(255) limits can hold
+    const widenColumns = [
+      'ALTER TABLE complexes ALTER COLUMN neighborhood TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN region TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN developer TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN developer_strength TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN developer_status TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN developer_risk_level TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN price_trend TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN news_sentiment TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN signature_source TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN name TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN city TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN plan_stage TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN status TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN plan_number TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN official_track TYPE TEXT',
+      'ALTER TABLE complexes ALTER COLUMN developer_financial_health TYPE TEXT',
+      'ALTER TABLE buildings ALTER COLUMN address TYPE TEXT',
+      'ALTER TABLE buildings ALTER COLUMN street TYPE TEXT',
+      'ALTER TABLE buildings ALTER COLUMN city TYPE TEXT',
+      'ALTER TABLE listings ALTER COLUMN address TYPE TEXT',
+      'ALTER TABLE listings ALTER COLUMN city TYPE TEXT',
+      'ALTER TABLE listings ALTER COLUMN deal_status TYPE TEXT',
+      'ALTER TABLE listings ALTER COLUMN message_status TYPE TEXT'
+    ];
+    for (const sql of widenColumns) {
+      try { await pool.query(sql); } catch (e) { /* column might not exist yet or already TEXT */ }
+    }
     
-    logger.info('Auto-migrations completed (v4.24.0)');
+    logger.info('Auto-migrations completed (v4.24.1 - widened columns)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
