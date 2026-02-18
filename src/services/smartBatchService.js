@@ -91,18 +91,49 @@ async function processSmartBatch(jobId, complexes, mode) {
   const job = smartBatchJobs[jobId];
 
   for (const c of complexes) {
+    const complexStart = Date.now();
     try {
       job.currentComplex = `${c.name} (${c.city})`;
       const result = await deepEnrichComplex(c.id, { mode });
+      
+      // Count as enriched (even partial - data was written to DB)
       job.enriched++;
-      job.totalFieldsUpdated += result.fieldsUpdated;
-      if (result.errors) job.errors++;
-      job.details.push(result);
+      job.totalFieldsUpdated += (result.fieldsUpdated || 0);
+      
+      // Track partial errors (API failures etc) but still count as enriched
+      if (result.errors && result.errors.length > 0) {
+        job.errors++;
+        logger.warn(`[SMART SCAN] ${c.name}: enriched with ${result.errors.length} warnings`, { 
+          fields: result.fieldsUpdated, warnings: result.errors 
+        });
+      }
+      
+      job.details.push({ ...result, durationMs: Date.now() - complexStart });
       await sleep(BETWEEN_COMPLEX_MS);
     } catch (err) {
+      // Even on throw, check if data was actually written to DB
+      let dbFields = 0;
+      try {
+        const check = await pool.query(
+          'SELECT updated_at FROM complexes WHERE id = $1 AND updated_at > NOW() - INTERVAL \'10 minutes\'',
+          [c.id]
+        );
+        if (check.rows.length > 0) {
+          // Data WAS written despite the throw - count as partial enrichment
+          job.enriched++;
+          dbFields = 1; // At least some data saved
+          logger.warn(`[SMART SCAN] ${c.name}: threw but DB was updated (partial enrichment)`);
+        }
+      } catch (dbErr) { /* ignore DB check errors */ }
+      
       job.errors++;
-      job.details.push({ complexId: c.id, name: c.name, status: 'error', error: err.message });
-      logger.error(`Smart enrichment failed for ${c.name}`, { error: err.message });
+      job.details.push({ 
+        complexId: c.id, name: c.name, city: c.city,
+        status: dbFields > 0 ? 'partial' : 'error', 
+        error: err.message,
+        durationMs: Date.now() - complexStart
+      });
+      logger.error(`[SMART SCAN] ${c.name} failed: ${err.message}`);
       await sleep(BETWEEN_COMPLEX_MS);
     }
   }
@@ -110,7 +141,9 @@ async function processSmartBatch(jobId, complexes, mode) {
   job.status = 'completed';
   job.currentComplex = null;
   job.completedAt = new Date().toISOString();
-  logger.info(`[SMART SCAN] Batch ${jobId} complete: ${job.enriched}/${job.total}, ${job.totalFieldsUpdated} fields (${mode})`);
+  
+  const duration = ((new Date(job.completedAt) - new Date(job.startedAt)) / 60000).toFixed(1);
+  logger.info(`[SMART SCAN] Batch ${jobId} complete: ${job.enriched}/${job.total} enriched, ${job.errors} errors, ${job.totalFieldsUpdated} fields, ${duration}min (${mode})`);
 }
 
 module.exports = { enrichByIds, getSmartBatchStatus, getAllSmartBatchJobs };
