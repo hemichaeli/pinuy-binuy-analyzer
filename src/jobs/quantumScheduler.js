@@ -1,5 +1,4 @@
 const cron = require('node-cron');
-const pool = require('../db/pool');
 const { logger } = require('../services/logger');
 const { shouldSkipToday } = require('../config/israeliHolidays');
 
@@ -32,32 +31,25 @@ function getDeepEnrichment() { try { return require('../services/deepEnrichmentS
  *   Tier 1 FULL monthly:       50 x $1.23 x 1  = $62/mo
  *   Tier 2 STANDARD bi-weekly: ~187 x $0.26 x 2 = $97/mo
  *   Tier 3 FAST monthly:       ~199 x $0.15 x 1 = $30/mo
- *   Event-driven (est):                          = $20-50/mo
- *   --------------------------------------------------------
- *   TOTAL:                                      ~$260-290/mo
+ *   Event-driven:              ~$20-50/mo
+ *   TOTAL: ~$260-290/month (~$3,100-3,500/year)
  */
 
-const SCAN_CONFIG = {
-  tier1: { mode: 'standard', limit: 50 },
-  tier1Full: { mode: 'full', limit: 50 },
-  tier2: { mode: 'standard', limit: 200 },
-  tier3: { mode: 'fast', limit: 250 },
-};
-
-// State tracking
+// ============================================================
+// STATE MANAGEMENT
+// ============================================================
 const schedulerState = {
-  isRunning: false,
-  activeJobs: {},
-  lastRuns: {},
-  chainQueue: [],   // [{afterJob, tier, mode}, ...] - sequential chain
-  biweeklyToggle: true,
-  scheduledTasks: [],
-  stats: { totalScans: 0, totalCost: 0, lastMonth: 0 },
-  lastPSSRank: null
+  activeJobs: {},        // jobId -> { tier, mode, count, startedAt, estimatedCost }
+  chainQueue: [],        // [{ afterJob, tier, mode }, ...]
+  lastRuns: {},          // tier -> { jobId, enriched, total, fields, errors, cost, duration, completedAt }
+  lastPSSRank: null,     // { timestamp, tiers, top5 }
+  biweeklyToggle: false, // alternates for Tier 2
+  stats: { totalScans: 0, totalCost: 0, lastMonth: null },
+  scheduledTasks: []
 };
 
 // ============================================================
-// CORE: Is today a scan day? (enrichment only)
+// HELPERS
 // ============================================================
 function isEnrichmentDay() {
   const now = new Date();
@@ -69,8 +61,9 @@ function isEnrichmentDay() {
     return false;
   }
 
-  if (shouldSkipToday()) {
-    logger.info('[SCHEDULER] Skipping enrichment: Jewish holiday');
+  const holidayCheck = shouldSkipToday();
+  if (holidayCheck.shouldSkip) {
+    logger.info(`[SCHEDULER] Skipping enrichment: ${holidayCheck.reason || 'Jewish holiday'}`);
     return false;
   }
 
@@ -101,39 +94,65 @@ async function launchTierScan(tier, modeOverride = null) {
     return null;
   }
 
-  const config = tier === '1full' ? SCAN_CONFIG.tier1Full
-    : tier === '1' ? SCAN_CONFIG.tier1
-    : tier === '2' ? SCAN_CONFIG.tier2
-    : SCAN_CONFIG.tier3;
-
-  const mode = modeOverride || config.mode;
-  const tierNum = tier === '1full' ? 1 : parseInt(tier);
-
   try {
-    const priorities = await scanPriority.calculateAllPriorities();
-    const tierKey = tierNum === 1 ? 'hot' : tierNum === 2 ? 'active' : 'dormant';
-    const ids = priorities.tiers[tierKey].complexes.slice(0, config.limit).map(c => c.id);
+    // Get PSS-ranked complexes
+    const ranking = await scanPriority.calculateAllPriorities();
+    
+    let ids = [];
+    let mode = modeOverride;
+    let tierLabel = '';
+    const costPerComplex = { full: 1.23, standard: 0.26, fast: 0.15, turbo: 0.05 };
+
+    switch (tier) {
+      case '1':
+      case '1standard':
+        ids = ranking.top_50.map(c => c.id);
+        mode = mode || 'standard';
+        tierLabel = 'Tier 1 HOT';
+        break;
+      case '1full':
+        ids = ranking.top_50.map(c => c.id);
+        mode = mode || 'full';
+        tierLabel = 'Tier 1 HOT (FULL)';
+        break;
+      case '2':
+        ids = ranking.active.map(c => c.id);
+        mode = mode || 'standard';
+        tierLabel = 'Tier 2 ACTIVE';
+        break;
+      case '3':
+        ids = ranking.dormant.map(c => c.id);
+        mode = mode || 'fast';
+        tierLabel = 'Tier 3 DORMANT';
+        break;
+      default:
+        logger.warn(`[SCHEDULER] Unknown tier: ${tier}`);
+        return null;
+    }
 
     if (ids.length === 0) {
-      logger.info(`[SCHEDULER] No complexes for tier ${tier}`);
+      logger.warn(`[SCHEDULER] No complexes found for ${tierLabel}`);
       return null;
     }
 
-    const job = await smartBatch.enrichByIds(ids, mode);
+    const estimatedCost = (ids.length * (costPerComplex[mode] || 0.26)).toFixed(2);
+    logger.info(`[SCHEDULER] Launching ${tierLabel}: ${ids.length} complexes, mode=${mode}, est. $${estimatedCost}`);
+
+    const result = await smartBatch.enrichByIds(ids, mode);
     
-    const costPer = mode === 'full' ? 1.23 : mode === 'standard' ? 0.26 : 0.15;
-    const cost = ids.length * costPer;
+    if (result.jobId) {
+      schedulerState.activeJobs[result.jobId] = {
+        tier,
+        mode,
+        count: ids.length,
+        startedAt: new Date().toISOString(),
+        estimatedCost: parseFloat(estimatedCost)
+      };
+      schedulerState.stats.totalScans++;
+      logger.info(`[SCHEDULER] Job ${result.jobId} started for ${tierLabel}`);
+    }
 
-    schedulerState.activeJobs[job.jobId] = {
-      tier, mode, count: ids.length,
-      startedAt: new Date().toISOString(),
-      estimatedCost: Math.round(cost * 100) / 100
-    };
-    schedulerState.stats.totalScans++;
-    schedulerState.stats.totalCost += cost;
-
-    logger.info(`[SCHEDULER] Launched tier ${tier} (${mode}): ${ids.length} complexes, ~$${cost.toFixed(2)} | Job: ${job.jobId}`);
-    return job;
+    return result;
   } catch (err) {
     logger.error(`[SCHEDULER] Failed to launch tier ${tier}`, { error: err.message });
     return null;
@@ -141,55 +160,58 @@ async function launchTierScan(tier, modeOverride = null) {
 }
 
 // ============================================================
-// JOB MONITOR - checks active jobs, triggers chains
+// CHAIN MANAGEMENT
+// ============================================================
+function chainAfter(afterJobId, tier, mode) {
+  schedulerState.chainQueue.push({ afterJob: afterJobId, tier, mode });
+  logger.info(`[SCHEDULER] Chained tier ${tier} (${mode}) after job ${afterJobId}. Queue size: ${schedulerState.chainQueue.length}`);
+  return schedulerState.chainQueue.length;
+}
+
+// ============================================================
+// JOB MONITOR (runs every 2 min)
 // ============================================================
 async function monitorJobs() {
   const smartBatch = getSmartBatch();
-  const deepEnrich = getDeepEnrichment();
-  if (!smartBatch && !deepEnrich) return;
+  if (!smartBatch) return;
 
   for (const [jobId, meta] of Object.entries(schedulerState.activeJobs)) {
     try {
-      const status = smartBatch?.getSmartBatchStatus(jobId) 
-        || deepEnrich?.getBatchStatus(jobId);
-      
+      const status = smartBatch.getSmartBatchStatus(jobId);
       if (!status) continue;
-      
+
       if (status.status === 'completed' || status.status === 'error') {
-        const result = {
+        // Job finished - record results
+        schedulerState.lastRuns[meta.tier] = {
           jobId,
-          tier: meta.tier,
-          mode: meta.mode,
           enriched: status.enriched,
           total: status.total,
           fields: status.totalFieldsUpdated,
           errors: status.errors,
           cost: meta.estimatedCost,
-          duration: status.completedAt ? Math.round((new Date(status.completedAt) - new Date(meta.startedAt)) / 60000) : null
-        };
-
-        schedulerState.lastRuns[meta.tier] = {
-          ...result,
+          duration: status.completedAt ? 
+            ((new Date(status.completedAt) - new Date(status.startedAt)) / 60000).toFixed(1) + 'min' : '?',
           completedAt: status.completedAt
         };
+        schedulerState.stats.totalCost += meta.estimatedCost;
 
-        delete schedulerState.activeJobs[jobId];
-        
-        logger.info(`[SCHEDULER] Job ${jobId} completed: ${result.enriched}/${result.total} (${result.fields} fields, ${result.duration}min, ~$${result.cost})`);
+        logger.info(`[SCHEDULER] Job ${jobId} completed: ${status.enriched}/${status.total}, ${status.totalFieldsUpdated} fields, ~$${meta.estimatedCost}`);
 
-        // Trigger chained jobs from queue
+        // Check chain queue
         const chainIdx = schedulerState.chainQueue.findIndex(c => c.afterJob === jobId);
-        if (chainIdx !== -1) {
-          const chain = schedulerState.chainQueue.splice(chainIdx, 1)[0];
-          logger.info(`[SCHEDULER] Chain trigger: launching tier ${chain.tier} (${chain.mode}) after ${jobId}`);
+        if (chainIdx >= 0) {
+          const chain = schedulerState.chainQueue[chainIdx];
+          schedulerState.chainQueue.splice(chainIdx, 1);
+          
+          logger.info(`[SCHEDULER] Chain trigger: tier ${chain.tier} (${chain.mode}) after ${jobId}`);
           const nextJob = await launchTierScan(chain.tier, chain.mode);
           
-          // Re-point remaining chains that reference this job to the new job
-          if (nextJob) {
-            for (const pending of schedulerState.chainQueue) {
-              if (pending.afterJob === jobId) {
-                pending.afterJob = nextJob.jobId;
-                logger.info(`[SCHEDULER] Chain re-pointed to ${nextJob.jobId}`);
+          // Re-point remaining chains that referenced this job to the new job
+          if (nextJob && nextJob.jobId) {
+            for (const remaining of schedulerState.chainQueue) {
+              if (remaining.afterJob === jobId) {
+                remaining.afterJob = nextJob.jobId;
+                logger.info(`[SCHEDULER] Re-pointed chain tier ${remaining.tier} to new job ${nextJob.jobId}`);
               }
             }
           }
@@ -197,31 +219,50 @@ async function monitorJobs() {
 
         // Recalculate IAI after enrichment
         try {
-          const { calculateAllIAI } = require('../services/iaiCalculator');
-          await calculateAllIAI();
-          logger.info('[SCHEDULER] IAI recalculated after enrichment batch');
-        } catch (e) {
-          logger.warn('[SCHEDULER] IAI recalc failed', { error: e.message });
-        }
+          const pool = require('../db/pool');
+          await pool.query(`
+            UPDATE complexes SET 
+              iai_score = COALESCE(
+                CASE 
+                  WHEN accurate_price_sqm > 0 AND city_avg_price_sqm > 0 
+                  THEN LEAST(100, GREATEST(0,
+                    (CASE WHEN price_vs_city_avg < -10 THEN 25 WHEN price_vs_city_avg < 0 THEN 15 ELSE 5 END) +
+                    (CASE WHEN plan_stage IN ('approved','permit') THEN 30 WHEN plan_stage = 'deposit' THEN 20 WHEN plan_stage = 'committee' THEN 10 ELSE 5 END) +
+                    (CASE WHEN developer_reputation_score >= 80 THEN 20 WHEN developer_reputation_score >= 60 THEN 10 ELSE 5 END) +
+                    (CASE WHEN news_sentiment = 'positive' THEN 15 WHEN news_sentiment = 'neutral' THEN 10 ELSE 0 END) +
+                    (CASE WHEN is_receivership THEN 10 ELSE 0 END)
+                  ))
+                  ELSE iai_score
+                END, iai_score),
+              updated_at = NOW()
+            WHERE updated_at > NOW() - INTERVAL '1 hour'
+          `);
+          logger.info('[SCHEDULER] IAI recalculated for recently enriched complexes');
+        } catch (e) { logger.warn('[SCHEDULER] IAI recalc failed', { error: e.message }); }
+
+        // Remove from active
+        delete schedulerState.activeJobs[jobId];
       }
     } catch (err) {
-      logger.warn(`[SCHEDULER] Monitor error for ${jobId}`, { error: err.message });
+      logger.error(`[SCHEDULER] Monitor error for job ${jobId}`, { error: err.message });
     }
   }
 }
 
 // ============================================================
-// SCHEDULED TASKS
+// CRON INITIALIZATION
 // ============================================================
 function initScheduler() {
-  logger.info('[SCHEDULER] Initializing QUANTUM Intelligent Scan Scheduler v1.0');
+  logger.info('[SCHEDULER] QUANTUM Intelligent Scan Scheduler v1.0 initializing...');
 
-  // Job Monitor: every 2 minutes
+  // JOB MONITOR: Every 2 minutes
   schedulerState.scheduledTasks.push(
-    cron.schedule('*/2 * * * *', monitorJobs, { timezone: 'Asia/Jerusalem' })
+    cron.schedule('*/2 * * * *', async () => {
+      await monitorJobs();
+    }, { timezone: 'Asia/Jerusalem' })
   );
 
-  // TIER 1 (HOT): Sunday 08:00 Israel time
+  // TIER 1 (HOT): Sunday 08:00 Israel, weekly STANDARD / monthly FULL
   schedulerState.scheduledTasks.push(
     cron.schedule('0 8 * * 0', async () => {
       if (!isEnrichmentDay()) return;
@@ -292,6 +333,7 @@ function initScheduler() {
       try {
         const { calculateAllSSI } = require('../services/ssiCalculator');
         await calculateAllSSI();
+        logger.info('[SCHEDULER] SSI recalculation complete');
       } catch (e) { logger.warn('[SCHEDULER] SSI recalc failed', { error: e.message }); }
     }, { timezone: 'Asia/Jerusalem' })
   );
@@ -330,55 +372,22 @@ function initScheduler() {
   logger.info('    SSI recalc:     09:00 daily');
   logger.info('  Intelligence:');
   logger.info('    PSS re-rank:    Wed 06:00');
-  logger.info('    IAI recalc:     after every enrichment batch');
-  logger.info('    Job monitor:    every 2 minutes');
-  logger.info('  Est. monthly cost: ~$260-290');
-
-  return schedulerState;
+  logger.info('    Job monitor:    Every 2 min');
 }
 
 // ============================================================
-// CHAIN API
-// ============================================================
-function chainAfter(afterJobId, tier, mode) {
-  schedulerState.chainQueue.push({ afterJob: afterJobId, tier, mode });
-  logger.info(`[SCHEDULER] Chain queued: tier ${tier} (${mode}) after ${afterJobId} [queue size: ${schedulerState.chainQueue.length}]`);
-  return { status: 'chained', afterJob: afterJobId, tier, mode, queueSize: schedulerState.chainQueue.length };
-}
-
-// ============================================================
-// STATUS API
+// STATUS
 // ============================================================
 function getSchedulerStatus() {
   return {
-    version: 'v1.0',
+    version: '1.0',
     activeJobs: Object.keys(schedulerState.activeJobs).length,
     activeJobDetails: schedulerState.activeJobs,
     chainQueue: schedulerState.chainQueue,
     lastRuns: schedulerState.lastRuns,
     lastPSSRank: schedulerState.lastPSSRank,
+    stats: schedulerState.stats,
     biweeklyToggle: schedulerState.biweeklyToggle,
-    stats: {
-      ...schedulerState.stats,
-      totalCost: Math.round(schedulerState.stats.totalCost * 100) / 100
-    },
-    schedule: {
-      tier1_hot: 'Sun 08:00 STANDARD (FULL 1st-of-month)',
-      tier2_active: 'Mon 08:00 STANDARD (bi-weekly)',
-      tier3_dormant: 'Tue 08:00 FAST (monthly)',
-      listings: 'Daily 07:00 (incl. weekends)',
-      ssi: 'Daily 09:00 (incl. weekends)',
-      pss_rerank: 'Wed 06:00',
-      job_monitor: 'Every 2 minutes'
-    },
-    monthlyBudget: {
-      tier1_standard_weekly: '$52',
-      tier1_full_monthly: '$62',
-      tier2_standard_biweekly: '$97',
-      tier3_fast_monthly: '$30',
-      event_driven_est: '$20-50',
-      total: '~$260-290/mo'
-    },
     nextEnrichmentDay: isEnrichmentDay() ? 'today' : 'next business day'
   };
 }
