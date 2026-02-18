@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.25.0';
-const BUILD = '2026-02-18-v4.25.0-quantum-scheduler';
+const VERSION = '4.26.0';
+const BUILD = '2026-02-19-v4.26.0-lead-management';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -205,8 +205,37 @@ async function runAutoMigrations() {
     for (const sql of widenColumns) {
       try { await pool.query(sql); } catch (e) { /* column might not exist yet or already TEXT */ }
     }
+
+    // v4.26.0: Website leads table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS website_leads (
+          id SERIAL PRIMARY KEY,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL,
+          phone TEXT NOT NULL,
+          phone_verified BOOLEAN DEFAULT FALSE,
+          user_type TEXT NOT NULL,
+          form_data JSONB DEFAULT '{}',
+          mailing_list_consent BOOLEAN DEFAULT FALSE,
+          source TEXT DEFAULT 'website',
+          is_urgent BOOLEAN DEFAULT FALSE,
+          trello_card_id TEXT,
+          trello_card_url TEXT,
+          email_sent BOOLEAN DEFAULT FALSE,
+          notes TEXT,
+          status TEXT DEFAULT 'new',
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_type ON website_leads(user_type)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_status ON website_leads(status)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_created ON website_leads(created_at DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_urgent ON website_leads(is_urgent) WHERE is_urgent = TRUE`);
+    } catch (e) { /* table exists */ }
     
-    logger.info('Auto-migrations completed (v4.25.0 - quantum scheduler)');
+    logger.info('Auto-migrations completed (v4.26.0 - lead management)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -289,6 +318,8 @@ app.get('/health', async (req, res) => {
     const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
     const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
     const fbCount = await pool.query("SELECT COUNT(*) FROM listings WHERE source = 'facebook' AND is_active = TRUE");
+    let leadCount = 0;
+    try { const lc = await pool.query('SELECT COUNT(*) FROM website_leads'); leadCount = parseInt(lc.rows[0].count); } catch (e) { /* table might not exist yet */ }
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -299,8 +330,10 @@ app.get('/health', async (req, res) => {
       transactions: parseInt(txCount.rows[0].count),
       listings: parseInt(listingCount.rows[0].count),
       facebook_listings: parseInt(fbCount.rows[0].count),
+      website_leads: leadCount,
       unread_alerts: parseInt(alertCount.rows[0].count),
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
+      trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured',
       routes_loaded: routeLoadResults.filter(r => r.status === 'ok').length,
       routes_failed: routeLoadResults.filter(r => r.status === 'failed').length
     });
@@ -351,6 +384,7 @@ function loadAllRoutes() {
     ['./routes/premiumRoutes', '/api/premium'],
     ['./routes/signatureRoutes', '/api/signatures'],
     ['./routes/schedulerRoutes', '/api/scheduler/v2'],
+    ['./routes/leadRoutes', '/api/leads'],
   ];
   
   let loaded = 0, failed = 0;
@@ -394,7 +428,7 @@ app.get('/diagnostics', async (req, res) => {
   catch (e) { uniqueCounts = { error: e.message }; }
 
   res.json({ version: VERSION, build: BUILD, timestamp: new Date().toISOString(), routes: routeLoadResults, db_tables: dbTables, row_counts: rowCounts, complex_duplicates: duplicates, complex_unique_counts: uniqueCounts,
-    env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing', YAD2_EMAIL: process.env.YAD2_EMAIL ? 'set' : 'missing', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? 'set' : 'missing', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? 'set' : 'missing' }
+    env_check: { DATABASE_URL: process.env.DATABASE_URL ? 'set' : 'missing', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? 'set' : 'missing', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? 'set' : 'missing', RESEND_API_KEY: process.env.RESEND_API_KEY ? 'set' : 'missing', KONES_EMAIL: process.env.KONES_EMAIL ? 'set' : 'missing', KONES_PASSWORD: process.env.KONES_PASSWORD ? 'set' : 'missing', YAD2_EMAIL: process.env.YAD2_EMAIL ? 'set' : 'missing', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? 'set' : 'missing', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? 'set' : 'missing', TRELLO_API_KEY: process.env.TRELLO_API_KEY ? 'set' : 'missing', TRELLO_TOKEN: process.env.TRELLO_TOKEN ? 'set' : 'missing', TRELLO_BOARD_ID: process.env.TRELLO_BOARD_ID ? 'set' : 'missing' }
   });
 });
 
@@ -407,8 +441,8 @@ app.get('/debug', (req, res) => {
   
   res.json({
     timestamp: new Date().toISOString(), build: BUILD, version: VERSION, node_version: process.version,
-    env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? '(set)' : '(not set)' },
-    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled' },
+    env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? '(set)' : '(not set)', TRELLO_API_KEY: process.env.TRELLO_API_KEY ? '(set)' : '(not set)', TRELLO_TOKEN: process.env.TRELLO_TOKEN ? '(set)' : '(not set)', TRELLO_BOARD_ID: process.env.TRELLO_BOARD_ID ? '(set)' : '(not set)' },
+    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled', trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured', leads: 'active' },
     routes: routeLoadResults, scheduler: schedulerStatus
   });
 });
@@ -448,7 +482,10 @@ app.get('/api/info', (req, res) => {
       premium: '/api/premium',
       signatures: '/api/signatures',
       scheduler_v2: '/api/scheduler/v2',
-      notifications: '/api/notifications/status'
+      notifications: '/api/notifications/status',
+      leads: '/api/leads',
+      leads_submit: '/api/leads/submit',
+      leads_stats: '/api/leads/stats'
     }
   });
 });
@@ -488,6 +525,7 @@ async function start() {
     logger.info(`INFORU API: /api/inforu/`);
     logger.info(`Premium API: /api/premium/`);
     logger.info(`Signatures API: /api/signatures/`);
+    logger.info(`Leads API: /api/leads/`);
   });
 }
 
