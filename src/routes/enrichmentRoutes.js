@@ -9,7 +9,20 @@ try {
   logger.warn('Deep enrichment service not available', { error: err.message });
 }
 
-// Enrich single complex (synchronous)
+let scanPriorityService;
+try {
+  scanPriorityService = require('../services/scanPriorityService');
+} catch (err) {
+  logger.warn('Scan priority service not available', { error: err.message });
+}
+
+let smartBatchService;
+try {
+  smartBatchService = require('../services/smartBatchService');
+} catch (err) {
+  logger.warn('Smart batch service not available', { error: err.message });
+}
+
 // POST /api/enrichment/complex/:id?mode=standard|full|fast|turbo
 router.post('/complex/:id', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
@@ -26,9 +39,7 @@ router.post('/complex/:id', async (req, res) => {
   }
 });
 
-// Start async batch enrichment - returns immediately with job ID
 // POST /api/enrichment/batch {limit, city, minIai, staleOnly, mode}
-// mode: 'standard' (default), 'full', 'fast', 'turbo'
 router.post('/batch', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
@@ -42,13 +53,22 @@ router.post('/batch', async (req, res) => {
   }
 });
 
-// Get batch job status
+// GET /api/enrichment/batch/:jobId - check both deep and smart batch jobs
 router.get('/batch/:jobId', async (req, res) => {
-  if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
-  const status = deepEnrichmentService.getBatchStatus(req.params.jobId);
+  const jobId = req.params.jobId;
+  let status = null;
+  
+  if (deepEnrichmentService) {
+    status = deepEnrichmentService.getBatchStatus(jobId);
+  }
+  if (!status && smartBatchService) {
+    status = smartBatchService.getSmartBatchStatus(jobId);
+  }
+  
   if (!status) return res.status(404).json({ error: 'Job not found' });
+  
   res.json({
-    jobId: req.params.jobId,
+    jobId,
     status: status.status,
     progress: `${status.enriched}/${status.total}`,
     percent: status.total > 0 ? Math.round((status.enriched / status.total) * 100) : 0,
@@ -63,13 +83,19 @@ router.get('/batch/:jobId', async (req, res) => {
   });
 });
 
-// List all batch jobs
+// GET /api/enrichment/jobs - list all batch jobs (deep + smart)
 router.get('/jobs', async (req, res) => {
-  if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
-  res.json(deepEnrichmentService.getAllBatchJobs());
+  let jobs = [];
+  if (deepEnrichmentService) {
+    jobs = deepEnrichmentService.getAllBatchJobs();
+  }
+  if (smartBatchService) {
+    jobs = smartBatchService.getAllSmartBatchJobs();
+  }
+  res.json(jobs);
 });
 
-// Quick enrich top IAI complexes (full quality)
+// POST /api/enrichment/top - Quick enrich top IAI complexes
 router.post('/top', async (req, res) => {
   if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
   try {
@@ -81,7 +107,108 @@ router.post('/top', async (req, res) => {
   }
 });
 
-// Coverage status
+// ============================================================
+// SMART SCAN & TIER SYSTEM
+// ============================================================
+
+// GET /api/enrichment/priorities - Calculate PSS for all complexes, show tiers
+router.get('/priorities', async (req, res) => {
+  if (!scanPriorityService) return res.status(503).json({ error: 'Scan priority service not available' });
+  try {
+    const priorities = await scanPriorityService.calculateAllPriorities();
+    res.json(priorities);
+  } catch (err) {
+    logger.error('Priority calculation failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/enrichment/priorities/top50 - Just the top 50 for quick review
+router.get('/priorities/top50', async (req, res) => {
+  if (!scanPriorityService) return res.status(503).json({ error: 'Scan priority service not available' });
+  try {
+    const priorities = await scanPriorityService.calculateAllPriorities();
+    res.json({
+      total_complexes: priorities.total,
+      top_50: priorities.top_50,
+      tier_summary: {
+        hot: priorities.tiers.hot.count,
+        active: priorities.tiers.active.count,
+        dormant: priorities.tiers.dormant.count
+      },
+      cost_to_scan_top50: {
+        mode: 'full',
+        cost_per_complex: 1.23,
+        total: Math.round(Math.min(priorities.top_50.length, 50) * 1.23 * 100) / 100,
+        estimated_hours: Math.round(Math.min(priorities.top_50.length, 50) * 5 / 60 * 10) / 10
+      }
+    });
+  } catch (err) {
+    logger.error('Top 50 priority failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/enrichment/smart-scan - Tiered enrichment by PSS score
+// Body: { tier: 1|2|3, limit: number }
+// Tier 1 (HOT) = FULL mode, Tier 2 (ACTIVE) = STANDARD, Tier 3 (DORMANT) = FAST
+router.post('/smart-scan', async (req, res) => {
+  if (!smartBatchService || !scanPriorityService) {
+    return res.status(503).json({ error: 'Smart scan services not available' });
+  }
+  try {
+    const { tier = 1, limit = 50 } = req.body;
+    
+    const priorities = await scanPriorityService.calculateAllPriorities();
+    
+    const tierNum = parseInt(tier);
+    const tierKey = tierNum === 1 ? 'hot' : tierNum === 2 ? 'active' : 'dormant';
+    const modeMap = { 1: 'full', 2: 'standard', 3: 'fast' };
+    const mode = modeMap[tierNum] || 'standard';
+    const tierLabel = tierNum === 1 ? 'HOT' : tierNum === 2 ? 'ACTIVE' : 'DORMANT';
+    
+    const tierData = priorities.tiers[tierKey];
+    const ids = tierData.complexes.slice(0, limit).map(c => c.id);
+    
+    if (ids.length === 0) {
+      return res.json({ status: 'empty', message: `No complexes in tier ${tierNum} (${tierLabel})` });
+    }
+    
+    const job = await smartBatchService.enrichByIds(ids, mode);
+    
+    const costPerComplex = tierNum === 1 ? 1.23 : tierNum === 2 ? 0.26 : 0.15;
+    
+    res.json({
+      status: 'started',
+      tier: tierNum,
+      tier_label: tierLabel,
+      mode,
+      count: ids.length,
+      ...job,
+      cost_estimate: {
+        per_complex: costPerComplex,
+        total: Math.round(ids.length * costPerComplex * 100) / 100,
+        estimated_hours: Math.round(ids.length * (tierNum === 1 ? 5 : tierNum === 2 ? 1.5 : 0.75) / 60 * 10) / 10
+      },
+      top_complexes: tierData.complexes.slice(0, 10).map(c => ({
+        id: c.id, name: c.name, city: c.city, 
+        pss: c.pss, iai: c.iai_score,
+        premium_gap: c.details?.premium_gap,
+        plan_stage: c.plan_stage,
+        alpha: c.components.alpha,
+        velocity: c.components.velocity,
+        shield: c.components.shield,
+        stealth: c.components.stealth,
+        stress: c.components.stress
+      }))
+    });
+  } catch (err) {
+    logger.error('Smart scan failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/enrichment/status - Coverage status
 router.get('/status', async (req, res) => {
   try {
     const pool = require('../db/pool');
