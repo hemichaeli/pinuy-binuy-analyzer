@@ -49,7 +49,7 @@ const schedulerState = {
   isRunning: false,
   activeJobs: {},
   lastRuns: {},
-  pendingChain: null,
+  chainQueue: [],   // [{afterJob, tier, mode}, ...] - sequential chain
   biweeklyToggle: true,
   scheduledTasks: [],
   stats: { totalScans: 0, totalCost: 0, lastMonth: 0 },
@@ -177,12 +177,22 @@ async function monitorJobs() {
         
         logger.info(`[SCHEDULER] Job ${jobId} completed: ${result.enriched}/${result.total} (${result.fields} fields, ${result.duration}min, ~$${result.cost})`);
 
-        // Trigger chained job if pending
-        if (schedulerState.pendingChain && schedulerState.pendingChain.afterJob === jobId) {
-          const chain = schedulerState.pendingChain;
-          schedulerState.pendingChain = null;
+        // Trigger chained jobs from queue
+        const chainIdx = schedulerState.chainQueue.findIndex(c => c.afterJob === jobId);
+        if (chainIdx !== -1) {
+          const chain = schedulerState.chainQueue.splice(chainIdx, 1)[0];
           logger.info(`[SCHEDULER] Chain trigger: launching tier ${chain.tier} (${chain.mode}) after ${jobId}`);
-          await launchTierScan(chain.tier, chain.mode);
+          const nextJob = await launchTierScan(chain.tier, chain.mode);
+          
+          // Re-point remaining chains that reference this job to the new job
+          if (nextJob) {
+            for (const pending of schedulerState.chainQueue) {
+              if (pending.afterJob === jobId) {
+                pending.afterJob = nextJob.jobId;
+                logger.info(`[SCHEDULER] Chain re-pointed to ${nextJob.jobId}`);
+              }
+            }
+          }
         }
 
         // Recalculate IAI after enrichment
@@ -220,9 +230,10 @@ function initScheduler() {
         logger.info('[SCHEDULER] Monthly FULL scan for Tier 1 (HOT)');
         const job = await launchTierScan('1full');
         if (job) {
-          schedulerState.pendingChain = { 
-            afterJob: job.jobId, tier: '2', mode: 'standard' 
-          };
+          // Chain: FULL -> Tier 2 STANDARD -> Tier 3 FAST
+          schedulerState.chainQueue.push(
+            { afterJob: job.jobId, tier: '2', mode: 'standard' }
+          );
         }
       } else {
         logger.info('[SCHEDULER] Weekly STANDARD scan for Tier 1 (HOT)');
@@ -330,9 +341,9 @@ function initScheduler() {
 // CHAIN API
 // ============================================================
 function chainAfter(afterJobId, tier, mode) {
-  schedulerState.pendingChain = { afterJob: afterJobId, tier, mode };
-  logger.info(`[SCHEDULER] Chain set: tier ${tier} (${mode}) after ${afterJobId}`);
-  return { status: 'chained', afterJob: afterJobId, tier, mode };
+  schedulerState.chainQueue.push({ afterJob: afterJobId, tier, mode });
+  logger.info(`[SCHEDULER] Chain queued: tier ${tier} (${mode}) after ${afterJobId} [queue size: ${schedulerState.chainQueue.length}]`);
+  return { status: 'chained', afterJob: afterJobId, tier, mode, queueSize: schedulerState.chainQueue.length };
 }
 
 // ============================================================
@@ -343,7 +354,7 @@ function getSchedulerStatus() {
     version: 'v1.0',
     activeJobs: Object.keys(schedulerState.activeJobs).length,
     activeJobDetails: schedulerState.activeJobs,
-    pendingChain: schedulerState.pendingChain,
+    chainQueue: schedulerState.chainQueue,
     lastRuns: schedulerState.lastRuns,
     lastPSSRank: schedulerState.lastPSSRank,
     biweeklyToggle: schedulerState.biweeklyToggle,
