@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.24.1';
-const BUILD = '2026-02-18-v4.24.1-widen-columns';
+const VERSION = '4.25.0';
+const BUILD = '2026-02-18-v4.25.0-quantum-scheduler';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -177,8 +177,6 @@ async function runAutoMigrations() {
     }
 
     // v4.24.1: Widen all VARCHAR columns to TEXT to prevent enrichment data loss
-    // The enrichment engine (Perplexity + Claude) returns longer strings than
-    // the original VARCHAR(100)/VARCHAR(255) limits can hold
     const widenColumns = [
       'ALTER TABLE complexes ALTER COLUMN neighborhood TYPE TEXT',
       'ALTER TABLE complexes ALTER COLUMN region TYPE TEXT',
@@ -208,7 +206,7 @@ async function runAutoMigrations() {
       try { await pool.query(sql); } catch (e) { /* column might not exist yet or already TEXT */ }
     }
     
-    logger.info('Auto-migrations completed (v4.24.1 - widened columns)');
+    logger.info('Auto-migrations completed (v4.25.0 - quantum scheduler)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -252,10 +250,6 @@ Allow: /api/perplexity/
 Allow: /api/intelligence/
 
 User-agent: Claude-Web
-Allow: /api/perplexity/
-Allow: /api/intelligence/
-
-User-agent: GPTBot
 Allow: /api/perplexity/
 Allow: /api/intelligence/
 `);
@@ -356,6 +350,7 @@ function loadAllRoutes() {
     ['./routes/inforuRoutes', '/api/inforu'],
     ['./routes/premiumRoutes', '/api/premium'],
     ['./routes/signatureRoutes', '/api/signatures'],
+    ['./routes/schedulerRoutes', '/api/scheduler/v2'],
   ];
   
   let loaded = 0, failed = 0;
@@ -452,6 +447,7 @@ app.get('/api/info', (req, res) => {
       inforu: '/api/inforu',
       premium: '/api/premium',
       signatures: '/api/signatures',
+      scheduler_v2: '/api/scheduler/v2',
       notifications: '/api/notifications/status'
     }
   });
@@ -478,6 +474,7 @@ async function start() {
   app.use((err, req, res, next) => { logger.error('Unhandled error:', err); res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION }); });
   
   try { const { startScheduler } = require('./jobs/weeklyScanner'); startScheduler(); } catch (e) { logger.warn('Scheduler failed to start:', e.message); }
+  try { const { initScheduler } = require('./jobs/quantumScheduler'); initScheduler(); } catch (e) { logger.warn('Quantum scheduler failed to start:', e.message); }
   
   console.log('[TRACE] About to listen on port', PORT);
   app.listen(PORT, '0.0.0.0', () => {
