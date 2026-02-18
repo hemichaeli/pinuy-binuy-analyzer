@@ -26,11 +26,11 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_RESEARCH_MODEL = 'claude-sonnet-4-5-20250929';
 const CLAUDE_SYNTHESIS_MODEL = 'claude-opus-4-6';
 const NADLAN_API_URL = 'https://www.nadlan.gov.il/Nadlan.REST/Main/GetAssestAndDeals';
-const DELAY_MS = 8000;
-const CLAUDE_DELAY_MS = 65000;  // 65s between Claude phases - respects 30K tokens/min limit
-const BETWEEN_COMPLEX_MS = 45000;  // 45s between complexes for rate limit breathing room
-const MAX_RETRIES = 4;  // Extra retry for rate limits
-const BASE_BACKOFF_MS = 60000;  // 60s base backoff for rate limits (doubles each retry)
+const DELAY_MS = 8000;        // 8s between Perplexity phases
+const CLAUDE_DELAY_MS = 10000; // 10s between Claude phases (450K ITPM allows fast calls)
+const BETWEEN_COMPLEX_MS = 15000; // 15s between complexes
+const MAX_RETRIES = 4;
+const BASE_BACKOFF_MS = 30000; // 30s base backoff for rate limits (doubles each retry)
 
 const batchJobs = {};
 
@@ -97,7 +97,7 @@ async function queryClaudeResearch(prompt, systemPrompt, retryCount = 0) {
   try {
     const response = await axios.post(ANTHROPIC_API_URL, {
       model: CLAUDE_RESEARCH_MODEL,
-      max_tokens: 8000,
+      max_tokens: 16000,
       system: systemPrompt,
       tools: [
         {
@@ -149,7 +149,7 @@ async function queryClaudeSynthesis(prompt, systemPrompt, retryCount = 0) {
   try {
     const response = await axios.post(ANTHROPIC_API_URL, {
       model: CLAUDE_SYNTHESIS_MODEL,
-      max_tokens: 8000,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [
         { role: 'user', content: prompt }
@@ -492,12 +492,6 @@ Be precise. Be conservative. Never invent specific numbers.
 You are the final authority - your output directly updates the investment database.`;
 
 function buildOpusSynthesisPrompt(complex, perplexityResults, claudeResearchResults) {
-  // Truncate engine results to keep input tokens manageable for rate limits
-  const truncate = (obj) => {
-    const str = JSON.stringify(obj);
-    return str.length > 3000 ? str.substring(0, 3000) + '...[truncated]' : str;
-  };
-
   return `DUAL-ENGINE SYNTHESIS for Pinuy-Binuy complex:
 
 COMPLEX: "${complex.name}" in ${complex.city}
@@ -520,14 +514,14 @@ ${JSON.stringify({
   }, null, 2)}
 
 ===== ENGINE A: PERPLEXITY sonar-pro RESEARCH =====
-Phase 1 (Address & Planning): ${truncate(perplexityResults.phase1)}
-Phase 2 (Developer Intelligence): ${truncate(perplexityResults.phase2)}
-Phase 3 (Pricing & Market): ${truncate(perplexityResults.phase3)}
-Phase 4 (News & Legal): ${truncate(perplexityResults.phase4)}
+Phase 1 (Address & Planning): ${JSON.stringify(perplexityResults.phase1)}
+Phase 2 (Developer Intelligence): ${JSON.stringify(perplexityResults.phase2)}
+Phase 3 (Pricing & Market): ${JSON.stringify(perplexityResults.phase3)}
+Phase 4 (News & Legal): ${JSON.stringify(perplexityResults.phase4)}
 
 ===== ENGINE B: CLAUDE SONNET 4.5 RESEARCH =====
-Research A (Complex Profile): ${truncate(claudeResearchResults.profileResearch)}
-Research B (Market Intelligence): ${truncate(claudeResearchResults.marketResearch)}
+Research A (Complex Profile): ${JSON.stringify(claudeResearchResults.profileResearch)}
+Research B (Market Intelligence): ${JSON.stringify(claudeResearchResults.marketResearch)}
 
 ===== YOUR TASK =====
 Cross-validate Engine A and Engine B findings. Produce the definitive intelligence report.
