@@ -208,25 +208,25 @@ router.get('/health', (req, res) => {
   });
 });
 
-/** Trello webhook validation - must return 200 on GET/HEAD */
+/** Trello webhook validation */
 router.get('/trello-webhook', (req, res) => res.sendStatus(200));
 router.head('/trello-webhook', (req, res) => res.sendStatus(200));
 
-/** Trello webhook events - adds member on new card in FireFlies Todo */
+/**
+ * Trello webhook - fires on every event in FireFlies board.
+ * On createCard: adds member to trigger native Trello bell notification.
+ */
 router.post('/trello-webhook', async (req, res) => {
   res.sendStatus(200);
   try {
     const { action } = req.body || {};
     if (!action || action.type !== 'createCard') return;
 
-    const FIREFLIES_TODO_LIST_ID = process.env.TRELLO_FIREFLIES_LIST_ID || '6876405d1cad298443d91f30';
-    const listId = action.data?.list?.id || action.data?.card?.idList;
+    const cardId = action.data?.card?.id;
+    const cardName = action.data?.card?.name;
+    logger.info('New card in FireFlies board', { cardName, cardId });
 
-    if (listId === FIREFLIES_TODO_LIST_ID) {
-      const cardId = action.data.card?.id;
-      logger.info('New card in FireFlies Todo', { card: action.data.card?.name, cardId });
-      if (cardId) await addMemberToCard(cardId);
-    }
+    if (cardId) await addMemberToCard(cardId);
   } catch (err) {
     logger.error('Trello webhook error', { error: err.message });
   }
