@@ -91,8 +91,8 @@ async function getClaudeDecision(parameters, currentInput) {
 קלט נוכחי: "${currentInput || '(התחלת שיחה)'}"
 חסר: ${missing.join(', ') || 'אין - הכל נאסף'}
 
-${isComplete 
-  ? 'כל הפרטים נאספו. שלח הודעת סיום חמה - תודה ונציג QUANTUM יחזור תוך 24 שעות.' 
+${isComplete
+  ? 'כל הפרטים נאספו. שלח הודעת סיום חמה - תודה ונציג QUANTUM יחזור תוך 24 שעות.'
   : `שאל רק על: "${missing[0]}"
 מיפוי שאלות:
 - user_type: "שלום! אני מ-QUANTUM. יש לך נכס למכירה, או שאתה מחפש לקנות?"
@@ -115,7 +115,7 @@ ${isComplete
 - user_type: "seller" אם מכירה, "buyer" אם קנייה`;
 
   const text = await callClaude(SYSTEM_PROMPT, userPrompt);
-  
+
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
@@ -169,7 +169,6 @@ async function saveLeadToDB(callbackData) {
         JSON.stringify(callbackData)]);
     logger.info('Bot lead saved', { phone: rawPhone, type: params.user_type });
   } catch (err) {
-    // Fallback to website_leads
     try {
       await pool.query(`
         INSERT INTO website_leads (source, phone, name, user_type, form_data, status, created_at)
@@ -244,6 +243,109 @@ router.get('/health', (req, res) => {
       db: !!process.env.DATABASE_URL ? 'configured' : 'MISSING'
     }
   });
+});
+
+/**
+ * GET /api/bot/leads - List all bot leads with filters
+ */
+router.get('/leads', async (req, res) => {
+  try {
+    const { status, user_type, limit = 100, offset = 0 } = req.query;
+
+    let where = [];
+    let params = [];
+    let idx = 1;
+
+    // Try leads table first
+    let rows = [];
+    let total = 0;
+
+    try {
+      if (status) { where.push(`status = $${idx++}`); params.push(status); }
+      if (user_type) { where.push(`user_type = $${idx++}`); params.push(user_type); }
+
+      const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+      const countRes = await pool.query(`SELECT COUNT(*) FROM leads ${whereClause}`, params);
+      total = parseInt(countRes.rows[0].count);
+
+      const dataRes = await pool.query(
+        `SELECT id, source, phone, name, city, property_type, user_type, budget, timeline, rooms,
+                status, notes, assigned_to, created_at, updated_at
+         FROM leads ${whereClause}
+         ORDER BY created_at DESC
+         LIMIT $${idx++} OFFSET $${idx++}`,
+        [...params, parseInt(limit), parseInt(offset)]
+      );
+      rows = dataRes.rows;
+    } catch (e) {
+      // leads table may not exist yet
+      logger.warn('leads table query failed, returning empty', { error: e.message });
+    }
+
+    // Stats
+    let stats = { total: 0, new: 0, contacted: 0, sellers: 0, buyers: 0 };
+    try {
+      const statsRes = await pool.query(`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE status = 'new') as new_leads,
+          COUNT(*) FILTER (WHERE status = 'contacted') as contacted,
+          COUNT(*) FILTER (WHERE user_type = 'seller') as sellers,
+          COUNT(*) FILTER (WHERE user_type = 'buyer') as buyers
+        FROM leads
+      `);
+      const s = statsRes.rows[0];
+      stats = {
+        total: parseInt(s.total),
+        new: parseInt(s.new_leads),
+        contacted: parseInt(s.contacted),
+        sellers: parseInt(s.sellers),
+        buyers: parseInt(s.buyers)
+      };
+    } catch (e) { /* table might not exist */ }
+
+    res.json({ leads: rows, total, stats, limit: parseInt(limit), offset: parseInt(offset) });
+  } catch (err) {
+    logger.error('Bot leads list error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/bot/leads/:id/status - Update lead status
+ */
+router.put('/leads/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes, assigned_to } = req.body;
+    const valid = ['new', 'contacted', 'qualified', 'negotiation', 'closed', 'lost'];
+    if (status && !valid.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Valid: ${valid.join(', ')}` });
+    }
+
+    const sets = [];
+    const params = [];
+    let idx = 1;
+    if (status) { sets.push(`status = $${idx++}`); params.push(status); }
+    if (notes !== undefined) { sets.push(`notes = $${idx++}`); params.push(notes); }
+    if (assigned_to !== undefined) { sets.push(`assigned_to = $${idx++}`); params.push(assigned_to); }
+    sets.push(`updated_at = NOW()`);
+    params.push(parseInt(id));
+
+    const result = await pool.query(
+      `UPDATE leads SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+    res.json({ success: true, lead: result.rows[0] });
+  } catch (err) {
+    logger.error('Bot lead update error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
