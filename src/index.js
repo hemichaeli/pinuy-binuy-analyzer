@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.26.0';
-const BUILD = '2026-02-19-v4.26.0-lead-management';
+const VERSION = '4.27.0';
+const BUILD = '2026-02-19-v4.27.0-whatsapp-bot';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -234,8 +234,36 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_created ON website_leads(created_at DESC)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_urgent ON website_leads(is_urgent) WHERE is_urgent = TRUE`);
     } catch (e) { /* table exists */ }
+
+    // v4.27.0: WhatsApp bot leads table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS leads (
+          id SERIAL PRIMARY KEY,
+          source TEXT DEFAULT 'whatsapp_bot',
+          phone TEXT,
+          name TEXT,
+          city TEXT,
+          property_type TEXT,
+          user_type TEXT,
+          budget TEXT,
+          timeline TEXT,
+          rooms TEXT,
+          raw_data JSONB DEFAULT '{}',
+          status TEXT DEFAULT 'new',
+          notes TEXT,
+          assigned_to TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_type ON leads(user_type)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at DESC)`);
+    } catch (e) { /* table exists */ }
     
-    logger.info('Auto-migrations completed (v4.26.0 - lead management)');
+    logger.info('Auto-migrations completed (v4.27.0 - whatsapp-bot)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -252,7 +280,7 @@ app.use(express.json({ limit: '50mb' }));
 // Rate limiting - exempt public UI routes
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
 app.use('/api/', (req, res, next) => {
-  if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard') || req.path.startsWith('/intelligence')) {
+  if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard') || req.path.startsWith('/intelligence') || req.path.startsWith('/bot')) {
     return next();
   }
   apiLimiter(req, res, next);
@@ -320,6 +348,8 @@ app.get('/health', async (req, res) => {
     const fbCount = await pool.query("SELECT COUNT(*) FROM listings WHERE source = 'facebook' AND is_active = TRUE");
     let leadCount = 0;
     try { const lc = await pool.query('SELECT COUNT(*) FROM website_leads'); leadCount = parseInt(lc.rows[0].count); } catch (e) { /* table might not exist yet */ }
+    let botLeadCount = 0;
+    try { const bl = await pool.query("SELECT COUNT(*) FROM leads WHERE source = 'whatsapp_bot'"); botLeadCount = parseInt(bl.rows[0].count); } catch (e) { /* table might not exist yet */ }
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -331,6 +361,7 @@ app.get('/health', async (req, res) => {
       listings: parseInt(listingCount.rows[0].count),
       facebook_listings: parseInt(fbCount.rows[0].count),
       website_leads: leadCount,
+      whatsapp_bot_leads: botLeadCount,
       unread_alerts: parseInt(alertCount.rows[0].count),
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured',
@@ -385,6 +416,7 @@ function loadAllRoutes() {
     ['./routes/signatureRoutes', '/api/signatures'],
     ['./routes/schedulerRoutes', '/api/scheduler/v2'],
     ['./routes/leadRoutes', '/api/leads'],
+    ['./routes/botRoutes', '/api/bot'],
   ];
   
   let loaded = 0, failed = 0;
@@ -442,7 +474,7 @@ app.get('/debug', (req, res) => {
   res.json({
     timestamp: new Date().toISOString(), build: BUILD, version: VERSION, node_version: process.version,
     env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? '(set)' : '(not set)', TRELLO_API_KEY: process.env.TRELLO_API_KEY ? '(set)' : '(not set)', TRELLO_TOKEN: process.env.TRELLO_TOKEN ? '(set)' : '(not set)', TRELLO_BOARD_ID: process.env.TRELLO_BOARD_ID ? '(set)' : '(not set)' },
-    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled', trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured', leads: 'active' },
+    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled', trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured', leads: 'active', whatsapp_bot: 'active' },
     routes: routeLoadResults, scheduler: schedulerStatus
   });
 });
@@ -485,7 +517,11 @@ app.get('/api/info', (req, res) => {
       notifications: '/api/notifications/status',
       leads: '/api/leads',
       leads_submit: '/api/leads/submit',
-      leads_stats: '/api/leads/stats'
+      leads_stats: '/api/leads/stats',
+      bot_health: '/api/bot/health',
+      bot_webservice: '/api/bot/webservice',
+      bot_callback: '/api/bot/callback',
+      bot_test: '/api/bot/test'
     }
   });
 });
@@ -526,6 +562,7 @@ async function start() {
     logger.info(`Premium API: /api/premium/`);
     logger.info(`Signatures API: /api/signatures/`);
     logger.info(`Leads API: /api/leads/`);
+    logger.info(`WhatsApp Bot API: /api/bot/`);
   });
 }
 
