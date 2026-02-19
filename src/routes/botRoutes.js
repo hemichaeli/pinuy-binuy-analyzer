@@ -161,48 +161,35 @@ async function saveLeadToDB(callbackData) {
   }
 }
 
-async function sendTrelloAlert(card, listName, boardName) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) { logger.warn('RESEND_API_KEY not set, skipping Trello alert'); return; }
-
-  const subject = `🔔 כרטיס חדש ב-Trello: ${card.name}`;
-  const html = `
-    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #6c47ff;">🔔 כרטיס חדש נוצר ב-Trello</h2>
-      <table style="width:100%; border-collapse: collapse;">
-        <tr><td style="padding:8px; font-weight:bold;">לוח:</td><td style="padding:8px;">${boardName}</td></tr>
-        <tr style="background:#f5f5f5"><td style="padding:8px; font-weight:bold;">רשימה:</td><td style="padding:8px;">${listName}</td></tr>
-        <tr><td style="padding:8px; font-weight:bold;">כרטיס:</td><td style="padding:8px;">${card.name}</td></tr>
-        ${card.desc ? `<tr style="background:#f5f5f5"><td style="padding:8px; font-weight:bold;">תיאור:</td><td style="padding:8px;">${card.desc}</td></tr>` : ''}
-        <tr><td style="padding:8px; font-weight:bold;">קישור:</td><td style="padding:8px;"><a href="${card.shortUrl || `https://trello.com/c/${card.shortLink}`}">פתח בTrello</a></td></tr>
-      </table>
-      <p style="color:#888; font-size:12px; margin-top:20px;">QUANTUM - מערכת ניטור אוטומטי</p>
-    </div>
-  `;
-
+/**
+ * Adds the Quantum member to a card -> triggers native Trello bell notification
+ */
+async function addMemberToCard(cardId) {
+  const key = process.env.TRELLO_API_KEY;
+  const token = process.env.TRELLO_TOKEN;
+  const memberId = process.env.TRELLO_MEMBER_ID;
+  if (!key || !token || !memberId) {
+    logger.warn('Trello env vars missing - skipping addMember');
+    return;
+  }
   try {
-    await axios.post('https://api.resend.com/emails', {
-      from: 'QUANTUM Alerts <notifications@u-r-quantum.com>',
-      to: ['office@u-r-quantum.com'],
-      subject,
-      html
-    }, {
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
-    });
-    logger.info('Trello alert email sent', { card: card.name });
+    await axios.post(
+      `https://api.trello.com/1/cards/${cardId}/idMembers`,
+      { value: memberId },
+      { params: { key, token } }
+    );
+    logger.info('Member added to card - Trello notification triggered', { cardId });
   } catch (err) {
-    logger.error('Failed to send Trello alert email', { error: err.message });
+    logger.error('Failed to add member to card', { error: err.message, cardId });
   }
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
-/** GET /api/bot/leads-ui - Dashboard HTML */
 router.get('/leads-ui', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/bot-leads.html'));
 });
 
-/** GET /api/bot/health */
 router.get('/health', (req, res) => {
   const base = 'https://pinuy-binuy-analyzer-production.up.railway.app';
   res.json({
@@ -215,41 +202,36 @@ router.get('/health', (req, res) => {
     },
     config: {
       claude: !!process.env.ANTHROPIC_API_KEY ? 'configured' : 'MISSING',
-      db: !!process.env.DATABASE_URL ? 'configured' : 'MISSING'
+      db: !!process.env.DATABASE_URL ? 'configured' : 'MISSING',
+      trello: !!process.env.TRELLO_API_KEY ? 'configured' : 'MISSING'
     }
   });
 });
 
-/** GET /api/bot/trello-webhook - Trello validation (HEAD/GET must return 200) */
+/** Trello webhook validation - must return 200 on GET/HEAD */
 router.get('/trello-webhook', (req, res) => res.sendStatus(200));
 router.head('/trello-webhook', (req, res) => res.sendStatus(200));
 
-/** POST /api/bot/trello-webhook - Trello webhook events */
+/** Trello webhook events - adds member on new card in FireFlies Todo */
 router.post('/trello-webhook', async (req, res) => {
-  res.sendStatus(200); // Always ack immediately
+  res.sendStatus(200);
   try {
     const { action } = req.body || {};
-    if (!action) return;
+    if (!action || action.type !== 'createCard') return;
 
-    const FIREFLIES_TODO_LIST_ID = '6876405d1cad298443d91f30';
+    const FIREFLIES_TODO_LIST_ID = process.env.TRELLO_FIREFLIES_LIST_ID || '6876405d1cad298443d91f30';
+    const listId = action.data?.list?.id || action.data?.card?.idList;
 
-    // Only handle createCard on the FireFlies To Do list
-    if (action.type === 'createCard') {
-      const listId = action.data?.list?.id || action.data?.card?.idList;
-      if (listId === FIREFLIES_TODO_LIST_ID) {
-        const card = action.data.card;
-        const listName = action.data.list?.name || 'To Do';
-        const boardName = action.data.board?.name || 'FireFlies';
-        logger.info('Trello new card in FireFlies Todo', { card: card?.name });
-        await sendTrelloAlert(card, listName, boardName);
-      }
+    if (listId === FIREFLIES_TODO_LIST_ID) {
+      const cardId = action.data.card?.id;
+      logger.info('New card in FireFlies Todo', { card: action.data.card?.name, cardId });
+      if (cardId) await addMemberToCard(cardId);
     }
   } catch (err) {
     logger.error('Trello webhook error', { error: err.message });
   }
 });
 
-/** POST /api/bot/webservice - INFORU webhook */
 router.post('/webservice', async (req, res) => {
   const timeout = setTimeout(() => {
     if (!res.headersSent) res.json({ actions: [{ type: 'SendMessage', text: 'רגע...' }, { type: 'InputText' }] });
@@ -268,7 +250,6 @@ router.post('/webservice', async (req, res) => {
   }
 });
 
-/** POST /api/bot/callback - INFORU lead finalized */
 router.post('/callback', async (req, res) => {
   res.json({ status: 'ok' });
   try {
@@ -279,7 +260,6 @@ router.post('/callback', async (req, res) => {
   }
 });
 
-/** GET /api/bot/leads - JSON leads list */
 router.get('/leads', async (req, res) => {
   try {
     const { status, user_type, limit = 200, offset = 0 } = req.query;
@@ -317,7 +297,6 @@ router.get('/leads', async (req, res) => {
   }
 });
 
-/** PUT /api/bot/leads/:id/status - Update lead */
 router.put('/leads/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
@@ -339,7 +318,6 @@ router.put('/leads/:id/status', async (req, res) => {
   }
 });
 
-/** POST /api/bot/test - Test without INFORU */
 router.post('/test', async (req, res) => {
   try {
     const { parameters = [], input = null } = req.body;
