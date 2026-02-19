@@ -5,6 +5,7 @@
  * Lists:
  *   - משקיעים (Investors)
  *   - מוכרים (Sellers)  
+ *   - צור קשר (Contact Us)
  *   - התראות מערכת (System Notifications)
  * 
  * Labels (priority-based):
@@ -130,6 +131,7 @@ function getLeadPriority(userType, data) {
     return 'none';
   }
 
+  // Contact form leads have no priority by default
   return 'none';
 }
 
@@ -258,6 +260,26 @@ async function createSellerCard(lead) {
   return createCard({ listName: 'מוכרים', title, description, priority });
 }
 
+async function createContactCard(lead) {
+  const { name, email, phone } = lead;
+  const data = extractFormData(lead);
+  const message = data.message || data.notes || '';
+  const subject = data.subject || '';
+
+  const title = `📩 ${name}${subject ? ' - ' + subject : ''}`;
+  const description = [
+    `## פנייה חדשה - צור קשר`, ``,
+    `**שם:** ${name}`,
+    `**טלפון:** ${phone}`,
+    `**אימייל:** ${email}`, ``,
+    `---`, ``,
+    message ? `**הודעה:**\n${message}` : '*ללא הודעה*', ``,
+    `---`, `*נכנס: ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}*`
+  ].join('\n');
+
+  return createCard({ listName: 'צור קשר', title, description });
+}
+
 async function createNotificationCard(title, message) {
   return createCard({
     listName: 'התראות מערכת',
@@ -290,6 +312,6 @@ async function getStatus() {
 }
 
 module.exports = {
-  createCard, createInvestorCard, createSellerCard, createNotificationCard,
+  createCard, createInvestorCard, createSellerCard, createContactCard, createNotificationCard,
   isConfigured, getStatus, loadBoardData, getListId, getLabelId, getLeadPriority
 };
