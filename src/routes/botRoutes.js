@@ -161,6 +161,40 @@ async function saveLeadToDB(callbackData) {
   }
 }
 
+async function sendTrelloAlert(card, listName, boardName) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) { logger.warn('RESEND_API_KEY not set, skipping Trello alert'); return; }
+
+  const subject = `🔔 כרטיס חדש ב-Trello: ${card.name}`;
+  const html = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #6c47ff;">🔔 כרטיס חדש נוצר ב-Trello</h2>
+      <table style="width:100%; border-collapse: collapse;">
+        <tr><td style="padding:8px; font-weight:bold;">לוח:</td><td style="padding:8px;">${boardName}</td></tr>
+        <tr style="background:#f5f5f5"><td style="padding:8px; font-weight:bold;">רשימה:</td><td style="padding:8px;">${listName}</td></tr>
+        <tr><td style="padding:8px; font-weight:bold;">כרטיס:</td><td style="padding:8px;">${card.name}</td></tr>
+        ${card.desc ? `<tr style="background:#f5f5f5"><td style="padding:8px; font-weight:bold;">תיאור:</td><td style="padding:8px;">${card.desc}</td></tr>` : ''}
+        <tr><td style="padding:8px; font-weight:bold;">קישור:</td><td style="padding:8px;"><a href="${card.shortUrl || `https://trello.com/c/${card.shortLink}`}">פתח בTrello</a></td></tr>
+      </table>
+      <p style="color:#888; font-size:12px; margin-top:20px;">QUANTUM - מערכת ניטור אוטומטי</p>
+    </div>
+  `;
+
+  try {
+    await axios.post('https://api.resend.com/emails', {
+      from: 'QUANTUM Alerts <notifications@u-r-quantum.com>',
+      to: ['office@u-r-quantum.com'],
+      subject,
+      html
+    }, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+    });
+    logger.info('Trello alert email sent', { card: card.name });
+  } catch (err) {
+    logger.error('Failed to send Trello alert email', { error: err.message });
+  }
+}
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 /** GET /api/bot/leads-ui - Dashboard HTML */
@@ -176,13 +210,43 @@ router.get('/health', (req, res) => {
     endpoints: {
       webservice: `${base}/api/bot/webservice`,
       callback: `${base}/api/bot/callback`,
-      leads_ui: `${base}/api/bot/leads-ui`
+      leads_ui: `${base}/api/bot/leads-ui`,
+      trello_webhook: `${base}/api/bot/trello-webhook`
     },
     config: {
       claude: !!process.env.ANTHROPIC_API_KEY ? 'configured' : 'MISSING',
       db: !!process.env.DATABASE_URL ? 'configured' : 'MISSING'
     }
   });
+});
+
+/** GET /api/bot/trello-webhook - Trello validation (HEAD/GET must return 200) */
+router.get('/trello-webhook', (req, res) => res.sendStatus(200));
+router.head('/trello-webhook', (req, res) => res.sendStatus(200));
+
+/** POST /api/bot/trello-webhook - Trello webhook events */
+router.post('/trello-webhook', async (req, res) => {
+  res.sendStatus(200); // Always ack immediately
+  try {
+    const { action } = req.body || {};
+    if (!action) return;
+
+    const FIREFLIES_TODO_LIST_ID = '6876405d1cad298443d91f30';
+
+    // Only handle createCard on the FireFlies To Do list
+    if (action.type === 'createCard') {
+      const listId = action.data?.list?.id || action.data?.card?.idList;
+      if (listId === FIREFLIES_TODO_LIST_ID) {
+        const card = action.data.card;
+        const listName = action.data.list?.name || 'To Do';
+        const boardName = action.data.board?.name || 'FireFlies';
+        logger.info('Trello new card in FireFlies Todo', { card: card?.name });
+        await sendTrelloAlert(card, listName, boardName);
+      }
+    }
+  } catch (err) {
+    logger.error('Trello webhook error', { error: err.message });
+  }
 });
 
 /** POST /api/bot/webservice - INFORU webhook */
