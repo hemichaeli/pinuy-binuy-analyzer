@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QUANTUM | לידים WhatsApp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --card: #16161f;
+      --border: #1e1e2e;
+      --accent: #7c3aed;
+      --accent2: #a855f7;
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --cyan: #06b6d4;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --wa: #25d366;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Heebo', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      direction: rtl;
+    }
+
+    /* HEADER */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header-nav { display: flex; gap: 8px; }
+    .nav-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-btn:hover { background: var(--border); color: var(--text); }
+    .nav-btn.active { background: var(--accent); color: #fff; }
+
+    /* LAYOUT */
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+    /* STATS */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .stat-label { font-size: 12px; color: var(--muted); }
+    .stat-card.total .stat-value { color: var(--accent2); }
+    .stat-card.new-leads .stat-value { color: var(--green); }
+    .stat-card.contacted .stat-value { color: var(--yellow); }
+    .stat-card.sellers .stat-value { color: var(--cyan); }
+    .stat-card.buyers .stat-value { color: var(--blue); }
+
+    /* FILTERS */
+    .filters {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-btn.active, .filter-btn:hover { border-color: var(--accent); color: var(--accent2); }
+    .filter-btn.active { background: rgba(124,58,237,0.15); }
+    .search-input {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 13px;
+      width: 220px;
+      outline: none;
+      margin-right: auto;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .refresh-btn {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.2s;
+    }
+    .refresh-btn:hover { opacity: 0.85; }
+
+    /* LEADS TABLE */
+    .table-wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead { background: var(--surface); }
+    th {
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 12px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid rgba(30,30,46,0.5);
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(124,58,237,0.04); }
+
+    /* BADGES */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-seller { background: rgba(6,182,212,0.15); color: var(--cyan); }
+    .badge-buyer { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .badge-new { background: rgba(16,185,129,0.15); color: var(--green); }
+    .badge-contacted { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .badge-qualified { background: rgba(124,58,237,0.15); color: var(--accent2); }
+    .badge-negotiation { background: rgba(239,68,68,0.15); color: var(--red); }
+    .badge-closed { background: rgba(16,185,129,0.25); color: #34d399; }
+    .badge-lost { background: rgba(100,116,139,0.15); color: var(--muted); }
+
+    /* ACTION BUTTONS */
+    .action-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      margin: 0 2px;
+      text-decoration: none;
+    }
+    .action-btn:hover { border-color: var(--accent); color: var(--accent2); }
+    .action-btn.wa:hover { border-color: var(--wa); color: var(--wa); }
+    .action-btn .material-icons { font-size: 16px; }
+
+    /* STATUS SELECT */
+    .status-select {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 12px;
+      cursor: pointer;
+      outline: none;
+    }
+    .status-select:focus { border-color: var(--accent); }
+
+    /* EMPTY */
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    .empty .material-icons { font-size: 48px; margin-bottom: 12px; display: block; }
+
+    /* LOADING */
+    .loading { text-align: center; padding: 40px; color: var(--muted); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+
+    /* MODAL */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 500px;
+      max-width: 95vw;
+    }
+    .modal h3 { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: var(--accent2); }
+    .modal-field { margin-bottom: 16px; }
+    .modal-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .modal-value { font-size: 14px; font-weight: 500; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+    .btn-primary {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 14px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-secondary {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .modal-textarea {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px;
+      border-radius: 8px;
+      font-family: 'Heebo', sans-serif;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+    }
+    .modal-textarea:focus { border-color: var(--accent); }
+
+    /* TOAST */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--green);
+      color: #fff;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: transform 0.3s;
+      z-index: 300;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.error { background: var(--red); }
+
+    @media (max-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .container { padding: 16px; }
+      th:nth-child(n+5), td:nth-child(n+5) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-logo">
+    <span class="material-icons" style="font-size:22px; -webkit-text-fill-color: var(--accent2)">bolt</span>
+    QUANTUM
+  </div>
+  <nav class="header-nav">
+    <a href="/api/dashboard/" class="nav-btn">
+      <span class="material-icons" style="font-size:16px">dashboard</span> דאשבורד
+    </a>
+    <a href="/api/bot/leads-ui" class="nav-btn active">
+      <span class="material-icons" style="font-size:16px">chat</span> לידים WhatsApp
+    </a>
+    <a href="/api/chat/" class="nav-btn">
+      <span class="material-icons" style="font-size:16px">psychology</span> AI
+    </a>
+  </nav>
+</header>
+
+<div class="container">
+
+  <!-- Stats -->
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card total"><div class="stat-value" id="stat-total">-</div><div class="stat-label">סה"כ לידים</div></div>
+    <div class="stat-card new-leads"><div class="stat-value" id="stat-new">-</div><div class="stat-label">חדשים</div></div>
+    <div class="stat-card contacted"><div class="stat-value" id="stat-contacted">-</div><div class="stat-label">טופלו</div></div>
+    <div class="stat-card sellers"><div class="stat-value" id="stat-sellers">-</div><div class="stat-label">מוכרים</div></div>
+    <div class="stat-card buyers"><div class="stat-value" id="stat-buyers">-</div><div class="stat-label">קונים</div></div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <input class="search-input" type="text" placeholder="חיפוש לפי שם, עיר, טלפון..." id="search-input">
+    <button class="filter-btn active" data-filter="all">הכל</button>
+    <button class="filter-btn" data-filter="new">חדש</button>
+    <button class="filter-btn" data-filter="contacted">טופל</button>
+    <button class="filter-btn" data-filter="seller" data-type>מוכרים</button>
+    <button class="filter-btn" data-filter="buyer" data-type>קונים</button>
+    <button class="refresh-btn" id="refresh-btn">
+      <span class="material-icons" style="font-size:16px">refresh</span> רענון
+    </button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>שם</th>
+          <th>טלפון</th>
+          <th>סוג</th>
+          <th>עיר</th>
+          <th>נכס</th>
+          <th>פרטים</th>
+          <th>סטטוס</th>
+          <th>תאריך</th>
+          <th>פעולות</th>
+        </tr>
+      </thead>
+      <tbody id="leads-tbody">
+        <tr><td colspan="10" class="loading"><div class="spinner"></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Lead Detail Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">פרטי ליד</h3>
+    <div class="modal-grid">
+      <div class="modal-field">
+        <div class="modal-label">שם</div>
+        <div class="modal-value" id="m-name">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">טלפון</div>
+        <div class="modal-value" id="m-phone">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">סוג לקוח</div>
+        <div class="modal-value" id="m-type">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">עיר</div>
+        <div class="modal-value" id="m-city">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label">סוג נכס</div>
+        <div class="modal-value" id="m-property">-</div>
+      </div>
+      <div class="modal-field">
+        <div class="modal-label" id="m-extra-label">חדרים</div>
+        <div class="modal-value" id="m-extra">-</div>
+      </div>
+    </div>
+    <div class="modal-field" style="margin-top:12px">
+      <div class="modal-label">סטטוס</div>
+      <select class="status-select" id="m-status" style="width:100%; padding:8px">
+        <option value="new">חדש</option>
+        <option value="contacted">טופל</option>
+        <option value="qualified">מוסמך</option>
+        <option value="negotiation">משא ומתן</option>
+        <option value="closed">סגור</option>
+        <option value="lost">אבוד</option>
+      </select>
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">הערות</div>
+      <textarea class="modal-textarea" id="m-notes" placeholder="הוסף הערות..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">ביטול</button>
+      <button class="btn-primary" onclick="saveModal()">שמור</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API = '/api/bot';
+  let allLeads = [];
+  let activeStatus = 'all';
+  let activeType = null;
+  let currentLeadId = null;
+
+  const statusMap = {
+    new: 'חדש', contacted: 'טופל', qualified: 'מוסמך',
+    negotiation: 'משא ומתן', closed: 'סגור', lost: 'אבוד'
+  };
+  const typeMap = { seller: 'מוכר', buyer: 'קונה' };
+
+  function formatDate(iso) {
+    if (!iso) return '-';
+    const d = new Date(iso);
+    return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' +
+           d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function showToast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(() => t.className = 'toast', 2500);
+  }
+
+  async function loadLeads() {
+    try {
+      const res = await fetch(`${API}/leads?limit=200`);
+      const data = await res.json();
+      allLeads = data.leads || [];
+
+      const s = data.stats || {};
+      document.getElementById('stat-total').textContent = s.total || 0;
+      document.getElementById('stat-new').textContent = s.new || 0;
+      document.getElementById('stat-contacted').textContent = s.contacted || 0;
+      document.getElementById('stat-sellers').textContent = s.sellers || 0;
+      document.getElementById('stat-buyers').textContent = s.buyers || 0;
+
+      renderLeads();
+    } catch (e) {
+      document.getElementById('leads-tbody').innerHTML =
+        `<tr><td colspan="10" class="empty"><span class="material-icons">error_outline</span>שגיאה בטעינה: ${e.message}</td></tr>`;
+    }
+  }
+
+  function renderLeads() {
+    const search = document.getElementById('search-input').value.toLowerCase();
+    let leads = allLeads.filter(l => {
+      if (activeStatus !== 'all' && l.status !== activeStatus) return false;
+      if (activeType && l.user_type !== activeType) return false;
+      if (search) {
+        const s = `${l.name} ${l.city} ${l.phone} ${l.property_type}`.toLowerCase();
+        if (!s.includes(search)) return false;
+      }
+      return true;
+    });
+
+    const tbody = document.getElementById('leads-tbody');
+    if (leads.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="10" class="empty">
+        <span class="material-icons">inbox</span>אין לידים</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = leads.map(l => {
+      const typeClass = l.user_type === 'seller' ? 'badge-seller' : 'badge-buyer';
+      const typeLabel = typeMap[l.user_type] || l.user_type || '?';
+      const statusClass = `badge-${l.status || 'new'}`;
+      const statusLabel = statusMap[l.status] || l.status || 'חדש';
+      const phone = l.phone || '';
+      const extra = l.user_type === 'seller' ? (l.rooms ? l.rooms + ' חד׳' : '-') :
+                    l.user_type === 'buyer' ? (l.budget || '-') : '-';
+
+      return `<tr>
+        <td style="color:var(--muted);font-size:12px">#${l.id}</td>
+        <td><strong>${l.name || 'לא ידוע'}</strong></td>
+        <td style="direction:ltr;text-align:right;font-family:monospace;font-size:12px">${phone || '-'}</td>
+        <td><span class="badge ${typeClass}">${typeLabel}</span></td>
+        <td>${l.city || '-'}</td>
+        <td>${l.property_type || '-'}</td>
+        <td style="color:var(--muted);font-size:12px">${extra}</td>
+        <td>
+          <select class="status-select" onchange="quickStatus(${l.id}, this.value)">
+            ${Object.entries(statusMap).map(([v, label]) =>
+              `<option value="${v}" ${l.status === v ? 'selected' : ''}>${label}</option>`
+            ).join('')}
+          </select>
+        </td>
+        <td style="color:var(--muted);font-size:12px">${formatDate(l.created_at)}</td>
+        <td>
+          ${phone ? `<a class="action-btn wa" href="https://wa.me/972${phone.replace(/^0/, '')}" target="_blank" title="WhatsApp">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.136.558 4.14 1.535 5.878L0 24l6.31-1.516A11.96 11.96 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.002-1.363l-.36-.214-3.724.894.933-3.618-.235-.372A9.818 9.818 0 012.182 12C2.182 6.59 6.59 2.182 12 2.182S21.818 6.59 21.818 12 17.41 21.818 12 21.818z"/></svg>
+          </a>` : ''}
+          <button class="action-btn" onclick="openModal(${l.id})" title="פרטים">
+            <span class="material-icons">open_in_new</span>
+          </button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function quickStatus(id, status) {
+    try {
+      await fetch(`${API}/leads/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      const lead = allLeads.find(l => l.id === id);
+      if (lead) lead.status = status;
+      showToast('סטטוס עודכן');
+    } catch (e) { showToast('שגיאה', true); }
+  }
+
+  function openModal(id) {
+    const l = allLeads.find(l => l.id === id);
+    if (!l) return;
+    currentLeadId = id;
+    document.getElementById('modal-title').textContent = `ליד #${id} - ${l.name || 'לא ידוע'}`;
+    document.getElementById('m-name').textContent = l.name || '-';
+    document.getElementById('m-phone').textContent = l.phone || '-';
+    document.getElementById('m-type').textContent = typeMap[l.user_type] || l.user_type || '-';
+    document.getElementById('m-city').textContent = l.city || '-';
+    document.getElementById('m-property').textContent = l.property_type || '-';
+
+    if (l.user_type === 'buyer') {
+      document.getElementById('m-extra-label').textContent = 'תקציב';
+      document.getElementById('m-extra').textContent = l.budget || '-';
+    } else {
+      document.getElementById('m-extra-label').textContent = 'חדרים';
+      document.getElementById('m-extra').textContent = l.rooms || '-';
+    }
+
+    document.getElementById('m-status').value = l.status || 'new';
+    document.getElementById('m-notes').value = l.notes || '';
+    document.getElementById('modal').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+    currentLeadId = null;
+  }
+
+  async function saveModal() {
+    if (!currentLeadId) return;
+    const status = document.getElementById('m-status').value;
+    const notes = document.getElementById('m-notes').value;
+    try {
+      await fetch(`${API}/leads/${currentLeadId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, notes })
+      });
+      const lead = allLeads.find(l => l.id === currentLeadId);
+      if (lead) { lead.status = status; lead.notes = notes; }
+      closeModal();
+      renderLeads();
+      showToast('נשמר בהצלחה');
+    } catch (e) { showToast('שגיאה', true); }
+  }
+
+  // Filter buttons
+  document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.filter;
+      if (btn.dataset.type !== undefined) {
+        // type filter
+        document.querySelectorAll('[data-type]').forEach(b => b.classList.remove('active'));
+        if (activeType === f) {
+          activeType = null;
+        } else {
+          activeType = f;
+          btn.classList.add('active');
+        }
+      } else {
+        // status filter
+        document.querySelectorAll('[data-filter]:not([data-type])').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeStatus = f;
+      }
+      renderLeads();
+    });
+  });
+
+  document.getElementById('search-input').addEventListener('input', renderLeads);
+  document.getElementById('refresh-btn').addEventListener('click', loadLeads);
+  document.getElementById('modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('modal')) closeModal();
+  });
+
+  // Auto-refresh every 30s
+  loadLeads();
+  setInterval(loadLeads, 30000);
+</script>
+</body>
+</html>
