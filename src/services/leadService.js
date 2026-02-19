@@ -1,7 +1,7 @@
 /**
  * Lead Management Service for QUANTUM
  * Handles: DB storage, email notifications, Trello cards, lead scoring
- * v1.0.0
+ * v1.1.0 - Added contact form support
  */
 
 const pool = require('../db/pool');
@@ -33,6 +33,7 @@ async function ensureLeadsTable() {
 
 function isLeadUrgent(lead) {
   const { user_type, form_data } = lead;
+  if (user_type === 'contact') return false;
   const data = typeof form_data === 'string' ? JSON.parse(form_data) : (form_data || {});
 
   if (user_type === 'investor') {
@@ -63,15 +64,19 @@ function getLeadAddressString(lead) {
   return '';
 }
 
+const TYPE_LABELS = {
+  investor: { emoji: '🏢', label: 'משקיע חדש' },
+  owner: { emoji: '🏠', label: 'מוכר חדש' },
+  contact: { emoji: '📩', label: 'פנייה - צור קשר' }
+};
+
 function formatLeadEmailHTML(lead) {
-  const isInvestor = lead.user_type === 'investor';
-  const emoji = isInvestor ? '🏢' : '🏠';
-  const typeLabel = isInvestor ? 'משקיע חדש' : 'מוכר חדש';
+  const typeInfo = TYPE_LABELS[lead.user_type] || TYPE_LABELS.contact;
   const urgentBadge = lead.is_urgent ? '<span style="background:#dc2626;color:white;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:bold;">URGENT</span>' : '';
   const data = typeof lead.form_data === 'string' ? JSON.parse(lead.form_data) : (lead.form_data || {});
 
   let detailsHTML = '';
-  if (isInvestor) {
+  if (lead.user_type === 'investor') {
     const budgetMap = { '1-2m': '1-2 מיליון ₪', '2-5m': '2-5 מיליון ₪', '5m+': '5 מיליון ₪+' };
     const horizonMap = { 'short': 'טווח קצר', 'long': 'טווח ארוך' };
     const areaMap = { 'center': 'מרכז', 'sharon': 'השרון', 'north': 'צפון', 'south': 'דרום', 'jerusalem': 'ירושלים', 'haifa': 'חיפה והקריות' };
@@ -80,7 +85,7 @@ function formatLeadEmailHTML(lead) {
       <tr><td style="padding:4px 8px;font-weight:bold;">אזורים:</td><td>${(data.areas || []).map(a => areaMap[a] || a).join(', ') || '-'}</td></tr>
       <tr><td style="padding:4px 8px;font-weight:bold;">אופק:</td><td>${horizonMap[data.horizon] || '-'}</td></tr>
       <tr><td style="padding:4px 8px;font-weight:bold;">מספר נכסים:</td><td>${data.hasMultipleInvestments ? 'כן' : 'נכס אחד'}</td></tr>`;
-  } else {
+  } else if (lead.user_type === 'owner') {
     const propertyTypeMap = { 'residential': 'דירת מגורים', 'building': 'בניין שלם', 'commercial': 'נכס מסחרי' };
     const purposeMap = { 'rights': 'בדיקת זכויות', 'offer': 'רכישה מהירה', 'management': 'ניהול' };
     const statusMap = { 'project': 'יש פרויקט', 'no-info': 'אין מידע' };
@@ -91,11 +96,17 @@ function formatLeadEmailHTML(lead) {
       <tr><td style="padding:4px 8px;font-weight:bold;">מטרה:</td><td>${purposeMap[data.purpose] || '-'}</td></tr>
       <tr><td style="padding:4px 8px;font-weight:bold;">סטטוס:</td><td>${statusMap[data.status] || '-'}</td></tr>
       <tr><td style="padding:4px 8px;font-weight:bold;">מספר נכסים:</td><td>${data.hasMultipleProperties ? 'כן' : 'נכס אחד'}</td></tr>`;
+  } else if (lead.user_type === 'contact') {
+    const message = data.message || data.notes || '';
+    const subject = data.subject || '';
+    detailsHTML = `
+      ${subject ? `<tr><td style="padding:4px 8px;font-weight:bold;">נושא:</td><td>${subject}</td></tr>` : ''}
+      <tr><td style="padding:4px 8px;font-weight:bold;vertical-align:top;">הודעה:</td><td style="white-space:pre-wrap;">${message || 'ללא הודעה'}</td></tr>`;
   }
 
   return `<div dir="rtl" style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
     <div style="background:linear-gradient(135deg,#1e3a5f,#0f2b46);color:white;padding:20px;border-radius:8px 8px 0 0;">
-      <h1 style="margin:0;font-size:22px;">${emoji} QUANTUM - ${typeLabel} ${urgentBadge}</h1>
+      <h1 style="margin:0;font-size:22px;">${typeInfo.emoji} QUANTUM - ${typeInfo.label} ${urgentBadge}</h1>
       <p style="margin:8px 0 0;opacity:0.8;font-size:14px;">${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</p>
     </div>
     <div style="background:#fff;padding:20px;border:1px solid #e5e7eb;">
@@ -104,14 +115,12 @@ function formatLeadEmailHTML(lead) {
         <tr><td style="padding:4px 8px;font-weight:bold;">שם:</td><td>${lead.name}</td></tr>
         <tr><td style="padding:4px 8px;font-weight:bold;">טלפון:</td><td><a href="tel:${lead.phone}">${lead.phone}</a></td></tr>
         <tr><td style="padding:4px 8px;font-weight:bold;">אימייל:</td><td><a href="mailto:${lead.email}">${lead.email}</a></td></tr>
-        <tr><td style="padding:4px 8px;font-weight:bold;">מאומת:</td><td>${lead.phone_verified ? '✅' : '❌'}</td></tr>
       </table>
-      <h2 style="color:#1e3a5f;margin:20px 0 16px;font-size:18px;">פרטים</h2>
-      <table style="width:100%;border-collapse:collapse;">${detailsHTML}</table>
+      ${detailsHTML ? `<h2 style="color:#1e3a5f;margin:20px 0 16px;font-size:18px;">פרטים</h2><table style="width:100%;border-collapse:collapse;">${detailsHTML}</table>` : ''}
       ${lead.mailing_list_consent ? '<p style="color:#16a34a;font-size:12px;margin-top:16px;">✅ אישר/ה רשימת תפוצה</p>' : ''}
     </div>
     <div style="background:#f9fafb;padding:12px 20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#9ca3af;">QUANTUM Lead Management v1.0</p>
+      <p style="margin:0;font-size:11px;color:#9ca3af;">QUANTUM Lead Management v1.1</p>
     </div></div>`;
 }
 
@@ -142,10 +151,9 @@ async function processNewLead(leadData) {
 
     // 2. Send email notification
     try {
-      const typeLabel = leadData.user_type === 'investor' ? 'משקיע' : 'מוכר';
-      const emoji = leadData.user_type === 'investor' ? '🏢' : '🏠';
+      const typeInfo = TYPE_LABELS[leadData.user_type] || TYPE_LABELS.contact;
       const urgentPrefix = isUrgent ? '🚨 URGENT ' : '';
-      const subject = `${urgentPrefix}${emoji} [QUANTUM] ליד חדש - ${typeLabel}: ${leadData.name}`;
+      const subject = `${urgentPrefix}${typeInfo.emoji} [QUANTUM] ${typeInfo.label}: ${leadData.name}`;
       const htmlBody = formatLeadEmailHTML(lead);
 
       const emailTargets = [notificationService.PERSONAL_EMAIL, notificationService.OFFICE_EMAIL].filter(Boolean);
@@ -172,28 +180,35 @@ async function processNewLead(leadData) {
         let trelloResult;
         if (leadData.user_type === 'investor') {
           trelloResult = await trelloService.createInvestorCard(lead);
-        } else {
+        } else if (leadData.user_type === 'owner') {
           trelloResult = await trelloService.createSellerCard(lead);
+        } else if (leadData.user_type === 'contact') {
+          trelloResult = await trelloService.createContactCard(lead);
+        } else {
+          // Unknown type fallback to contact
+          trelloResult = await trelloService.createContactCard(lead);
         }
         results.trelloCreated = trelloResult.success;
         if (trelloResult.success && results.leadId) {
           await pool.query('UPDATE website_leads SET trello_card_id = $1, trello_card_url = $2 WHERE id = $3',
             [trelloResult.cardId, trelloResult.url, results.leadId]).catch(() => {});
         }
-        // System notification card
-        const typeLabel = leadData.user_type === 'investor' ? 'משקיע' : 'מוכר';
-        await trelloService.createNotificationCard(
-          `ליד חדש: ${typeLabel} - ${leadData.name}`,
-          `${isUrgent ? '🚨 URGENT\n\n' : ''}טלפון: ${leadData.phone}\nאימייל: ${leadData.email}\nכתובת/אזור: ${getLeadAddressString(lead)}`
-        ).catch(err => logger.warn('Notification card failed:', err.message));
+        // System notification card (skip for contact - the card itself is the notification)
+        if (leadData.user_type !== 'contact') {
+          const typeInfo = TYPE_LABELS[leadData.user_type] || TYPE_LABELS.contact;
+          await trelloService.createNotificationCard(
+            `ליד חדש: ${typeInfo.label} - ${leadData.name}`,
+            `${isUrgent ? '🚨 URGENT\n\n' : ''}טלפון: ${leadData.phone}\nאימייל: ${leadData.email}\nכתובת/אזור: ${getLeadAddressString(lead)}`
+          ).catch(err => logger.warn('Notification card failed:', err.message));
+        }
       } else {
         // Fallback: Trello email-to-board
         try {
           const trelloEmail = notificationService.TRELLO_EMAIL;
           if (trelloEmail) {
-            const typeLabel = leadData.user_type === 'investor' ? 'משקיע' : 'מוכר';
-            const subject = `${isUrgent ? '🚨 ' : ''}ליד חדש - ${typeLabel}: ${leadData.name}`;
-            const body = `שם: ${leadData.name}\nטלפון: ${leadData.phone}\nאימייל: ${leadData.email}\nסוג: ${typeLabel}\nכתובת/אזור: ${getLeadAddressString(lead)}${isUrgent ? '\n\n🚨 URGENT' : ''}\n\nתאריך: ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}`;
+            const typeInfo = TYPE_LABELS[leadData.user_type] || TYPE_LABELS.contact;
+            const subject = `${isUrgent ? '🚨 ' : ''}${typeInfo.label}: ${leadData.name}`;
+            const body = `שם: ${leadData.name}\nטלפון: ${leadData.phone}\nאימייל: ${leadData.email}\nסוג: ${typeInfo.label}\nכתובת/אזור: ${getLeadAddressString(lead)}${isUrgent ? '\n\n🚨 URGENT' : ''}\n\nתאריך: ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}`;
             const result = await notificationService.sendEmail(trelloEmail, subject, body, body);
             results.trelloCreated = result.sent;
           }
@@ -225,7 +240,7 @@ async function getLeads({ type, status, urgent, limit = 50, offset = 0 } = {}) {
   pc++; query += ` LIMIT $${pc}`; params.push(limit);
   pc++; query += ` OFFSET $${pc}`; params.push(offset);
   const result = await pool.query(query, params);
-  const counts = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN user_type='investor' THEN 1 END) as investors, COUNT(CASE WHEN user_type='owner' THEN 1 END) as sellers, COUNT(CASE WHEN is_urgent=TRUE THEN 1 END) as urgent, COUNT(CASE WHEN status='new' THEN 1 END) as new_leads FROM website_leads`);
+  const counts = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN user_type='investor' THEN 1 END) as investors, COUNT(CASE WHEN user_type='owner' THEN 1 END) as sellers, COUNT(CASE WHEN user_type='contact' THEN 1 END) as contacts, COUNT(CASE WHEN is_urgent=TRUE THEN 1 END) as urgent, COUNT(CASE WHEN status='new' THEN 1 END) as new_leads FROM website_leads`);
   return { leads: result.rows, counts: counts.rows[0], pagination: { limit, offset, returned: result.rows.length } };
 }
 
@@ -241,7 +256,7 @@ async function updateLeadStatus(leadId, status, notes = null) {
 
 async function getLeadStats() {
   await ensureLeadsTable();
-  const stats = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN user_type='investor' THEN 1 END) as investors, COUNT(CASE WHEN user_type='owner' THEN 1 END) as sellers, COUNT(CASE WHEN is_urgent=TRUE THEN 1 END) as urgent, COUNT(CASE WHEN status='new' THEN 1 END) as new_leads, COUNT(CASE WHEN status='contacted' THEN 1 END) as contacted, COUNT(CASE WHEN status='qualified' THEN 1 END) as qualified, COUNT(CASE WHEN status='closed' THEN 1 END) as closed, COUNT(CASE WHEN email_sent=TRUE THEN 1 END) as emails_sent, COUNT(CASE WHEN trello_card_id IS NOT NULL THEN 1 END) as trello_cards, COUNT(CASE WHEN created_at > NOW()-INTERVAL '24 hours' THEN 1 END) as last_24h, COUNT(CASE WHEN created_at > NOW()-INTERVAL '7 days' THEN 1 END) as last_7d, MIN(created_at) as first_lead, MAX(created_at) as last_lead FROM website_leads`);
+  const stats = await pool.query(`SELECT COUNT(*) as total, COUNT(CASE WHEN user_type='investor' THEN 1 END) as investors, COUNT(CASE WHEN user_type='owner' THEN 1 END) as sellers, COUNT(CASE WHEN user_type='contact' THEN 1 END) as contacts, COUNT(CASE WHEN is_urgent=TRUE THEN 1 END) as urgent, COUNT(CASE WHEN status='new' THEN 1 END) as new_leads, COUNT(CASE WHEN status='contacted' THEN 1 END) as contacted, COUNT(CASE WHEN status='qualified' THEN 1 END) as qualified, COUNT(CASE WHEN status='closed' THEN 1 END) as closed, COUNT(CASE WHEN email_sent=TRUE THEN 1 END) as emails_sent, COUNT(CASE WHEN trello_card_id IS NOT NULL THEN 1 END) as trello_cards, COUNT(CASE WHEN created_at > NOW()-INTERVAL '24 hours' THEN 1 END) as last_24h, COUNT(CASE WHEN created_at > NOW()-INTERVAL '7 days' THEN 1 END) as last_7d, MIN(created_at) as first_lead, MAX(created_at) as last_lead FROM website_leads`);
   return stats.rows[0];
 }
 
