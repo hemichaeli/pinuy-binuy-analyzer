@@ -1,5 +1,5 @@
 name: Fix Dashboard - Restore v4.26.0
-on: workflow_dispatch
+on: [push, workflow_dispatch]
 permissions:
   contents: write
 jobs:
