@@ -1,30 +1,56 @@
+/**
+ * QUANTUM WhatsApp Bot - INFORU Webservice Webhook
+ * Uses axios (already in package.json) to call Claude API directly
+ */
+
 const express = require('express');
 const router = express.Router();
-const Anthropic = require('@anthropic-ai/sdk');
+const axios = require('axios');
 const { Pool } = require('pg');
 const { logger } = require('../services/logger');
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
-// ─── QUANTUM Bot Personality ────────────────────────────────────────────────
+const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
+const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
-const QUANTUM_SYSTEM_PROMPT = `אתה QUANTUM - נציג של משרד תיווך בוטיק המתמחה בפינוי-בינוי והתחדשות עירונית בישראל.
+// ─── Claude API Call ─────────────────────────────────────────────────────────
+
+async function callClaude(systemPrompt, userPrompt) {
+  const response = await axios.post(CLAUDE_API_URL, {
+    model: CLAUDE_MODEL,
+    max_tokens: 400,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  }, {
+    headers: {
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
+    },
+    timeout: 10000
+  });
+
+  return response.data.content[0].text;
+}
+
+// ─── QUANTUM Bot Personality ─────────────────────────────────────────────────
+
+const SYSTEM_PROMPT = `אתה QUANTUM - נציג של משרד תיווך בוטיק המתמחה בפינוי-בינוי והתחדשות עירונית בישראל.
 
 האישיות שלך:
 - חכם, חם, ישיר - כמו האדם החכם ביותר שהלקוח אי-פעם פגש
 - קצר ולעניין - ב-WhatsApp כל הודעה עד 2-3 שורות
 - תמיד בעברית
-- לא מזכיר "מערכת", "אלגוריתם", "פלטפורמה" - אתה משרד תיווך אנושי ואישי
+- לא מזכיר "מערכת", "אלגוריתם", "פלטפורמה"
 
 מטרת השיחה:
 - להבין מי הלקוח (קונה או מוכר)
-- לאסוף פרטים בצורה טבעית ונעימה
-- להכין ליד איכותי לנציג שיחזור אליו תוך 24 שעות
+- לאסוף פרטים בצורה טבעית
+- להכין ליד לנציג שיחזור תוך 24 שעות
 
 מה לאסוף לפי סוג לקוח:
 מוכר: עיר, סוג נכס, מספר חדרים, שם
@@ -33,11 +59,9 @@ const QUANTUM_SYSTEM_PROMPT = `אתה QUANTUM - נציג של משרד תיוו�
 חוקים:
 - שאלה אחת בכל פעם
 - הודעות קצרות (עד 3 שורות)
-- להיות ישיר ולא לסחוב
-- לא לבטיח מחירים ספציפיים
-- כשיש את כל הפרטים - לסיים בחמימות ולציין שנציג יחזור תוך 24 שעות`;
+- לא לבטיח מחירים ספציפיים`;
 
-// ─── Stage Manager ───────────────────────────────────────────────────────────
+// ─── Conversation Logic ──────────────────────────────────────────────────────
 
 function parseParams(parameters) {
   const params = {};
@@ -45,74 +69,58 @@ function parseParams(parameters) {
   return params;
 }
 
-function checkMissingFields(params) {
-  const missing = [];
+function getMissingFields(params) {
   if (!params.user_type) return ['user_type'];
+  const missing = [];
   if (!params.city) missing.push('city');
   if (!params.property_type) missing.push('property_type');
   if (!params.name) missing.push('name');
-  
-  if (params.user_type === 'seller') {
-    if (!params.rooms) missing.push('rooms');
-  } else if (params.user_type === 'buyer') {
-    if (!params.budget) missing.push('budget');
-    if (!params.timeline) missing.push('timeline');
-  }
+  if (params.user_type === 'seller' && !params.rooms) missing.push('rooms');
+  if (params.user_type === 'buyer' && !params.budget) missing.push('budget');
+  if (params.user_type === 'buyer' && !params.timeline) missing.push('timeline');
   return missing;
 }
 
-// ─── Claude AI Engine ────────────────────────────────────────────────────────
-
 async function getClaudeDecision(parameters, currentInput) {
   const params = parseParams(parameters);
-  const missing = checkMissingFields(params);
+  const missing = getMissingFields(params);
   const isComplete = missing.length === 0;
 
-  const prompt = `מצב השיחה הנוכחי:
-נאסף עד כה: ${JSON.stringify(params)}
-קלט נוכחי מהמשתמש: "${currentInput || '(התחלת שיחה)'}"
-שדות שחסרים עדיין: ${missing.join(', ') || 'אין - הכל נאסף'}
-שיחה הושלמה: ${isComplete}
+  const userPrompt = `מצב השיחה:
+נאסף: ${JSON.stringify(params)}
+קלט נוכחי: "${currentInput || '(התחלת שיחה)'}"
+חסר: ${missing.join(', ') || 'אין - הכל נאסף'}
 
-הנחיות:
-${isComplete ? 
-  'כל הפרטים נאספו. שלח הודעת סיום חמה ומקצועית - תודה, ציין שנציג QUANTUM יחזור תוך 24 שעות, וסיים.' :
-  `השדה הבא לאיסוף הוא: "${missing[0]}". שאל שאלה טבעית ואחת בלבד.
-  
-מיפוי שדות לשאלות:
-- user_type: "שלום! אני מ-QUANTUM. תגיד לי - יש לך נכס שתרצה למכור, או שאתה מחפש לקנות?"
-- city: שאל באיזה עיר/אזור (בהתאם לסוג לקוח)
-- property_type: שאל על סוג הנכס (דירה, קרקע, בניין וכו')
+${isComplete 
+  ? 'כל הפרטים נאספו. שלח הודעת סיום חמה - תודה ונציג QUANTUM יחזור תוך 24 שעות.' 
+  : `שאל רק על: "${missing[0]}"
+מיפוי שאלות:
+- user_type: "שלום! אני מ-QUANTUM. יש לך נכס למכירה, או שאתה מחפש לקנות?"
+- city: שאל באיזה עיר/אזור
+- property_type: שאל על סוג הנכס
 - rooms: שאל כמה חדרים
 - budget: שאל על תקציב בערך
-- timeline: שאל מתי רוצה לסגור / מה הציר זמן
+- timeline: שאל מתי רוצה לסגור
 - name: "ואיך אפשר לפנות אליך?"`
 }
 
 ענה אך ורק ב-JSON:
 {
-  "message": "ההודעה לשלוח",
-  "save": { "שם_פרמטר": "ערך" },
+  "message": "ההודעה",
+  "save": { "param_name": "value" },
   "done": ${isComplete}
 }
 
-כללי save - שמור פרמטרים שהמשתמש ענה עליהם בקלט הנוכחי:
-- user_type: "seller" אם ענה מכירה/למכור/מוכר, "buyer" אם ענה קנייה/לקנות/מחפש
-- כל שדה אחר - שמור כמחרוזת פשוטה`;
+כלל save: שמור רק מה שהמשתמש ענה בקלט הנוכחי.
+- user_type: "seller" אם מכירה, "buyer" אם קנייה`;
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 400,
-    system: QUANTUM_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: prompt }]
-  });
-
-  const text = response.content[0].text;
+  const text = await callClaude(SYSTEM_PROMPT, userPrompt);
+  
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
   } catch (e) {
-    logger.warn('Claude non-JSON response', { text: text.substring(0, 200) });
+    logger.warn('Claude non-JSON', { text: text.substring(0, 200) });
   }
 
   return { message: text.substring(0, 250), save: {}, done: false };
@@ -123,7 +131,6 @@ ${isComplete ?
 function buildActions(decision) {
   const actions = [];
 
-  // Save any parameters
   if (decision.save) {
     Object.entries(decision.save).forEach(([name, value]) => {
       if (value !== null && value !== undefined && value !== '') {
@@ -132,7 +139,6 @@ function buildActions(decision) {
     });
   }
 
-  // Send the message
   if (decision.message) {
     actions.push({ type: 'SendMessage', text: decision.message });
   }
@@ -147,63 +153,30 @@ function buildActions(decision) {
   return actions;
 }
 
-// ─── Save Lead to DB ────────────────────────────────────────────────────────
+// ─── Save Lead ───────────────────────────────────────────────────────────────
 
 async function saveLeadToDB(callbackData) {
-  const { lead, chat, fields, parameters } = callbackData;
+  const { chat, fields, parameters } = callbackData;
   const params = parseParams(parameters);
+  const rawPhone = (chat?.sender || '').replace(/\D/g, '').slice(-10);
 
   try {
-    // Extract phone from sender (INFORU sender is usually the phone number)
-    const rawPhone = chat?.sender || '';
-    const phone = rawPhone.replace(/\D/g, '').slice(-10);
-
     await pool.query(`
-      INSERT INTO leads (
-        source, phone, name, city, property_type,
-        user_type, budget, timeline, rooms,
-        raw_data, status, created_at
-      ) VALUES (
-        'whatsapp_bot', $1, $2, $3, $4,
-        $5, $6, $7, $8,
-        $9, 'new', NOW()
-      )
-    `, [
-      phone,
-      params.name || fields?.name || null,
-      params.city || null,
-      params.property_type || null,
-      params.user_type || null,
-      params.budget || null,
-      params.timeline || null,
-      params.rooms || null,
-      JSON.stringify(callbackData)
-    ]);
-
-    logger.info('WhatsApp bot lead saved', { phone, name: params.name, type: params.user_type });
+      INSERT INTO leads (source, phone, name, city, property_type, user_type, budget, timeline, rooms, raw_data, status, created_at)
+      VALUES ('whatsapp_bot', $1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', NOW())
+    `, [rawPhone, params.name || fields?.name || null, params.city || null, params.property_type || null,
+        params.user_type || null, params.budget || null, params.timeline || null, params.rooms || null,
+        JSON.stringify(callbackData)]);
+    logger.info('Bot lead saved', { phone: rawPhone, type: params.user_type });
   } catch (err) {
-    // Fallback: try website_leads table if leads doesn't exist
+    // Fallback to website_leads
     try {
-      const rawPhone = chat?.sender || '';
-      const phone = rawPhone.replace(/\D/g, '').slice(-10);
-      
       await pool.query(`
-        INSERT INTO website_leads (
-          source, phone, name, user_type,
-          form_data, status, created_at
-        ) VALUES (
-          'whatsapp_bot', $1, $2, $3, $4, 'new', NOW()
-        )
-      `, [
-        phone,
-        params.name || fields?.name || null,
-        params.user_type || 'unknown',
-        JSON.stringify({ ...params, raw: callbackData })
-      ]);
-      
-      logger.info('WhatsApp bot lead saved to website_leads (fallback)', { phone });
+        INSERT INTO website_leads (source, phone, name, user_type, form_data, status, created_at)
+        VALUES ('whatsapp_bot', $1, $2, $3, $4, 'new', NOW())
+      `, [rawPhone, params.name || null, params.user_type || 'unknown', JSON.stringify({ ...params, raw: callbackData })]);
     } catch (err2) {
-      logger.error('Failed to save bot lead to DB', { error: err2.message });
+      logger.error('Failed to save bot lead', { error: err2.message });
     }
   }
 }
@@ -212,69 +185,45 @@ async function saveLeadToDB(callbackData) {
 
 /**
  * POST /api/bot/webservice
- * INFORU calls this at every step of the WhatsApp conversation
+ * Called by INFORU at every WhatsApp conversation step
  */
 router.post('/webservice', async (req, res) => {
-  // Must respond within 5 seconds (INFORU hard limit)
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
-      logger.warn('Bot webservice timeout - sending hold message');
-      res.json({
-        actions: [
-          { type: 'SendMessage', text: 'רגע...' },
-          { type: 'InputText' }
-        ]
-      });
+      res.json({ actions: [{ type: 'SendMessage', text: 'רגע...' }, { type: 'InputText' }] });
     }
   }, 4500);
 
   try {
     const { campaign, chat, parameters, value } = req.body;
-    const currentInput = value?.string || null;
-    const sender = chat?.sender || 'unknown';
+    logger.info('Bot webservice', { sender: chat?.sender, input: value?.string, params: (parameters || []).length });
 
-    logger.info('Bot webservice', {
-      sender,
-      campaignId: campaign?.id,
-      input: currentInput,
-      paramsCount: (parameters || []).length
-    });
-
-    const decision = await getClaudeDecision(parameters, currentInput);
+    const decision = await getClaudeDecision(parameters, value?.string || null);
     const actions = buildActions(decision);
 
     clearTimeout(timeout);
-    if (!res.headersSent) {
-      res.json({ actions });
-    }
+    if (!res.headersSent) res.json({ actions });
 
   } catch (err) {
     clearTimeout(timeout);
     logger.error('Bot webservice error', { error: err.message });
-
     if (!res.headersSent) {
-      res.json({
-        actions: [
-          { type: 'SendMessage', text: 'משהו השתבש. אנחנו נחזור אליך בהקדם.' },
-          { type: 'Return', value: 'error' }
-        ]
-      });
+      res.json({ actions: [{ type: 'SendMessage', text: 'משהו השתבש. נציג יחזור אליך.' }, { type: 'Return', value: 'error' }] });
     }
   }
 });
 
 /**
  * POST /api/bot/callback
- * INFORU calls this when a lead is finalized (end of conversation)
+ * Called by INFORU when a conversation lead is finalized
  */
 router.post('/callback', async (req, res) => {
-  res.json({ status: 'ok' }); // Respond immediately, process async
-  
+  res.json({ status: 'ok' });
   try {
-    logger.info('Bot callback received', { leadId: req.body?.lead?.id });
+    logger.info('Bot callback', { leadId: req.body?.lead?.id });
     await saveLeadToDB(req.body);
   } catch (err) {
-    logger.error('Bot callback processing error', { error: err.message });
+    logger.error('Bot callback error', { error: err.message });
   }
 });
 
@@ -282,7 +231,7 @@ router.post('/callback', async (req, res) => {
  * GET /api/bot/health
  */
 router.get('/health', (req, res) => {
-  const base = process.env.SERVER_URL || 'https://pinuy-binuy-analyzer-production.up.railway.app';
+  const base = 'https://pinuy-binuy-analyzer-production.up.railway.app';
   res.json({
     status: 'ok',
     bot: 'QUANTUM WhatsApp Bot v1.0',
@@ -299,14 +248,18 @@ router.get('/health', (req, res) => {
 
 /**
  * POST /api/bot/test
- * Simulate a conversation step without INFORU
+ * Test the bot logic without INFORU
  */
 router.post('/test', async (req, res) => {
   try {
     const { parameters = [], input = null } = req.body;
     const decision = await getClaudeDecision(parameters, input);
     const actions = buildActions(decision);
-    res.json({ decision, actions, next_params: [...parameters, ...Object.entries(decision.save || {}).map(([name, value]) => ({ name, value }))] });
+    const nextParams = [
+      ...parameters,
+      ...Object.entries(decision.save || {}).map(([name, value]) => ({ name, value }))
+    ];
+    res.json({ decision, actions, next_params: nextParams });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
