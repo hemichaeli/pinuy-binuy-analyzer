@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const path = require('path');
 const { Pool } = require('pg');
 const { logger } = require('../services/logger');
 
@@ -33,7 +34,6 @@ async function callClaude(systemPrompt, userPrompt) {
     },
     timeout: 10000
   });
-
   return response.data.content[0].text;
 }
 
@@ -115,14 +115,12 @@ ${isComplete
 - user_type: "seller" אם מכירה, "buyer" אם קנייה`;
 
   const text = await callClaude(SYSTEM_PROMPT, userPrompt);
-
   try {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
   } catch (e) {
     logger.warn('Claude non-JSON', { text: text.substring(0, 200) });
   }
-
   return { message: text.substring(0, 250), save: {}, done: false };
 }
 
@@ -130,7 +128,6 @@ ${isComplete
 
 function buildActions(decision) {
   const actions = [];
-
   if (decision.save) {
     Object.entries(decision.save).forEach(([name, value]) => {
       if (value !== null && value !== undefined && value !== '') {
@@ -138,18 +135,13 @@ function buildActions(decision) {
       }
     });
   }
-
-  if (decision.message) {
-    actions.push({ type: 'SendMessage', text: decision.message });
-  }
-
+  if (decision.message) actions.push({ type: 'SendMessage', text: decision.message });
   if (decision.done) {
     actions.push({ type: 'SetParameter', name: 'conversation_complete', value: 'true' });
     actions.push({ type: 'Return', value: 'complete' });
   } else {
     actions.push({ type: 'InputText' });
   }
-
   return actions;
 }
 
@@ -159,7 +151,6 @@ async function saveLeadToDB(callbackData) {
   const { chat, fields, parameters } = callbackData;
   const params = parseParams(parameters);
   const rawPhone = (chat?.sender || '').replace(/\D/g, '').slice(-10);
-
   try {
     await pool.query(`
       INSERT INTO leads (source, phone, name, city, property_type, user_type, budget, timeline, rooms, raw_data, status, created_at)
@@ -183,47 +174,10 @@ async function saveLeadToDB(callbackData) {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 /**
- * POST /api/bot/webservice
- * Called by INFORU at every WhatsApp conversation step
+ * GET /api/bot/leads-ui - WhatsApp leads dashboard (HTML)
  */
-router.post('/webservice', async (req, res) => {
-  const timeout = setTimeout(() => {
-    if (!res.headersSent) {
-      res.json({ actions: [{ type: 'SendMessage', text: 'רגע...' }, { type: 'InputText' }] });
-    }
-  }, 4500);
-
-  try {
-    const { campaign, chat, parameters, value } = req.body;
-    logger.info('Bot webservice', { sender: chat?.sender, input: value?.string, params: (parameters || []).length });
-
-    const decision = await getClaudeDecision(parameters, value?.string || null);
-    const actions = buildActions(decision);
-
-    clearTimeout(timeout);
-    if (!res.headersSent) res.json({ actions });
-
-  } catch (err) {
-    clearTimeout(timeout);
-    logger.error('Bot webservice error', { error: err.message });
-    if (!res.headersSent) {
-      res.json({ actions: [{ type: 'SendMessage', text: 'משהו השתבש. נציג יחזור אליך.' }, { type: 'Return', value: 'error' }] });
-    }
-  }
-});
-
-/**
- * POST /api/bot/callback
- * Called by INFORU when a conversation lead is finalized
- */
-router.post('/callback', async (req, res) => {
-  res.json({ status: 'ok' });
-  try {
-    logger.info('Bot callback', { leadId: req.body?.lead?.id });
-    await saveLeadToDB(req.body);
-  } catch (err) {
-    logger.error('Bot callback error', { error: err.message });
-  }
+router.get('/leads-ui', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../src/public/bot-leads.html'));
 });
 
 /**
@@ -236,7 +190,8 @@ router.get('/health', (req, res) => {
     bot: 'QUANTUM WhatsApp Bot v1.0',
     endpoints: {
       webservice: `${base}/api/bot/webservice`,
-      callback: `${base}/api/bot/callback`
+      callback: `${base}/api/bot/callback`,
+      leads_ui: `${base}/api/bot/leads-ui`
     },
     config: {
       claude: !!process.env.ANTHROPIC_API_KEY ? 'configured' : 'MISSING',
@@ -246,111 +201,115 @@ router.get('/health', (req, res) => {
 });
 
 /**
- * GET /api/bot/leads - List all bot leads with filters
+ * POST /api/bot/webservice - INFORU webhook at every conversation step
+ */
+router.post('/webservice', async (req, res) => {
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.json({ actions: [{ type: 'SendMessage', text: 'רגע...' }, { type: 'InputText' }] });
+    }
+  }, 4500);
+  try {
+    const { chat, parameters, value } = req.body;
+    logger.info('Bot webservice', { sender: chat?.sender, input: value?.string, params: (parameters || []).length });
+    const decision = await getClaudeDecision(parameters, value?.string || null);
+    const actions = buildActions(decision);
+    clearTimeout(timeout);
+    if (!res.headersSent) res.json({ actions });
+  } catch (err) {
+    clearTimeout(timeout);
+    logger.error('Bot webservice error', { error: err.message });
+    if (!res.headersSent) {
+      res.json({ actions: [{ type: 'SendMessage', text: 'משהו השתבש. נציג יחזור אליך.' }, { type: 'Return', value: 'error' }] });
+    }
+  }
+});
+
+/**
+ * POST /api/bot/callback - INFORU calls this when lead is finalized
+ */
+router.post('/callback', async (req, res) => {
+  res.json({ status: 'ok' });
+  try {
+    logger.info('Bot callback', { leadId: req.body?.lead?.id });
+    await saveLeadToDB(req.body);
+  } catch (err) {
+    logger.error('Bot callback error', { error: err.message });
+  }
+});
+
+/**
+ * GET /api/bot/leads - List leads (JSON API)
  */
 router.get('/leads', async (req, res) => {
   try {
-    const { status, user_type, limit = 100, offset = 0 } = req.query;
-
-    let where = [];
-    let params = [];
-    let idx = 1;
-
-    // Try leads table first
-    let rows = [];
-    let total = 0;
-
+    const { status, user_type, limit = 200, offset = 0 } = req.query;
+    let where = [], params = [], idx = 1;
+    let rows = [], total = 0;
     try {
       if (status) { where.push(`status = $${idx++}`); params.push(status); }
       if (user_type) { where.push(`user_type = $${idx++}`); params.push(user_type); }
-
       const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-
       const countRes = await pool.query(`SELECT COUNT(*) FROM leads ${whereClause}`, params);
       total = parseInt(countRes.rows[0].count);
-
       const dataRes = await pool.query(
         `SELECT id, source, phone, name, city, property_type, user_type, budget, timeline, rooms,
                 status, notes, assigned_to, created_at, updated_at
-         FROM leads ${whereClause}
-         ORDER BY created_at DESC
-         LIMIT $${idx++} OFFSET $${idx++}`,
+         FROM leads ${whereClause} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
         [...params, parseInt(limit), parseInt(offset)]
       );
       rows = dataRes.rows;
     } catch (e) {
-      // leads table may not exist yet
-      logger.warn('leads table query failed, returning empty', { error: e.message });
+      logger.warn('leads table not ready', { error: e.message });
     }
 
-    // Stats
     let stats = { total: 0, new: 0, contacted: 0, sellers: 0, buyers: 0 };
     try {
-      const statsRes = await pool.query(`
-        SELECT
-          COUNT(*) as total,
+      const s = (await pool.query(`
+        SELECT COUNT(*) as total,
           COUNT(*) FILTER (WHERE status = 'new') as new_leads,
           COUNT(*) FILTER (WHERE status = 'contacted') as contacted,
           COUNT(*) FILTER (WHERE user_type = 'seller') as sellers,
           COUNT(*) FILTER (WHERE user_type = 'buyer') as buyers
         FROM leads
-      `);
-      const s = statsRes.rows[0];
-      stats = {
-        total: parseInt(s.total),
-        new: parseInt(s.new_leads),
-        contacted: parseInt(s.contacted),
-        sellers: parseInt(s.sellers),
-        buyers: parseInt(s.buyers)
-      };
-    } catch (e) { /* table might not exist */ }
+      `)).rows[0];
+      stats = { total: parseInt(s.total), new: parseInt(s.new_leads), contacted: parseInt(s.contacted), sellers: parseInt(s.sellers), buyers: parseInt(s.buyers) };
+    } catch (e) { /* ok */ }
 
-    res.json({ leads: rows, total, stats, limit: parseInt(limit), offset: parseInt(offset) });
+    res.json({ leads: rows, total, stats });
   } catch (err) {
-    logger.error('Bot leads list error', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
 
 /**
- * PUT /api/bot/leads/:id/status - Update lead status
+ * PUT /api/bot/leads/:id/status - Update lead
  */
 router.put('/leads/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes, assigned_to } = req.body;
     const valid = ['new', 'contacted', 'qualified', 'negotiation', 'closed', 'lost'];
-    if (status && !valid.includes(status)) {
-      return res.status(400).json({ error: `Invalid status. Valid: ${valid.join(', ')}` });
-    }
-
-    const sets = [];
-    const params = [];
+    if (status && !valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const sets = [], params = [];
     let idx = 1;
     if (status) { sets.push(`status = $${idx++}`); params.push(status); }
     if (notes !== undefined) { sets.push(`notes = $${idx++}`); params.push(notes); }
     if (assigned_to !== undefined) { sets.push(`assigned_to = $${idx++}`); params.push(assigned_to); }
-    sets.push(`updated_at = NOW()`);
+    sets.push('updated_at = NOW()');
     params.push(parseInt(id));
-
     const result = await pool.query(
-      `UPDATE leads SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
-      params
+      `UPDATE leads SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, params
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Lead not found' });
-    }
+    if (!result.rows.length) return res.status(404).json({ error: 'Lead not found' });
     res.json({ success: true, lead: result.rows[0] });
   } catch (err) {
-    logger.error('Bot lead update error', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
 
 /**
- * POST /api/bot/test
- * Test the bot logic without INFORU
+ * POST /api/bot/test - Test bot logic without INFORU
  */
 router.post('/test', async (req, res) => {
   try {
