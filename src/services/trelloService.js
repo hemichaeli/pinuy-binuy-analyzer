@@ -7,10 +7,10 @@
  *   - מוכרים (Sellers)  
  *   - התראות מערכת (System Notifications)
  * 
- * Labels (3-tier priority):
+ * Labels (priority-based):
  *   - Urgent (red)      - highest value leads
  *   - Important (orange) - medium value leads
- *   - Third Priority     - standard leads
+ *   - (no label)        - standard leads
  */
 
 const { logger } = require('./logger');
@@ -108,50 +108,44 @@ async function getLabelId(labelName) {
 }
 
 /**
- * Determine lead priority: 'urgent' | 'important' | 'third' 
+ * Determine lead priority: 'urgent' | 'important' | 'none' 
  * Based on lead type and form data
  */
 function getLeadPriority(userType, data) {
   if (userType === 'investor') {
-    // URGENT: 5m+ budget OR multiple investments with high budget
     if (data.budget === '5m+') return 'urgent';
     if (data.hasMultipleInvestments === true && data.budget === '2m-5m') return 'urgent';
-    // IMPORTANT: 2-5m budget OR multiple investments OR 3+ areas
     if (data.budget === '2m-5m') return 'important';
     if (data.hasMultipleInvestments === true) return 'important';
     if ((data.areas || []).length >= 3) return 'important';
-    // THIRD PRIORITY: standard leads
-    return 'third';
+    return 'none';
   }
 
   if (userType === 'owner') {
-    // URGENT: building/commercial OR project status with multiple properties
     if (data.propertyType === 'building' || data.propertyType === 'commercial') return 'urgent';
     if (data.status === 'project' && data.hasMultipleProperties === true) return 'urgent';
-    // IMPORTANT: project status OR multiple properties OR quick sale
     if (data.status === 'project') return 'important';
     if (data.hasMultipleProperties === true) return 'important';
     if (data.purpose === 'offer') return 'important';
-    // THIRD PRIORITY: standard leads
-    return 'third';
+    return 'none';
   }
 
-  return 'third';
+  return 'none';
 }
 
 /**
- * Get the Trello label name for a priority level
+ * Get the Trello label name for a priority level.
+ * Returns null for standard leads (no label).
  */
 function getPriorityLabelName(priority) {
   switch (priority) {
     case 'urgent': return 'Urgent';
     case 'important': return 'Important';
-    case 'third': return 'Third Priority';
-    default: return 'Third Priority';
+    default: return null;
   }
 }
 
-async function createCard({ listName, title, description, labels = [], priority = 'third' }) {
+async function createCard({ listName, title, description, labels = [], priority = 'none' }) {
   try {
     const listId = await getListId(listName);
 
@@ -164,12 +158,14 @@ async function createCard({ listName, title, description, labels = [], priority 
 
     const labelIds = [];
 
-    // Add priority label
+    // Add priority label only for urgent/important
     const priorityLabelName = getPriorityLabelName(priority);
-    const priorityLabelId = await getLabelId(priorityLabelName);
-    if (priorityLabelId) {
-      labelIds.push(priorityLabelId);
-      logger.info(`Trello label: "${priorityLabelName}" applied to "${title}"`);
+    if (priorityLabelName) {
+      const priorityLabelId = await getLabelId(priorityLabelName);
+      if (priorityLabelId) {
+        labelIds.push(priorityLabelId);
+        logger.info(`Trello label: "${priorityLabelName}" applied to "${title}"`);
+      }
     }
 
     // Add any extra labels
@@ -185,7 +181,7 @@ async function createCard({ listName, title, description, labels = [], priority 
     const card = await trelloRequest('/cards', 'POST', cardData);
 
     logger.info(`Trello card created: "${title}" in list "${listName}"`, {
-      cardId: card.id, listId, priority, label: priorityLabelName, url: card.shortUrl
+      cardId: card.id, listId, priority, label: priorityLabelName || 'none', url: card.shortUrl
     });
 
     return { success: true, cardId: card.id, url: card.shortUrl, listName, priority };
@@ -196,7 +192,6 @@ async function createCard({ listName, title, description, labels = [], priority 
 }
 
 function extractFormData(lead) {
-  // Fix: properly extract form_data regardless of field name
   const raw = lead.form_data || lead.formData;
   if (!raw) return {};
   if (typeof raw === 'string') {
@@ -227,7 +222,6 @@ async function createInvestorCard(lead) {
     `**תקציב:** ${budget}`, `**אזורי עניין:** ${areas || 'לא צוינו'}`,
     `**אופק השקעה:** ${horizon}`,
     `**מספר נכסים:** ${data.hasMultipleInvestments ? 'כן' : 'לא'}`, ``,
-    `**עדיפות:** ${getPriorityLabelName(priority)}`, ``,
     `---`, `*נכנס: ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}*`
   ].join('\n');
 
@@ -258,7 +252,6 @@ async function createSellerCard(lead) {
     `**סוג נכס:** ${propertyType}`, `**מטרה:** ${purpose}`,
     `**סטטוס תכנוני:** ${status}`,
     `**מספר נכסים:** ${data.hasMultipleProperties ? 'כן' : 'נכס אחד'}`, ``,
-    `**עדיפות:** ${getPriorityLabelName(priority)}`, ``,
     `---`, `*נכנס: ${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}*`
   ].join('\n');
 
@@ -269,8 +262,7 @@ async function createNotificationCard(title, message) {
   return createCard({
     listName: 'התראות מערכת',
     title: `📬 ${title}`,
-    description: [message, '', `---`, `*${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}*`].join('\n'),
-    priority: 'third'
+    description: [message, '', `---`, `*${new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}*`].join('\n')
   });
 }
 
