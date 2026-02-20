@@ -1,1 +1,560 @@
-Y29uc3QgZXhwcmVzcyA9IHJlcXVpcmUoJ2V4cHJlc3MnKTsKY29uc3Qgcm91dGVyID0gZXhwcmVzcy5Sb3V0ZXIoKTsKY29uc3QgeyBsb2dnZXIgfSA9IHJlcXVpcmUoJy4uL3NlcnZpY2VzL2xvZ2dlcicpOwoKbGV0IGRlZXBFbnJpY2htZW50U2VydmljZTsKdHJ5IHsKICBkZWVwRW5yaWNobWVudFNlcnZpY2UgPSByZXF1aXJlKCcuLi9zZXJ2aWNlcy9kZWVwRW5yaWNobWVudFNlcnZpY2UnKTsKfSBjYXRjaCAoZXJyKSB7CiAgbG9nZ2VyLndhcm4oJ0RlZXAgZW5yaWNobWVudCBzZXJ2aWNlIG5vdCBhdmFpbGFibGUnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKfQoKbGV0IHNjYW5Qcmlvcml0eVNlcnZpY2U7CnRyeSB7CiAgc2NhblByaW9yaXR5U2VydmljZSA9IHJlcXVpcmUoJy4uL3NlcnZpY2VzL3NjYW5Qcmlvcml0eVNlcnZpY2UnKTsKfSBjYXRjaCAoZXJyKSB7CiAgbG9nZ2VyLndhcm4oJ1NjYW4gcHJpb3JpdHkgc2VydmljZSBub3QgYXZhaWxhYmxlJywgeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7Cn0KCmxldCBzbWFydEJhdGNoU2VydmljZTsKdHJ5IHsKICBzbWFydEJhdGNoU2VydmljZSA9IHJlcXVpcmUoJy4uL3NlcnZpY2VzL3NtYXJ0QmF0Y2hTZXJ2aWNlJyk7Cn0gY2F0Y2ggKGVycikgewogIGxvZ2dlci53YXJuKCdTbWFydCBiYXRjaCBzZXJ2aWNlIG5vdCBhdmFpbGFibGUnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKfQoKLy8gUE9TVCAvYXBpL2VucmljaG1lbnQvY29tcGxleC86aWQ/bW9kZT1zdGFuZGFyZHxmdWxsfGZhc3R8dHVyYm8Kcm91dGVyLnBvc3QoJy9jb21wbGV4LzppZCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghZGVlcEVucmljaG1lbnRTZXJ2aWNlKSByZXR1cm4gcmVzLnN0YXR1cyg1MDMpLmpzb24oeyBlcnJvcjogJ0RlZXAgZW5yaWNobWVudCBzZXJ2aWNlIG5vdCBhdmFpbGFibGUnIH0pOwogIHRyeSB7CiAgICBjb25zdCBjb21wbGV4SWQgPSBwYXJzZUludChyZXEucGFyYW1zLmlkKTsKICAgIGlmIChpc05hTihjb21wbGV4SWQpKSByZXR1cm4gcmVzLnN0YXR1cyg0MDApLmpzb24oeyBlcnJvcjogJ0ludmFsaWQgY29tcGxleCBJRCcgfSk7CiAgICBjb25zdCBtb2RlID0gcmVxLmJvZHkubW9kZSB8fCByZXEucXVlcnkubW9kZSB8fCAnc3RhbmRhcmQnOwogICAgbG9nZ2VyLmluZm8oYFN0YXJ0aW5nIGRlZXAgZW5yaWNobWVudCBmb3IgY29tcGxleCAke2NvbXBsZXhJZH0gW21vZGU6ICR7bW9kZX1dYCk7CiAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBkZWVwRW5yaWNobWVudFNlcnZpY2UuZGVlcEVucmljaENvbXBsZXgoY29tcGxleElkLCB7IG1vZGUgfSk7CiAgICByZXMuanNvbihyZXN1bHQpOwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKCdEZWVwIGVucmljaG1lbnQgZmFpbGVkJywgeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgICByZXMuc3RhdHVzKDUwMCkuanNvbih7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICB9Cn0pOwoKLy8gUE9TVCAvYXBpL2VucmljaG1lbnQvYmF0Y2gge2xpbWl0LCBjaXR5LCBtaW5JYWksIHN0YWxlT25seSwgbW9kZX0Kcm91dGVyLnBvc3QoJy9iYXRjaCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghZGVlcEVucmljaG1lbnRTZXJ2aWNlKSByZXR1cm4gcmVzLnN0YXR1cyg1MDMpLmpzb24oeyBlcnJvcjogJ0RlZXAgZW5yaWNobWVudCBzZXJ2aWNlIG5vdCBhdmFpbGFibGUnIH0pOwogIHRyeSB7CiAgICBjb25zdCB7IGxpbWl0ID0gMjAsIGNpdHksIG1pbklhaSA9IDAsIHN0YWxlT25seSA9IHRydWUsIG1vZGUgPSAnc3RhbmRhcmQnIH0gPSByZXEuYm9keTsKICAgIGxvZ2dlci5pbmZvKGBTdGFydGluZyBhc3luYyBiYXRjaCBlbnJpY2htZW50OiBsaW1pdD0ke2xpbWl0fSwgY2l0eT0ke2NpdHkgfHwgJ2FsbCd9LCBtaW5JYWk9JHttaW5JYWl9LCBtb2RlPSR7bW9kZX1gKTsKICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IGRlZXBFbnJpY2htZW50U2VydmljZS5lbnJpY2hBbGwoeyBsaW1pdCwgY2l0eSwgbWluSWFpLCBzdGFsZU9ubHksIG1vZGUgfSk7CiAgICByZXMuanNvbihyZXN1bHQpOwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKCdCYXRjaCBlbnJpY2htZW50IGZhaWxlZCcsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgcmVzLnN0YXR1cyg1MDApLmpzb24oeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9KTsKCi8vIEdFVCAvYXBpL2VucmljaG1lbnQvYmF0Y2gvOmpvYklkIC0gY2hlY2sgYm90aCBkZWVwIGFuZCBzbWFydCBiYXRjaCBqb2JzCnJvdXRlci5nZXQoJy9iYXRjaC86am9iSWQnLCBhc3luYyAocmVxLCByZXMpID0+IHsKICBjb25zdCBqb2JJZCA9IHJlcS5wYXJhbXMuam9iSWQ7CiAgbGV0IHN0YXR1cyA9IG51bGw7CiAgCiAgaWYgKGRlZXBFbnJpY2htZW50U2VydmljZSkgewogICAgc3RhdHVzID0gZGVlcEVucmljaG1lbnRTZXJ2aWNlLmdldEJhdGNoU3RhdHVzKGpvYklkKTsKICB9CiAgaWYgKCFzdGF0dXMgJiYgc21hcnRCYXRjaFNlcnZpY2UpIHsKICAgIHN0YXR1cyA9IHNtYXJ0QmF0Y2hTZXJ2aWNlLmdldFNtYXJ0QmF0Y2hTdGF0dXMoam9iSWQpOwogIH0KICAKICBpZiAoIXN0YXR1cykgcmV0dXJuIHJlcy5zdGF0dXMoNDA0KS5qc29uKHsgZXJyb3I6ICdKb2Igbm90IGZvdW5kJyB9KTsKICAKICByZXMuanNvbih7CiAgICBqb2JJZCwKICAgIHN0YXR1czogc3RhdHVzLnN0YXR1cywKICAgIHByb2dyZXNzOiBgJHtzdGF0dXMuZW5yaWNoZWR9LyR7c3RhdHVzLnRvdGFsfWAsCiAgICBwZXJjZW50OiBzdGF0dXMudG90YWwgPiAwID8gTWF0aC5yb3VuZCgoc3RhdHVzLmVucmljaGVkIC8gc3RhdHVzLnRvdGFsKSAqIDEwMCkgOiAwLAogICAgY3VycmVudENvbXBsZXg6IHN0YXR1cy5jdXJyZW50Q29tcGxleCwKICAgIG1vZGU6IHN0YXR1cy5tb2RlIHx8ICdzdGFuZGFyZCcsCiAgICBlbmdpbmU6IHN0YXR1cy5lbmdpbmUsCiAgICB0b3RhbEZpZWxkc1VwZGF0ZWQ6IHN0YXR1cy50b3RhbEZpZWxkc1VwZGF0ZWQsCiAgICBlcnJvcnM6IHN0YXR1cy5lcnJvcnMsCiAgICBzdGFydGVkQXQ6IHN0YXR1cy5zdGFydGVkQXQsCiAgICBjb21wbGV0ZWRBdDogc3RhdHVzLmNvbXBsZXRlZEF0LAogICAgZGV0YWlsczogc3RhdHVzLnN0YXR1cyA9PT0gJ2NvbXBsZXRlZCcgPyBzdGF0dXMuZGV0YWlscyA6IHVuZGVmaW5lZAogIH0pOwp9KTsKCi8vIEdFVCAvYXBpL2VucmljaG1lbnQvam9icyAtIGxpc3QgYWxsIGJhdGNoIGpvYnMgKGRlZXAgKyBzbWFydCkKcm91dGVyLmdldCgnL2pvYnMnLCBhc3luYyAocmVxLCByZXMpID0+IHsKICBsZXQgam9icyA9IFtdOwogIGlmIChkZWVwRW5yaWNobWVudFNlcnZpY2UpIHsKICAgIGpvYnMgPSBkZWVwRW5yaWNobWVudFNlcnZpY2UuZ2V0QWxsQmF0Y2hKb2JzKCk7CiAgfQogIGlmIChzbWFydEJhdGNoU2VydmljZSkgewogICAgam9icyA9IHNtYXJ0QmF0Y2hTZXJ2aWNlLmdldEFsbFNtYXJ0QmF0Y2hKb2JzKCk7CiAgfQogIHJlcy5qc29uKGpvYnMpOwp9KTsKCi8vIFBPU1QgL2FwaS9lbnJpY2htZW50L3RvcCAtIFF1aWNrIGVucmljaCB0b3AgSUFJIGNvbXBsZXhlcwpyb3V0ZXIucG9zdCgnL3RvcCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghZGVlcEVucmljaG1lbnRTZXJ2aWNlKSByZXR1cm4gcmVzLnN0YXR1cyg1MDMpLmpzb24oeyBlcnJvcjogJ0RlZXAgZW5yaWNobWVudCBzZXJ2aWNlIG5vdCBhdmFpbGFibGUnIH0pOwogIHRyeSB7CiAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBkZWVwRW5yaWNobWVudFNlcnZpY2UuZW5yaWNoQWxsKHsgbGltaXQ6IDEwLCBtaW5JYWk6IDYwLCBzdGFsZU9ubHk6IGZhbHNlLCBtb2RlOiAnZnVsbCcgfSk7CiAgICByZXMuanNvbihyZXN1bHQpOwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKCdUb3AgZW5yaWNobWVudCBmYWlsZWQnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgovLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KLy8gU01BUlQgU0NBTiAmIFRJRVIgU1lTVEVNCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQoKLy8gR0VUIC9hcGkvZW5yaWNobWVudC9wcmlvcml0aWVzIC0gQ2FsY3VsYXRlIFBTUyBmb3IgYWxsIGNvbXBsZXhlcywgc2hvdyB0aWVycwpyb3V0ZXIuZ2V0KCcvcHJpb3JpdGllcycsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghc2NhblByaW9yaXR5U2VydmljZSkgcmV0dXJuIHJlcy5zdGF0dXMoNTAzKS5qc29uKHsgZXJyb3I6ICdTY2FuIHByaW9yaXR5IHNlcnZpY2Ugbm90IGF2YWlsYWJsZScgfSk7CiAgdHJ5IHsKICAgIGNvbnN0IHByaW9yaXRpZXMgPSBhd2FpdCBzY2FuUHJpb3JpdHlTZXJ2aWNlLmNhbGN1bGF0ZUFsbFByaW9yaXRpZXMoKTsKICAgIHJlcy5qc29uKHByaW9yaXRpZXMpOwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKCdQcmlvcml0eSBjYWxjdWxhdGlvbiBmYWlsZWQnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgovLyBHRVQgL2FwaS9lbnJpY2htZW50L3ByaW9yaXRpZXMvdG9wNTAgLSBKdXN0IHRoZSB0b3AgNTAgZm9yIHF1aWNrIHJldmlldwpyb3V0ZXIuZ2V0KCcvcHJpb3JpdGllcy90b3A1MCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghc2NhblByaW9yaXR5U2VydmljZSkgcmV0dXJuIHJlcy5zdGF0dXMoNTAzKS5qc29uKHsgZXJyb3I6ICdTY2FuIHByaW9yaXR5IHNlcnZpY2Ugbm90IGF2YWlsYWJsZScgfSk7CiAgdHJ5IHsKICAgIGNvbnN0IHByaW9yaXRpZXMgPSBhd2FpdCBzY2FuUHJpb3JpdHlTZXJ2aWNlLmNhbGN1bGF0ZUFsbFByaW9yaXRpZXMoKTsKICAgIHJlcy5qc29uKHsKICAgICAgdG90YWxfY29tcGxleGVzOiBwcmlvcml0aWVzLnRvdGFsLAogICAgICB0b3BfNTA6IHByaW9yaXRpZXMudG9wXzUwLAogICAgICB0aWVyX3N1bW1hcnk6IHsKICAgICAgICBob3Q6IHByaW9yaXRpZXMudGllcnMuaG90LmNvdW50LAogICAgICAgIGFjdGl2ZTogcHJpb3JpdGllcy50aWVycy5hY3RpdmUuY291bnQsCiAgICAgICAgZG9ybWFudDogcHJpb3JpdGllcy50aWVycy5kb3JtYW50LmNvdW50CiAgICAgIH0sCiAgICAgIGNvc3RfdG9fc2Nhbl90b3A1MDogewogICAgICAgIG1vZGU6ICdmdWxsJywKICAgICAgICBjb3N0X3Blcl9jb21wbGV4OiAxLjIzLAogICAgICAgIHRvdGFsOiBNYXRoLnJvdW5kKE1hdGgubWluKHByaW9yaXRpZXMudG9wXzUwLmxlbmd0aCwgNTApICogMS4yMyAqIDEwMCkgLyAxMDAsCiAgICAgICAgZXN0aW1hdGVkX2hvdXJzOiBNYXRoLnJvdW5kKE1hdGgubWluKHByaW9yaXRpZXMudG9wXzUwLmxlbmd0aCwgNTApICogNSAvIDYwICogMTApIC8gMTAKICAgICAgfQogICAgfSk7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIuZXJyb3IoJ1RvcCA1MCBwcmlvcml0eSBmYWlsZWQnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgovLyBQT1NUIC9hcGkvZW5yaWNobWVudC9zbWFydC1zY2FuIC0gVGllcmVkIGVucmljaG1lbnQgYnkgUFNTIHNjb3JlCi8vIEJvZHk6IHsgdGllcjogMXwyfDMsIGxpbWl0OiBudW1iZXIgfQovLyBUaWVyIDEgKEhPVCkgPSBGVUxMIG1vZGUsIFRpZXIgMiAoQUNUSVZFKSA9IFNUQU5EQVJELCBUaWVyIDMgKERPUk1BTlQpID0gRkFTVApyb3V0ZXIucG9zdCgnL3NtYXJ0LXNjYW4nLCBhc3luYyAocmVxLCByZXMpID0+IHsKICBpZiAoIXNtYXJ0QmF0Y2hTZXJ2aWNlIHx8ICFzY2FuUHJpb3JpdHlTZXJ2aWNlKSB7CiAgICByZXR1cm4gcmVzLnN0YXR1cyg1MDMpLmpzb24oeyBlcnJvcjogJ1NtYXJ0IHNjYW4gc2VydmljZXMgbm90IGF2YWlsYWJsZScgfSk7CiAgfQogIHRyeSB7CiAgICBjb25zdCB7IHRpZXIgPSAxLCBsaW1pdCA9IDUwIH0gPSByZXEuYm9keTsKICAgIAogICAgY29uc3QgcHJpb3JpdGllcyA9IGF3YWl0IHNjYW5Qcmlvcml0eVNlcnZpY2UuY2FsY3VsYXRlQWxsUHJpb3JpdGllcygpOwogICAgCiAgICBjb25zdCB0aWVyTnVtID0gcGFyc2VJbnQodGllcik7CiAgICBjb25zdCB0aWVyS2V5ID0gdGllck51bSA9PT0gMSA/ICdob3QnIDogdGllck51bSA9PT0gMiA/ICdhY3RpdmUnIDogJ2Rvcm1hbnQnOwogICAgY29uc3QgbW9kZU1hcCA9IHsgMTogJ2Z1bGwnLCAyOiAnc3RhbmRhcmQnLCAzOiAnZmFzdCcgfTsKICAgIGNvbnN0IG1vZGUgPSBtb2RlTWFwW3RpZXJOdW1dIHx8ICdzdGFuZGFyZCc7CiAgICBjb25zdCB0aWVyTGFiZWwgPSB0aWVyTnVtID09PSAxID8gJ0hPVCcgOiB0aWVyTnVtID09PSAyID8gJ0FDVElWRScgOiAnRE9STUFOVCc7CiAgICAKICAgIGNvbnN0IHRpZXJEYXRhID0gcHJpb3JpdGllcy50aWVyc1t0aWVyS2V5XTsKICAgIGNvbnN0IGlkcyA9IHRpZXJEYXRhLmNvbXBsZXhlcy5zbGljZSgwLCBsaW1pdCkubWFwKGMgPT4gYy5pZCk7CiAgICAKICAgIGlmIChpZHMubGVuZ3RoID09PSAwKSB7CiAgICAgIHJldHVybiByZXMuanNvbih7IHN0YXR1czogJ2VtcHR5JywgbWVzc2FnZTogYE5vIGNvbXBsZXhlcyBpbiB0aWVyICR7dGllck51bX0gKCR7dGllckxhYmVsfSlgIH0pOwogICAgfQogICAgCiAgICBjb25zdCBqb2IgPSBhd2FpdCBzbWFydEJhdGNoU2VydmljZS5lbnJpY2hCeUlkcyhpZHMsIG1vZGUpOwogICAgCiAgICBjb25zdCBjb3N0UGVyQ29tcGxleCA9IHRpZXJOdW0gPT09IDEgPyAxLjIzIDogdGllck51bSA9PT0gMiA/IDAuMjYgOiAwLjE1OwogICAgCiAgICByZXMuanNvbih7CiAgICAgIHN0YXR1czogJ3N0YXJ0ZWQnLAogICAgICB0aWVyOiB0aWVyTnVtLAogICAgICB0aWVyX2xhYmVsOiB0aWVyTGFiZWwsCiAgICAgIG1vZGUsCiAgICAgIGNvdW50OiBpZHMubGVuZ3RoLAogICAgICAuLi5qb2IsCiAgICAgIGNvc3RfZXN0aW1hdGU6IHsKICAgICAgICBwZXJfY29tcGxleDogY29zdFBlckNvbXBsZXgsCiAgICAgICAgdG90YWw6IE1hdGgucm91bmQoaWRzLmxlbmd0aCAqIGNvc3RQZXJDb21wbGV4ICogMTAwKSAvIDEwMCwKICAgICAgICBlc3RpbWF0ZWRfaG91cnM6IE1hdGgucm91bmQoaWRzLmxlbmd0aCAqICh0aWVyTnVtID09PSAxID8gNSA6IHRpZXJOdW0gPT09IDIgPyAxLjUgOiAwLjc1KSAvIDYwICogMTApIC8gMTAKICAgICAgfSwKICAgICAgdG9wX2NvbXBsZXhlczogdGllckRhdGEuY29tcGxleGVzLnNsaWNlKDAsIDEwKS5tYXAoYyA9PiAoewogICAgICAgIGlkOiBjLmlkLCBuYW1lOiBjLm5hbWUsIGNpdHk6IGMuY2l0eSwgCiAgICAgICAgcHNzOiBjLnBzcywgaWFpOiBjLmlhaV9zY29yZSwKICAgICAgICBwcmVtaXVtX2dhcDogYy5kZXRhaWxzPy5wcmVtaXVtX2dhcCwKICAgICAgICBwbGFuX3N0YWdlOiBjLnBsYW5fc3RhZ2UsCiAgICAgICAgYWxwaGE6IGMuY29tcG9uZW50cy5hbHBoYSwKICAgICAgICB2ZWxvY2l0eTogYy5jb21wb25lbnRzLnZlbG9jaXR5LAogICAgICAgIHNoaWVsZDogYy5jb21wb25lbnRzLnNoaWVsZCwKICAgICAgICBzdGVhbHRoOiBjLmNvbXBvbmVudHMuc3RlYWx0aCwKICAgICAgICBzdHJlc3M6IGMuY29tcG9uZW50cy5zdHJlc3MKICAgICAgfSkpCiAgICB9KTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci5lcnJvcignU21hcnQgc2NhbiBmYWlsZWQnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgovLyBHRVQgL2FwaS9lbnJpY2htZW50L3N0YXR1cyAtIENvdmVyYWdlIHN0YXR1cwpyb3V0ZXIuZ2V0KCcvc3RhdHVzJywgYXN5bmMgKHJlcSwgcmVzKSA9PiB7CiAgdHJ5IHsKICAgIGNvbnN0IHBvb2wgPSByZXF1aXJlKCcuLi9kYi9wb29sJyk7CiAgICBjb25zdCB0b3RhbFJlc3VsdCA9IGF3YWl0IHBvb2wucXVlcnkoJ1NFTEVDVCBDT1VOVCgqKSBhcyB0b3RhbCBGUk9NIGNvbXBsZXhlcycpOwogICAgY29uc3QgdG90YWwgPSBwYXJzZUludCh0b3RhbFJlc3VsdC5yb3dzWzBdLnRvdGFsKTsKCiAgICBjb25zdCBjb3ZlcmFnZSA9IGF3YWl0IHBvb2wucXVlcnkoYAogICAgICBTRUxFQ1QgCiAgICAgICAgQ09VTlQoKikgYXMgdG90YWwsCiAgICAgICAgQ09VTlQobmVpZ2hib3Job29kKSBhcyBoYXNfbmVpZ2hib3Job29kLAogICAgICAgIENPVU5UKGFkZHJlc3MpIGFzIGhhc19wcmVjaXNlX2FkZHJlc3MsCiAgICAgICAgQ09VTlQobnVtX2J1aWxkaW5ncykgYXMgaGFzX251bV9idWlsZGluZ3MsCiAgICAgICAgQ09VTlQoYWN0dWFsX3ByZW1pdW0pIGFzIGhhc19hY3R1YWxfcHJlbWl1bSwKICAgICAgICBDT1VOVChhY2N1cmF0ZV9wcmljZV9zcW0pIGFzIGhhc19wcmljZV9zcW0sCiAgICAgICAgQ09VTlQoY2l0eV9hdmdfcHJpY2Vfc3FtKSBhcyBoYXNfY2l0eV9hdmcsCiAgICAgICAgQ09VTlQocHJpY2VfdHJlbmQpIGFzIGhhc19wcmljZV90cmVuZCwKICAgICAgICBDT1VOVChkZXZlbG9wZXJfc3RhdHVzKSBhcyBoYXNfZGV2ZWxvcGVyX3N0YXR1cywKICAgICAgICBDT1VOVChkZXZlbG9wZXJfcmlza19sZXZlbCkgYXMgaGFzX2RldmVsb3Blcl9yaXNrLAogICAgICAgIENPVU5UKG5ld3Nfc2VudGltZW50KSBhcyBoYXNfbmV3cywKICAgICAgICBDT1VOVChsYXN0X25ld3NfY2hlY2spIGFzIGhhc19uZXdzX2NoZWNrLAogICAgICAgIENPVU5UKHByaWNlX2xhc3RfdXBkYXRlZCkgYXMgaGFzX3ByaWNlX3VwZGF0ZSwKICAgICAgICBDT1VOVChzaWduYXR1cmVfcGVyY2VudCkgYXMgaGFzX3NpZ25hdHVyZSwKICAgICAgICBDT1VOVChwbGFuX3N0YWdlKSBhcyBoYXNfcGxhbl9zdGFnZSwKICAgICAgICBDT1VOVChDQVNFIFdIRU4gaGFzX2VuZm9yY2VtZW50X2Nhc2VzID0gdHJ1ZSBUSEVOIDEgRU5EKSBhcyBlbmZvcmNlbWVudF9mbGFnZ2VkLAogICAgICAgIENPVU5UKENBU0UgV0hFTiBpc19yZWNlaXZlcnNoaXAgPSB0cnVlIFRIRU4gMSBFTkQpIGFzIHJlY2VpdmVyc2hpcF9mbGFnZ2VkLAogICAgICAgIENPVU5UKENBU0UgV0hFTiBoYXNfYmFua3J1cHRjeV9wcm9jZWVkaW5ncyA9IHRydWUgVEhFTiAxIEVORCkgYXMgYmFua3J1cHRjeV9mbGFnZ2VkCiAgICAgIEZST00gY29tcGxleGVzCiAgICBgKTsKCiAgICBjb25zdCBjID0gY292ZXJhZ2Uucm93c1swXTsKICAgIGNvbnN0IHBjdCA9IChuKSA9PiB0b3RhbCA+IDAgPyBNYXRoLnJvdW5kKChwYXJzZUludChuKSAvIHRvdGFsKSAqIDEwMCkgOiAwOwoKICAgIHJlcy5qc29uKHsKICAgICAgdG90YWxfY29tcGxleGVzOiB0b3RhbCwKICAgICAgY292ZXJhZ2U6IHsKICAgICAgICBuZWlnaGJvcmhvb2Q6IHsgY291bnQ6IHBhcnNlSW50KGMuaGFzX25laWdoYm9yaG9vZCksIHBlcmNlbnQ6IHBjdChjLmhhc19uZWlnaGJvcmhvb2QpIH0sCiAgICAgICAgcHJlY2lzZV9hZGRyZXNzOiB7IGNvdW50OiBwYXJzZUludChjLmhhc19wcmVjaXNlX2FkZHJlc3MpLCBwZXJjZW50OiBwY3QoYy5oYXNfcHJlY2lzZV9hZGRyZXNzKSB9LAogICAgICAgIG51bV9idWlsZGluZ3M6IHsgY291bnQ6IHBhcnNlSW50KGMuaGFzX251bV9idWlsZGluZ3MpLCBwZXJjZW50OiBwY3QoYy5oYXNfbnVtX2J1aWxkaW5ncykgfSwKICAgICAgICBhY3R1YWxfcHJlbWl1bTogeyBjb3VudDogcGFyc2VJbnQoYy5oYXNfYWN0dWFsX3ByZW1pdW0pLCBwZXJjZW50OiBwY3QoYy5oYXNfYWN0dWFsX3ByZW1pdW0pIH0sCiAgICAgICAgcHJpY2VfcGVyX3NxbTogeyBjb3VudDogcGFyc2VJbnQoYy5oYXNfcHJpY2Vfc3FtKSwgcGVyY2VudDogcGN0KGMuaGFzX3ByaWNlX3NxbSkgfSwKICAgICAgICBjaXR5X2F2ZzogeyBjb3VudDogcGFyc2VJbnQoYy5oYXNfY2l0eV9hdmcpLCBwZXJjZW50OiBwY3QoYy5oYXNfY2l0eV9hdmcpIH0sCiAgICAgICAgcHJpY2VfdHJlbmQ6IHsgY291bnQ6IHBhcnNlSW50KGMuaGFzX3ByaWNlX3RyZW5kKSwgcGVyY2VudDogcGN0KGMuaGFzX3ByaWNlX3RyZW5kKSB9LAogICAgICAgIGRldmVsb3Blcl9zdGF0dXM6IHsgY291bnQ6IHBhcnNlSW50KGMuaGFzX2RldmVsb3Blcl9zdGF0dXMpLCBwZXJjZW50OiBwY3QoYy5oYXNfZGV2ZWxvcGVyX3N0YXR1cykgfSwKICAgICAgICBkZXZlbG9wZXJfcmlzazogeyBjb3VudDogcGFyc2VJbnQoYy5oYXNfZGV2ZWxvcGVyX3Jpc2spLCBwZXJjZW50OiBwY3QoYy5oYXNfZGV2ZWxvcGVyX3Jpc2spIH0sCiAgICAgICAgbmV3c19zZW50aW1lbnQ6IHsgY291bnQ6IHBhcnNlSW50KGMuaGFzX25ld3MpLCBwZXJjZW50OiBwY3QoYy5oYXNfbmV3cykgfSwKICAgICAgICBzaWduYXR1cmVfcGVyY2VudDogeyBjb3VudDogcGFyc2VJbnQoYy5oYXNfc2lnbmF0dXJlKSwgcGVyY2VudDogcGN0KGMuaGFzX3NpZ25hdHVyZSkgfSwKICAgICAgICBwbGFuX3N0YWdlOiB7IGNvdW50OiBwYXJzZUludChjLmhhc19wbGFuX3N0YWdlKSwgcGVyY2VudDogcGN0KGMuaGFzX3BsYW5fc3RhZ2UpIH0KICAgICAgfSwKICAgICAgZGlzdHJlc3NfZmxhZ3M6IHsKICAgICAgICBlbmZvcmNlbWVudDogcGFyc2VJbnQoYy5lbmZvcmNlbWVudF9mbGFnZ2VkKSwKICAgICAgICByZWNlaXZlcnNoaXA6IHBhcnNlSW50KGMucmVjZWl2ZXJzaGlwX2ZsYWdnZWQpLAogICAgICAgIGJhbmtydXB0Y3k6IHBhcnNlSW50KGMuYmFua3J1cHRjeV9mbGFnZ2VkKQogICAgICB9LAogICAgICBlbnJpY2hlZF9yZWNlbnRseTogcGFyc2VJbnQoYy5oYXNfcHJpY2VfdXBkYXRlKQogICAgfSk7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICByZXMuc3RhdHVzKDUwMCkuanNvbih7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICB9Cn0pOwoKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci8vIE5FSUdIQk9SSE9PRCBCRU5DSE1BUksKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CgpsZXQgbmVpZ2hib3Job29kQmVuY2htYXJrU2VydmljZTsKdHJ5IHsKICBuZWlnaGJvcmhvb2RCZW5jaG1hcmtTZXJ2aWNlID0gcmVxdWlyZSgnLi4vc2VydmljZXMvbmVpZ2hib3Job29kQmVuY2htYXJrU2VydmljZScpOwp9IGNhdGNoIChlcnIpIHsKICBsb2dnZXIud2FybignTmVpZ2hib3Job29kIGJlbmNobWFyayBzZXJ2aWNlIG5vdCBhdmFpbGFibGUnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKfQoKbGV0IG9uYm9hcmRpbmdQaXBlbGluZTsKdHJ5IHsKICBvbmJvYXJkaW5nUGlwZWxpbmUgPSByZXF1aXJlKCcuLi9zZXJ2aWNlcy9vbmJvYXJkaW5nUGlwZWxpbmUnKTsKfSBjYXRjaCAoZXJyKSB7CiAgbG9nZ2VyLndhcm4oJ09uYm9hcmRpbmcgcGlwZWxpbmUgbm90IGF2YWlsYWJsZScsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwp9CgovLyBQT1NUIC9hcGkvZW5yaWNobWVudC9iZW5jaG1hcmsvOmlkIC0gUnVuIG5laWdoYm9yaG9vZCBiZW5jaG1hcmsgZm9yIHNpbmdsZSBjb21wbGV4CnJvdXRlci5wb3N0KCcvYmVuY2htYXJrLzppZCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghbmVpZ2hib3Job29kQmVuY2htYXJrU2VydmljZSkgcmV0dXJuIHJlcy5zdGF0dXMoNTAzKS5qc29uKHsgZXJyb3I6ICdOZWlnaGJvcmhvb2QgYmVuY2htYXJrIHNlcnZpY2Ugbm90IGF2YWlsYWJsZScgfSk7CiAgdHJ5IHsKICAgIGNvbnN0IGNvbXBsZXhJZCA9IHBhcnNlSW50KHJlcS5wYXJhbXMuaWQpOwogICAgaWYgKGlzTmFOKGNvbXBsZXhJZCkpIHJldHVybiByZXMuc3RhdHVzKDQwMCkuanNvbih7IGVycm9yOiAnSW52YWxpZCBjb21wbGV4IElEJyB9KTsKICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IG5laWdoYm9yaG9vZEJlbmNobWFya1NlcnZpY2UuZmV0Y2hOZWlnaGJvcmhvb2RCZW5jaG1hcmsoY29tcGxleElkKTsKICAgIHJlcy5qc29uKHJlc3VsdCk7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIuZXJyb3IoJ0JlbmNobWFyayBmYWlsZWQnLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgovLyBQT1NUIC9hcGkvZW5yaWNobWVudC9iZW5jaG1hcmsvYmF0Y2ggLSBSdW4gYmVuY2htYXJrIGZvciBhbGwvZmlsdGVyZWQgY29tcGxleGVzCnJvdXRlci5wb3N0KCcvYmVuY2htYXJrL2JhdGNoJywgYXN5bmMgKHJlcSwgcmVzKSA9PiB7CiAgaWYgKCFuZWlnaGJvcmhvb2RCZW5jaG1hcmtTZXJ2aWNlKSByZXR1cm4gcmVzLnN0YXR1cyg1MDMpLmpzb24oeyBlcnJvcjogJ05laWdoYm9yaG9vZCBiZW5jaG1hcmsgc2VydmljZSBub3QgYXZhaWxhYmxlJyB9KTsKICB0cnkgewogICAgY29uc3QgeyBsaW1pdCA9IDEwMCwgY2l0eSwgc3RhbGVPbmx5ID0gdHJ1ZSB9ID0gcmVxLmJvZHk7CiAgICBjb25zdCBqb2JJZCA9IGBiZW5jaG1hcmtfJHtEYXRlLm5vdygpfWA7CiAgICAvLyBSdW4gYXN5bmMKICAgIHNldEltbWVkaWF0ZShhc3luYyAoKSA9PiB7CiAgICAgIHRyeSB7CiAgICAgICAgYXdhaXQgbmVpZ2hib3Job29kQmVuY2htYXJrU2VydmljZS5zY2FuTmVpZ2hib3Job29kQmVuY2htYXJrcyh7IGxpbWl0LCBjaXR5LCBzdGFsZU9ubHkgfSk7CiAgICAgIH0gY2F0Y2ggKGVycikgewogICAgICAgIGxvZ2dlci5lcnJvcignQmVuY2htYXJrIGJhdGNoIGZhaWxlZCcsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgICB9CiAgICB9KTsKICAgIHJlcy5qc29uKHsgam9iSWQsIG1lc3NhZ2U6IGBCZW5jaG1hcmsgYmF0Y2ggc3RhcnRlZGAsIGxpbWl0LCBjaXR5OiBjaXR5IHx8ICdhbGwnIH0pOwogIH0gY2F0Y2ggKGVycikgewogICAgcmVzLnN0YXR1cyg1MDApLmpzb24oeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9KTsKCi8vIEdFVCAvYXBpL2VucmljaG1lbnQvYmVuY2htYXJrL3N0YXR1cyAtIE92ZXJ2aWV3IG9mIGJlbmNobWFyayBjb3ZlcmFnZQpyb3V0ZXIuZ2V0KCcvYmVuY2htYXJrL3N0YXR1cycsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIHRyeSB7CiAgICBjb25zdCB7IHJvd3MgfSA9IGF3YWl0IHJlcXVpcmUoJy4uL2RiL3Bvb2wnKS5xdWVyeShgCiAgICAgIFNFTEVDVAogICAgICAgIENPVU5UKCopIGFzIHRvdGFsLAogICAgICAgIENPVU5UKG5laWdoYm9yaG9vZF9hdmdfc3FtKSBhcyBoYXNfYmVuY2htYXJrLAogICAgICAgIENPVU5UKG5hZGxhbl9uZWlnaGJvcmhvb2RfYXZnX3NxbSkgYXMgaGFzX25hZGxhbiwKICAgICAgICBDT1VOVChtYWRsYW5fbmVpZ2hib3Job29kX2F2Z19zcW0pIGFzIGhhc19tYWRsYW4sCiAgICAgICAgQ09VTlQoKikgRklMVEVSIChXSEVSRSBiZW5jaG1hcmtfZGF0YV9mbGFnID0gdHJ1ZSkgYXMgZmxhZ2dlZCwKICAgICAgICBDT1VOVCgqKSBGSUxURVIgKFdIRVJFIG5laWdoYm9yaG9vZF9iZW5jaG1hcmtfc291cmNlID0gJ2NpdHlfYXZnX2ZhbGxiYWNrJykgYXMgZmFsbGJhY2tfb25seSwKICAgICAgICBST1VORChDT1VOVChuZWlnaGJvcmhvb2RfYXZnX3NxbSk6Om51bWVyaWMgLyBDT1VOVCgqKSAqIDEwMCwgMSkgYXMgY292ZXJhZ2VfcGN0CiAgICAgIEZST00gY29tcGxleGVzCiAgICBgKTsKICAgIHJlcy5qc29uKHJvd3NbMF0pOwogIH0gY2F0Y2ggKGVycikgewogICAgcmVzLnN0YXR1cyg1MDApLmpzb24oeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9KTsKCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQovLyBPTkJPQVJESU5HIFBJUEVMSU5FCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQoKLy8gUE9TVCAvYXBpL2VucmljaG1lbnQvb25ib2FyZGluZy86aWQgLSBSdW4gZnVsbCBvbmJvYXJkaW5nIGZvciBzaW5nbGUgY29tcGxleApyb3V0ZXIucG9zdCgnL29uYm9hcmRpbmcvOmlkJywgYXN5bmMgKHJlcSwgcmVzKSA9PiB7CiAgaWYgKCFvbmJvYXJkaW5nUGlwZWxpbmUpIHJldHVybiByZXMuc3RhdHVzKDUwMykuanNvbih7IGVycm9yOiAnT25ib2FyZGluZyBwaXBlbGluZSBub3QgYXZhaWxhYmxlJyB9KTsKICB0cnkgewogICAgY29uc3QgY29tcGxleElkID0gcGFyc2VJbnQocmVxLnBhcmFtcy5pZCk7CiAgICBpZiAoaXNOYU4oY29tcGxleElkKSkgcmV0dXJuIHJlcy5zdGF0dXMoNDAwKS5qc29uKHsgZXJyb3I6ICdJbnZhbGlkIGNvbXBsZXggSUQnIH0pOwogICAgY29uc3QgeyBmb3JjZUFsbCA9IGZhbHNlLCBza2lwUGhhc2VzID0gW10gfSA9IHJlcS5ib2R5OwogICAgLy8gUnVuIGFzeW5jIGFuZCByZXR1cm4gam9iIHJlZmVyZW5jZQogICAgY29uc3Qgam9iSWQgPSBgb25ib2FyZGluZ18ke2NvbXBsZXhJZH1fJHtEYXRlLm5vdygpfWA7CiAgICBzZXRJbW1lZGlhdGUoYXN5bmMgKCkgPT4gewogICAgICB0cnkgewogICAgICAgIGF3YWl0IG9uYm9hcmRpbmdQaXBlbGluZS5ydW5PbmJvYXJkaW5nKGNvbXBsZXhJZCwgeyBmb3JjZUFsbCwgc2tpcFBoYXNlcyB9KTsKICAgICAgfSBjYXRjaCAoZXJyKSB7CiAgICAgICAgbG9nZ2VyLmVycm9yKGBPbmJvYXJkaW5nIGZhaWxlZCBmb3IgJHtjb21wbGV4SWR9YCwgeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgICAgIH0KICAgIH0pOwogICAgcmVzLmpzb24oeyBqb2JJZCwgY29tcGxleElkLCBtZXNzYWdlOiAnT25ib2FyZGluZyBwaXBlbGluZSBzdGFydGVkJyB9KTsKICB9IGNhdGNoIChlcnIpIHsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgovLyBQT1NUIC9hcGkvZW5yaWNobWVudC9vbmJvYXJkaW5nL2JhdGNoIC0gUnVuIG9uYm9hcmRpbmcgZm9yIHBlbmRpbmcgY29tcGxleGVzCnJvdXRlci5wb3N0KCcvb25ib2FyZGluZy9iYXRjaCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIGlmICghb25ib2FyZGluZ1BpcGVsaW5lKSByZXR1cm4gcmVzLnN0YXR1cyg1MDMpLmpzb24oeyBlcnJvcjogJ09uYm9hcmRpbmcgcGlwZWxpbmUgbm90IGF2YWlsYWJsZScgfSk7CiAgdHJ5IHsKICAgIGNvbnN0IHsgbGltaXQgPSA1MCwgZm9yY2VBbGwgPSBmYWxzZSwgb25seVBlbmRpbmcgPSB0cnVlIH0gPSByZXEuYm9keTsKICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IG9uYm9hcmRpbmdQaXBlbGluZS5iYXRjaE9uYm9hcmRpbmcoeyBsaW1pdCwgZm9yY2VBbGwsIG9ubHlQZW5kaW5nIH0pOwogICAgcmVzLmpzb24ocmVzdWx0KTsKICB9IGNhdGNoIChlcnIpIHsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgovLyBHRVQgL2FwaS9lbnJpY2htZW50L29uYm9hcmRpbmcvc3RhdHVzIC0gT25ib2FyZGluZyBjb3ZlcmFnZSBvdmVydmlldwpyb3V0ZXIuZ2V0KCcvb25ib2FyZGluZy9zdGF0dXMnLCBhc3luYyAocmVxLCByZXMpID0+IHsKICB0cnkgewogICAgY29uc3QgeyByb3dzIH0gPSBhd2FpdCByZXF1aXJlKCcuLi9kYi9wb29sJykucXVlcnkoYAogICAgICBTRUxFQ1QKICAgICAgICBDT1VOVCgqKSBhcyB0b3RhbCwKICAgICAgICBDT1VOVCgqKSBGSUxURVIgKFdIRVJFIG9uYm9hcmRpbmdfc3RhdHVzID0gJ2NvbXBsZXRlZCcpIGFzIGNvbXBsZXRlZCwKICAgICAgICBDT1VOVCgqKSBGSUxURVIgKFdIRVJFIG9uYm9hcmRpbmdfc3RhdHVzID0gJ3BhcnRpYWwnKSBhcyBwYXJ0aWFsLAogICAgICAgIENPVU5UKCopIEZJTFRFUiAoV0hFUkUgb25ib2FyZGluZ19zdGF0dXMgPSAncGVuZGluZycgT1Igb25ib2FyZGluZ19zdGF0dXMgSVMgTlVMTCkgYXMgcGVuZGluZywKICAgICAgICBST1VORChDT1VOVCgqKSBGSUxURVIgKFdIRVJFIG9uYm9hcmRpbmdfc3RhdHVzID0gJ2NvbXBsZXRlZCcpOjpudW1lcmljIC8gQ09VTlQoKikgKiAxMDAsIDEpIGFzIGNvbXBsZXRpb25fcGN0CiAgICAgIEZST00gY29tcGxleGVzCiAgICBgKTsKICAgIHJlcy5qc29uKHJvd3NbMF0pOwogIH0gY2F0Y2ggKGVycikgewogICAgcmVzLnN0YXR1cyg1MDApLmpzb24oeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9KTsKCm1vZHVsZS5leHBvcnRzID0gcm91dGVyOwo=
+const express = require('express');
+const router = express.Router();
+const { logger } = require('../services/logger');
+
+// Service loading with proper error handling
+let deepEnrichmentService;
+let scanPriorityService; 
+let smartBatchService;
+let neighborhoodBenchmarkService;
+let onboardingPipeline;
+
+try {
+  deepEnrichmentService = require('../services/deepEnrichmentService');
+} catch (err) {
+  logger.warn('Deep enrichment service not available', { error: err.message });
+}
+
+try {
+  scanPriorityService = require('../services/scanPriorityService');
+} catch (err) {
+  logger.warn('Scan priority service not available', { error: err.message });
+}
+
+try {
+  smartBatchService = require('../services/smartBatchService');
+} catch (err) {
+  logger.warn('Smart batch service not available', { error: err.message });
+}
+
+try {
+  neighborhoodBenchmarkService = require('../services/neighborhoodBenchmarkService');
+} catch (err) {
+  logger.warn('Neighborhood benchmark service not available', { error: err.message });
+}
+
+try {
+  onboardingPipeline = require('../services/onboardingPipeline');
+} catch (err) {
+  logger.warn('Onboarding pipeline not available', { error: err.message });
+}
+
+// Existing routes - keep all functionality but fix syntax issues
+router.post('/complex/:id', async (req, res) => {
+  if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
+  try {
+    const complexId = parseInt(req.params.id);
+    if (isNaN(complexId)) return res.status(400).json({ error: 'Invalid complex ID' });
+    const mode = req.body.mode || req.query.mode || 'standard';
+    logger.info(`Starting deep enrichment for complex ${complexId} [mode: ${mode}]`);
+    const result = await deepEnrichmentService.deepEnrichComplex(complexId, { mode });
+    res.json(result);
+  } catch (err) {
+    logger.error('Deep enrichment failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/batch', async (req, res) => {
+  if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
+  try {
+    const { limit = 20, city, minIai = 0, staleOnly = true, mode = 'standard' } = req.body;
+    logger.info(`Starting async batch enrichment: limit=${limit}, city=${city || 'all'}, minIai=${minIai}, mode=${mode}`);
+    const result = await deepEnrichmentService.enrichAll({ limit, city, minIai, staleOnly, mode });
+    res.json(result);
+  } catch (err) {
+    logger.error('Batch enrichment failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/batch/:jobId', async (req, res) => {
+  const jobId = req.params.jobId;
+  let status = null;
+  
+  if (deepEnrichmentService) {
+    status = deepEnrichmentService.getBatchStatus(jobId);
+  }
+  if (!status && smartBatchService) {
+    status = smartBatchService.getSmartBatchStatus(jobId);
+  }
+  
+  if (!status) return res.status(404).json({ error: 'Job not found' });
+  
+  res.json({
+    jobId,
+    status: status.status,
+    progress: `${status.enriched}/${status.total}`,
+    percent: status.total > 0 ? Math.round((status.enriched / status.total) * 100) : 0,
+    currentComplex: status.currentComplex,
+    mode: status.mode || 'standard',
+    engine: status.engine,
+    totalFieldsUpdated: status.totalFieldsUpdated,
+    errors: status.errors,
+    startedAt: status.startedAt,
+    completedAt: status.completedAt,
+    details: status.status === 'completed' ? status.details : undefined
+  });
+});
+
+router.get('/jobs', async (req, res) => {
+  let jobs = [];
+  if (deepEnrichmentService) {
+    jobs = deepEnrichmentService.getAllBatchJobs();
+  }
+  if (smartBatchService) {
+    jobs = [...jobs, ...smartBatchService.getAllSmartBatchJobs()];
+  }
+  res.json(jobs);
+});
+
+router.post('/top', async (req, res) => {
+  if (!deepEnrichmentService) return res.status(503).json({ error: 'Deep enrichment service not available' });
+  try {
+    const result = await deepEnrichmentService.enrichAll({ limit: 10, minIai: 60, staleOnly: false, mode: 'full' });
+    res.json(result);
+  } catch (err) {
+    logger.error('Top enrichment failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Smart scan routes
+router.get('/priorities', async (req, res) => {
+  if (!scanPriorityService) return res.status(503).json({ error: 'Scan priority service not available' });
+  try {
+    const priorities = await scanPriorityService.calculateAllPriorities();
+    res.json(priorities);
+  } catch (err) {
+    logger.error('Priority calculation failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/priorities/top50', async (req, res) => {
+  if (!scanPriorityService) return res.status(503).json({ error: 'Scan priority service not available' });
+  try {
+    const priorities = await scanPriorityService.calculateAllPriorities();
+    res.json({
+      total_complexes: priorities.total,
+      top_50: priorities.top_50,
+      tier_summary: {
+        hot: priorities.tiers.hot.count,
+        active: priorities.tiers.active.count,
+        dormant: priorities.tiers.dormant.count
+      },
+      cost_to_scan_top50: {
+        mode: 'full',
+        cost_per_complex: 1.23,
+        total: Math.round(Math.min(priorities.top_50.length, 50) * 1.23 * 100) / 100,
+        estimated_hours: Math.round(Math.min(priorities.top_50.length, 50) * 5 / 60 * 10) / 10
+      }
+    });
+  } catch (err) {
+    logger.error('Top 50 priority failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/smart-scan', async (req, res) => {
+  if (!smartBatchService || !scanPriorityService) {
+    return res.status(503).json({ error: 'Smart scan services not available' });
+  }
+  try {
+    const { tier = 1, limit = 50 } = req.body;
+    
+    const priorities = await scanPriorityService.calculateAllPriorities();
+    
+    const tierNum = parseInt(tier);
+    const tierKey = tierNum === 1 ? 'hot' : tierNum === 2 ? 'active' : 'dormant';
+    const modeMap = { 1: 'full', 2: 'standard', 3: 'fast' };
+    const mode = modeMap[tierNum] || 'standard';
+    const tierLabel = tierNum === 1 ? 'HOT' : tierNum === 2 ? 'ACTIVE' : 'DORMANT';
+    
+    const tierData = priorities.tiers[tierKey];
+    const ids = tierData.complexes.slice(0, limit).map(c => c.id);
+    
+    if (ids.length === 0) {
+      return res.json({ status: 'empty', message: `No complexes in tier ${tierNum} (${tierLabel})` });
+    }
+    
+    const job = await smartBatchService.enrichByIds(ids, mode);
+    
+    const costPerComplex = tierNum === 1 ? 1.23 : tierNum === 2 ? 0.26 : 0.15;
+    
+    res.json({
+      status: 'started',
+      tier: tierNum,
+      tier_label: tierLabel,
+      mode,
+      count: ids.length,
+      ...job,
+      cost_estimate: {
+        per_complex: costPerComplex,
+        total: Math.round(ids.length * costPerComplex * 100) / 100,
+        estimated_hours: Math.round(ids.length * (tierNum === 1 ? 5 : tierNum === 2 ? 1.5 : 0.75) / 60 * 10) / 10
+      },
+      top_complexes: tierData.complexes.slice(0, 10).map(c => ({
+        id: c.id, name: c.name, city: c.city, 
+        pss: c.pss, iai: c.iai_score,
+        premium_gap: c.details?.premium_gap,
+        plan_stage: c.plan_stage,
+        alpha: c.components.alpha,
+        velocity: c.components.velocity,
+        shield: c.components.shield,
+        stealth: c.components.stealth,
+        stress: c.components.stress
+      }))
+    });
+  } catch (err) {
+    logger.error('Smart scan failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/status', async (req, res) => {
+  try {
+    const pool = require('../db/pool');
+    const totalResult = await pool.query('SELECT COUNT(*) as total FROM complexes');
+    const total = parseInt(totalResult.rows[0].total);
+
+    const coverage = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(neighborhood) as has_neighborhood,
+        COUNT(address) as has_precise_address,
+        COUNT(num_buildings) as has_num_buildings,
+        COUNT(actual_premium) as has_actual_premium,
+        COUNT(accurate_price_sqm) as has_price_sqm,
+        COUNT(city_avg_price_sqm) as has_city_avg,
+        COUNT(price_trend) as has_price_trend,
+        COUNT(developer_status) as has_developer_status,
+        COUNT(developer_risk_level) as has_developer_risk,
+        COUNT(news_sentiment) as has_news,
+        COUNT(last_news_check) as has_news_check,
+        COUNT(price_last_updated) as has_price_update,
+        COUNT(signature_percent) as has_signature,
+        COUNT(plan_stage) as has_plan_stage,
+        COUNT(CASE WHEN has_enforcement_cases = true THEN 1 END) as enforcement_flagged,
+        COUNT(CASE WHEN is_receivership = true THEN 1 END) as receivership_flagged,
+        COUNT(CASE WHEN has_bankruptcy_proceedings = true THEN 1 END) as bankruptcy_flagged
+      FROM complexes
+    `);
+
+    const c = coverage.rows[0];
+    const pct = (n) => total > 0 ? Math.round((parseInt(n) / total) * 100) : 0;
+
+    res.json({
+      total_complexes: total,
+      coverage: {
+        neighborhood: { count: parseInt(c.has_neighborhood), percent: pct(c.has_neighborhood) },
+        precise_address: { count: parseInt(c.has_precise_address), percent: pct(c.has_precise_address) },
+        num_buildings: { count: parseInt(c.has_num_buildings), percent: pct(c.has_num_buildings) },
+        actual_premium: { count: parseInt(c.has_actual_premium), percent: pct(c.has_actual_premium) },
+        price_per_sqm: { count: parseInt(c.has_price_sqm), percent: pct(c.has_price_sqm) },
+        city_avg: { count: parseInt(c.has_city_avg), percent: pct(c.has_city_avg) },
+        price_trend: { count: parseInt(c.has_price_trend), percent: pct(c.has_price_trend) },
+        developer_status: { count: parseInt(c.has_developer_status), percent: pct(c.has_developer_status) },
+        developer_risk: { count: parseInt(c.has_developer_risk), percent: pct(c.has_developer_risk) },
+        news_sentiment: { count: parseInt(c.has_news), percent: pct(c.has_news) },
+        signature_percent: { count: parseInt(c.has_signature), percent: pct(c.has_signature) },
+        plan_stage: { count: parseInt(c.has_plan_stage), percent: pct(c.has_plan_stage) }
+      },
+      distress_flags: {
+        enforcement: parseInt(c.enforcement_flagged),
+        receivership: parseInt(c.receivership_flagged),
+        bankruptcy: parseInt(c.bankruptcy_flagged)
+      },
+      enriched_recently: parseInt(c.has_price_update)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Neighborhood benchmark routes
+router.post('/benchmark/:id', async (req, res) => {
+  if (!neighborhoodBenchmarkService) return res.status(503).json({ error: 'Neighborhood benchmark service not available' });
+  try {
+    const complexId = parseInt(req.params.id);
+    if (isNaN(complexId)) return res.status(400).json({ error: 'Invalid complex ID' });
+    const result = await neighborhoodBenchmarkService.fetchNeighborhoodBenchmark(complexId);
+    res.json(result);
+  } catch (err) {
+    logger.error('Benchmark failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/benchmark/batch', async (req, res) => {
+  if (!neighborhoodBenchmarkService) return res.status(503).json({ error: 'Neighborhood benchmark service not available' });
+  try {
+    const { limit = 100, city, staleOnly = true } = req.body;
+    const jobId = `benchmark_${Date.now()}`;
+    // Run async
+    setImmediate(async () => {
+      try {
+        await neighborhoodBenchmarkService.scanNeighborhoodBenchmarks({ limit, city, staleOnly });
+      } catch (err) {
+        logger.error('Benchmark batch failed', { error: err.message });
+      }
+    });
+    res.json({ jobId, message: `Benchmark batch started`, limit, city: city || 'all' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/benchmark/status', async (req, res) => {
+  try {
+    const { rows } = await require('../db/pool').query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(neighborhood_avg_sqm) as has_benchmark,
+        COUNT(nadlan_neighborhood_avg_sqm) as has_nadlan,
+        COUNT(madlan_neighborhood_avg_sqm) as has_madlan,
+        COUNT(*) FILTER (WHERE benchmark_data_flag = true) as flagged,
+        COUNT(*) FILTER (WHERE neighborhood_benchmark_source = 'city_avg_fallback') as fallback_only,
+        ROUND(COUNT(neighborhood_avg_sqm)::numeric / COUNT(*) * 100, 1) as coverage_pct
+      FROM complexes
+    `);
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Onboarding pipeline routes
+router.post('/onboarding/:id', async (req, res) => {
+  if (!onboardingPipeline) return res.status(503).json({ error: 'Onboarding pipeline not available' });
+  try {
+    const complexId = parseInt(req.params.id);
+    if (isNaN(complexId)) return res.status(400).json({ error: 'Invalid complex ID' });
+    const { forceAll = false, skipPhases = [] } = req.body;
+    // Run async and return job reference
+    const jobId = `onboarding_${complexId}_${Date.now()}`;
+    setImmediate(async () => {
+      try {
+        await onboardingPipeline.runOnboarding(complexId, { forceAll, skipPhases });
+      } catch (err) {
+        logger.error(`Onboarding failed for ${complexId}`, { error: err.message });
+      }
+    });
+    res.json({ jobId, complexId, message: 'Onboarding pipeline started' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/onboarding/batch', async (req, res) => {
+  if (!onboardingPipeline) return res.status(503).json({ error: 'Onboarding pipeline not available' });
+  try {
+    const { limit = 50, forceAll = false, onlyPending = true } = req.body;
+    const result = await onboardingPipeline.batchOnboarding({ limit, forceAll, onlyPending });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/onboarding/status', async (req, res) => {
+  try {
+    const { rows } = await require('../db/pool').query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE onboarding_status = 'completed') as completed,
+        COUNT(*) FILTER (WHERE onboarding_status = 'partial') as partial,
+        COUNT(*) FILTER (WHERE onboarding_status = 'pending' OR onboarding_status IS NULL) as pending,
+        ROUND(COUNT(*) FILTER (WHERE onboarding_status = 'completed')::numeric / COUNT(*) * 100, 1) as completion_pct
+      FROM complexes
+    `);
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================================================
+// IAI RECALCULATION WITH NEIGHBORHOOD DATA
+// ========================================================================
+
+router.post('/recalculate-iai-all', async (req, res) => {
+  try {
+    const { limit = 100 } = req.body;
+    const pool = require('../db/pool');
+    const iaiCalculator = require('../services/iaiCalculator');
+    
+    logger.info(`Starting IAI recalculation for ${limit} complexes`);
+    
+    const { rows } = await pool.query('SELECT id FROM complexes ORDER BY iai_score ASC LIMIT $1', [limit]);
+    
+    let updated = 0;
+    let errors = 0;
+    
+    for (const complex of rows) {
+      try {
+        await iaiCalculator.calculateIAI(complex.id);
+        updated++;
+      } catch (err) {
+        errors++;
+        logger.warn(`IAI calculation failed for complex ${complex.id}`, { error: err.message });
+      }
+    }
+    
+    res.json({ 
+      message: `IAI recalculation completed`,
+      updated, 
+      errors,
+      total: rows.length 
+    });
+  } catch (err) {
+    logger.error('IAI recalculation batch failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================================================
+// TIER 1 PRIORITY ENDPOINTS
+// ========================================================================
+
+router.post('/onboarding/tier1-priority', async (req, res) => {
+  if (!onboardingPipeline) return res.status(503).json({ error: 'Onboarding pipeline not available' });
+  try {
+    // Get top IAI complexes that need onboarding
+    const pool = require('../db/pool');
+    const { rows } = await pool.query(`
+      SELECT id, name, city, iai_score 
+      FROM complexes 
+      WHERE iai_score >= 60 
+        AND (onboarding_status IS NULL OR onboarding_status = 'pending')
+      ORDER BY iai_score DESC 
+      LIMIT 20
+    `);
+    
+    if (rows.length === 0) {
+      return res.json({ message: 'No Tier 1 complexes need onboarding' });
+    }
+    
+    // Run async batch onboarding
+    const jobId = `tier1_priority_${Date.now()}`;
+    setImmediate(async () => {
+      for (const complex of rows) {
+        try {
+          await onboardingPipeline.runOnboarding(complex.id, { forceAll: false });
+          logger.info(`Tier 1 onboarding completed for ${complex.name} (IAI: ${complex.iai_score})`);
+        } catch (err) {
+          logger.error(`Tier 1 onboarding failed for ${complex.name}`, { error: err.message });
+        }
+      }
+    });
+    
+    res.json({
+      jobId,
+      message: 'Tier 1 priority onboarding started',
+      complexes: rows.length,
+      targets: rows.map(r => ({ id: r.id, name: r.name, city: r.city, iai: r.iai_score }))
+    });
+  } catch (err) {
+    logger.error('Tier 1 priority onboarding failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================================================
+// EMERGENCY ACTIVATION ENDPOINT
+// ========================================================================
+
+router.post('/activate-quantum-v4-8', async (req, res) => {
+  logger.info('🚀 QUANTUM v4.8.0 Neighborhood Benchmark System - ACTIVATION STARTING');
+  
+  try {
+    const pool = require('../db/pool');
+    
+    // Check if migration ran
+    const { rows } = await pool.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'complexes' AND column_name = 'neighborhood_avg_sqm'
+    `);
+    
+    if (rows.length === 0) {
+      return res.status(400).json({ 
+        error: 'Database migration required first',
+        action: 'Run the SQL migration in Railway Database Console',
+        migration_needed: [
+          'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS neighborhood_avg_sqm NUMERIC(10,2);',
+          'ALTER TABLE complexes ADD COLUMN IF NOT EXISTS nadlan_neighborhood_avg_sqm NUMERIC(10,2);',
+          '-- Plus 9 more columns (see migration file)'
+        ]
+      });
+    }
+    
+    logger.info('Database migration detected - proceeding with activation');
+    
+    // Trigger benchmark calculation for top complexes
+    if (neighborhoodBenchmarkService) {
+      setTimeout(async () => {
+        try {
+          logger.info('Starting auto-benchmark for top 50 complexes');
+          await neighborhoodBenchmarkService.scanNeighborhoodBenchmarks({ limit: 50, staleOnly: true });
+        } catch (err) {
+          logger.error('Auto-benchmark failed', { error: err.message });
+        }
+      }, 2000);
+    }
+    
+    // Trigger IAI recalculation 
+    setTimeout(async () => {
+      try {
+        const iaiCalculator = require('../services/iaiCalculator');
+        const { rows: complexes } = await pool.query('SELECT id FROM complexes ORDER BY iai_score DESC LIMIT 50');
+        for (const complex of complexes) {
+          await iaiCalculator.calculateIAI(complex.id);
+        }
+        logger.info('IAI recalculation completed for top 50 complexes');
+      } catch (err) {
+        logger.error('Auto-IAI recalculation failed', { error: err.message });
+      }
+    }, 5000);
+    
+    res.json({
+      status: 'activated',
+      version: '4.8.0',
+      system: 'QUANTUM Neighborhood Benchmark System',
+      message: '🎯 QUANTUM v4.8.0 successfully activated!',
+      features_enabled: [
+        'Hyper-local benchmarks (300m radius)',
+        'Dual-source validation (nadlan + madlan)', 
+        'Neighborhood vs city premium calculation',
+        'Automatic onboarding pipeline',
+        'Enhanced IAI calculation'
+      ],
+      expected_results: [
+        'IAI scores become unique (no more 68 defaults)',
+        'Neighborhood benchmarks replace city averages',
+        'Tier 1 complexes show accurate rankings',
+        'Investment decisions based on hyper-local data'
+      ],
+      processing: {
+        benchmark_calculation: 'Started for top 50 complexes',
+        iai_recalculation: 'Queued for 2-3 minutes',
+        estimated_completion: '30-45 minutes for full system'
+      },
+      endpoints_activated: [
+        'POST /api/enrichment/benchmark/batch',
+        'POST /api/enrichment/recalculate-iai-all',
+        'POST /api/enrichment/onboarding/tier1-priority',
+        'GET /api/enrichment/benchmark/status'
+      ]
+    });
+    
+  } catch (err) {
+    logger.error('QUANTUM v4.8.0 activation failed', { error: err.message });
+    res.status(500).json({ 
+      error: 'Activation failed', 
+      message: err.message,
+      recovery: 'Check database migration and service availability'
+    });
+  }
+});
+
+module.exports = router;
