@@ -1,1 +1,303 @@
-Y29uc3QgcG9vbCA9IHJlcXVpcmUoJy4uL2RiL3Bvb2wnKTsKY29uc3QgeyBsb2dnZXIgfSA9IHJlcXVpcmUoJy4vbG9nZ2VyJyk7CgovKioKICogSUFJIChJbnZlc3RtZW50IEF0dHJhY3RpdmVuZXNzIEluZGV4KSBDYWxjdWxhdG9yCiAqIEZvcm11bGE6IElBSSA9ICh0aGVvcmV0aWNhbF9wcmVtaXVtIC0gYWN0dWFsX3ByZW1pdW0pICogY2VydGFpbnR5X2ZhY3RvciAqIHlpZWxkX2ZhY3RvcgogKiBSYW5nZTogMC0xMDAKICoKICogU01BUlQgQUNUVUFMX1BSRU1JVU0gTE9HSUMgKHYyKToKICogMS4gVXNlIHN0b3JlZCBhY3R1YWxfcHJlbWl1bSBpZiBleGlzdHMgKHZlcmlmaWVkIGJ5IHNjYW4pCiAqIDIuIEF1dG8tZGVyaXZlIGZyb20gcHJpY2VfcGVyX3NxbSArIGNpdHlfYXZnX3ByaWNlX3NxbSBpZiBib3RoIGV4aXN0CiAqIDMuIEZpbGwgY2l0eV9hdmcgZnJvbSBjaXR5LXdpZGUgY2FjaGUgKG90aGVyIGNvbXBsZXhlcyBpbiBzYW1lIGNpdHkpCiAqIDQuIElmIG5vdGhpbmcgZm91bmQgLSBtYXJrIGFzIHVua25vd24sIHBlbmFsaXplIGNlcnRhaW50eSBmYWN0b3IgKGRvbid0IGFzc3VtZSAwKQogKi8KCi8vIFRoZW9yZXRpY2FsIHByZW1pdW0gcmFuZ2VzIGJ5IHBsYW5uaW5nIHN0YXR1cwpjb25zdCBQUkVNSVVNX1RBQkxFID0gewogICdiZWZvcmVfZGVjbGFyYXRpb24nOiB7IG1pbjogMCwgbWF4OiAwIH0sCiAgJ2RlY2xhcmVkJzogeyBtaW46IDUsIG1heDogMTUgfSwKICAnZGV2ZWxvcGVyX3NlbGVjdGVkJzogeyBtaW46IDE1LCBtYXg6IDI1IH0sCiAgJ3N1Ym1pdHRlZCc6IHsgbWluOiAyMCwgbWF4OiAzNSB9LAogICdwcmVfZGVwb3NpdCc6IHsgbWluOiAyMCwgbWF4OiAzNSB9LAogICdkZXBvc2l0ZWQnOiB7IG1pbjogMzUsIG1heDogNTAgfSwKICAnYXBwcm92ZWQnOiB7IG1pbjogNTAsIG1heDogNzAgfSwKICAncGVybWl0JzogeyBtaW46IDcwLCBtYXg6IDkwIH0sCiAgJ2NvbnN0cnVjdGlvbic6IHsgbWluOiA5MCwgbWF4OiAxMDAgfSwKICAncGxhbm5pbmcnOiB7IG1pbjogNSwgbWF4OiAxNSB9LAogICd1bmtub3duJzogeyBtaW46IDAsIG1heDogMCB9Cn07Cgpjb25zdCBTVFJPTkdfREVWRUxPUEVSUyA9IFsKICAn16nXmdeb15XXnyDXldeR15nXoNeV15knLCAn15DXpNeo15nXp9eUINeZ16nXqNeQ15wnLCAn15DXkNeV16jXlCcsICfXkNec16fXmNeo15QnLCAn15Eu16Eu16gnLAogICfXqteT15TXqCcsICfXp9eo16HXlScsICfXkNec157XldeSJywgJ0lDUicKXTsKY29uc3QgV0VBS19ERVZFTE9QRVJTID0gWyd1bmtub3duJywgJycsIG51bGxdOwoKZnVuY3Rpb24gZ2V0VGhlb3JldGljYWxQcmVtaXVtKHN0YXR1cykgewogIHJldHVybiBQUkVNSVVNX1RBQkxFW3N0YXR1c10gfHwgUFJFTUlVTV9UQUJMRVsndW5rbm93biddOwp9CgovKioKICogR2V0IGNpdHkgYXZlcmFnZSBwcmljZSBmcm9tIG90aGVyIGNvbXBsZXhlcyBpbiBzYW1lIGNpdHkuCiAqIFVzZXMgd2VpZ2h0ZWQgYXZlcmFnZSBhY3Jvc3MgYWxsIGNvbXBsZXhlcyB3aXRoIGtub3duIGNpdHlfYXZnX3ByaWNlX3NxbS4KICovCmFzeW5jIGZ1bmN0aW9uIGdldENpdHlBdmdGcm9tQ2FjaGUoY2l0eSkgewogIHRyeSB7CiAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgU0VMRUNUIEFWRyhjaXR5X2F2Z19wcmljZV9zcW06Om51bWVyaWMpIGFzIGF2ZywKICAgICAgICAgICAgIENPVU5UKCopIGFzIHNvdXJjZXMKICAgICAgRlJPTSBjb21wbGV4ZXMKICAgICAgV0hFUkUgY2l0eSA9ICQxCiAgICAgICAgQU5EIGNpdHlfYXZnX3ByaWNlX3NxbSBJUyBOT1QgTlVMTAogICAgICAgIEFORCBjaXR5X2F2Z19wcmljZV9zcW06Om51bWVyaWMgPiAwCiAgICBgLCBbY2l0eV0pOwoKICAgIGlmIChyZXN1bHQucm93c1swXT8uYXZnKSB7CiAgICAgIHJldHVybiB7CiAgICAgICAgdmFsdWU6IE1hdGgucm91bmQocGFyc2VGbG9hdChyZXN1bHQucm93c1swXS5hdmcpKSwKICAgICAgICBzb3VyY2VzOiBwYXJzZUludChyZXN1bHQucm93c1swXS5zb3VyY2VzKSwKICAgICAgICBvcmlnaW46ICdjaXR5X2NhY2hlJwogICAgICB9OwogICAgfQogICAgcmV0dXJuIG51bGw7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIud2FybihgW0lBSV0gY2l0eV9hdmcgY2FjaGUgbG9va3VwIGZhaWxlZCBmb3IgJHtjaXR5fWAsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgcmV0dXJuIG51bGw7CiAgfQp9CgovKioKICogUHJvcGFnYXRlIGNpdHlfYXZnIHRvIGFsbCBjb21wbGV4ZXMgaW4gY2l0eSB0aGF0IGFyZSBtaXNzaW5nIGl0LgogKiBDYWxsZWQgYXV0b21hdGljYWxseSB3aGVuIGEgc2NhbiBmaW5kcyBhIG5ldyBjaXR5X2F2Zy4KICovCmFzeW5jIGZ1bmN0aW9uIHByb3BhZ2F0ZUNpdHlBdmcoY2l0eSwgY2l0eUF2ZykgewogIHRyeSB7CiAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgVVBEQVRFIGNvbXBsZXhlcwogICAgICBTRVQgY2l0eV9hdmdfcHJpY2Vfc3FtID0gJDEsIHVwZGF0ZWRfYXQgPSBOT1coKQogICAgICBXSEVSRSBjaXR5ID0gJDIKICAgICAgICBBTkQgKGNpdHlfYXZnX3ByaWNlX3NxbSBJUyBOVUxMIE9SIGNpdHlfYXZnX3ByaWNlX3NxbTo6bnVtZXJpYyA9IDApCiAgICBgLCBbY2l0eUF2ZywgY2l0eV0pOwogICAgY29uc3QgY291bnQgPSByZXN1bHQucm93Q291bnQgfHwgMDsKICAgIGlmIChjb3VudCA+IDApIHsKICAgICAgbG9nZ2VyLmluZm8oYFtJQUldIFByb3BhZ2F0ZWQgY2l0eV9hdmcgJHtjaXR5QXZnfSB0byAke2NvdW50fSBjb21wbGV4ZXMgaW4gJHtjaXR5fWApOwogICAgfQogICAgcmV0dXJuIGNvdW50OwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLndhcm4oYFtJQUldIGNpdHlfYXZnIHByb3BhZ2F0aW9uIGZhaWxlZCBmb3IgJHtjaXR5fWAsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgcmV0dXJuIDA7CiAgfQp9CgovKioKICogRGVyaXZlIGFjdHVhbF9wcmVtaXVtIGZyb20gcHJpY2VfcGVyX3NxbSB2cyBuZWlnaGJvcmhvb2QgYmVuY2htYXJrLgogKiBSZXR1cm5zIHsgdmFsdWUsIGNvbmZpZGVuY2UsIHNvdXJjZSB9IG9yIG51bGwuCiAqCiAqIEJlbmNobWFyayBwcmlvcml0eToKICogICAxLiBuZWlnaGJvcmhvb2RfYXZnX3NxbSAgLSB3ZWlnaHRlZCBuYWRsYW4rbWFkbGFuIGxvY2FsIGF2ZXJhZ2UgKGhpZ2hlc3QgYWNjdXJhY3kpCiAqICAgMi4gY2l0eV9hdmdfcHJpY2Vfc3FtICAgIC0gY2l0eS13aWRlIGF2ZXJhZ2UgKGZhbGxiYWNrLCBsb3dlciBhY2N1cmFjeSkKICogICAzLiBjaXR5X2NhY2hlICAgICAgICAgICAgLSBkZXJpdmVkIGZyb20gb3RoZXIgY29tcGxleGVzIGluIHNhbWUgY2l0eSAobG93ZXN0KQogKgogKiBDb25maWRlbmNlIGxldmVsczoKICogICAnaGlnaCcgICAgICAgIC0gYWN0dWFsX3ByZW1pdW0gc3RvcmVkIGZyb20gdmVyaWZpZWQgc2NhbiB3aXRoIG5laWdoYm9yaG9vZCBiZW5jaG1hcmsKICogICAnbWVkaXVtJyAgICAgIC0gZGVyaXZlZCBmcm9tIG5laWdoYm9yaG9vZF9hdmdfc3FtIChsb2NhbCBiZW5jaG1hcmspCiAqICAgJ21lZGl1bS1sb3cnICAtIGRlcml2ZWQgZnJvbSBjaXR5X2F2Z19wcmljZV9zcW0gKGNpdHktd2lkZSwgbGVzcyBhY2N1cmF0ZSkKICogICAnbG93JyAgICAgICAgIC0gZGVyaXZlZCBmcm9tIGNpdHkgY2FjaGUKICogICBudWxsICAgICAgICAgIC0gbm90IGVub3VnaCBkYXRhCiAqLwphc3luYyBmdW5jdGlvbiBkZXJpdmVBY3R1YWxQcmVtaXVtKGNvbXBsZXgpIHsKICAvLyBQcmlvcml0eSAxOiBzdG9yZWQgYWN0dWFsX3ByZW1pdW0gKyBuZWlnaGJvcmhvb2QgYmVuY2htYXJrIGV4aXN0cyAoYmVzdCBjYXNlKQogIGlmIChjb21wbGV4LmFjdHVhbF9wcmVtaXVtICE9PSBudWxsICYmIGNvbXBsZXguYWN0dWFsX3ByZW1pdW0gIT09IHVuZGVmaW5lZCAmJgogICAgICBwYXJzZUZsb2F0KGNvbXBsZXguYWN0dWFsX3ByZW1pdW0pID4gMCAmJiBjb21wbGV4Lm5laWdoYm9yaG9vZF9hdmdfc3FtKSB7CiAgICByZXR1cm4gewogICAgICB2YWx1ZTogcGFyc2VGbG9hdChjb21wbGV4LmFjdHVhbF9wcmVtaXVtKSwKICAgICAgY29uZmlkZW5jZTogJ2hpZ2gnLAogICAgICBzb3VyY2U6ICdzdG9yZWRfbmVpZ2hib3Job29kJwogICAgfTsKICB9CgogIGNvbnN0IHBzbSA9IGNvbXBsZXgucHJpY2VfcGVyX3NxbSA/IHBhcnNlRmxvYXQoY29tcGxleC5wcmljZV9wZXJfc3FtKSA6IG51bGw7CiAgaWYgKCFwc20gfHwgcHNtIDw9IDApIHJldHVybiBudWxsOwoKICAvLyBQcmlvcml0eSAyOiB1c2UgbmVpZ2hib3Job29kX2F2Z19zcW0gKGh5cGVyLWxvY2FsIGJlbmNobWFyaykKICBjb25zdCBuZWlnaGJvcmhvb2RBdmcgPSBjb21wbGV4Lm5laWdoYm9yaG9vZF9hdmdfc3FtID8gcGFyc2VGbG9hdChjb21wbGV4Lm5laWdoYm9yaG9vZF9hdmdfc3FtKSA6IG51bGw7CiAgaWYgKG5laWdoYm9yaG9vZEF2ZyAmJiBuZWlnaGJvcmhvb2RBdmcgPiAwKSB7CiAgICBjb25zdCBkZXJpdmVkID0gTWF0aC5yb3VuZCgoKHBzbSAtIG5laWdoYm9yaG9vZEF2ZykgLyBuZWlnaGJvcmhvb2RBdmcpICogMTAwKTsKICAgIGlmIChkZXJpdmVkID49IC0yMCAmJiBkZXJpdmVkIDw9IDIwMCkgewogICAgICByZXR1cm4gewogICAgICAgIHZhbHVlOiBkZXJpdmVkLAogICAgICAgIGNvbmZpZGVuY2U6ICdtZWRpdW0nLAogICAgICAgIHNvdXJjZTogY29tcGxleC5uZWlnaGJvcmhvb2RfYmVuY2htYXJrX3NvdXJjZSB8fCAnbmVpZ2hib3Job29kX2F2ZycKICAgICAgfTsKICAgIH0KICAgIGxvZ2dlci53YXJuKGBbSUFJXSBTdXNwaWNpb3VzIG5laWdoYm9yaG9vZCBwcmVtaXVtICR7ZGVyaXZlZH0lIGZvciAke2NvbXBsZXgubmFtZX0gLSBmYWxsaW5nIGJhY2tgKTsKICB9CgogIC8vIFByaW9yaXR5IDM6IGZhbGxiYWNrIHRvIGNpdHlfYXZnX3ByaWNlX3NxbQogIGxldCBjaXR5QXZnID0gY29tcGxleC5jaXR5X2F2Z19wcmljZV9zcW0gPyBwYXJzZUZsb2F0KGNvbXBsZXguY2l0eV9hdmdfcHJpY2Vfc3FtKSA6IG51bGw7CiAgbGV0IHNvdXJjZSA9ICdjaXR5X2F2Zyc7CgogIC8vIFByaW9yaXR5IDQ6IGZhbGxiYWNrIHRvIGNpdHkgY2FjaGUKICBpZiAoIWNpdHlBdmcgfHwgY2l0eUF2ZyA8PSAwKSB7CiAgICBjb25zdCBjYWNoZWQgPSBhd2FpdCBnZXRDaXR5QXZnRnJvbUNhY2hlKGNvbXBsZXguY2l0eSk7CiAgICBpZiAoY2FjaGVkKSB7CiAgICAgIGNpdHlBdmcgPSBjYWNoZWQudmFsdWU7CiAgICAgIHNvdXJjZSA9ICdjaXR5X2NhY2hlJzsKICAgIH0KICB9CgogIGlmICghY2l0eUF2ZyB8fCBjaXR5QXZnIDw9IDApIHJldHVybiBudWxsOwoKICBjb25zdCBkZXJpdmVkID0gTWF0aC5yb3VuZCgoKHBzbSAtIGNpdHlBdmcpIC8gY2l0eUF2ZykgKiAxMDApOwoKICAvLyBTYW5pdHkgY2hlY2sKICBpZiAoZGVyaXZlZCA8IC0yMCB8fCBkZXJpdmVkID4gMjAwKSB7CiAgICBsb2dnZXIud2FybihgW0lBSV0gU3VzcGljaW91cyBkZXJpdmVkIHByZW1pdW0gJHtkZXJpdmVkfSUgZm9yICR7Y29tcGxleC5uYW1lfSAtIHNraXBwaW5nYCk7CiAgICByZXR1cm4gbnVsbDsKICB9CgogIHJldHVybiB7CiAgICB2YWx1ZTogZGVyaXZlZCwKICAgIGNvbmZpZGVuY2U6IHNvdXJjZSA9PT0gJ2NpdHlfY2FjaGUnID8gJ2xvdycgOiAnbWVkaXVtLWxvdycsCiAgICBzb3VyY2UKICB9Owp9CgpmdW5jdGlvbiBjYWxjdWxhdGVDZXJ0YWludHlGYWN0b3IoY29tcGxleCwgcHJlbWl1bUNvbmZpZGVuY2UpIHsKICBsZXQgZmFjdG9yID0gMS4wOwoKICAvLyBEZXZlbG9wZXIgc3RyZW5ndGgKICBpZiAoY29tcGxleC5kZXZlbG9wZXJfc3RyZW5ndGggPT09ICdzdHJvbmcnIHx8CiAgICAgIFNUUk9OR19ERVZFTE9QRVJTLnNvbWUoZCA9PiBjb21wbGV4LmRldmVsb3BlciAmJiBjb21wbGV4LmRldmVsb3Blci5pbmNsdWRlcyhkKSkpIHsKICAgIGZhY3RvciArPSAwLjE1OwogIH0gZWxzZSBpZiAoY29tcGxleC5kZXZlbG9wZXJfc3RyZW5ndGggPT09ICd3ZWFrJyB8fAogICAgICAgICAgICAgV0VBS19ERVZFTE9QRVJTLmluY2x1ZGVzKGNvbXBsZXguZGV2ZWxvcGVyKSkgewogICAgZmFjdG9yIC09IDAuMTU7CiAgfQoKICAvLyBTaWduYXR1cmUgcHJvZ3Jlc3MKICBpZiAoY29tcGxleC5zaWduYXR1cmVfcGVyY2VudCkgewogICAgaWYgKGNvbXBsZXguc2lnbmF0dXJlX3BlcmNlbnQgPj0gOTApIGZhY3RvciArPSAwLjE1OwogICAgZWxzZSBpZiAoY29tcGxleC5zaWduYXR1cmVfcGVyY2VudCA8IDY3KSBmYWN0b3IgLT0gMC4yNTsKICB9CgogIC8vIFBsYW5uaW5nIHN0YWdlIGNlcnRhaW50eQogIGlmIChbJ2FwcHJvdmVkJywgJ3Blcm1pdCcsICdjb25zdHJ1Y3Rpb24nXS5pbmNsdWRlcyhjb21wbGV4LnN0YXR1cykpIHsKICAgIGZhY3RvciArPSAwLjI7CiAgfQoKICAvLyBQZW5hbGl6ZSB3aGVuIGFjdHVhbF9wcmVtaXVtIGlzIG1pc3Npbmcgb3IgbG93LWNvbmZpZGVuY2UKICBpZiAoIXByZW1pdW1Db25maWRlbmNlKSB7CiAgICBmYWN0b3IgLT0gMC4zOyAvLyBVbmtub3duIHByZW1pdW0gPSBzaWduaWZpY2FudCB1bmNlcnRhaW50eQogIH0gZWxzZSBpZiAocHJlbWl1bUNvbmZpZGVuY2UgPT09ICdsb3cnKSB7CiAgICBmYWN0b3IgLT0gMC4xOyAvLyBDaXR5IGNhY2hlIGVzdGltYXRlID0gbWlub3IgcGVuYWx0eQogIH0KCiAgcmV0dXJuIE1hdGgubWF4KDAuNSwgTWF0aC5taW4oMS41LCBmYWN0b3IpKTsKfQoKZnVuY3Rpb24gY2FsY3VsYXRlWWllbGRGYWN0b3IoY29tcGxleCkgewogIGxldCBmYWN0b3IgPSAxLjA7CiAgaWYgKGNvbXBsZXgubXVsdGlwbGllciAmJiBwYXJzZUZsb2F0KGNvbXBsZXgubXVsdGlwbGllcikgPiAzKSB7CiAgICBmYWN0b3IgKz0gMC4yOwogIH0KICByZXR1cm4gTWF0aC5tYXgoMC41LCBNYXRoLm1pbigxLjUsIGZhY3RvcikpOwp9Cgphc3luYyBmdW5jdGlvbiBjYWxjdWxhdGVJQUkoY29tcGxleElkKSB7CiAgdHJ5IHsKICAgIGNvbnN0IGNvbXBsZXhSZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KCdTRUxFQ1QgKiBGUk9NIGNvbXBsZXhlcyBXSEVSRSBpZCA9ICQxJywgW2NvbXBsZXhJZF0pOwogICAgaWYgKGNvbXBsZXhSZXN1bHQucm93cy5sZW5ndGggPT09IDApIHJldHVybiBudWxsOwoKICAgIGNvbnN0IGNvbXBsZXggPSBjb21wbGV4UmVzdWx0LnJvd3NbMF07CiAgICBjb25zdCBwcmVtaXVtID0gZ2V0VGhlb3JldGljYWxQcmVtaXVtKGNvbXBsZXguc3RhdHVzKTsKICAgIGNvbnN0IHRoZW9yZXRpY2FsUHJlbWl1bU1pZCA9IChwcmVtaXVtLm1pbiArIHByZW1pdW0ubWF4KSAvIDI7CgogICAgLy8gU21hcnQgYWN0dWFsX3ByZW1pdW0gZGVyaXZhdGlvbgogICAgY29uc3QgZGVyaXZlZCA9IGF3YWl0IGRlcml2ZUFjdHVhbFByZW1pdW0oY29tcGxleCk7CiAgICBjb25zdCBhY3R1YWxQcmVtaXVtID0gZGVyaXZlZCA/IGRlcml2ZWQudmFsdWUgOiBudWxsOwogICAgY29uc3QgcHJlbWl1bUNvbmZpZGVuY2UgPSBkZXJpdmVkID8gZGVyaXZlZC5jb25maWRlbmNlIDogbnVsbDsKICAgIGNvbnN0IHByZW1pdW1Tb3VyY2UgPSBkZXJpdmVkID8gZGVyaXZlZC5zb3VyY2UgOiAndW5rbm93bic7CgogICAgLy8gSWYgd2UgZGVyaXZlZCBhIG1lZGl1bS9sb3cgY29uZmlkZW5jZSBwcmVtaXVtLCBwZXJzaXN0IGl0IGJhY2sKICAgIGlmIChkZXJpdmVkICYmIGRlcml2ZWQuc291cmNlICE9PSAnc3RvcmVkJyAmJiBhY3R1YWxQcmVtaXVtICE9PSBudWxsKSB7CiAgICAgIHRyeSB7CiAgICAgICAgYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgICAgICBVUERBVEUgY29tcGxleGVzIFNFVAogICAgICAgICAgICBhY3R1YWxfcHJlbWl1bSA9ICQxLAogICAgICAgICAgICBhY3R1YWxfcHJlbWl1bV9zb3VyY2UgPSAkMiwKICAgICAgICAgICAgYWN0dWFsX3ByZW1pdW1fY29uZmlkZW5jZSA9ICQzLAogICAgICAgICAgICB1cGRhdGVkX2F0ID0gTk9XKCkKICAgICAgICAgIFdIRVJFIGlkID0gJDQKICAgICAgICAgICAgQU5EIChhY3R1YWxfcHJlbWl1bSBJUyBOVUxMIE9SIGFjdHVhbF9wcmVtaXVtOjpudW1lcmljID0gMCkKICAgICAgICBgLCBbYWN0dWFsUHJlbWl1bSwgcHJlbWl1bVNvdXJjZSwgcHJlbWl1bUNvbmZpZGVuY2UsIGNvbXBsZXhJZF0pOwogICAgICB9IGNhdGNoIChlKSB7CiAgICAgICAgLy8gQ29sdW1uIG1heSBub3QgZXhpc3QgeWV0IC0gbm9uLWZhdGFsCiAgICAgICAgbG9nZ2VyLmRlYnVnKGBbSUFJXSBDb3VsZCBub3QgcGVyc2lzdCBkZXJpdmVkIHByZW1pdW06ICR7ZS5tZXNzYWdlfWApOwogICAgICB9CgogICAgICAvLyBQcm9wYWdhdGUgY2l0eV9hdmcgaWYgd2UgdXNlZCBhIGRpcmVjdCBzY2FuIHZhbHVlCiAgICAgIGlmIChkZXJpdmVkLnNvdXJjZSA9PT0gJ3NjYW4nICYmIGNvbXBsZXguY2l0eV9hdmdfcHJpY2Vfc3FtKSB7CiAgICAgICAgYXdhaXQgcHJvcGFnYXRlQ2l0eUF2Zyhjb21wbGV4LmNpdHksIHBhcnNlRmxvYXQoY29tcGxleC5jaXR5X2F2Z19wcmljZV9zcW0pKTsKICAgICAgfQogICAgfQoKICAgIC8vIEdBUCBjYWxjdWxhdGlvbgogICAgLy8gSWYgbm8gYWN0dWFsX3ByZW1pdW0gZGF0YSBhdCBhbGwgLSB1c2UgdGhlb3JldGljYWwgbWlkcG9pbnQgYXMgZ2FwIChjb25zZXJ2YXRpdmUpCiAgICBjb25zdCBwcmVtaXVtR2FwID0gYWN0dWFsUHJlbWl1bSAhPT0gbnVsbAogICAgICA/IE1hdGgubWF4KDAsIHRoZW9yZXRpY2FsUHJlbWl1bU1pZCAtIGFjdHVhbFByZW1pdW0pCiAgICAgIDogdGhlb3JldGljYWxQcmVtaXVtTWlkICogMC41OyAvLyBQZW5hbGl6ZWQgZ2FwIHdoZW4gdW5rbm93biAobm90IGZ1bGwgZ2FwLCBub3QgemVybykKCiAgICBjb25zdCBnYXBQb2ludHMgPSBNYXRoLm1pbig1MCwgcHJlbWl1bUdhcCk7CiAgICBjb25zdCBjZXJ0YWludHlGYWN0b3IgPSBjYWxjdWxhdGVDZXJ0YWludHlGYWN0b3IoY29tcGxleCwgcHJlbWl1bUNvbmZpZGVuY2UpOwogICAgY29uc3QgeWllbGRGYWN0b3IgPSBjYWxjdWxhdGVZaWVsZEZhY3Rvcihjb21wbGV4KTsKICAgIGNvbnN0IGlhaSA9IE1hdGgucm91bmQoTWF0aC5taW4oMTAwLCBnYXBQb2ludHMgKiBjZXJ0YWludHlGYWN0b3IgKiB5aWVsZEZhY3RvcikpOwoKICAgIGF3YWl0IHBvb2wucXVlcnkoYAogICAgICBVUERBVEUgY29tcGxleGVzIFNFVAogICAgICAgIHRoZW9yZXRpY2FsX3ByZW1pdW1fbWluID0gJDEsIHRoZW9yZXRpY2FsX3ByZW1pdW1fbWF4ID0gJDIsCiAgICAgICAgcHJlbWl1bV9nYXAgPSAkMywgY2VydGFpbnR5X2ZhY3RvciA9ICQ0LCB5aWVsZF9mYWN0b3IgPSAkNSwKICAgICAgICBpYWlfc2NvcmUgPSAkNiwgdXBkYXRlZF9hdCA9IE5PVygpCiAgICAgIFdIRVJFIGlkID0gJDcKICAgIGAsIFtwcmVtaXVtLm1pbiwgcHJlbWl1bS5tYXgsIE1hdGgucm91bmQocHJlbWl1bUdhcCAqIDEwMCkgLyAxMDAsCiAgICAgICAgY2VydGFpbnR5RmFjdG9yLCB5aWVsZEZhY3RvciwgaWFpLCBjb21wbGV4SWRdKTsKCiAgICBsb2dnZXIuaW5mbyhgW0lBSV0gJHtjb21wbGV4Lm5hbWV9OiBJQUk9JHtpYWl9IHwgZ2FwPSR7TWF0aC5yb3VuZChwcmVtaXVtR2FwKX0lIHwgYWN0dWFsX3ByZW1pdW09JHthY3R1YWxQcmVtaXVtICE9PSBudWxsID8gYWN0dWFsUHJlbWl1bSArICclJyA6ICd1bmtub3duJ30gKCR7cHJlbWl1bVNvdXJjZX0pIHwgY2VydGFpbnR5PSR7Y2VydGFpbnR5RmFjdG9yfWAsIHsgY29tcGxleElkIH0pOwoKICAgIHJldHVybiB7CiAgICAgIGlhaV9zY29yZTogaWFpLAogICAgICBwcmVtaXVtX2dhcDogcHJlbWl1bUdhcCwKICAgICAgY2VydGFpbnR5X2ZhY3RvcjogY2VydGFpbnR5RmFjdG9yLAogICAgICB5aWVsZF9mYWN0b3I6IHlpZWxkRmFjdG9yLAogICAgICB0aGVvcmV0aWNhbF9wcmVtaXVtOiB7IG1pbjogcHJlbWl1bS5taW4sIG1heDogcHJlbWl1bS5tYXggfSwKICAgICAgYWN0dWFsX3ByZW1pdW06IGFjdHVhbFByZW1pdW0sCiAgICAgIGFjdHVhbF9wcmVtaXVtX2NvbmZpZGVuY2U6IHByZW1pdW1Db25maWRlbmNlLAogICAgICBhY3R1YWxfcHJlbWl1bV9zb3VyY2U6IHByZW1pdW1Tb3VyY2UKICAgIH07CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIuZXJyb3IoYEVycm9yIGNhbGN1bGF0aW5nIElBSSBmb3IgY29tcGxleCAke2NvbXBsZXhJZH1gLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHRocm93IGVycjsKICB9Cn0KCmFzeW5jIGZ1bmN0aW9uIGNhbGN1bGF0ZUFsbElBSSgpIHsKICBjb25zdCBjb21wbGV4ZXMgPSBhd2FpdCBwb29sLnF1ZXJ5KCdTRUxFQ1QgaWQgRlJPTSBjb21wbGV4ZXMnKTsKICBjb25zdCByZXN1bHRzID0gW107CiAgZm9yIChjb25zdCBjb21wbGV4IG9mIGNvbXBsZXhlcy5yb3dzKSB7CiAgICB0cnkgewogICAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBjYWxjdWxhdGVJQUkoY29tcGxleC5pZCk7CiAgICAgIHJlc3VsdHMucHVzaCh7IGlkOiBjb21wbGV4LmlkLCAuLi5yZXN1bHQgfSk7CiAgICB9IGNhdGNoIChlcnIpIHsKICAgICAgcmVzdWx0cy5wdXNoKHsgaWQ6IGNvbXBsZXguaWQsIGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIH0KICB9CiAgcmV0dXJuIHJlc3VsdHM7Cn0KCm1vZHVsZS5leHBvcnRzID0gewogIGNhbGN1bGF0ZUlBSSwgY2FsY3VsYXRlQWxsSUFJLCBnZXRUaGVvcmV0aWNhbFByZW1pdW0sCiAgY2FsY3VsYXRlQ2VydGFpbnR5RmFjdG9yLCBjYWxjdWxhdGVZaWVsZEZhY3RvciwKICBkZXJpdmVBY3R1YWxQcmVtaXVtLCBwcm9wYWdhdGVDaXR5QXZnLCBnZXRDaXR5QXZnRnJvbUNhY2hlLAogIFBSRU1JVU1fVEFCTEUsIFNUUk9OR19ERVZFTE9QRVJTCn07Cg==
+const pool = require('../db/pool');
+const { logger } = require('./logger');
+
+/**
+ * IAI (Investment Attractiveness Index) Calculator
+ * Formula: IAI = (theoretical_premium - actual_premium) * certainty_factor * yield_factor
+ * Range: 0-100
+ *
+ * SMART ACTUAL_PREMIUM LOGIC (v2):
+ * 1. Use stored actual_premium if exists (verified by scan)
+ * 2. Auto-derive from price_per_sqm + city_avg_price_sqm if both exist
+ * 3. Fill city_avg from city-wide cache (other complexes in same city)
+ * 4. If nothing found - mark as unknown, penalize certainty factor (don't assume 0)
+ */
+
+// Theoretical premium ranges by planning status
+const PREMIUM_TABLE = {
+  'before_declaration': { min: 0, max: 0 },
+  'declared': { min: 5, max: 15 },
+  'developer_selected': { min: 15, max: 25 },
+  'submitted': { min: 20, max: 35 },
+  'pre_deposit': { min: 20, max: 35 },
+  'deposited': { min: 35, max: 50 },
+  'approved': { min: 50, max: 70 },
+  'permit': { min: 70, max: 90 },
+  'construction': { min: 90, max: 100 },
+  'planning': { min: 5, max: 15 },
+  'unknown': { min: 0, max: 0 }
+};
+
+const STRONG_DEVELOPERS = [
+  'שטיינמץ עקיבא', 'אפריקה ישראל', 'אלדד', 'אלקטרה', 'ג.ג.ח',
+  'רנדס', 'קרסו', 'אלמוג', 'ICR'
+];
+const WEAK_DEVELOPERS = ['unknown', '', null];
+
+function getTheoreticalPremium(status) {
+  return PREMIUM_TABLE[status] || PREMIUM_TABLE['unknown'];
+}
+
+/**
+ * Get city average price from other complexes in same city.
+ * Uses weighted average across all complexes with known city_avg_price_sqm.
+ */
+async function getCityAvgFromCache(city) {
+  try {
+    const result = await pool.query(`
+      SELECT AVG(city_avg_price_sqm::numeric) as avg,
+             COUNT(*) as sources
+      FROM complexes
+      WHERE city = $1
+        AND city_avg_price_sqm IS NOT NULL
+        AND city_avg_price_sqm::numeric > 0
+    `, [city]);
+
+    if (result.rows[0]?.avg) {
+      return {
+        value: Math.round(parseFloat(result.rows[0].avg)),
+        sources: parseInt(result.rows[0].sources),
+        origin: 'city_cache'
+      };
+    }
+    return null;
+  } catch (err) {
+    logger.warn(`[IAI] city_avg cache lookup failed for ${city}`, { error: err.message });
+    return null;
+  }
+}
+
+/**
+ * Propagate city_avg to all complexes in city that are missing it.
+ * Called automatically when a scan finds a new city_avg.
+ */
+async function propagateCityAvg(city, cityAvg) {
+  try {
+    const result = await pool.query(`
+      UPDATE complexes
+      SET city_avg_price_sqm = $1, updated_at = NOW()
+      WHERE city = $2
+        AND (city_avg_price_sqm IS NULL OR city_avg_price_sqm::numeric = 0)
+    `, [cityAvg, city]);
+    const count = result.rowCount || 0;
+    if (count > 0) {
+      logger.info(`[IAI] Propagated city_avg ${cityAvg} to ${count} complexes in ${city}`);
+    }
+    return count;
+  } catch (err) {
+    logger.warn(`[IAI] city_avg propagation failed for ${city}`, { error: err.message });
+    return 0;
+  }
+}
+
+/**
+ * Derive actual_premium from price_per_sqm vs neighborhood benchmark.
+ * Returns { value, confidence, source } or null.
+ *
+ * Benchmark priority:
+ *   1. neighborhood_avg_sqm  - weighted nadlan+madlan local average (highest accuracy)
+ *   2. city_avg_price_sqm    - city-wide average (fallback, lower accuracy)
+ *   3. city_cache            - derived from other complexes in same city (lowest)
+ *
+ * Confidence levels:
+ *   'high'     - actual_premium stored from verified scan with neighborhood benchmark
+ *   'medium'   - derived from neighborhood_avg_sqm (local benchmark)
+ *   'medium-low' - derived from city_avg_price_sqm (city-wide, less accurate)
+ *   'low'      - derived from city cache
+ *   null       - not enough data
+ */
+async function deriveActualPremium(complex) {
+  // Priority 1: stored actual_premium + neighborhood benchmark exists (best case)
+  if (complex.actual_premium !== null && complex.actual_premium !== undefined &&
+      parseFloat(complex.actual_premium) > 0 && complex.neighborhood_avg_sqm) {
+    return {
+      value: parseFloat(complex.actual_premium),
+      confidence: 'high',
+      source: 'stored_neighborhood'
+    };
+  }
+
+  const psm = complex.price_per_sqm ? parseFloat(complex.price_per_sqm) : null;
+  if (!psm || psm <= 0) return null;
+
+  // Priority 2: use neighborhood_avg_sqm (hyper-local benchmark)
+  const neighborhoodAvg = complex.neighborhood_avg_sqm ? parseFloat(complex.neighborhood_avg_sqm) : null;
+  if (neighborhoodAvg && neighborhoodAvg > 0) {
+    const derived = Math.round(((psm - neighborhoodAvg) / neighborhoodAvg) * 100);
+    if (derived >= -20 && derived <= 200) {
+      return {
+        value: derived,
+        confidence: 'medium',
+        source: complex.neighborhood_benchmark_source || 'neighborhood_avg'
+      };
+    }
+    logger.warn(`[IAI] Suspicious neighborhood premium ${derived}% for ${complex.name} - falling back`);
+  }
+
+  // Priority 3: fallback to city_avg_price_sqm
+  let cityAvg = complex.city_avg_price_sqm ? parseFloat(complex.city_avg_price_sqm) : null;
+  let source = 'city_avg';
+
+  // Priority 4: fallback to city cache
+  if (!cityAvg || cityAvg <= 0) {
+    const cached = await getCityAvgFromCache(complex.city);
+    if (cached) {
+      cityAvg = cached.value;
+      source = 'city_cache';
+    }
+  }
+
+  if (!cityAvg || cityAvg <= 0) return null;
+
+  const derived = Math.round(((psm - cityAvg) / cityAvg) * 100);
+
+  // Sanity check
+  if (derived < -20 || derived > 200) {
+    logger.warn(`[IAI] Suspicious derived premium ${derived}% for ${complex.name} - skipping`);
+    return null;
+  }
+
+  return {
+    value: derived,
+    confidence: source === 'city_cache' ? 'low' : 'medium-low',
+    source
+  };
+}
+
+function calculateCertaintyFactor(complex, premiumConfidence) {
+  let factor = 1.0;
+
+  // Developer strength
+  if (complex.developer_strength === 'strong' ||
+      STRONG_DEVELOPERS.some(d => complex.developer && complex.developer.includes(d))) {
+    factor += 0.15;
+  } else if (complex.developer_strength === 'weak' ||
+             WEAK_DEVELOPERS.includes(complex.developer)) {
+    factor -= 0.15;
+  }
+
+  // Signature progress
+  if (complex.signature_percent) {
+    if (complex.signature_percent >= 90) factor += 0.15;
+    else if (complex.signature_percent < 67) factor -= 0.25;
+  }
+
+  // Planning stage certainty
+  if (['approved', 'permit', 'construction'].includes(complex.status)) {
+    factor += 0.2;
+  }
+
+  // Penalize when actual_premium is missing or low-confidence
+  if (!premiumConfidence) {
+    factor -= 0.3; // Unknown premium = significant uncertainty
+  } else if (premiumConfidence === 'low') {
+    factor -= 0.1; // City cache estimate = minor penalty
+  }
+
+  return Math.max(0.5, Math.min(1.5, factor));
+}
+
+function calculateYieldFactor(complex) {
+  let factor = 1.0;
+  if (complex.multiplier && parseFloat(complex.multiplier) > 3) {
+    factor += 0.2;
+  }
+  return Math.max(0.5, Math.min(1.5, factor));
+}
+
+async function calculateIAI(complexId) {
+  try {
+    const complexResult = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
+    if (complexResult.rows.length === 0) return null;
+
+    const complex = complexResult.rows[0];
+    const premium = getTheoreticalPremium(complex.status);
+    const theoreticalPremiumMid = (premium.min + premium.max) / 2;
+
+    // Smart actual_premium derivation
+    const derived = await deriveActualPremium(complex);
+    const actualPremium = derived ? derived.value : null;
+    const premiumConfidence = derived ? derived.confidence : null;
+    const premiumSource = derived ? derived.source : 'unknown';
+
+    // If we derived a medium/low confidence premium, persist it back
+    if (derived && derived.source !== 'stored' && actualPremium !== null) {
+      try {
+        await pool.query(`
+          UPDATE complexes SET
+            actual_premium = $1,
+            actual_premium_source = $2,
+            actual_premium_confidence = $3,
+            updated_at = NOW()
+          WHERE id = $4
+            AND (actual_premium IS NULL OR actual_premium::numeric = 0)
+        `, [actualPremium, premiumSource, premiumConfidence, complexId]);
+      } catch (e) {
+        // Column may not exist yet - non-fatal
+        logger.debug(`[IAI] Could not persist derived premium: ${e.message}`);
+      }
+
+      // Propagate city_avg if we used a direct scan value
+      if (derived.source === 'scan' && complex.city_avg_price_sqm) {
+        await propagateCityAvg(complex.city, parseFloat(complex.city_avg_price_sqm));
+      }
+    }
+
+    // GAP calculation
+    // If no actual_premium data at all - use theoretical midpoint as gap (conservative)
+    const premiumGap = actualPremium !== null
+      ? Math.max(0, theoreticalPremiumMid - actualPremium)
+      : theoreticalPremiumMid * 0.5; // Penalized gap when unknown (not full gap, not zero)
+
+    const gapPoints = Math.min(50, premiumGap);
+    const certaintyFactor = calculateCertaintyFactor(complex, premiumConfidence);
+    const yieldFactor = calculateYieldFactor(complex);
+    const iai = Math.round(Math.min(100, gapPoints * certaintyFactor * yieldFactor));
+
+    await pool.query(`
+      UPDATE complexes SET
+        theoretical_premium_min = $1, theoretical_premium_max = $2,
+        premium_gap = $3, certainty_factor = $4, yield_factor = $5,
+        iai_score = $6, updated_at = NOW()
+      WHERE id = $7
+    `, [premium.min, premium.max, Math.round(premiumGap * 100) / 100,
+        certaintyFactor, yieldFactor, iai, complexId]);
+
+    logger.info(`[IAI] ${complex.name}: IAI=${iai} | gap=${Math.round(premiumGap)}% | actual_premium=${actualPremium !== null ? actualPremium + '%' : 'unknown'} (${premiumSource}) | certainty=${certaintyFactor}`, { complexId });
+
+    return {
+      iai_score: iai,
+      premium_gap: premiumGap,
+      certainty_factor: certaintyFactor,
+      yield_factor: yieldFactor,
+      theoretical_premium: { min: premium.min, max: premium.max },
+      actual_premium: actualPremium,
+      actual_premium_confidence: premiumConfidence,
+      actual_premium_source: premiumSource
+    };
+  } catch (err) {
+    logger.error(`Error calculating IAI for complex ${complexId}`, { error: err.message });
+    throw err;
+  }
+}
+
+async function calculateAllIAI() {
+  const complexes = await pool.query('SELECT id FROM complexes');
+  const results = [];
+  for (const complex of complexes.rows) {
+    try {
+      const result = await calculateIAI(complex.id);
+      results.push({ id: complex.id, ...result });
+    } catch (err) {
+      results.push({ id: complex.id, error: err.message });
+    }
+  }
+  return results;
+}
+
+module.exports = {
+  calculateIAI, calculateAllIAI, getTheoreticalPremium,
+  calculateCertaintyFactor, calculateYieldFactor,
+  deriveActualPremium, propagateCityAvg, getCityAvgFromCache,
+  PREMIUM_TABLE, STRONG_DEVELOPERS
+};
