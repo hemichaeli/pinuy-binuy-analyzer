@@ -3,6 +3,7 @@
  * API endpoints for identifying distressed sellers
  * NEW: batch-aggregate (listing->complex), gov-enrich, dashboard data
  * v4.25.0: Expanded dashboard-data with enriched fields
+ * v4.28.1: Fixed price_per_sqm -> accurate_price_sqm column name
  */
 
 const express = require('express');
@@ -37,7 +38,6 @@ router.post('/batch-aggregate', async (req, res) => {
   try {
     const { minListings = 1, limit = 500 } = req.body || {};
 
-    // Get all complexes with active listings that have SSI data
     const result = await pool.query(`
       SELECT 
         c.id, c.name, c.city, c.addresses, c.iai_score,
@@ -70,15 +70,12 @@ router.post('/batch-aggregate', async (req, res) => {
     const results = [];
 
     for (const c of complexes) {
-      // Calculate enhanced SSI from listing data
       let enhancedSSI = 0;
       const factors = [];
 
-      // Base: max listing SSI
       const maxSSI = parseFloat(c.max_listing_ssi) || 0;
       enhancedSSI += maxSSI;
 
-      // Bonus: multiple distressed listings (5 pts per additional)
       const listingCount = parseInt(c.listing_count);
       if (listingCount > 1 && maxSSI > 0) {
         const bonus = Math.min((listingCount - 1) * 3, 15);
@@ -86,7 +83,6 @@ router.post('/batch-aggregate', async (req, res) => {
         factors.push(`${listingCount} מודעות פעילות (+${bonus})`);
       }
 
-      // Bonus: urgent keywords
       const urgentCount = parseInt(c.urgent_count) || 0;
       if (urgentCount > 0) {
         const bonus = Math.min(urgentCount * 5, 15);
@@ -94,21 +90,18 @@ router.post('/batch-aggregate', async (req, res) => {
         factors.push(`שפה דחופה: ${c.all_urgent_keywords} (+${bonus})`);
       }
 
-      // Bonus: foreclosure flags
       const foreclosureCount = parseInt(c.foreclosure_count) || 0;
       if (foreclosureCount > 0) {
         enhancedSSI += 30;
         factors.push(`כינוס נכסים (+30)`);
       }
 
-      // Bonus: inheritance flags
       const inheritanceCount = parseInt(c.inheritance_count) || 0;
       if (inheritanceCount > 0) {
         enhancedSSI += 10;
         factors.push(`נכס ירושה (+10)`);
       }
 
-      // Bonus: multiple price drops
       const priceDropCount = parseInt(c.multi_price_drop_count) || 0;
       if (priceDropCount > 0) {
         const bonus = Math.min(priceDropCount * 5, 15);
@@ -116,7 +109,6 @@ router.post('/batch-aggregate', async (req, res) => {
         factors.push(`${priceDropCount} מודעות עם הורדות מחיר (+${bonus})`);
       }
 
-      // Bonus: significant price drop
       const maxDrop = parseFloat(c.max_price_drop) || 0;
       if (maxDrop > 10) {
         const bonus = Math.min(Math.round(maxDrop / 2), 15);
@@ -124,16 +116,13 @@ router.post('/batch-aggregate', async (req, res) => {
         factors.push(`ירידת מחיר ${maxDrop.toFixed(1)}% (+${bonus})`);
       }
 
-      // Cap at 100
       enhancedSSI = Math.min(Math.round(enhancedSSI), 100);
 
-      // Determine urgency
       let urgencyLevel = 'low';
       if (enhancedSSI >= 80) urgencyLevel = 'critical';
       else if (enhancedSSI >= 60) urgencyLevel = 'high';
       else if (enhancedSSI >= 40) urgencyLevel = 'medium';
 
-      // Only update if meaningful SSI
       if (enhancedSSI >= 5) {
         await pool.query(`
           UPDATE complexes 
@@ -154,7 +143,6 @@ router.post('/batch-aggregate', async (req, res) => {
         ]);
         updated++;
 
-        // Create alert for high distress
         if (urgencyLevel === 'critical' || urgencyLevel === 'high') {
           try {
             await pool.query(`
@@ -185,7 +173,6 @@ router.post('/batch-aggregate', async (req, res) => {
       }
     }
 
-    // Sort by SSI descending
     results.sort((a, b) => b.enhancedSSI - a.enhancedSSI);
 
     res.json({
@@ -224,7 +211,6 @@ router.post('/gov-enrich', async (req, res) => {
   try {
     const { city, limit = 20 } = req.body || {};
 
-    // Get top complexes to enrich (prioritize those with existing SSI or high IAI)
     let query = `
       SELECT id, name, city, addresses, iai_score, enhanced_ssi_score,
              ssi_enhancement_factors, distress_indicators
@@ -243,14 +229,12 @@ router.post('/gov-enrich', async (req, res) => {
 
     const complexes = await pool.query(query, params);
     
-    // Return immediately, process in background
     res.json({ 
       message: 'Government enrichment started', 
       complexes: complexes.rows.length,
       note: 'Processing in background. Check /api/ssi/high-distress for results.'
     });
 
-    // Background processing
     (async () => {
       let enriched = 0;
       let liensFound = 0;
@@ -265,7 +249,6 @@ router.post('/gov-enrich', async (req, res) => {
           let additionalSSI = 0;
           const newFactors = [];
 
-          // Check liens registry
           try {
             const liensResult = await govService.searchLiensRegistry(`${address} ${city}`, { limit: 10 });
             if (liensResult.success && liensResult.records && liensResult.records.length > 0) {
@@ -284,21 +267,18 @@ router.post('/gov-enrich', async (req, res) => {
             logger.warn(`Liens check failed for ${complex.name}`, { error: e.message });
           }
 
-          // Check inheritance registry
           try {
             const inheritResult = await govService.searchInheritanceRegistry(`${address} ${city}`, { limit: 10 });
             if (inheritResult.success && inheritResult.records && inheritResult.records.length > 0) {
               additionalSSI += 10;
               newFactors.push(`צו ירושה קשור ברשם הירושות (+10)`);
               inheritanceFound++;
-
               await pool.query('UPDATE complexes SET is_inheritance_property = true WHERE id = $1', [complex.id]);
             }
           } catch (e) {
             logger.warn(`Inheritance check failed for ${complex.name}`, { error: e.message });
           }
 
-          // Update SSI if we found something
           if (additionalSSI > 0) {
             const currentSSI = complex.enhanced_ssi_score || 0;
             const newSSI = Math.min(currentSSI + additionalSSI, 100);
@@ -314,7 +294,6 @@ router.post('/gov-enrich', async (req, res) => {
             enriched++;
           }
 
-          // Rate limit: 500ms between government API calls
           await new Promise(r => setTimeout(r, 500));
 
         } catch (e) {
@@ -337,6 +316,7 @@ router.post('/gov-enrich', async (req, res) => {
 // GET /api/ssi/dashboard-data
 // Aggregated data for the QUANTUM dashboard
 // v4.25.0: Expanded with enriched fields
+// v4.28.1: Fixed column name accurate_price_sqm
 // =====================================================
 router.get('/dashboard-data', async (req, res) => {
   try {
@@ -363,7 +343,7 @@ router.get('/dashboard-data', async (req, res) => {
                ssi_enhancement_factors, status, developer,
                actual_premium, signature_percent, signature_source,
                plan_stage, news_sentiment, developer_status, developer_risk_level,
-               price_per_sqm, city_avg_price_sqm
+               accurate_price_sqm AS price_per_sqm, city_avg_price_sqm
         FROM complexes 
         WHERE enhanced_ssi_score > 0
         ORDER BY enhanced_ssi_score DESC 
@@ -374,7 +354,7 @@ router.get('/dashboard-data', async (req, res) => {
         SELECT id, name, city, addresses, iai_score, enhanced_ssi_score, status, developer,
                actual_premium, signature_percent, signature_source, signature_confidence,
                plan_stage, news_sentiment, developer_status, developer_risk_level,
-               price_per_sqm, city_avg_price_sqm, num_buildings, multiplier
+               accurate_price_sqm AS price_per_sqm, city_avg_price_sqm, num_buildings, multiplier
         FROM complexes 
         WHERE iai_score >= 30
         ORDER BY iai_score DESC, COALESCE(actual_premium, 0) DESC
@@ -463,7 +443,7 @@ router.get('/dashboard-data', async (req, res) => {
 router.get('/status', (req, res) => {
   const service = getDistressedSellerService();
   res.json({
-    version: '4.25.0',
+    version: '4.28.1',
     service: 'SSI Enhancement - Distressed Seller Identification',
     available: !!service,
     weights: service?.SSI_WEIGHTS || null,
