@@ -68,6 +68,22 @@ router.post('/batch', async (req, res) => {
   }
 });
 
+// NEW v6.0: Targeted enrichment for specific data gaps (pricing, signatures, buildings)
+router.post('/targeted', async (req, res) => {
+  if (!deepEnrichmentService?.enrichTargeted) {
+    return res.status(503).json({ error: 'Targeted enrichment not available (update deepEnrichmentService to v6.0)' });
+  }
+  try {
+    const { target = 'pricing', limit = 50, city } = req.body;
+    logger.info(`Starting targeted enrichment: target=${target}, limit=${limit}, city=${city || 'all'}`);
+    const result = await deepEnrichmentService.enrichTargeted({ target, limit, city });
+    res.json(result);
+  } catch (err) {
+    logger.error('Targeted enrichment failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/batch/:jobId', async (req, res) => {
   const jobId = req.params.jobId;
   let status = null;
@@ -465,7 +481,7 @@ router.post('/onboarding/tier1-priority', async (req, res) => {
 // ========================================================================
 
 router.post('/activate-quantum-v4-8', async (req, res) => {
-  logger.info('🚀 QUANTUM v4.8.0 Neighborhood Benchmark System - ACTIVATION STARTING');
+  logger.info('QUANTUM v4.8.0 Neighborhood Benchmark System - ACTIVATION STARTING');
   
   try {
     const pool = require('../db/pool');
@@ -520,7 +536,7 @@ router.post('/activate-quantum-v4-8', async (req, res) => {
       status: 'activated',
       version: '4.8.0',
       system: 'QUANTUM Neighborhood Benchmark System',
-      message: '🎯 QUANTUM v4.8.0 successfully activated!',
+      message: 'QUANTUM v4.8.0 successfully activated!',
       features_enabled: [
         'Hyper-local benchmarks (300m radius)',
         'Dual-source validation (nadlan + madlan)', 
