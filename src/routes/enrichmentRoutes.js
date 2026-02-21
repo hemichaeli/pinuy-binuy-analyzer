@@ -2,42 +2,80 @@ const express = require('express');
 const router = express.Router();
 const { logger } = require('../services/logger');
 
-// Service loading with proper error handling
+// Service loading with proper error handling + error capture for diagnostics
 let deepEnrichmentService;
 let scanPriorityService; 
 let smartBatchService;
 let neighborhoodBenchmarkService;
 let onboardingPipeline;
+const serviceErrors = {};
 
 try {
   deepEnrichmentService = require('../services/deepEnrichmentService');
 } catch (err) {
+  serviceErrors.deepEnrichment = err.message;
   logger.warn('Deep enrichment service not available', { error: err.message });
 }
 
 try {
   scanPriorityService = require('../services/scanPriorityService');
 } catch (err) {
+  serviceErrors.scanPriority = err.message;
   logger.warn('Scan priority service not available', { error: err.message });
 }
 
 try {
   smartBatchService = require('../services/smartBatchService');
 } catch (err) {
+  serviceErrors.smartBatch = err.message;
   logger.warn('Smart batch service not available', { error: err.message });
 }
 
 try {
   neighborhoodBenchmarkService = require('../services/neighborhoodBenchmarkService');
+  logger.info('Neighborhood benchmark service loaded successfully');
 } catch (err) {
-  logger.warn('Neighborhood benchmark service not available', { error: err.message });
+  serviceErrors.neighborhoodBenchmark = err.message + '\n' + err.stack;
+  logger.warn('Neighborhood benchmark service not available', { error: err.message, stack: err.stack });
 }
 
 try {
   onboardingPipeline = require('../services/onboardingPipeline');
 } catch (err) {
+  serviceErrors.onboardingPipeline = err.message;
   logger.warn('Onboarding pipeline not available', { error: err.message });
 }
+
+// ====================================================================
+// DIAGNOSTIC ENDPOINT - shows which services loaded and which failed
+// ====================================================================
+router.get('/diagnostics', async (req, res) => {
+  const services = {
+    deepEnrichment: !!deepEnrichmentService,
+    scanPriority: !!scanPriorityService,
+    smartBatch: !!smartBatchService,
+    neighborhoodBenchmark: !!neighborhoodBenchmarkService,
+    onboardingPipeline: !!onboardingPipeline
+  };
+  
+  // Try lazy-loading benchmark service if it failed initially
+  if (!neighborhoodBenchmarkService) {
+    try {
+      neighborhoodBenchmarkService = require('../services/neighborhoodBenchmarkService');
+      services.neighborhoodBenchmark = true;
+      services.benchmarkRetrySuccess = true;
+    } catch (err) {
+      services.benchmarkRetryError = err.message;
+    }
+  }
+  
+  res.json({
+    version: '4.28.1',
+    services,
+    errors: serviceErrors,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Existing routes - keep all functionality but fix syntax issues
 router.post('/complex/:id', async (req, res) => {
@@ -288,13 +326,30 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// Neighborhood benchmark routes
+// ====================================================================
+// Neighborhood benchmark routes (with lazy-load fallback)
+// ====================================================================
+
+function getBenchmarkService() {
+  if (neighborhoodBenchmarkService) return neighborhoodBenchmarkService;
+  // Lazy-load retry
+  try {
+    neighborhoodBenchmarkService = require('../services/neighborhoodBenchmarkService');
+    logger.info('Neighborhood benchmark service loaded via lazy-load');
+    return neighborhoodBenchmarkService;
+  } catch (err) {
+    logger.warn('Benchmark lazy-load failed', { error: err.message });
+    return null;
+  }
+}
+
 router.post('/benchmark/:id', async (req, res) => {
-  if (!neighborhoodBenchmarkService) return res.status(503).json({ error: 'Neighborhood benchmark service not available' });
+  const svc = getBenchmarkService();
+  if (!svc) return res.status(503).json({ error: 'Neighborhood benchmark service not available', loadError: serviceErrors.neighborhoodBenchmark || 'unknown' });
   try {
     const complexId = parseInt(req.params.id);
     if (isNaN(complexId)) return res.status(400).json({ error: 'Invalid complex ID' });
-    const result = await neighborhoodBenchmarkService.fetchNeighborhoodBenchmark(complexId);
+    const result = await svc.fetchNeighborhoodBenchmark(complexId);
     res.json(result);
   } catch (err) {
     logger.error('Benchmark failed', { error: err.message });
@@ -303,14 +358,15 @@ router.post('/benchmark/:id', async (req, res) => {
 });
 
 router.post('/benchmark/batch', async (req, res) => {
-  if (!neighborhoodBenchmarkService) return res.status(503).json({ error: 'Neighborhood benchmark service not available' });
+  const svc = getBenchmarkService();
+  if (!svc) return res.status(503).json({ error: 'Neighborhood benchmark service not available', loadError: serviceErrors.neighborhoodBenchmark || 'unknown' });
   try {
     const { limit = 100, city, staleOnly = true } = req.body;
     const jobId = `benchmark_${Date.now()}`;
     // Run async
     setImmediate(async () => {
       try {
-        await neighborhoodBenchmarkService.scanNeighborhoodBenchmarks({ limit, city, staleOnly });
+        await svc.scanNeighborhoodBenchmarks({ limit, city, staleOnly });
       } catch (err) {
         logger.error('Benchmark batch failed', { error: err.message });
       }
@@ -620,18 +676,6 @@ router.post('/fill-city-averages', async (req, res) => {
 // v4.29.1: INFER BUILDINGS FROM EXISTING UNITS
 // ====================================================================
 
-/**
- * POST /api/enrichment/infer-buildings
- * Infer num_buildings from existing_units using Israeli building size heuristics.
- * Zero API cost - pure math inference.
- *
- * Heuristics:
- *   - Dense cities (Tel Aviv, Ramat Gan, Givatayim, Bat Yam): ~30 units/building
- *   - Medium cities (Haifa, Jerusalem, Netanya, Rishon, Petah Tikva): ~24 units/building
- *   - Smaller cities: ~20 units/building
- *   - Large complexes (>500 units): likely tower projects, ~36 units/building
- *   - Minimum 1 building always
- */
 router.post('/infer-buildings', async (req, res) => {
   try {
     const pool = require('../db/pool');
@@ -739,12 +783,6 @@ router.post('/infer-buildings', async (req, res) => {
 // v4.29.1: RECALCULATE MISSING PREMIUMS
 // ====================================================================
 
-/**
- * POST /api/enrichment/recalculate-premiums
- * Calculate actual_premium for complexes that have both price and city_avg but missing premium.
- * Also recalculate premiums where values seem incorrect (>200% or <-50%).
- * Zero API cost.
- */
 router.post('/recalculate-premiums', async (req, res) => {
   try {
     const pool = require('../db/pool');
@@ -931,9 +969,10 @@ router.post('/activate-quantum-v4-8', async (req, res) => {
     const pool = require('../db/pool');
     const { rows } = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'complexes' AND column_name = 'neighborhood_avg_sqm'`);
     if (rows.length === 0) { return res.status(400).json({ error: 'Database migration required first' }); }
-    if (neighborhoodBenchmarkService) { setTimeout(async () => { try { await neighborhoodBenchmarkService.scanNeighborhoodBenchmarks({ limit: 50, staleOnly: true }); } catch (err) { logger.error('Auto-benchmark failed', { error: err.message }); } }, 2000); }
+    const svc = getBenchmarkService();
+    if (svc) { setTimeout(async () => { try { await svc.scanNeighborhoodBenchmarks({ limit: 50, staleOnly: true }); } catch (err) { logger.error('Auto-benchmark failed', { error: err.message }); } }, 2000); }
     setTimeout(async () => { try { const iaiCalculator = require('../services/iaiCalculator'); const { rows: complexes } = await pool.query('SELECT id FROM complexes ORDER BY iai_score DESC LIMIT 50'); for (const complex of complexes) { await iaiCalculator.calculateIAI(complex.id); } } catch (err) { logger.error('Auto-IAI failed', { error: err.message }); } }, 5000);
-    res.json({ status: 'activated', version: '4.8.0', message: 'QUANTUM v4.8.0 activated!' });
+    res.json({ status: 'activated', version: '4.8.0', message: 'QUANTUM v4.8.0 activated!', benchmarkServiceAvailable: !!svc });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
