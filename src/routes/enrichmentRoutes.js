@@ -477,6 +477,404 @@ router.post('/onboarding/tier1-priority', async (req, res) => {
 });
 
 // ========================================================================
+// v4.29.0: COVERAGE BOOST - Zero-cost data gap filling
+// ========================================================================
+
+/**
+ * POST /api/enrichment/infer-signatures
+ * Bulk infer signature_percent from project status and plan_stage.
+ * Zero Perplexity API cost - pure logic inference.
+ * 
+ * Rules:
+ *   construction/permit -> 100% (already built/building)
+ *   approved + plan_stage contains approved keywords -> 85%
+ *   deposited -> 70%
+ *   pre_deposit with developer -> 55%
+ *   developer_selected -> 40%
+ *   declared -> 20%
+ */
+router.post('/infer-signatures', async (req, res) => {
+  try {
+    const pool = require('../db/pool');
+    const { dryRun = false } = req.body;
+    
+    // Get complexes missing signature_percent
+    const { rows } = await pool.query(`
+      SELECT id, name, city, status, plan_stage, developer
+      FROM complexes
+      WHERE signature_percent IS NULL
+      ORDER BY iai_score DESC NULLS LAST
+    `);
+    
+    logger.info(`[INFER-SIG] Found ${rows.length} complexes without signature data`);
+    
+    const inferences = [];
+    const statusRules = {
+      'construction': { percent: 100, confidence: 'high', reason: 'project in construction phase' },
+      'permit':       { percent: 100, confidence: 'high', reason: 'building permit issued' },
+      'approved':     { percent: 85,  confidence: 'medium', reason: 'plan approved - implies >80% tenant agreement' },
+      'deposited':    { percent: 70,  confidence: 'medium', reason: 'plan deposited - typically 60-80% agreement' },
+      'pre_deposit':  { percent: 55,  confidence: 'low', reason: 'pre-deposit stage - developer working on signatures' },
+      'developer_selected': { percent: 40, confidence: 'low', reason: 'developer selected - signature process beginning' },
+      'submitted':    { percent: 50,  confidence: 'low', reason: 'plan submitted' },
+      'declared':     { percent: 20,  confidence: 'low', reason: 'declared complex - early stage' },
+      'planning':     { percent: 30,  confidence: 'low', reason: 'in planning' }
+    };
+    
+    // Enhanced rules based on plan_stage keywords (Hebrew)
+    const planStageBoosts = [
+      { pattern: /תוקף|אושרה סופית|קיבלה תוקף/i, percent: 95, confidence: 'high', reason: 'plan has legal force (tokef)' },
+      { pattern: /היתר|permit|בנייה/i, percent: 100, confidence: 'high', reason: 'building permit stage' },
+      { pattern: /אושרה|מאושרת|approved/i, percent: 85, confidence: 'medium', reason: 'plan approved by committee' },
+      { pattern: /הופקדה|deposited/i, percent: 70, confidence: 'medium', reason: 'plan deposited' },
+      { pattern: /בביצוע|בבנייה|construction/i, percent: 100, confidence: 'high', reason: 'in construction' },
+      { pattern: /נבחרה יזמ|developer.*selected/i, percent: 40, confidence: 'low', reason: 'developer selected' },
+      { pattern: /מכרז דיירים/i, percent: 45, confidence: 'low', reason: 'tenant tender in progress' }
+    ];
+    
+    for (const complex of rows) {
+      let inference = null;
+      
+      // First check plan_stage for more specific keywords
+      if (complex.plan_stage) {
+        for (const boost of planStageBoosts) {
+          if (boost.pattern.test(complex.plan_stage)) {
+            inference = {
+              id: complex.id,
+              name: complex.name,
+              city: complex.city,
+              signature_percent: boost.percent,
+              confidence: boost.confidence,
+              reason: boost.reason,
+              source: 'inferred_from_plan_stage',
+              original_status: complex.status,
+              original_plan_stage: complex.plan_stage
+            };
+            break;
+          }
+        }
+      }
+      
+      // Fallback to status-based inference
+      if (!inference && statusRules[complex.status]) {
+        const rule = statusRules[complex.status];
+        inference = {
+          id: complex.id,
+          name: complex.name,
+          city: complex.city,
+          signature_percent: rule.percent,
+          confidence: rule.confidence,
+          reason: rule.reason,
+          source: 'inferred_from_status',
+          original_status: complex.status,
+          original_plan_stage: complex.plan_stage
+        };
+      }
+      
+      if (inference) {
+        inferences.push(inference);
+      }
+    }
+    
+    // Apply updates unless dry run
+    let applied = 0;
+    if (!dryRun && inferences.length > 0) {
+      for (const inf of inferences) {
+        try {
+          await pool.query(`
+            UPDATE complexes 
+            SET signature_percent = $1, 
+                signature_source = $2,
+                signature_confidence = $3
+            WHERE id = $4 AND signature_percent IS NULL
+          `, [inf.signature_percent, inf.source, inf.confidence, inf.id]);
+          applied++;
+        } catch (err) {
+          logger.warn(`Failed to update signature for ${inf.name}: ${err.message}`);
+        }
+      }
+      logger.info(`[INFER-SIG] Applied ${applied} signature inferences`);
+    }
+    
+    // Summary by confidence level
+    const summary = {
+      high: inferences.filter(i => i.confidence === 'high').length,
+      medium: inferences.filter(i => i.confidence === 'medium').length,
+      low: inferences.filter(i => i.confidence === 'low').length
+    };
+    
+    res.json({
+      message: dryRun ? 'Dry run - no changes applied' : `Applied ${applied} signature inferences`,
+      total_missing: rows.length,
+      total_inferred: inferences.length,
+      applied: dryRun ? 0 : applied,
+      remaining_gaps: rows.length - inferences.length,
+      by_confidence: summary,
+      sample: inferences.slice(0, 20).map(i => ({
+        name: i.name,
+        city: i.city,
+        inferred_percent: i.signature_percent,
+        confidence: i.confidence,
+        reason: i.reason,
+        status: i.original_status,
+        plan_stage: i.original_plan_stage
+      }))
+    });
+  } catch (err) {
+    logger.error('Signature inference failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/enrichment/fill-city-averages
+ * Fill city_avg_price_sqm from median of other complexes in same city.
+ * Zero Perplexity API cost - uses existing DB data.
+ */
+router.post('/fill-city-averages', async (req, res) => {
+  try {
+    const pool = require('../db/pool');
+    const { dryRun = false } = req.body;
+    
+    // Calculate city averages from existing data
+    const { rows: cityAvgs } = await pool.query(`
+      SELECT city, 
+             ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY accurate_price_sqm)) as median_price,
+             COUNT(*) as sample_size,
+             ROUND(AVG(accurate_price_sqm)) as avg_price,
+             MIN(accurate_price_sqm) as min_price,
+             MAX(accurate_price_sqm) as max_price
+      FROM complexes 
+      WHERE accurate_price_sqm IS NOT NULL 
+        AND accurate_price_sqm > 5000 
+        AND accurate_price_sqm < 150000
+      GROUP BY city 
+      HAVING COUNT(*) >= 2
+      ORDER BY COUNT(*) DESC
+    `);
+    
+    logger.info(`[FILL-CITY-AVG] Calculated averages for ${cityAvgs.length} cities`);
+    
+    // Find complexes missing city_avg but we have data for their city
+    const { rows: missing } = await pool.query(`
+      SELECT id, name, city, accurate_price_sqm, city_avg_price_sqm, actual_premium
+      FROM complexes
+      WHERE city_avg_price_sqm IS NULL
+      ORDER BY iai_score DESC NULLS LAST
+    `);
+    
+    const cityMap = {};
+    for (const ca of cityAvgs) {
+      cityMap[ca.city] = ca;
+    }
+    
+    let filled = 0;
+    let premiumsCalculated = 0;
+    const updates = [];
+    
+    for (const complex of missing) {
+      const cityData = cityMap[complex.city];
+      if (!cityData) continue;
+      
+      const entry = {
+        id: complex.id,
+        name: complex.name,
+        city: complex.city,
+        city_avg: parseInt(cityData.median_price),
+        sample_size: parseInt(cityData.sample_size),
+        has_own_price: !!complex.accurate_price_sqm
+      };
+      
+      if (!dryRun) {
+        const updateFields = ['city_avg_price_sqm = $1'];
+        const params = [parseInt(cityData.median_price)];
+        let idx = 2;
+        
+        // If we also have price_per_sqm, calculate actual_premium
+        if (complex.accurate_price_sqm && !complex.actual_premium) {
+          const premium = ((parseInt(cityData.median_price) - complex.accurate_price_sqm) / complex.accurate_price_sqm * 100).toFixed(2);
+          updateFields.push(`actual_premium = $${idx}`);
+          params.push(premium);
+          idx++;
+          entry.calculated_premium = parseFloat(premium);
+          premiumsCalculated++;
+        }
+        
+        params.push(complex.id);
+        await pool.query(
+          `UPDATE complexes SET ${updateFields.join(', ')} WHERE id = $${idx}`,
+          params
+        );
+        filled++;
+      }
+      
+      updates.push(entry);
+    }
+    
+    res.json({
+      message: dryRun ? 'Dry run - no changes applied' : `Filled ${filled} city averages, calculated ${premiumsCalculated} new premiums`,
+      cities_with_data: cityAvgs.length,
+      complexes_missing_city_avg: missing.length,
+      filled: dryRun ? 0 : filled,
+      premiums_calculated: dryRun ? 0 : premiumsCalculated,
+      city_averages: cityAvgs.map(ca => ({
+        city: ca.city,
+        median_price_sqm: parseInt(ca.median_price),
+        avg_price_sqm: parseInt(ca.avg_price),
+        sample_size: parseInt(ca.sample_size)
+      })),
+      sample_updates: updates.slice(0, 15)
+    });
+  } catch (err) {
+    logger.error('Fill city averages failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/enrichment/boost-coverage
+ * Master endpoint: runs all zero-cost coverage improvements in sequence.
+ * 1. Infer signatures from status
+ * 2. Fill city averages from DB
+ * 3. Recalculate all IAI scores
+ */
+router.post('/boost-coverage', async (req, res) => {
+  try {
+    const pool = require('../db/pool');
+    const startTime = Date.now();
+    const results = { phases: [] };
+    
+    // === PHASE 1: Infer signatures ===
+    logger.info('[BOOST] Phase 1: Inferring signatures from status...');
+    const sigResponse = await new Promise((resolve) => {
+      const mockReq = { body: { dryRun: false } };
+      const mockRes = { json: (data) => resolve(data), status: () => ({ json: (data) => resolve({ error: data }) }) };
+      router.handle({ method: 'POST', url: '/infer-signatures', body: { dryRun: false }, ...mockReq }, mockRes, () => {});
+    }).catch(() => null);
+    
+    // Direct execution instead of routing
+    const { rows: sigMissing } = await pool.query(`
+      SELECT id, status, plan_stage, developer FROM complexes WHERE signature_percent IS NULL
+    `);
+    
+    const statusRules = {
+      'construction': 100, 'permit': 100, 'approved': 85,
+      'deposited': 70, 'pre_deposit': 55, 'developer_selected': 40,
+      'submitted': 50, 'declared': 20, 'planning': 30
+    };
+    
+    const planBoosts = [
+      { pattern: /תוקף|אושרה סופית|קיבלה תוקף/i, pct: 95 },
+      { pattern: /היתר|permit|בנייה/i, pct: 100 },
+      { pattern: /אושרה|מאושרת|approved/i, pct: 85 },
+      { pattern: /הופקדה|deposited/i, pct: 70 },
+      { pattern: /בביצוע|בבנייה|construction/i, pct: 100 }
+    ];
+    
+    let sigFilled = 0;
+    for (const c of sigMissing) {
+      let pct = null;
+      let src = 'inferred_from_status';
+      
+      if (c.plan_stage) {
+        for (const b of planBoosts) {
+          if (b.pattern.test(c.plan_stage)) { pct = b.pct; src = 'inferred_from_plan_stage'; break; }
+        }
+      }
+      if (pct === null && statusRules[c.status]) {
+        pct = statusRules[c.status];
+      }
+      
+      if (pct !== null) {
+        await pool.query(
+          'UPDATE complexes SET signature_percent = $1, signature_source = $2 WHERE id = $3 AND signature_percent IS NULL',
+          [pct, src, c.id]
+        );
+        sigFilled++;
+      }
+    }
+    results.phases.push({ phase: 'infer_signatures', missing: sigMissing.length, filled: sigFilled });
+    
+    // === PHASE 2: Fill city averages ===
+    logger.info('[BOOST] Phase 2: Filling city averages...');
+    const { rows: cityAvgs } = await pool.query(`
+      SELECT city, ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY accurate_price_sqm)) as median_price,
+             COUNT(*) as sample_size
+      FROM complexes WHERE accurate_price_sqm IS NOT NULL AND accurate_price_sqm > 5000 AND accurate_price_sqm < 150000
+      GROUP BY city HAVING COUNT(*) >= 2
+    `);
+    
+    const cityMap = {};
+    for (const ca of cityAvgs) { cityMap[ca.city] = parseInt(ca.median_price); }
+    
+    const { rows: avgMissing } = await pool.query(
+      'SELECT id, city, accurate_price_sqm, actual_premium FROM complexes WHERE city_avg_price_sqm IS NULL'
+    );
+    
+    let avgFilled = 0;
+    let premCalc = 0;
+    for (const c of avgMissing) {
+      if (!cityMap[c.city]) continue;
+      const updates = ['city_avg_price_sqm = $1'];
+      const params = [cityMap[c.city]];
+      let idx = 2;
+      
+      if (c.accurate_price_sqm && !c.actual_premium) {
+        const prem = ((cityMap[c.city] - c.accurate_price_sqm) / c.accurate_price_sqm * 100).toFixed(2);
+        updates.push(`actual_premium = $${idx}`);
+        params.push(prem);
+        idx++;
+        premCalc++;
+      }
+      
+      params.push(c.id);
+      await pool.query(`UPDATE complexes SET ${updates.join(', ')} WHERE id = $${idx}`, params);
+      avgFilled++;
+    }
+    results.phases.push({ phase: 'fill_city_averages', missing: avgMissing.length, filled: avgFilled, premiums_calculated: premCalc });
+    
+    // === PHASE 3: Recalculate IAI ===
+    logger.info('[BOOST] Phase 3: Recalculating IAI scores...');
+    const iaiCalculator = require('../services/iaiCalculator');
+    const { rows: allIds } = await pool.query('SELECT id FROM complexes');
+    let iaiUpdated = 0;
+    let iaiErrors = 0;
+    for (const c of allIds) {
+      try { await iaiCalculator.calculateIAI(c.id); iaiUpdated++; }
+      catch { iaiErrors++; }
+    }
+    results.phases.push({ phase: 'recalculate_iai', updated: iaiUpdated, errors: iaiErrors });
+    
+    // === FINAL: Get new coverage ===
+    const { rows: finalCov } = await pool.query(`
+      SELECT COUNT(*) as total,
+        COUNT(actual_premium) as premium, COUNT(signature_percent) as sig,
+        COUNT(accurate_price_sqm) as price, COUNT(city_avg_price_sqm) as city_avg,
+        COUNT(num_buildings) as buildings
+      FROM complexes
+    `);
+    const fc = finalCov[0];
+    const total = parseInt(fc.total);
+    const pct = (n) => Math.round(parseInt(n) / total * 100);
+    
+    results.final_coverage = {
+      actual_premium: { count: parseInt(fc.premium), percent: pct(fc.premium) },
+      signature_percent: { count: parseInt(fc.sig), percent: pct(fc.sig) },
+      price_per_sqm: { count: parseInt(fc.price), percent: pct(fc.price) },
+      city_avg: { count: parseInt(fc.city_avg), percent: pct(fc.city_avg) },
+      num_buildings: { count: parseInt(fc.buildings), percent: pct(fc.buildings) }
+    };
+    results.elapsed_ms = Date.now() - startTime;
+    
+    logger.info(`[BOOST] Coverage boost completed in ${results.elapsed_ms}ms`);
+    res.json(results);
+  } catch (err) {
+    logger.error('Coverage boost failed', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================================================================
 // EMERGENCY ACTIVATION ENDPOINT
 // ========================================================================
 
