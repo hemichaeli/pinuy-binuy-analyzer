@@ -389,9 +389,9 @@ router.get('/onboarding/status', async (req, res) => {
   }
 });
 
-// ========================================================================
+// ====================================================================
 // IAI RECALCULATION WITH NEIGHBORHOOD DATA
-// ========================================================================
+// ====================================================================
 
 router.post('/recalculate-iai-all', async (req, res) => {
   try {
@@ -428,9 +428,9 @@ router.post('/recalculate-iai-all', async (req, res) => {
   }
 });
 
-// ========================================================================
+// ====================================================================
 // TIER 1 PRIORITY ENDPOINTS
-// ========================================================================
+// ====================================================================
 
 router.post('/onboarding/tier1-priority', async (req, res) => {
   if (!onboardingPipeline) return res.status(503).json({ error: 'Onboarding pipeline not available' });
@@ -473,9 +473,9 @@ router.post('/onboarding/tier1-priority', async (req, res) => {
   }
 });
 
-// ========================================================================
+// ====================================================================
 // v4.29.0: COVERAGE BOOST - Zero-cost data gap filling
-// ========================================================================
+// ====================================================================
 
 router.post('/infer-signatures', async (req, res) => {
   try {
@@ -510,7 +510,7 @@ router.post('/infer-signatures', async (req, res) => {
       { pattern: /אושרה|מאושרת|approved/i, percent: 85, confidence: 'medium', reason: 'plan approved' },
       { pattern: /הופקדה|deposited/i, percent: 70, confidence: 'medium', reason: 'plan deposited' },
       { pattern: /בביצוע|בבנייה|construction/i, percent: 100, confidence: 'high', reason: 'in construction' },
-      { pattern: /נבחרה יזמ|developer.*selected/i, percent: 40, confidence: 'low', reason: 'developer selected' },
+      { pattern: /נבחרה יזם|developer.*selected/i, percent: 40, confidence: 'low', reason: 'developer selected' },
       { pattern: /מכרז דיירים/i, percent: 45, confidence: 'low', reason: 'tenant tender' }
     ];
     
@@ -616,9 +616,9 @@ router.post('/fill-city-averages', async (req, res) => {
   }
 });
 
-// ========================================================================
+// ====================================================================
 // v4.29.1: INFER BUILDINGS FROM EXISTING UNITS
-// ========================================================================
+// ====================================================================
 
 /**
  * POST /api/enrichment/infer-buildings
@@ -700,8 +700,8 @@ router.post('/infer-buildings', async (req, res) => {
       for (const inf of inferences) {
         try {
           await pool.query(
-            `UPDATE complexes SET num_buildings = $1, buildings_source = 'inferred_from_units', buildings_confidence = $2 WHERE id = $3 AND num_buildings IS NULL`,
-            [inf.estimated_buildings, inf.confidence, inf.id]
+            `UPDATE complexes SET num_buildings = $1 WHERE id = $2 AND num_buildings IS NULL`,
+            [inf.estimated_buildings, inf.id]
           );
           applied++;
         } catch (err) {
@@ -735,9 +735,9 @@ router.post('/infer-buildings', async (req, res) => {
   }
 });
 
-// ========================================================================
+// ====================================================================
 // v4.29.1: RECALCULATE MISSING PREMIUMS
-// ========================================================================
+// ====================================================================
 
 /**
  * POST /api/enrichment/recalculate-premiums
@@ -822,9 +822,9 @@ router.post('/recalculate-premiums', async (req, res) => {
   }
 });
 
-// ========================================================================
+// ====================================================================
 // BOOST-COVERAGE V2 (includes buildings + premiums)
-// ========================================================================
+// ====================================================================
 
 router.post('/boost-coverage', async (req, res) => {
   try {
@@ -841,7 +841,7 @@ router.post('/boost-coverage', async (req, res) => {
       { pattern: /היתר|permit|בנייה/i, pct: 100 },
       { pattern: /אושרה|מאושרת|approved/i, pct: 85 },
       { pattern: /הופקדה|deposited/i, pct: 70 },
-      { pattern: /בביצוע|בבנייה|construction/i, pct: 100 }
+      { pattern: /בביצוע|בבנייה|construction/i, pct: 100 },
     ];
     let sigFilled = 0;
     for (const c of sigMissing) {
@@ -877,7 +877,7 @@ router.post('/boost-coverage', async (req, res) => {
       let upb = units > 500 ? 36 : denseCities.includes(c.city) ? 30 : mediumCities.includes(c.city) ? 24 : 20;
       if (units <= 24) upb = units; else if (units <= 48) upb = Math.ceil(units / 2);
       const est = Math.max(1, Math.round(units / upb));
-      try { await pool.query('UPDATE complexes SET num_buildings = $1, buildings_source = $2 WHERE id = $3 AND num_buildings IS NULL', [est, 'inferred_from_units', c.id]); bldgFilled++; } catch (e) { /* skip */ }
+      try { await pool.query('UPDATE complexes SET num_buildings = $1 WHERE id = $2 AND num_buildings IS NULL', [est, c.id]); bldgFilled++; } catch (e) { /* skip */ }
     }
     results.phases.push({ phase: 'infer_buildings', missing: bldgMissing.length, filled: bldgFilled });
     
@@ -921,9 +921,9 @@ router.post('/boost-coverage', async (req, res) => {
   }
 });
 
-// ========================================================================
+// ====================================================================
 // EMERGENCY ACTIVATION ENDPOINT
-// ========================================================================
+// ====================================================================
 
 router.post('/activate-quantum-v4-8', async (req, res) => {
   logger.info('QUANTUM v4.8.0 Neighborhood Benchmark System - ACTIVATION STARTING');
