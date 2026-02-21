@@ -343,20 +343,6 @@ function getBenchmarkService() {
   }
 }
 
-router.post('/benchmark/:id', async (req, res) => {
-  const svc = getBenchmarkService();
-  if (!svc) return res.status(503).json({ error: 'Neighborhood benchmark service not available', loadError: serviceErrors.neighborhoodBenchmark || 'unknown' });
-  try {
-    const complexId = parseInt(req.params.id);
-    if (isNaN(complexId)) return res.status(400).json({ error: 'Invalid complex ID' });
-    const result = await svc.fetchNeighborhoodBenchmark(complexId);
-    res.json(result);
-  } catch (err) {
-    logger.error('Benchmark failed', { error: err.message });
-    res.status(500).json({ error: err.message });
-  }
-});
-
 router.post('/benchmark/batch', async (req, res) => {
   const svc = getBenchmarkService();
   if (!svc) return res.status(503).json({ error: 'Neighborhood benchmark service not available', loadError: serviceErrors.neighborhoodBenchmark || 'unknown' });
@@ -373,6 +359,20 @@ router.post('/benchmark/batch', async (req, res) => {
     });
     res.json({ jobId, message: `Benchmark batch started`, limit, city: city || 'all' });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/benchmark/:id', async (req, res) => {
+  const svc = getBenchmarkService();
+  if (!svc) return res.status(503).json({ error: 'Neighborhood benchmark service not available', loadError: serviceErrors.neighborhoodBenchmark || 'unknown' });
+  try {
+    const complexId = parseInt(req.params.id);
+    if (isNaN(complexId)) return res.status(400).json({ error: 'Invalid complex ID' });
+    const result = await svc.fetchNeighborhoodBenchmark(complexId);
+    res.json(result);
+  } catch (err) {
+    logger.error('Benchmark failed', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
