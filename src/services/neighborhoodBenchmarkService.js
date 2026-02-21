@@ -171,14 +171,28 @@ async function fetchNadlanStreet(street, city) {
  */
 function buildMadlanBenchmarkQuery(complex, streets) {
   const streetList = streets.join(', ');
-  return `What is the average price per square meter for residential apartments sold in the last 24 months near these streets in ${complex.city}, Israel: ${streetList}
+  return `חפש נתוני עסקאות נדל"ן סגורות מאתר madlan.co.il עבור הרחובות הסמוכים למתחם "${complex.name}" ב${complex.city}.
 
-Search madlan.co.il and nadlan.gov.il for recent closed transactions (not asking prices).
+רחובות לחיפוש: ${streetList}
 
-Return ONLY a JSON object, no other text:
-{"madlan_avg_price_sqm": NUMBER, "madlan_transactions_count": NUMBER, "data_quality": "high/medium/low", "streets_found": ["list"], "notes": "brief note"}
+אני צריך:
+1. מחיר ממוצע למ"ר של דירות שנמכרו ב-24 חודשים האחרונים באותם רחובות
+2. רק עסקאות סגורות - לא מחירי ביקוש
+3. רק דירות מגורים (לא מסחרי)
 
-If you cannot find specific transaction data, estimate based on the neighborhood average for ${complex.city}. Always return the JSON.`;
+החזר JSON בלבד:
+{
+  "madlan_avg_price_sqm": 0,
+  "madlan_transactions_count": 0,
+  "madlan_price_range": {"min": 0, "max": 0},
+  "madlan_data_freshness": "YYYY-MM",
+  "streets_found": ["רשימת רחובות שנמצאו"],
+  "data_quality": "high/medium/low",
+  "notes": "הערות אם יש"
+}
+
+חפש ב: madlan.co.il, יד2, נדל"ן ממשלתי
+החזר JSON בלבד.`;
 }
 
 /**
@@ -187,51 +201,14 @@ If you cannot find specific transaction data, estimate based on the neighborhood
 async function fetchMadlanBenchmark(complex, streets) {
   try {
     const prompt = buildMadlanBenchmarkQuery(complex, streets);
-    const systemPrompt = `You are a real estate data extraction assistant for Israel. Return ONLY valid JSON. No explanations, no markdown, no code blocks. Just the raw JSON object.`;
+    const systemPrompt = `You are a real estate data extraction assistant for Israel.
+Extract ONLY verified closed transaction data. Return ONLY valid JSON.
+All prices in Israeli Shekels (ILS). Focus on actual closed transactions.`;
 
     const rawResponse = await queryPerplexity(prompt, systemPrompt);
-    
-    // Try multiple parsing strategies
-    let data = null;
-    
-    // Strategy 1: Direct parse
-    try { data = JSON.parse(rawResponse); } catch(e) {}
-    
-    // Strategy 2: Extract from markdown code block
-    if (!data) {
-      const jsonMatch = rawResponse.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) try { data = JSON.parse(jsonMatch[1].trim()); } catch(e) {}
-    }
-    
-    // Strategy 3: Find JSON object in text
-    if (!data) {
-      const objectMatch = rawResponse.match(/\{[\s\S]*\}/);
-      if (objectMatch) try { data = JSON.parse(objectMatch[0]); } catch(e) {}
-    }
-    
-    // Strategy 4: Extract numbers from text if JSON fails
-    if (!data) {
-      const priceMatch = rawResponse.match(/(\d{2,3}[,.]?\d{3})\s*(?:₪|שקל|ILS|ש\"ח)?\s*(?:per|ל)\s*(?:sqm|square|מ\"ר|מטר)/i) ||
-                         rawResponse.match(/(?:average|ממוצע|price per|מחיר ל)[\s\S]{0,50}?(\d{2,3}[,.]?\d{3})/i) ||
-                         rawResponse.match(/(\d{2,3}[,.]?\d{3})\s*(?:₪|שקל|ILS|ש\"ח)\s*\/\s*(?:sqm|מ\"ר)/i);
-      
-      if (priceMatch) {
-        const priceStr = priceMatch[1].replace(',', '');
-        const price = parseInt(priceStr);
-        if (price > 5000 && price < 150000) {
-          data = {
-            madlan_avg_price_sqm: price,
-            madlan_transactions_count: 0,
-            data_quality: 'low',
-            notes: 'Extracted from unstructured Perplexity response'
-          };
-          logger.info(`[Benchmark] Extracted madlan price from text: ${price} for ${complex.name}`);
-        }
-      }
-    }
+    const data = parseJsonResponse(rawResponse);
 
     if (!data || !data.madlan_avg_price_sqm || data.madlan_avg_price_sqm <= 0) {
-      logger.warn(`[Benchmark] No madlan data parsed for ${complex.name}`, { responsePreview: rawResponse.substring(0, 300) });
       return null;
     }
 
