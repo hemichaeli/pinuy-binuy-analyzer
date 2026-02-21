@@ -1,1 +1,437 @@
-LyoqCiAqIE5laWdoYm9yaG9vZCBCZW5jaG1hcmsgU2VydmljZQogKgogKiBDYWxjdWxhdGVzIGEgaHlwZXItbG9jYWwgcHJpY2UgYmVuY2htYXJrIGZvciBlYWNoIGNvbXBsZXggYnk6CiAqIDEuIEZldGNoaW5nIHJlYWwgY2xvc2VkIHRyYW5zYWN0aW9ucyBmcm9tIG5hZGxhbi5nb3YuaWwgZm9yIG5lYXJieSBzdHJlZXRzCiAqIDIuIEZldGNoaW5nIG1hcmtldCBkYXRhIGZyb20gbWFkbGFuLmNvLmlsIHZpYSBQZXJwbGV4aXR5CiAqIDMuIENvbXB1dGluZyBhIHdlaWdodGVkIGF2ZXJhZ2UgKDYwJSBuYWRsYW4gLyA0MCUgbWFkbGFuKQogKiA0LiBGbGFnZ2luZyBkYXRhIHF1YWxpdHkgaXNzdWVzIHdoZW4gc291cmNlcyBkaXZlcmdlID4gMjAlCiAqCiAqIFRoaXMgcmVwbGFjZXMgY2l0eV9hdmdfcHJpY2Vfc3FtIGFzIHRoZSBiZW5jaG1hcmsgZm9yIGFjdHVhbF9wcmVtaXVtIGNhbGN1bGF0aW9uLgogKiBjaXR5X2F2Z19wcmljZV9zcW0gaXMgcmV0YWluZWQgYXMgYSBzZXBhcmF0ZSBzaWduYWwgZm9yIG5laWdoYm9yaG9vZCBxdWFsaXR5LgogKi8KCmNvbnN0IGF4aW9zID0gcmVxdWlyZSgnYXhpb3MnKTsKY29uc3QgcG9vbCA9IHJlcXVpcmUoJy4uL2RiL3Bvb2wnKTsKY29uc3QgeyBsb2dnZXIgfSA9IHJlcXVpcmUoJy4vbG9nZ2VyJyk7CmNvbnN0IHsgcXVlcnlQZXJwbGV4aXR5LCBwYXJzZUpzb25SZXNwb25zZSB9ID0gcmVxdWlyZSgnLi9wZXJwbGV4aXR5U2VydmljZScpOwoKY29uc3QgTkFETEFOX0FQSV9VUkwgPSAnaHR0cHM6Ly93d3cubmFkbGFuLmdvdi5pbC9OYWRsYW4uUkVTVC9NYWluL0dldEFzc2VzdEFuZERlYWxzJzsKY29uc3QgREVMQVlfTVMgPSAzMDAwOwpjb25zdCBNQVhfVFJBTlNBQ1RJT05TX0FHRV9NT05USFMgPSAyNDsKY29uc3QgQkVOQ0hNQVJLX0RJVkVSR0VOQ0VfVEhSRVNIT0xEID0gMjA7IC8vICUgZ2FwIHRoYXQgdHJpZ2dlcnMgZGF0YV9mbGFnCmNvbnN0IE5BRExBTl9XRUlHSFQgPSAwLjYwOwpjb25zdCBNQURMQU5fV0VJR0hUID0gMC40MDsKCmZ1bmN0aW9uIHNsZWVwKG1zKSB7CiAgcmV0dXJuIG5ldyBQcm9taXNlKHJlc29sdmUgPT4gc2V0VGltZW91dChyZXNvbHZlLCBtcykpOwp9CgovKioKICogUGFyc2UgYW4gYWRkcmVzcyBzdHJpbmcgaW50byBzdHJlZXQgbmFtZSBhbmQgaG91c2UgbnVtYmVyLgogKiBIYW5kbGVzIGZvcm1hdHMgbGlrZTogIteo15fXldeRINep16DXp9eoIDEwLTE0LCDXqdeb15XXoNeqINeQ15LXqNeV15HXoNenLCDXl9eV15zXldefIgogKi8KZnVuY3Rpb24gcGFyc2VBZGRyZXNzKGFkZHJlc3NTdHIpIHsKICBpZiAoIWFkZHJlc3NTdHIpIHJldHVybiBudWxsOwoKICAvLyBTdHJpcCBwcmVmaXhlcyBsaWtlICLXqNeX15XXkSIsICLXqdeT16jXldeqIiwgIteT16jXmiIsICLXodee15jXqiIKICBjb25zdCBjbGVhbmVkID0gYWRkcmVzc1N0cgogICAgLnJlcGxhY2UoL14o16jXl9eV15F816nXk9eo15XXqnzXk9eo15p816HXnteY16p816nXkyd816jXlycpXHMrL2ksICcnKQogICAgLnRyaW0oKTsKCiAgLy8gRXh0cmFjdCBzdHJlZXQgbmFtZSBhbmQgZmlyc3QgbnVtYmVyCiAgY29uc3QgbWF0Y2ggPSBjbGVhbmVkLm1hdGNoKC9eKFteXGQsXSs/KVxzKyhcZCspLyk7CiAgaWYgKCFtYXRjaCkgewogICAgLy8gTm8gbnVtYmVyIGZvdW5kIC0gcmV0dXJuIHN0cmVldCBuYW1lIG9ubHkKICAgIGNvbnN0IHN0cmVldE9ubHkgPSBjbGVhbmVkLnNwbGl0KCcsJylbMF0udHJpbSgpOwogICAgcmV0dXJuIHsgc3RyZWV0OiBzdHJlZXRPbmx5LCBob3VzZU51bTogJycgfTsKICB9CgogIHJldHVybiB7CiAgICBzdHJlZXQ6IG1hdGNoWzFdLnRyaW0oKSwKICAgIGhvdXNlTnVtOiBtYXRjaFsyXQogIH07Cn0KCi8qKgogKiBFeHRyYWN0IGFsbCB1bmlxdWUgc3RyZWV0IG5hbWVzIGZyb20gYSBjb21wbGV4J3MgYWRkcmVzc2VzIGZpZWxkLgogKiBSZXR1cm5zIHVwIHRvIDUgc3RyZWV0cyB0byBxdWVyeS4KICovCmZ1bmN0aW9uIGV4dHJhY3RTdHJlZXRzKGNvbXBsZXgpIHsKICBjb25zdCBhZGRyZXNzVGV4dCA9IGNvbXBsZXguYWRkcmVzc2VzIHx8IGNvbXBsZXguYWRkcmVzcyB8fCAnJzsKICBpZiAoIWFkZHJlc3NUZXh0KSByZXR1cm4gW107CgogIGNvbnN0IHN0cmVldHMgPSBuZXcgU2V0KCk7CgogIC8vIFNwbGl0IGJ5IHNlbWljb2xvbnMsIGNvbW1hcywgb3IgbmV3bGluZXMgLSBlYWNoIHNlZ21lbnQgbWF5IGJlIGFuIGFkZHJlc3MKICBjb25zdCBzZWdtZW50cyA9IGFkZHJlc3NUZXh0LnNwbGl0KC9bOyxcbl0rLyk7CgogIGZvciAoY29uc3Qgc2VnIG9mIHNlZ21lbnRzKSB7CiAgICBjb25zdCBwYXJzZWQgPSBwYXJzZUFkZHJlc3Moc2VnLnRyaW0oKSk7CiAgICBpZiAocGFyc2VkICYmIHBhcnNlZC5zdHJlZXQgJiYgcGFyc2VkLnN0cmVldC5sZW5ndGggPiAyKSB7CiAgICAgIC8vIEZpbHRlciBvdXQgbmVpZ2hib3Job29kIGRlc2NyaXB0aW9ucyAodG9vIGxvbmcgPSBub3QgYSBzdHJlZXQgbmFtZSkKICAgICAgaWYgKHBhcnNlZC5zdHJlZXQubGVuZ3RoIDwgNDApIHsKICAgICAgICBzdHJlZXRzLmFkZChwYXJzZWQuc3RyZWV0KTsKICAgICAgfQogICAgfQogIH0KCiAgcmV0dXJuIEFycmF5LmZyb20oc3RyZWV0cykuc2xpY2UoMCwgNSk7Cn0KCi8qKgogKiBGZXRjaCB0cmFuc2FjdGlvbnMgZnJvbSBuYWRsYW4uZ292LmlsIGZvciBhIHNwZWNpZmljIHN0cmVldCBpbiBhIGNpdHkuCiAqIFJldHVybnMgYXJyYXkgb2YgdHJhbnNhY3Rpb25zIHdpdGggcHJpY2VfcGVyX3NxbSBjYWxjdWxhdGVkLgogKi8KYXN5bmMgZnVuY3Rpb24gZmV0Y2hOYWRsYW5TdHJlZXQoc3RyZWV0LCBjaXR5KSB7CiAgdHJ5IHsKICAgIGNvbnN0IHBheWxvYWQgPSB7CiAgICAgIE9iamVjdElEOiAnJywKICAgICAgQ3VycmVudExhdmVsOiAxLAogICAgICBQYWdlTm86IDEsCiAgICAgIE9yZGVyQnlGaWxsZWQ6ICdERUFMREFURVRJTUUnLAogICAgICBPcmRlckJ5RGVzY2VuZDogdHJ1ZSwKICAgICAgVGJsQXJlYTogJycsCiAgICAgIFRibERpc3RyaWN0OiAnJywKICAgICAgVGJsQ2l0eTogY2l0eSwKICAgICAgVGJsU3RyZWV0OiBzdHJlZXQsCiAgICAgIFRibEhvdXNlTnVtOiAnJywKICAgICAgRnJvbURhdGU6ICcnLAogICAgICBUb0RhdGU6ICcnLAogICAgICBSb25lOiAnJywKICAgICAgUG9seWdvbjogJycsCiAgICAgIEZyb21QcmljZTogJycsCiAgICAgIFRvUHJpY2U6ICcnLAogICAgICBGcm9tUm9vbTogJycsCiAgICAgIFRvUm9vbTogJycsCiAgICAgIEZyb21GbG9vcjogJycsCiAgICAgIFRvRmxvb3I6ICcnLAogICAgICBGcm9tQnVpbGRZZWFyOiAnJywKICAgICAgVG9CdWlsZFllYXI6ICcnLAogICAgICBGcm9tQXJlYTogJycsCiAgICAgIFRvQXJlYTogJycKICAgIH07CgogICAgY29uc3QgcmVzcG9uc2UgPSBhd2FpdCBheGlvcy5wb3N0KE5BRExBTl9BUElfVVJMLCBwYXlsb2FkLCB7CiAgICAgIGhlYWRlcnM6IHsKICAgICAgICAnQ29udGVudC1UeXBlJzogJ2FwcGxpY2F0aW9uL2pzb24nLAogICAgICAgICdBY2NlcHQnOiAnYXBwbGljYXRpb24vanNvbicsCiAgICAgICAgJ1VzZXItQWdlbnQnOiAnTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2JwogICAgICB9LAogICAgICB0aW1lb3V0OiAxNTAwMAogICAgfSk7CgogICAgY29uc3QgZGF0YSA9IHJlc3BvbnNlLmRhdGE7CiAgICBjb25zdCByZXN1bHRzID0gZGF0YS5BbGxSZXN1bHRzIHx8IGRhdGEuUmVzdWx0TGF2ZWwxIHx8IFtdOwoKICAgIGlmICghQXJyYXkuaXNBcnJheShyZXN1bHRzKSkgcmV0dXJuIFtdOwoKICAgIC8vIEZpbHRlciB0byBsYXN0IE1BWF9UUkFOU0FDVElPTlNfQUdFX01PTlRIUyBhbmQgYXBhcnRtZW50cyBvbmx5CiAgICBjb25zdCBjdXRvZmYgPSBuZXcgRGF0ZSgpOwogICAgY3V0b2ZmLnNldE1vbnRoKGN1dG9mZi5nZXRNb250aCgpIC0gTUFYX1RSQU5TQUNUSU9OU19BR0VfTU9OVEhTKTsKCiAgICByZXR1cm4gcmVzdWx0cwogICAgICAuZmlsdGVyKHR4ID0+IHsKICAgICAgICBpZiAoIXR4LkRFQUxBTU9VTlQgfHwgcGFyc2VGbG9hdCh0eC5ERUFMQU1PVU5UKSA8PSAwKSByZXR1cm4gZmFsc2U7CiAgICAgICAgaWYgKCF0eC5BU1NFVEFSRUEgfHwgcGFyc2VGbG9hdCh0eC5BU1NFVEFSRUEpIDw9IDApIHJldHVybiBmYWxzZTsKICAgICAgICAvLyBPbmx5IHJlc2lkZW50aWFsIGFwYXJ0bWVudHMKICAgICAgICBjb25zdCBhc3NldFR5cGUgPSAodHguQVNTRVRUWVBFIHx8ICcnKS50b0xvd2VyQ2FzZSgpOwogICAgICAgIGlmIChhc3NldFR5cGUgJiYgIWFzc2V0VHlwZS5pbmNsdWRlcygn15PXmdeo15QnKSAmJiAhYXNzZXRUeXBlLmluY2x1ZGVzKCfXnteS15XXqNeZ150nKSkgcmV0dXJuIGZhbHNlOwogICAgICAgIC8vIERhdGUgZmlsdGVyCiAgICAgICAgaWYgKHR4LkRFQUxEQVRFVElNRSkgewogICAgICAgICAgY29uc3QgZGVhbERhdGUgPSBuZXcgRGF0ZSh0eC5ERUFMREFURVRJTUUpOwogICAgICAgICAgaWYgKGRlYWxEYXRlIDwgY3V0b2ZmKSByZXR1cm4gZmFsc2U7CiAgICAgICAgfQogICAgICAgIHJldHVybiB0cnVlOwogICAgICB9KQogICAgICAubWFwKHR4ID0+IHsKICAgICAgICBjb25zdCBwcmljZSA9IHBhcnNlRmxvYXQodHguREVBTEFNT1VOVCk7CiAgICAgICAgY29uc3QgYXJlYSA9IHBhcnNlRmxvYXQodHguQVNTRVRBUkVBKTsKICAgICAgICBjb25zdCBwcmljZVBlclNxbSA9IGFyZWEgPiAwID8gTWF0aC5yb3VuZChwcmljZSAvIGFyZWEpIDogbnVsbDsKICAgICAgICByZXR1cm4gewogICAgICAgICAgc3RyZWV0LAogICAgICAgICAgYWRkcmVzczogYCR7dHguQVNTRVRBRERSRVNTIHx8IHN0cmVldH0gJHt0eC5BU1NFVEhPVVNFTlVNQkVSIHx8ICcnfWAudHJpbSgpLAogICAgICAgICAgcHJpY2UsCiAgICAgICAgICBhcmVhX3NxbTogYXJlYSwKICAgICAgICAgIHByaWNlX3Blcl9zcW06IHByaWNlUGVyU3FtLAogICAgICAgICAgZGF0ZTogdHguREVBTERBVEVUSU1FIHx8IG51bGwsCiAgICAgICAgICBzb3VyY2U6ICduYWRsYW5fZ292JwogICAgICAgIH07CiAgICAgIH0pCiAgICAgIC5maWx0ZXIodHggPT4gdHgucHJpY2VfcGVyX3NxbSAmJiB0eC5wcmljZV9wZXJfc3FtID4gMzAwMCAmJiB0eC5wcmljZV9wZXJfc3FtIDwgMTUwMDAwKTsKCiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIud2FybihgW0JlbmNobWFya10gbmFkbGFuIGVycm9yIGZvciAke3N0cmVldH0sICR7Y2l0eX06ICR7ZXJyLm1lc3NhZ2V9YCk7CiAgICByZXR1cm4gW107CiAgfQp9CgovKioKICogQnVpbGQgUGVycGxleGl0eSBxdWVyeSB0byBnZXQgbWFkbGFuIG5laWdoYm9yaG9vZCBkYXRhIGZvciBhIGNvbXBsZXguCiAqLwpmdW5jdGlvbiBidWlsZE1hZGxhbkJlbmNobWFya1F1ZXJ5KGNvbXBsZXgsIHN0cmVldHMpIHsKICBjb25zdCBzdHJlZXRMaXN0ID0gc3RyZWV0cy5qb2luKCcsICcpOwogIHJldHVybiBg15fXpNepINeg16rXldeg15kg16LXoden15DXldeqINeg15PXnCLXnyDXodeS15XXqNeV16og157XkNeq16ggbWFkbGFuLmNvLmlsINei15HXldeoINeU16jXl9eV15HXldeqINeU16HXnteV15vXmdedINec157XqteX150gIiR7Y29tcGxleC5uYW1lfSIg15Eke2NvbXBsZXguY2l0eX0uCgrXqNeX15XXkdeV16og15zXl9eZ16TXldepOiAke3N0cmVldExpc3R9CgrXkNeg15kg16bXqNeZ15o6CjEuINee15fXmdeoINee157Xldem16Ig15zXniLXqCDXqdecINeT15nXqNeV16og16nXoNee15vXqNeVINeRLTI0INeX15XXk9ep15nXnSDXlNeQ15fXqNeV16DXmdedINeR15DXldeq150g16jXl9eV15HXldeqCjIuINeo16cg16LXoden15DXldeqINeh15LXldeo15XXqiAtINec15Ag157Xl9eZ16jXmSDXkdeZ16fXldepCjMuINeo16cg15PXmdeo15XXqiDXnteS15XXqNeZ150gKNec15Ag157XodeX16jXmSkKCteU15fXlteoIEpTT04g15HXnNeR15M6CnsKICAibWFkbGFuX2F2Z19wcmljZV9zcW0iOiAwLAogICJtYWRsYW5fdHJhbnNhY3Rpb25zX2NvdW50IjogMCwKICAibWFkbGFuX3ByaWNlX3JhbmdlIjogeyJtaW4iOiAwLCAibWF4IjogMH0sCiAgIm1hZGxhbl9kYXRhX2ZyZXNobmVzcyI6ICJZWVlZLU1NIiwKICAic3RyZWV0c19mb3VuZCI6IFsi16jXqdeZ157XqiDXqNeX15XXkdeV16og16nXoNee16bXkNeVIl0sCiAgImRhdGFfcXVhbGl0eSI6ICJoaWdoL21lZGl1bS9sb3ciLAogICJub3RlcyI6ICLXlNei16jXldeqINeQ150g15nXqSIKfQoK15fXpNepINeROiBtYWRsYW4uY28uaWwsINeZ15MyLCDXoNeT15wi158g157Xntep15zXqteZCteU15fXlteoIEpTT04g15HXnNeR15MuYDsKfQoKLyoqCiAqIEZldGNoIG1hZGxhbiBiZW5jaG1hcmsgZGF0YSB2aWEgUGVycGxleGl0eS4KICovCmFzeW5jIGZ1bmN0aW9uIGZldGNoTWFkbGFuQmVuY2htYXJrKGNvbXBsZXgsIHN0cmVldHMpIHsKICB0cnkgewogICAgY29uc3QgcHJvbXB0ID0gYnVpbGRNYWRsYW5CZW5jaG1hcmtRdWVyeShjb21wbGV4LCBzdHJlZXRzKTsKICAgIGNvbnN0IHN5c3RlbVByb21wdCA9IGBZb3UgYXJlIGEgcmVhbCBlc3RhdGUgZGF0YSBleHRyYWN0aW9uIGFzc2lzdGFudCBmb3IgSXNyYWVsLgpFeHRyYWN0IE9OTFkgdmVyaWZpZWQgY2xvc2VkIHRyYW5zYWN0aW9uIGRhdGEuIFJldHVybiBPTkxZIHZhbGlkIEpTT04uCkFsbCBwcmljZXMgaW4gSXNyYWVsaSBTaGVrZWxzIChJTFMpLiBGb2N1cyBvbiBhY3R1YWwgY2xvc2VkIHRyYW5zYWN0aW9ucy5gOwoKICAgIGNvbnN0IHJhd1Jlc3BvbnNlID0gYXdhaXQgcXVlcnlQZXJwbGV4aXR5KHByb21wdCwgc3lzdGVtUHJvbXB0KTsKICAgIGNvbnN0IGRhdGEgPSBwYXJzZUpzb25SZXNwb25zZShyYXdSZXNwb25zZSk7CgogICAgaWYgKCFkYXRhIHx8ICFkYXRhLm1hZGxhbl9hdmdfcHJpY2Vfc3FtIHx8IGRhdGEubWFkbGFuX2F2Z19wcmljZV9zcW0gPD0gMCkgewogICAgICByZXR1cm4gbnVsbDsKICAgIH0KCiAgICByZXR1cm4gewogICAgICBhdmdfcHJpY2Vfc3FtOiBNYXRoLnJvdW5kKGRhdGEubWFkbGFuX2F2Z19wcmljZV9zcW0pLAogICAgICB0cmFuc2FjdGlvbnNfY291bnQ6IGRhdGEubWFkbGFuX3RyYW5zYWN0aW9uc19jb3VudCB8fCAwLAogICAgICBkYXRhX3F1YWxpdHk6IGRhdGEuZGF0YV9xdWFsaXR5IHx8ICdtZWRpdW0nLAogICAgICBzdHJlZXRzX2ZvdW5kOiBkYXRhLnN0cmVldHNfZm91bmQgfHwgc3RyZWV0cywKICAgICAgZnJlc2huZXNzOiBkYXRhLm1hZGxhbl9kYXRhX2ZyZXNobmVzcyB8fCBudWxsCiAgICB9OwoKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci53YXJuKGBbQmVuY2htYXJrXSBtYWRsYW4gUGVycGxleGl0eSBlcnJvciBmb3IgJHtjb21wbGV4Lm5hbWV9OiAke2Vyci5tZXNzYWdlfWApOwogICAgcmV0dXJuIG51bGw7CiAgfQp9CgovKioKICogQ2FsY3VsYXRlIHdlaWdodGVkIG5laWdoYm9yaG9vZCBhdmVyYWdlIGZyb20gbmFkbGFuICsgbWFkbGFuIGRhdGEuCiAqIFJldHVybnMgYmVuY2htYXJrIG9iamVjdCB3aXRoIGF2Zywgc291cmNlIGluZm8sIGFuZCBxdWFsaXR5IGZsYWdzLgogKi8KZnVuY3Rpb24gY2FsY3VsYXRlV2VpZ2h0ZWRCZW5jaG1hcmsobmFkbGFuQXZnLCBuYWRsYW5Db3VudCwgbWFkbGFuRGF0YSwgY2l0eUF2ZykgewogIGNvbnN0IHJlc3VsdHMgPSB7IG5hZGxhbjogbnVsbCwgbWFkbGFuOiBudWxsLCB3ZWlnaHRlZDogbnVsbCwgc291cmNlOiBudWxsLCBmbGFnOiBmYWxzZSwgZ2FwOiBudWxsIH07CgogIGlmIChuYWRsYW5BdmcgJiYgbmFkbGFuQXZnID4gMCkgcmVzdWx0cy5uYWRsYW4gPSBuYWRsYW5Bdmc7CiAgaWYgKG1hZGxhbkRhdGEgJiYgbWFkbGFuRGF0YS5hdmdfcHJpY2Vfc3FtID4gMCkgcmVzdWx0cy5tYWRsYW4gPSBtYWRsYW5EYXRhLmF2Z19wcmljZV9zcW07CgogIGlmIChyZXN1bHRzLm5hZGxhbiAmJiByZXN1bHRzLm1hZGxhbikgewogICAgLy8gQm90aCBzb3VyY2VzIGF2YWlsYWJsZSAtIHdlaWdodGVkIGF2ZXJhZ2UKICAgIHJlc3VsdHMud2VpZ2h0ZWQgPSBNYXRoLnJvdW5kKAogICAgICByZXN1bHRzLm5hZGxhbiAqIE5BRExBTl9XRUlHSFQgKyByZXN1bHRzLm1hZGxhbiAqIE1BRExBTl9XRUlHSFQKICAgICk7CiAgICByZXN1bHRzLnNvdXJjZSA9ICduYWRsYW4rbWFkbGFuJzsKCiAgICAvLyBDaGVjayBkaXZlcmdlbmNlIC0gZmxhZyBpZiA+IHRocmVzaG9sZAogICAgY29uc3QgZ2FwID0gTWF0aC5hYnMocmVzdWx0cy5uYWRsYW4gLSByZXN1bHRzLm1hZGxhbikgLyByZXN1bHRzLm5hZGxhbiAqIDEwMDsKICAgIHJlc3VsdHMuZ2FwID0gTWF0aC5yb3VuZChnYXApOwogICAgcmVzdWx0cy5mbGFnID0gZ2FwID4gQkVOQ0hNQVJLX0RJVkVSR0VOQ0VfVEhSRVNIT0xEOwoKICB9IGVsc2UgaWYgKHJlc3VsdHMubmFkbGFuKSB7CiAgICByZXN1bHRzLndlaWdodGVkID0gcmVzdWx0cy5uYWRsYW47CiAgICByZXN1bHRzLnNvdXJjZSA9ICduYWRsYW5fb25seSc7CiAgfSBlbHNlIGlmIChyZXN1bHRzLm1hZGxhbikgewogICAgcmVzdWx0cy53ZWlnaHRlZCA9IHJlc3VsdHMubWFkbGFuOwogICAgcmVzdWx0cy5zb3VyY2UgPSAnbWFkbGFuX29ubHknOwogIH0gZWxzZSB7CiAgICAvLyBGYWxsYmFjayB0byBjaXR5IGF2ZXJhZ2Ugd2l0aCBwZW5hbHR5IG5vdGUKICAgIHJlc3VsdHMud2VpZ2h0ZWQgPSBjaXR5QXZnIHx8IG51bGw7CiAgICByZXN1bHRzLnNvdXJjZSA9ICdjaXR5X2F2Z19mYWxsYmFjayc7CiAgfQoKICAvLyBwcmVtaXVtX3ZzX2NpdHk6IGhvdyB0aGlzIG5laWdoYm9yaG9vZCBjb21wYXJlcyB0byBjaXR5IGF2ZXJhZ2UKICBpZiAocmVzdWx0cy53ZWlnaHRlZCAmJiBjaXR5QXZnICYmIGNpdHlBdmcgPiAwKSB7CiAgICByZXN1bHRzLnByZW1pdW1Wc0NpdHkgPSBNYXRoLnJvdW5kKAogICAgICAocmVzdWx0cy53ZWlnaHRlZCAtIGNpdHlBdmcpIC8gY2l0eUF2ZyAqIDEwMAogICAgKTsKICB9CgogIHJldHVybiByZXN1bHRzOwp9CgovKioKICogTWFpbiBmdW5jdGlvbjogZmV0Y2ggYW5kIHN0b3JlIG5laWdoYm9yaG9vZCBiZW5jaG1hcmsgZm9yIGEgc2luZ2xlIGNvbXBsZXguCiAqLwphc3luYyBmdW5jdGlvbiBmZXRjaE5laWdoYm9yaG9vZEJlbmNobWFyayhjb21wbGV4SWQpIHsKICBjb25zdCByZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KCdTRUxFQ1QgKiBGUk9NIGNvbXBsZXhlcyBXSEVSRSBpZCA9ICQxJywgW2NvbXBsZXhJZF0pOwogIGlmIChyZXN1bHQucm93cy5sZW5ndGggPT09IDApIHRocm93IG5ldyBFcnJvcihgQ29tcGxleCAke2NvbXBsZXhJZH0gbm90IGZvdW5kYCk7CgogIGNvbnN0IGNvbXBsZXggPSByZXN1bHQucm93c1swXTsKICBsb2dnZXIuaW5mbyhgW0JlbmNobWFya10gU3RhcnRpbmc6ICR7Y29tcGxleC5uYW1lfSAoJHtjb21wbGV4LmNpdHl9KWApOwoKICAvLyBFeHRyYWN0IHN0cmVldHMgZnJvbSBhZGRyZXNzCiAgY29uc3Qgc3RyZWV0cyA9IGV4dHJhY3RTdHJlZXRzKGNvbXBsZXgpOwogIGlmIChzdHJlZXRzLmxlbmd0aCA9PT0gMCkgewogICAgbG9nZ2VyLndhcm4oYFtCZW5jaG1hcmtdIE5vIHN0cmVldHMgZm91bmQgZm9yICR7Y29tcGxleC5uYW1lfSAtIHNraXBwaW5nYCk7CiAgICByZXR1cm4geyBjb21wbGV4SWQsIG5hbWU6IGNvbXBsZXgubmFtZSwgc3RhdHVzOiAnbm9fYWRkcmVzcycsIHN0cmVldHM6IDAgfTsKICB9CgogIC8vIEZldGNoIGZyb20gbmFkbGFuIGZvciBlYWNoIHN0cmVldAogIGxldCBhbGxOYWRsYW5UcmFuc2FjdGlvbnMgPSBbXTsKICBmb3IgKGNvbnN0IHN0cmVldCBvZiBzdHJlZXRzKSB7CiAgICBjb25zdCB0eHMgPSBhd2FpdCBmZXRjaE5hZGxhblN0cmVldChzdHJlZXQsIGNvbXBsZXguY2l0eSk7CiAgICBhbGxOYWRsYW5UcmFuc2FjdGlvbnMgPSBhbGxOYWRsYW5UcmFuc2FjdGlvbnMuY29uY2F0KHR4cyk7CiAgICBhd2FpdCBzbGVlcCgxNTAwKTsKICB9CgogIC8vIENhbGN1bGF0ZSBuYWRsYW4gYXZlcmFnZQogIGxldCBuYWRsYW5BdmcgPSBudWxsOwogIGlmIChhbGxOYWRsYW5UcmFuc2FjdGlvbnMubGVuZ3RoID4gMCkgewogICAgY29uc3QgdmFsaWRQcmljZXMgPSBhbGxOYWRsYW5UcmFuc2FjdGlvbnMKICAgICAgLm1hcCh0eCA9PiB0eC5wcmljZV9wZXJfc3FtKQogICAgICAuZmlsdGVyKHAgPT4gcCAmJiBwID4gMCk7CiAgICBpZiAodmFsaWRQcmljZXMubGVuZ3RoID4gMCkgewogICAgICBuYWRsYW5BdmcgPSBNYXRoLnJvdW5kKHZhbGlkUHJpY2VzLnJlZHVjZSgoYSwgYikgPT4gYSArIGIsIDApIC8gdmFsaWRQcmljZXMubGVuZ3RoKTsKICAgIH0KICB9CgogIC8vIEZldGNoIG1hZGxhbiB2aWEgUGVycGxleGl0eQogIGF3YWl0IHNsZWVwKERFTEFZX01TKTsKICBjb25zdCBtYWRsYW5EYXRhID0gYXdhaXQgZmV0Y2hNYWRsYW5CZW5jaG1hcmsoY29tcGxleCwgc3RyZWV0cyk7CgogIC8vIENhbGN1bGF0ZSB3ZWlnaHRlZCBiZW5jaG1hcmsKICBjb25zdCBjaXR5QXZnID0gY29tcGxleC5jaXR5X2F2Z19wcmljZV9zcW0gPyBwYXJzZUZsb2F0KGNvbXBsZXguY2l0eV9hdmdfcHJpY2Vfc3FtKSA6IG51bGw7CiAgY29uc3QgYmVuY2htYXJrID0gY2FsY3VsYXRlV2VpZ2h0ZWRCZW5jaG1hcmsobmFkbGFuQXZnLCBhbGxOYWRsYW5UcmFuc2FjdGlvbnMubGVuZ3RoLCBtYWRsYW5EYXRhLCBjaXR5QXZnKTsKCiAgLy8gQ2FsY3VsYXRlIGFjdHVhbF9wcmVtaXVtIHVzaW5nIG5laWdoYm9yaG9vZCBiZW5jaG1hcmsKICBjb25zdCBwcmljZVBlclNxbSA9IGNvbXBsZXgucHJpY2VfcGVyX3NxbSA/IHBhcnNlRmxvYXQoY29tcGxleC5wcmljZV9wZXJfc3FtKSA6IG51bGw7CiAgbGV0IGFjdHVhbFByZW1pdW0gPSBudWxsOwogIGlmIChwcmljZVBlclNxbSAmJiBiZW5jaG1hcmsud2VpZ2h0ZWQgJiYgYmVuY2htYXJrLndlaWdodGVkID4gMCkgewogICAgYWN0dWFsUHJlbWl1bSA9IE1hdGgucm91bmQoKHByaWNlUGVyU3FtIC0gYmVuY2htYXJrLndlaWdodGVkKSAvIGJlbmNobWFyay53ZWlnaHRlZCAqIDEwMCk7CiAgfQoKICAvLyBTdG9yZSB0byBEQgogIGF3YWl0IHBvb2wucXVlcnkoYAogICAgVVBEQVRFIGNvbXBsZXhlcyBTRVQKICAgICAgbmFkbGFuX25laWdoYm9yaG9vZF9hdmdfc3FtID0gJDEsCiAgICAgIG1hZGxhbl9uZWlnaGJvcmhvb2RfYXZnX3NxbSA9ICQyLAogICAgICBuZWlnaGJvcmhvb2RfYXZnX3NxbSA9ICQzLAogICAgICBuZWlnaGJvcmhvb2Rfc3RyZWV0cyA9ICQ0LAogICAgICBuZWlnaGJvcmhvb2RfYmVuY2htYXJrX3NvdXJjZSA9ICQ1LAogICAgICBiZW5jaG1hcmtfc291cmNlX2dhcCA9ICQ2LAogICAgICBiZW5jaG1hcmtfZGF0YV9mbGFnID0gJDcsCiAgICAgIHByZW1pdW1fdnNfY2l0eSA9ICQ4LAogICAgICBsYXN0X2JlbmNobWFya191cGRhdGUgPSBOT1coKSwKICAgICAgYWN0dWFsX3ByZW1pdW0gPSBDT0FMRVNDRSgkOSwgYWN0dWFsX3ByZW1pdW0pLAogICAgICB1cGRhdGVkX2F0ID0gTk9XKCkKICAgIFdIRVJFIGlkID0gJDEwCiAgYCwgWwogICAgbmFkbGFuQXZnLAogICAgbWFkbGFuRGF0YT8uYXZnX3ByaWNlX3NxbSB8fCBudWxsLAogICAgYmVuY2htYXJrLndlaWdodGVkLAogICAgSlNPTi5zdHJpbmdpZnkoc3RyZWV0cyksCiAgICBiZW5jaG1hcmsuc291cmNlLAogICAgYmVuY2htYXJrLmdhcCwKICAgIGJlbmNobWFyay5mbGFnLAogICAgYmVuY2htYXJrLnByZW1pdW1Wc0NpdHkgfHwgbnVsbCwKICAgIGFjdHVhbFByZW1pdW0sCiAgICBjb21wbGV4SWQKICBdKTsKCiAgbG9nZ2VyLmluZm8oYFtCZW5jaG1hcmtdIERvbmU6ICR7Y29tcGxleC5uYW1lfSB8IG5hZGxhbj0ke25hZGxhbkF2Z30gfCBtYWRsYW49JHttYWRsYW5EYXRhPy5hdmdfcHJpY2Vfc3FtIHx8ICdOL0EnfSB8IHdlaWdodGVkPSR7YmVuY2htYXJrLndlaWdodGVkfSB8IGZsYWc9JHtiZW5jaG1hcmsuZmxhZ30gfCBhY3R1YWxfcHJlbWl1bT0ke2FjdHVhbFByZW1pdW19JWApOwoKICByZXR1cm4gewogICAgY29tcGxleElkLAogICAgbmFtZTogY29tcGxleC5uYW1lLAogICAgY2l0eTogY29tcGxleC5jaXR5LAogICAgc3RyZWV0cywKICAgIG5hZGxhblRyYW5zYWN0aW9uczogYWxsTmFkbGFuVHJhbnNhY3Rpb25zLmxlbmd0aCwKICAgIG5hZGxhbkF2ZywKICAgIG1hZGxhbkF2ZzogbWFkbGFuRGF0YT8uYXZnX3ByaWNlX3NxbSB8fCBudWxsLAogICAgbmVpZ2hib3Job29kQXZnOiBiZW5jaG1hcmsud2VpZ2h0ZWQsCiAgICBiZW5jaG1hcmtTb3VyY2U6IGJlbmNobWFyay5zb3VyY2UsCiAgICBkaXZlcmdlbmNlR2FwOiBiZW5jaG1hcmsuZ2FwLAogICAgZGF0YUZsYWc6IGJlbmNobWFyay5mbGFnLAogICAgcHJlbWl1bVZzQ2l0eTogYmVuY2htYXJrLnByZW1pdW1Wc0NpdHksCiAgICBhY3R1YWxQcmVtaXVtLAogICAgc3RhdHVzOiBiZW5jaG1hcmsud2VpZ2h0ZWQgPyAnc3VjY2VzcycgOiAnbm9fZGF0YScKICB9Owp9CgovKioKICogQmF0Y2ggc2NhbiAtIHJ1bnMgbmVpZ2hib3Job29kIGJlbmNobWFyayBmb3IgYWxsIGNvbXBsZXhlcyBvciBmaWx0ZXJlZCBzZXQuCiAqIE9wdGlvbnM6IHsgbGltaXQsIHRpZXIsIGNpdHksIHN0YWxlT25seSB9CiAqLwphc3luYyBmdW5jdGlvbiBzY2FuTmVpZ2hib3Job29kQmVuY2htYXJrcyhvcHRpb25zID0ge30pIHsKICBjb25zdCB7IGxpbWl0LCBjaXR5LCBzdGFsZU9ubHkgPSB0cnVlIH0gPSBvcHRpb25zOwoKICBsZXQgcXVlcnkgPSAnU0VMRUNUIGlkLCBuYW1lLCBjaXR5IEZST00gY29tcGxleGVzIFdIRVJFIDE9MSc7CiAgY29uc3QgcGFyYW1zID0gW107CiAgbGV0IGlkeCA9IDE7CgogIGlmIChjaXR5KSB7CiAgICBxdWVyeSArPSBgIEFORCBjaXR5ID0gJCR7aWR4Kyt9YDsKICAgIHBhcmFtcy5wdXNoKGNpdHkpOwogIH0KCiAgaWYgKHN0YWxlT25seSkgewogICAgcXVlcnkgKz0gYCBBTkQgKGxhc3RfYmVuY2htYXJrX3VwZGF0ZSBJUyBOVUxMIE9SIGxhc3RfYmVuY2htYXJrX3VwZGF0ZSA8IE5PVygpIC0gSU5URVJWQUwgJzMwIGRheXMnKWA7CiAgfQoKICAvLyBQcmlvcml0aXplOiBjb21wbGV4ZXMgd2l0aCBhZGRyZXNzZXMgZmlyc3QsIFRpZXIgMSBmaXJzdCB3aXRoaW4gdGhvc2UKICBxdWVyeSArPSAnIE9SREVSIEJZIChDQVNFIFdIRU4gYWRkcmVzcyBJUyBOT1QgTlVMTCBBTkQgbGVuZ3RoKGFkZHJlc3MpID4gMTAgVEhFTiAwIEVMU0UgMSBFTkQpLCBpYWlfc2NvcmUgREVTQyBOVUxMUyBMQVNUJzsKCiAgaWYgKGxpbWl0KSB7CiAgICBxdWVyeSArPSBgIExJTUlUICQke2lkeCsrfWA7CiAgICBwYXJhbXMucHVzaChsaW1pdCk7CiAgfQoKICBjb25zdCBjb21wbGV4ZXMgPSBhd2FpdCBwb29sLnF1ZXJ5KHF1ZXJ5LCBwYXJhbXMpOwogIGNvbnN0IHRvdGFsID0gY29tcGxleGVzLnJvd3MubGVuZ3RoOwoKICBsb2dnZXIuaW5mbyhgW0JlbmNobWFya10gU3RhcnRpbmcgYmF0Y2ggc2NhbjogJHt0b3RhbH0gY29tcGxleGVzYCk7CgogIGNvbnN0IHJlc3VsdHMgPSB7IHRvdGFsLCBwcm9jZXNzZWQ6IDAsIHN1Y2Nlc3M6IDAsIG5vX2FkZHJlc3M6IDAsIGZhaWxlZDogMCwgZmxhZ2dlZDogMCB9OwoKICBmb3IgKGxldCBpID0gMDsgaSA8IGNvbXBsZXhlcy5yb3dzLmxlbmd0aDsgaSsrKSB7CiAgICBjb25zdCBjb21wbGV4ID0gY29tcGxleGVzLnJvd3NbaV07CiAgICB0cnkgewogICAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBmZXRjaE5laWdoYm9yaG9vZEJlbmNobWFyayhjb21wbGV4LmlkKTsKICAgICAgcmVzdWx0cy5wcm9jZXNzZWQrKzsKCiAgICAgIGlmIChyZXN1bHQuc3RhdHVzID09PSAnc3VjY2VzcycpIHJlc3VsdHMuc3VjY2VzcysrOwogICAgICBlbHNlIGlmIChyZXN1bHQuc3RhdHVzID09PSAnbm9fYWRkcmVzcycpIHJlc3VsdHMubm9fYWRkcmVzcysrOwogICAgICBpZiAocmVzdWx0LmRhdGFGbGFnKSByZXN1bHRzLmZsYWdnZWQrKzsKCiAgICAgIGxvZ2dlci5pbmZvKGBbQmVuY2htYXJrICR7aSArIDF9LyR7dG90YWx9XSAke2NvbXBsZXgubmFtZX06ICR7cmVzdWx0LnN0YXR1c31gKTsKICAgIH0gY2F0Y2ggKGVycikgewogICAgICByZXN1bHRzLnByb2Nlc3NlZCsrOwogICAgICByZXN1bHRzLmZhaWxlZCsrOwogICAgICBsb2dnZXIuZXJyb3IoYFtCZW5jaG1hcmsgJHtpICsgMX0vJHt0b3RhbH1dICR7Y29tcGxleC5uYW1lfTogRVJST1IgLSAke2Vyci5tZXNzYWdlfWApOwogICAgfQoKICAgIGlmIChpIDwgY29tcGxleGVzLnJvd3MubGVuZ3RoIC0gMSkgYXdhaXQgc2xlZXAoREVMQVlfTVMpOwogIH0KCiAgbG9nZ2VyLmluZm8oJ1tCZW5jaG1hcmtdIEJhdGNoIGNvbXBsZXRlZCcsIHJlc3VsdHMpOwogIHJldHVybiByZXN1bHRzOwp9Cgptb2R1bGUuZXhwb3J0cyA9IHsKICBmZXRjaE5laWdoYm9yaG9vZEJlbmNobWFyaywKICBzY2FuTmVpZ2hib3Job29kQmVuY2htYXJrcywKICBleHRyYWN0U3RyZWV0cywKICBwYXJzZUFkZHJlc3MsCiAgY2FsY3VsYXRlV2VpZ2h0ZWRCZW5jaG1hcmsKfTsK
+/**
+ * Neighborhood Benchmark Service
+ *
+ * Calculates a hyper-local price benchmark for each complex by:
+ * 1. Fetching real closed transactions from nadlan.gov.il for nearby streets
+ * 2. Fetching market data from madlan.co.il via Perplexity
+ * 3. Computing a weighted average (60% nadlan / 40% madlan)
+ * 4. Flagging data quality issues when sources diverge > 20%
+ *
+ * This replaces city_avg_price_sqm as the benchmark for actual_premium calculation.
+ * city_avg_price_sqm is retained as a separate signal for neighborhood quality.
+ */
+
+const axios = require('axios');
+const pool = require('../db/pool');
+const { logger } = require('./logger');
+const { queryPerplexity, parseJsonResponse } = require('./perplexityService');
+
+const NADLAN_API_URL = 'https://www.nadlan.gov.il/Nadlan.REST/Main/GetAssestAndDeals';
+const DELAY_MS = 3000;
+const MAX_TRANSACTIONS_AGE_MONTHS = 24;
+const BENCHMARK_DIVERGENCE_THRESHOLD = 20; // % gap that triggers data_flag
+const NADLAN_WEIGHT = 0.60;
+const MADLAN_WEIGHT = 0.40;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Parse an address string into street name and house number.
+ * Handles formats like: "רחוב שנקר 10-14, שכונת אגרובנק, חולון"
+ */
+function parseAddress(addressStr) {
+  if (!addressStr) return null;
+
+  // Strip prefixes like "רחוב", "שדרות", "דרך", "סמטת"
+  const cleaned = addressStr
+    .replace(/^(רחוב|שדרות|דרך|סמטת|שד'|רח')\s+/i, '')
+    .trim();
+
+  // Extract street name and first number
+  const match = cleaned.match(/^([^\d,]+?)\s+(\d+)/);
+  if (!match) {
+    // No number found - return street name only
+    const streetOnly = cleaned.split(',')[0].trim();
+    return { street: streetOnly, houseNum: '' };
+  }
+
+  return {
+    street: match[1].trim(),
+    houseNum: match[2]
+  };
+}
+
+/**
+ * Extract all unique street names from a complex's addresses field.
+ * Returns up to 5 streets to query.
+ */
+function extractStreets(complex) {
+  const addressText = complex.addresses || complex.address || '';
+  if (!addressText) return [];
+
+  const streets = new Set();
+
+  // Split by semicolons, commas, or newlines - each segment may be an address
+  const segments = addressText.split(/[;,\n]+/);
+
+  for (const seg of segments) {
+    const parsed = parseAddress(seg.trim());
+    if (parsed && parsed.street && parsed.street.length > 2) {
+      // Filter out neighborhood descriptions (too long = not a street name)
+      if (parsed.street.length < 40) {
+        streets.add(parsed.street);
+      }
+    }
+  }
+
+  return Array.from(streets).slice(0, 5);
+}
+
+/**
+ * Fetch transactions from nadlan.gov.il for a specific street in a city.
+ * Returns array of transactions with price_per_sqm calculated.
+ */
+async function fetchNadlanStreet(street, city) {
+  try {
+    const payload = {
+      ObjectID: '',
+      CurrentLavel: 1,
+      PageNo: 1,
+      OrderByFilled: 'DEALDATETIME',
+      OrderByDescend: true,
+      TblArea: '',
+      TblDistrict: '',
+      TblCity: city,
+      TblStreet: street,
+      TblHouseNum: '',
+      FromDate: '',
+      ToDate: '',
+      Rone: '',
+      Polygon: '',
+      FromPrice: '',
+      ToPrice: '',
+      FromRoom: '',
+      ToRoom: '',
+      FromFloor: '',
+      ToFloor: '',
+      FromBuildYear: '',
+      ToBuildYear: '',
+      FromArea: '',
+      ToArea: ''
+    };
+
+    const response = await axios.post(NADLAN_API_URL, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 15000
+    });
+
+    const data = response.data;
+    const results = data.AllResults || data.ResultLavel1 || [];
+
+    if (!Array.isArray(results)) return [];
+
+    // Filter to last MAX_TRANSACTIONS_AGE_MONTHS and apartments only
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - MAX_TRANSACTIONS_AGE_MONTHS);
+
+    return results
+      .filter(tx => {
+        if (!tx.DEALAMOUNT || parseFloat(tx.DEALAMOUNT) <= 0) return false;
+        if (!tx.ASSETAREA || parseFloat(tx.ASSETAREA) <= 0) return false;
+        // Only residential apartments
+        const assetType = (tx.ASSETTYPE || '').toLowerCase();
+        if (assetType && !assetType.includes('דירה') && !assetType.includes('מגורים')) return false;
+        // Date filter
+        if (tx.DEALDATETIME) {
+          const dealDate = new Date(tx.DEALDATETIME);
+          if (dealDate < cutoff) return false;
+        }
+        return true;
+      })
+      .map(tx => {
+        const price = parseFloat(tx.DEALAMOUNT);
+        const area = parseFloat(tx.ASSETAREA);
+        const pricePerSqm = area > 0 ? Math.round(price / area) : null;
+        return {
+          street,
+          address: `${tx.ASSETADDRESS || street} ${tx.ASSETHOUSENUMBER || ''}`.trim(),
+          price,
+          area_sqm: area,
+          price_per_sqm: pricePerSqm,
+          date: tx.DEALDATETIME || null,
+          source: 'nadlan_gov'
+        };
+      })
+      .filter(tx => tx.price_per_sqm && tx.price_per_sqm > 3000 && tx.price_per_sqm < 150000);
+
+  } catch (err) {
+    logger.warn(`[Benchmark] nadlan error for ${street}, ${city}: ${err.message}`);
+    return [];
+  }
+}
+
+/**
+ * Build Perplexity query to get madlan neighborhood data for a complex.
+ */
+function buildMadlanBenchmarkQuery(complex, streets) {
+  const streetList = streets.join(', ');
+  return `חפש נתוני עסקאות נדל"ן סגורות מאתר madlan.co.il עבור הרחובות הסמוכים למתחם "${complex.name}" ב${complex.city}.
+
+רחובות לחיפוש: ${streetList}
+
+אני צריך:
+1. מחיר ממוצע למ"ר של דירות שנמכרו ב-24 חודשים האחרונים באותם רחובות
+2. רק עסקאות סגורות - לא מחירי ביקוש
+3. רק דירות מגורים (לא מסחרי)
+
+החזר JSON בלבד:
+{
+  "madlan_avg_price_sqm": 0,
+  "madlan_transactions_count": 0,
+  "madlan_price_range": {"min": 0, "max": 0},
+  "madlan_data_freshness": "YYYY-MM",
+  "streets_found": ["רשימת רחובות שנמצאו"],
+  "data_quality": "high/medium/low",
+  "notes": "הערות אם יש"
+}
+
+חפש ב: madlan.co.il, יד2, נדל"ן ממשלתי
+החזר JSON בלבד.`;
+}
+
+/**
+ * Fetch madlan benchmark data via Perplexity.
+ */
+async function fetchMadlanBenchmark(complex, streets) {
+  try {
+    const prompt = buildMadlanBenchmarkQuery(complex, streets);
+    const systemPrompt = `You are a real estate data extraction assistant for Israel.
+Extract ONLY verified closed transaction data. Return ONLY valid JSON.
+All prices in Israeli Shekels (ILS). Focus on actual closed transactions.`;
+
+    const rawResponse = await queryPerplexity(prompt, systemPrompt);
+    const data = parseJsonResponse(rawResponse);
+
+    if (!data || !data.madlan_avg_price_sqm || data.madlan_avg_price_sqm <= 0) {
+      return null;
+    }
+
+    return {
+      avg_price_sqm: Math.round(data.madlan_avg_price_sqm),
+      transactions_count: data.madlan_transactions_count || 0,
+      data_quality: data.data_quality || 'medium',
+      streets_found: data.streets_found || streets,
+      freshness: data.madlan_data_freshness || null
+    };
+
+  } catch (err) {
+    logger.warn(`[Benchmark] madlan Perplexity error for ${complex.name}: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * Calculate weighted neighborhood average from nadlan + madlan data.
+ * Returns benchmark object with avg, source info, and quality flags.
+ */
+function calculateWeightedBenchmark(nadlanAvg, nadlanCount, madlanData, cityAvg) {
+  const results = { nadlan: null, madlan: null, weighted: null, source: null, flag: false, gap: null };
+
+  if (nadlanAvg && nadlanAvg > 0) results.nadlan = nadlanAvg;
+  if (madlanData && madlanData.avg_price_sqm > 0) results.madlan = madlanData.avg_price_sqm;
+
+  if (results.nadlan && results.madlan) {
+    // Both sources available - weighted average
+    results.weighted = Math.round(
+      results.nadlan * NADLAN_WEIGHT + results.madlan * MADLAN_WEIGHT
+    );
+    results.source = 'nadlan+madlan';
+
+    // Check divergence - flag if > threshold
+    const gap = Math.abs(results.nadlan - results.madlan) / results.nadlan * 100;
+    results.gap = Math.round(gap);
+    results.flag = gap > BENCHMARK_DIVERGENCE_THRESHOLD;
+
+  } else if (results.nadlan) {
+    results.weighted = results.nadlan;
+    results.source = 'nadlan_only';
+  } else if (results.madlan) {
+    results.weighted = results.madlan;
+    results.source = 'madlan_only';
+  } else {
+    // Fallback to city average with penalty note
+    results.weighted = cityAvg || null;
+    results.source = 'city_avg_fallback';
+  }
+
+  // premium_vs_city: how this neighborhood compares to city average
+  if (results.weighted && cityAvg && cityAvg > 0) {
+    results.premiumVsCity = Math.round(
+      (results.weighted - cityAvg) / cityAvg * 100
+    );
+  }
+
+  return results;
+}
+
+/**
+ * Main function: fetch and store neighborhood benchmark for a single complex.
+ */
+async function fetchNeighborhoodBenchmark(complexId) {
+  const result = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
+  if (result.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
+
+  const complex = result.rows[0];
+  logger.info(`[Benchmark] Starting: ${complex.name} (${complex.city})`);
+
+  // Extract streets from address
+  const streets = extractStreets(complex);
+  if (streets.length === 0) {
+    logger.warn(`[Benchmark] No streets found for ${complex.name} - skipping`);
+    return { complexId, name: complex.name, status: 'no_address', streets: 0 };
+  }
+
+  // Fetch from nadlan for each street
+  let allNadlanTransactions = [];
+  for (const street of streets) {
+    const txs = await fetchNadlanStreet(street, complex.city);
+    allNadlanTransactions = allNadlanTransactions.concat(txs);
+    await sleep(1500);
+  }
+
+  // Calculate nadlan average
+  let nadlanAvg = null;
+  if (allNadlanTransactions.length > 0) {
+    const validPrices = allNadlanTransactions
+      .map(tx => tx.price_per_sqm)
+      .filter(p => p && p > 0);
+    if (validPrices.length > 0) {
+      nadlanAvg = Math.round(validPrices.reduce((a, b) => a + b, 0) / validPrices.length);
+    }
+  }
+
+  // Fetch madlan via Perplexity
+  await sleep(DELAY_MS);
+  const madlanData = await fetchMadlanBenchmark(complex, streets);
+
+  // Calculate weighted benchmark
+  const cityAvg = complex.city_avg_price_sqm ? parseFloat(complex.city_avg_price_sqm) : null;
+  const benchmark = calculateWeightedBenchmark(nadlanAvg, allNadlanTransactions.length, madlanData, cityAvg);
+
+  // Calculate actual_premium using neighborhood benchmark
+  const pricePerSqm = complex.price_per_sqm ? parseFloat(complex.price_per_sqm) : null;
+  let actualPremium = null;
+  if (pricePerSqm && benchmark.weighted && benchmark.weighted > 0) {
+    actualPremium = Math.round((pricePerSqm - benchmark.weighted) / benchmark.weighted * 100);
+  }
+
+  // Store to DB
+  await pool.query(`
+    UPDATE complexes SET
+      nadlan_neighborhood_avg_sqm = $1,
+      madlan_neighborhood_avg_sqm = $2,
+      neighborhood_avg_sqm = $3,
+      neighborhood_streets = $4,
+      neighborhood_benchmark_source = $5,
+      benchmark_source_gap = $6,
+      benchmark_data_flag = $7,
+      premium_vs_city = $8,
+      last_benchmark_update = NOW(),
+      actual_premium = COALESCE($9, actual_premium),
+      updated_at = NOW()
+    WHERE id = $10
+  `, [
+    nadlanAvg,
+    madlanData?.avg_price_sqm || null,
+    benchmark.weighted,
+    JSON.stringify(streets),
+    benchmark.source,
+    benchmark.gap,
+    benchmark.flag,
+    benchmark.premiumVsCity || null,
+    actualPremium,
+    complexId
+  ]);
+
+  logger.info(`[Benchmark] Done: ${complex.name} | nadlan=${nadlanAvg} | madlan=${madlanData?.avg_price_sqm || 'N/A'} | weighted=${benchmark.weighted} | flag=${benchmark.flag} | actual_premium=${actualPremium}%`);
+
+  return {
+    complexId,
+    name: complex.name,
+    city: complex.city,
+    streets,
+    nadlanTransactions: allNadlanTransactions.length,
+    nadlanAvg,
+    madlanAvg: madlanData?.avg_price_sqm || null,
+    neighborhoodAvg: benchmark.weighted,
+    benchmarkSource: benchmark.source,
+    divergenceGap: benchmark.gap,
+    dataFlag: benchmark.flag,
+    premiumVsCity: benchmark.premiumVsCity,
+    actualPremium,
+    status: benchmark.weighted ? 'success' : 'no_data'
+  };
+}
+
+/**
+ * Batch scan - runs neighborhood benchmark for all complexes or filtered set.
+ * Options: { limit, tier, city, staleOnly }
+ */
+async function scanNeighborhoodBenchmarks(options = {}) {
+  const { limit, city, staleOnly = true } = options;
+
+  let query = 'SELECT id, name, city FROM complexes WHERE 1=1';
+  const params = [];
+  let idx = 1;
+
+  if (city) {
+    query += ` AND city = $${idx++}`;
+    params.push(city);
+  }
+
+  if (staleOnly) {
+    query += ` AND (last_benchmark_update IS NULL OR last_benchmark_update < NOW() - INTERVAL '30 days')`;
+  }
+
+  // Prioritize: complexes with addresses first, Tier 1 first within those
+  query += ' ORDER BY (CASE WHEN address IS NOT NULL AND length(address) > 10 THEN 0 ELSE 1 END), iai_score DESC NULLS LAST';
+
+  if (limit) {
+    query += ` LIMIT $${idx++}`;
+    params.push(limit);
+  }
+
+  const complexes = await pool.query(query, params);
+  const total = complexes.rows.length;
+
+  logger.info(`[Benchmark] Starting batch scan: ${total} complexes`);
+
+  const results = { total, processed: 0, success: 0, no_address: 0, failed: 0, flagged: 0 };
+
+  for (let i = 0; i < complexes.rows.length; i++) {
+    const complex = complexes.rows[i];
+    try {
+      const result = await fetchNeighborhoodBenchmark(complex.id);
+      results.processed++;
+
+      if (result.status === 'success') results.success++;
+      else if (result.status === 'no_address') results.no_address++;
+      if (result.dataFlag) results.flagged++;
+
+      logger.info(`[Benchmark ${i + 1}/${total}] ${complex.name}: ${result.status}`);
+    } catch (err) {
+      results.processed++;
+      results.failed++;
+      logger.error(`[Benchmark ${i + 1}/${total}] ${complex.name}: ERROR - ${err.message}`);
+    }
+
+    if (i < complexes.rows.length - 1) await sleep(DELAY_MS);
+  }
+
+  logger.info('[Benchmark] Batch completed', results);
+  return results;
+}
+
+module.exports = {
+  fetchNeighborhoodBenchmark,
+  scanNeighborhoodBenchmarks,
+  extractStreets,
+  parseAddress,
+  calculateWeightedBenchmark
+};
