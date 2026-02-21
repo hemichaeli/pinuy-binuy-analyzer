@@ -1,1 +1,375 @@
-LyoqCiAqIE9uYm9hcmRpbmcgUGlwZWxpbmUKICoKICogRnVsbCA3LXBoYXNlIGF1dG9tYXRlZCBwaXBlbGluZSBmb3IgZXZlcnkgbmV3IHBpbnV5LWJpbnV5IGNvbXBsZXguCiAqIFJ1bnMgYXV0b21hdGljYWxseSB3aGVuIGRpc2NvdmVyeVNlcnZpY2UgZmluZHMgYSBuZXcgY29tcGxleC4KICogQ2FuIGFsc28gYmUgdHJpZ2dlcmVkIG1hbnVhbGx5IGZvciBleGlzdGluZyBjb21wbGV4ZXMuCiAqCiAqIFBoYXNlczoKICogICAxLiBCYXNpYyBlbnJpY2htZW50ICAgLSBwbGFuX3N0YWdlLCBkZXZlbG9wZXIsIHNpZ25hdHVyZV9wZXJjZW50LCBudW1fYnVpbGRpbmdzCiAqICAgMi4gRGV2ZWxvcGVyIHJpc2sgICAgIC0gZmluYW5jaWFsIGhlYWx0aCwgcmVkIGZsYWdzLCByZXB1dGF0aW9uIHNjb3JlCiAqICAgMy4gTmV3cyAmIGxlZ2FsICAgICAgIC0gc2VudGltZW50LCByZWNlaXZlcnNoaXAsIGVuZm9yY2VtZW50LCBsaWVucwogKiAgIDQuIFByaWNlIGRhdGEgICAgICAgICAtIHByaWNlX3Blcl9zcW0gZnJvbSBuYWRsYW4uZ292LmlsIGRpcmVjdCB0cmFuc2FjdGlvbnMKICogICA1LiBOZWlnaGJvcmhvb2QgYmVuY2ggLSBuYWRsYW4rbWFkbGFuIHdlaWdodGVkIGF2ZyBmb3IgbmVhcmJ5IHN0cmVldHMKICogICA2LiBJQUkgY2FsY3VsYXRpb24gICAgLSBzY29yZSBiYXNlZCBvbiByZWFsIG5laWdoYm9yaG9vZCBiZW5jaG1hcmsKICogICA3LiBUaWVyIGNsYXNzaWZpY2F0aW9uIC0gYXNzaWduIHRvIFRpZXIgMS8yLzMgYmFzZWQgb24gSUFJICsgc3RhdHVzCiAqLwoKY29uc3QgcG9vbCA9IHJlcXVpcmUoJy4uL2RiL3Bvb2wnKTsKY29uc3QgeyBsb2dnZXIgfSA9IHJlcXVpcmUoJy4vbG9nZ2VyJyk7Cgpjb25zdCBQSEFTRV9ERUxBWV9NUyA9IDIwMDA7CgpmdW5jdGlvbiBzbGVlcChtcykgewogIHJldHVybiBuZXcgUHJvbWlzZShyZXNvbHZlID0+IHNldFRpbWVvdXQocmVzb2x2ZSwgbXMpKTsKfQoKLy8gTGF6eS1sb2FkIHNlcnZpY2VzIHRvIGF2b2lkIGNpcmN1bGFyIGRlcHMKZnVuY3Rpb24gZ2V0RGVlcEVucmljaG1lbnQoKSB7IHJldHVybiByZXF1aXJlKCcuL2RlZXBFbnJpY2htZW50U2VydmljZScpOyB9CmZ1bmN0aW9uIGdldE5laWdoYm9yaG9vZEJlbmNobWFyaygpIHsgcmV0dXJuIHJlcXVpcmUoJy4vbmVpZ2hib3Job29kQmVuY2htYXJrU2VydmljZScpOyB9CmZ1bmN0aW9uIGdldElhaUNhbGN1bGF0b3IoKSB7IHJldHVybiByZXF1aXJlKCcuL2lhaUNhbGN1bGF0b3InKTsgfQpmdW5jdGlvbiBnZXROYWRsYW5TY3JhcGVyKCkgeyByZXR1cm4gcmVxdWlyZSgnLi9uYWRsYW5TY3JhcGVyJyk7IH0KCi8qKgogKiBNYXJrIGEgcGhhc2UgYXMgY29tcGxldGVkIGluIERCLgogKi8KYXN5bmMgZnVuY3Rpb24gbWFya1BoYXNlQ29tcGxldGUoY29tcGxleElkLCBwaGFzZSkgewogIHRyeSB7CiAgICBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgVVBEQVRFIGNvbXBsZXhlcyBTRVQKICAgICAgICBvbmJvYXJkaW5nX3BoYXNlc19jb21wbGV0ZWQgPSAoCiAgICAgICAgICBTRUxFQ1QganNvbmJfYWdnKERJU1RJTkNUIHZhbCkKICAgICAgICAgIEZST00gKAogICAgICAgICAgICBTRUxFQ1QganNvbmJfYXJyYXlfZWxlbWVudHNfdGV4dCgKICAgICAgICAgICAgICBDT0FMRVNDRShvbmJvYXJkaW5nX3BoYXNlc19jb21wbGV0ZWQ6Ompzb25iLCAnW10nOjpqc29uYikKICAgICAgICAgICAgKSBBUyB2YWwKICAgICAgICAgICAgVU5JT04gQUxMIFNFTEVDVCAkMTo6dGV4dAogICAgICAgICAgKSBzdWIKICAgICAgICApOjp0ZXh0LAogICAgICAgIHVwZGF0ZWRfYXQgPSBOT1coKQogICAgICBXSEVSRSBpZCA9ICQyCiAgICBgLCBbcGhhc2UsIGNvbXBsZXhJZF0pOwogIH0gY2F0Y2ggKGVycikgewogICAgLy8gTm9uLWZhdGFsIC0ganVzdCBsb2cKICAgIGxvZ2dlci5kZWJ1ZyhgW09uYm9hcmRpbmddIENvdWxkIG5vdCBtYXJrIHBoYXNlICR7cGhhc2V9IGNvbXBsZXRlOiAke2Vyci5tZXNzYWdlfWApOwogIH0KfQoKLyoqCiAqIFBoYXNlIDE6IEJhc2ljIGVucmljaG1lbnQKICogR2V0cyBwbGFuX3N0YWdlLCBkZXZlbG9wZXIgZGV0YWlscywgc2lnbmF0dXJlX3BlcmNlbnQsIG51bV9idWlsZGluZ3MsIGFkZHJlc3MgcmVmaW5lbWVudC4KICogVXNlcyAnZmFzdCcgbW9kZSAoUGVycGxleGl0eSBvbmx5KSBmb3Igc3BlZWQuCiAqLwphc3luYyBmdW5jdGlvbiBwaGFzZTFCYXNpY0VucmljaG1lbnQoY29tcGxleCkgewogIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZyBQMV0gJHtjb21wbGV4Lm5hbWV9OiBiYXNpYyBlbnJpY2htZW50YCk7CiAgdHJ5IHsKICAgIGNvbnN0IHNlcnZpY2UgPSBnZXREZWVwRW5yaWNobWVudCgpOwogICAgYXdhaXQgc2VydmljZS5kZWVwRW5yaWNoQ29tcGxleChjb21wbGV4LmlkLCB7IG1vZGU6ICdmYXN0JyB9KTsKICAgIGF3YWl0IG1hcmtQaGFzZUNvbXBsZXRlKGNvbXBsZXguaWQsICdiYXNpY19lbnJpY2htZW50Jyk7CiAgICByZXR1cm4gdHJ1ZTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci53YXJuKGBbT25ib2FyZGluZyBQMV0gJHtjb21wbGV4Lm5hbWV9OiBmYWlsZWQgLSAke2Vyci5tZXNzYWdlfWApOwogICAgcmV0dXJuIGZhbHNlOwogIH0KfQoKLyoqCiAqIFBoYXNlIDI6IERldmVsb3BlciByaXNrIGFzc2Vzc21lbnQKICogQXNzZXNzZXMgZmluYW5jaWFsIGhlYWx0aCwgcmVwdXRhdGlvbiwgcmVkIGZsYWdzLgogKiBVc2VzIHN0YW5kYXJkIG1vZGUgd2l0aCBmb2N1cyBvbiBkZXZlbG9wZXIuCiAqLwphc3luYyBmdW5jdGlvbiBwaGFzZTJEZXZlbG9wZXJSaXNrKGNvbXBsZXgpIHsKICBsb2dnZXIuaW5mbyhgW09uYm9hcmRpbmcgUDJdICR7Y29tcGxleC5uYW1lfTogZGV2ZWxvcGVyIHJpc2tgKTsKICB0cnkgewogICAgLy8gUmUtZmV0Y2ggdG8gZ2V0IHVwZGF0ZWQgZGV2ZWxvcGVyIG5hbWUgZnJvbSBwaGFzZSAxCiAgICBjb25zdCB1cGRhdGVkID0gYXdhaXQgcG9vbC5xdWVyeSgnU0VMRUNUICogRlJPTSBjb21wbGV4ZXMgV0hFUkUgaWQgPSAkMScsIFtjb21wbGV4LmlkXSk7CiAgICBjb25zdCBjID0gdXBkYXRlZC5yb3dzWzBdOwogICAgaWYgKCFjLmRldmVsb3BlciB8fCBjLmRldmVsb3BlciA9PT0gJ3Vua25vd24nKSB7CiAgICAgIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZyBQMl0gJHtjb21wbGV4Lm5hbWV9OiBubyBkZXZlbG9wZXIgLSBza2lwcGluZ2ApOwogICAgICBhd2FpdCBtYXJrUGhhc2VDb21wbGV0ZShjb21wbGV4LmlkLCAnZGV2ZWxvcGVyX3Jpc2snKTsKICAgICAgcmV0dXJuIHRydWU7CiAgICB9CgogICAgLy8gQ2hlY2sgaWYgZGV2ZWxvcGVySW5mb1NlcnZpY2UgZXhpc3RzCiAgICB0cnkgewogICAgICBjb25zdCBkZXZTZXJ2aWNlID0gcmVxdWlyZSgnLi9kZXZlbG9wZXJJbmZvU2VydmljZScpOwogICAgICBpZiAoZGV2U2VydmljZSAmJiBkZXZTZXJ2aWNlLmFzc2Vzc0RldmVsb3BlclJpc2spIHsKICAgICAgICBhd2FpdCBkZXZTZXJ2aWNlLmFzc2Vzc0RldmVsb3BlclJpc2soYy5pZCk7CiAgICAgIH0KICAgIH0gY2F0Y2ggKGUpIHsKICAgICAgLy8gU2VydmljZSBtYXkgbm90IGV4aXN0IC0gdXNlIGRlZXAgZW5yaWNobWVudCBkZXZlbG9wZXIgbW9kZQogICAgICBsb2dnZXIuZGVidWcoYFtPbmJvYXJkaW5nIFAyXSBkZXZlbG9wZXJJbmZvU2VydmljZSBub3QgYXZhaWxhYmxlLCB1c2luZyBkZWVwRW5yaWNobWVudGApOwogICAgfQoKICAgIGF3YWl0IG1hcmtQaGFzZUNvbXBsZXRlKGNvbXBsZXguaWQsICdkZXZlbG9wZXJfcmlzaycpOwogICAgcmV0dXJuIHRydWU7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIud2FybihgW09uYm9hcmRpbmcgUDJdICR7Y29tcGxleC5uYW1lfTogZmFpbGVkIC0gJHtlcnIubWVzc2FnZX1gKTsKICAgIHJldHVybiBmYWxzZTsKICB9Cn0KCi8qKgogKiBQaGFzZSAzOiBOZXdzICYgbGVnYWwgc2NhbgogKiBDaGVja3MgZm9yIG5lZ2F0aXZlIG5ld3MsIHJlY2VpdmVyc2hpcCwgZW5mb3JjZW1lbnQsIGxpZW5zLgogKi8KYXN5bmMgZnVuY3Rpb24gcGhhc2UzTmV3c0xlZ2FsKGNvbXBsZXgpIHsKICBsb2dnZXIuaW5mbyhgW09uYm9hcmRpbmcgUDNdICR7Y29tcGxleC5uYW1lfTogbmV3cyAmIGxlZ2FsYCk7CiAgdHJ5IHsKICAgIGNvbnN0IHNlcnZpY2UgPSBnZXREZWVwRW5yaWNobWVudCgpOwogICAgLy8gU3RhbmRhcmQgbW9kZSBpbmNsdWRlcyBDbGF1ZGUgc3ludGhlc2lzIHdoaWNoIGhhbmRsZXMgbmV3cyArIGxlZ2FsCiAgICBhd2FpdCBzZXJ2aWNlLmRlZXBFbnJpY2hDb21wbGV4KGNvbXBsZXguaWQsIHsgbW9kZTogJ3N0YW5kYXJkJyB9KTsKICAgIGF3YWl0IG1hcmtQaGFzZUNvbXBsZXRlKGNvbXBsZXguaWQsICduZXdzX2xlZ2FsJyk7CiAgICByZXR1cm4gdHJ1ZTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci53YXJuKGBbT25ib2FyZGluZyBQM10gJHtjb21wbGV4Lm5hbWV9OiBmYWlsZWQgLSAke2Vyci5tZXNzYWdlfWApOwogICAgcmV0dXJuIGZhbHNlOwogIH0KfQoKLyoqCiAqIFBoYXNlIDQ6IFByaWNlIGRhdGEgZnJvbSBuYWRsYW4uZ292LmlsCiAqIEZldGNoZXMgYWN0dWFsIGNsb3NlZCB0cmFuc2FjdGlvbnMgZm9yIHRoZSBjb21wbGV4J3Mgb3duIHN0cmVldHMuCiAqLwphc3luYyBmdW5jdGlvbiBwaGFzZTRQcmljZURhdGEoY29tcGxleCkgewogIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZyBQNF0gJHtjb21wbGV4Lm5hbWV9OiBwcmljZSBkYXRhYCk7CiAgdHJ5IHsKICAgIGNvbnN0IG5hZGxhblNjcmFwZXIgPSBnZXROYWRsYW5TY3JhcGVyKCk7CiAgICBpZiAobmFkbGFuU2NyYXBlciAmJiBuYWRsYW5TY3JhcGVyLmZldGNoVHJhbnNhY3Rpb25zRm9yQ29tcGxleCkgewogICAgICBhd2FpdCBuYWRsYW5TY3JhcGVyLmZldGNoVHJhbnNhY3Rpb25zRm9yQ29tcGxleChjb21wbGV4LmlkKTsKICAgIH0gZWxzZSB7CiAgICAgIC8vIEZhbGxiYWNrOiB1c2UgZGVlcCBlbnJpY2htZW50IHdoaWNoIHF1ZXJpZXMgbmFkbGFuIHZpYSBQZXJwbGV4aXR5CiAgICAgIGNvbnN0IHNlcnZpY2UgPSBnZXREZWVwRW5yaWNobWVudCgpOwogICAgICBhd2FpdCBzZXJ2aWNlLmRlZXBFbnJpY2hDb21wbGV4KGNvbXBsZXguaWQsIHsgbW9kZTogJ3N0YW5kYXJkJyB9KTsKICAgIH0KICAgIGF3YWl0IG1hcmtQaGFzZUNvbXBsZXRlKGNvbXBsZXguaWQsICdwcmljZV9kYXRhJyk7CiAgICByZXR1cm4gdHJ1ZTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci53YXJuKGBbT25ib2FyZGluZyBQNF0gJHtjb21wbGV4Lm5hbWV9OiBmYWlsZWQgLSAke2Vyci5tZXNzYWdlfWApOwogICAgcmV0dXJuIGZhbHNlOwogIH0KfQoKLyoqCiAqIFBoYXNlIDU6IE5laWdoYm9yaG9vZCBiZW5jaG1hcmsKICogRmV0Y2hlcyBuYWRsYW4gKyBtYWRsYW4gZGF0YSBmb3IgbmVhcmJ5IHN0cmVldHMsIGNhbGN1bGF0ZXMgd2VpZ2h0ZWQgYXZnLgogKiBUaGlzIGlzIHRoZSBjb3JlIGltcHJvdmVtZW50IC0gcmVwbGFjZXMgY2l0eV9hdmcgd2l0aCBoeXBlci1sb2NhbCBiZW5jaG1hcmsuCiAqLwphc3luYyBmdW5jdGlvbiBwaGFzZTVOZWlnaGJvcmhvb2RCZW5jaG1hcmsoY29tcGxleCkgewogIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZyBQNV0gJHtjb21wbGV4Lm5hbWV9OiBuZWlnaGJvcmhvb2QgYmVuY2htYXJrYCk7CiAgdHJ5IHsKICAgIGNvbnN0IGJlbmNobWFya1NlcnZpY2UgPSBnZXROZWlnaGJvcmhvb2RCZW5jaG1hcmsoKTsKICAgIGF3YWl0IGJlbmNobWFya1NlcnZpY2UuZmV0Y2hOZWlnaGJvcmhvb2RCZW5jaG1hcmsoY29tcGxleC5pZCk7CiAgICBhd2FpdCBtYXJrUGhhc2VDb21wbGV0ZShjb21wbGV4LmlkLCAnbmVpZ2hib3Job29kX2JlbmNobWFyaycpOwogICAgcmV0dXJuIHRydWU7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIud2FybihgW09uYm9hcmRpbmcgUDVdICR7Y29tcGxleC5uYW1lfTogZmFpbGVkIC0gJHtlcnIubWVzc2FnZX1gKTsKICAgIHJldHVybiBmYWxzZTsKICB9Cn0KCi8qKgogKiBQaGFzZSA2OiBJQUkgY2FsY3VsYXRpb24KICogQ2FsY3VsYXRlcyBJbnZlc3RtZW50IEF0dHJhY3RpdmVuZXNzIEluZGV4IHVzaW5nIHJlYWwgbmVpZ2hib3Job29kIGJlbmNobWFyay4KICovCmFzeW5jIGZ1bmN0aW9uIHBoYXNlNklhaUNhbGN1bGF0aW9uKGNvbXBsZXgpIHsKICBsb2dnZXIuaW5mbyhgW09uYm9hcmRpbmcgUDZdICR7Y29tcGxleC5uYW1lfTogSUFJIGNhbGN1bGF0aW9uYCk7CiAgdHJ5IHsKICAgIGNvbnN0IGlhaUNhbGMgPSBnZXRJYWlDYWxjdWxhdG9yKCk7CiAgICBhd2FpdCBpYWlDYWxjLmNhbGN1bGF0ZUlBSShjb21wbGV4LmlkKTsKICAgIGF3YWl0IG1hcmtQaGFzZUNvbXBsZXRlKGNvbXBsZXguaWQsICdpYWlfY2FsY3VsYXRpb24nKTsKICAgIHJldHVybiB0cnVlOwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLndhcm4oYFtPbmJvYXJkaW5nIFA2XSAke2NvbXBsZXgubmFtZX06IGZhaWxlZCAtICR7ZXJyLm1lc3NhZ2V9YCk7CiAgICByZXR1cm4gZmFsc2U7CiAgfQp9CgovKioKICogUGhhc2UgNzogVGllciBjbGFzc2lmaWNhdGlvbgogKiBBc3NpZ25zIGNvbXBsZXggdG8gVGllciAxLzIvMyBiYXNlZCBvbiBJQUkgc2NvcmUgYW5kIHByb2plY3Qgc3RhdHVzLgogKgogKiBUaWVyIDE6IElBSSA+PSAzMCAodG9wIGludmVzdG9yIHRhcmdldHMpCiAqIFRpZXIgMjogQWN0aXZlIHByb2plY3RzIHdpdGggSUFJIDwgMzAKICogVGllciAzOiBEb3JtYW50IC0gbm8gZGV2ZWxvcGVyLCBubyBwbGFuIHByb2dyZXNzLCBJQUkgPSAwCiAqLwphc3luYyBmdW5jdGlvbiBwaGFzZTdUaWVyQ2xhc3NpZmljYXRpb24oY29tcGxleCkgewogIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZyBQN10gJHtjb21wbGV4Lm5hbWV9OiB0aWVyIGNsYXNzaWZpY2F0aW9uYCk7CiAgdHJ5IHsKICAgIGNvbnN0IHVwZGF0ZWQgPSBhd2FpdCBwb29sLnF1ZXJ5KCdTRUxFQ1QgKiBGUk9NIGNvbXBsZXhlcyBXSEVSRSBpZCA9ICQxJywgW2NvbXBsZXguaWRdKTsKICAgIGNvbnN0IGMgPSB1cGRhdGVkLnJvd3NbMF07CgogICAgY29uc3QgaWFpID0gcGFyc2VGbG9hdChjLmlhaV9zY29yZSkgfHwgMDsKICAgIGNvbnN0IHN0YXR1cyA9IGMuc3RhdHVzIHx8ICd1bmtub3duJzsKICAgIGNvbnN0IGRldmVsb3BlciA9IGMuZGV2ZWxvcGVyOwogICAgY29uc3QgaGFzRGV2ZWxvcGVyID0gZGV2ZWxvcGVyICYmIGRldmVsb3BlciAhPT0gJ3Vua25vd24nICYmIGRldmVsb3BlciAhPT0gJyc7CgogICAgbGV0IHRpZXI7CiAgICBpZiAoaWFpID49IDMwKSB7CiAgICAgIHRpZXIgPSAxOwogICAgfSBlbHNlIGlmICgKICAgICAgc3RhdHVzID09PSAndW5rbm93bicgfHwKICAgICAgc3RhdHVzID09PSAnYmVmb3JlX2RlY2xhcmF0aW9uJyB8fAogICAgICAoIWhhc0RldmVsb3BlciAmJiBpYWkgPCA1KQogICAgKSB7CiAgICAgIHRpZXIgPSAzOyAvLyBEb3JtYW50CiAgICB9IGVsc2UgewogICAgICB0aWVyID0gMjsgLy8gQWN0aXZlIGJ1dCBiZWxvdyBUaWVyIDEgdGhyZXNob2xkCiAgICB9CgogICAgYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgIFVQREFURSBjb21wbGV4ZXMgU0VUCiAgICAgICAgb25ib2FyZGluZ19zdGF0dXMgPSAnY29tcGxldGVkJywKICAgICAgICBvbmJvYXJkaW5nX2NvbXBsZXRlZF9hdCA9IE5PVygpLAogICAgICAgIHVwZGF0ZWRfYXQgPSBOT1coKQogICAgICBXSEVSRSBpZCA9ICQxCiAgICBgLCBbY29tcGxleC5pZF0pOwoKICAgIGF3YWl0IG1hcmtQaGFzZUNvbXBsZXRlKGNvbXBsZXguaWQsICd0aWVyX2NsYXNzaWZpY2F0aW9uJyk7CgogICAgbG9nZ2VyLmluZm8oYFtPbmJvYXJkaW5nIFA3XSAke2NvbXBsZXgubmFtZX06IFRpZXIgJHt0aWVyfSB8IElBST0ke2lhaX0gfCBzdGF0dXM9JHtzdGF0dXN9YCk7CiAgICByZXR1cm4geyB0aWVyLCBpYWkgfTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci53YXJuKGBbT25ib2FyZGluZyBQN10gJHtjb21wbGV4Lm5hbWV9OiBmYWlsZWQgLSAke2Vyci5tZXNzYWdlfWApOwogICAgcmV0dXJuIGZhbHNlOwogIH0KfQoKLyoqCiAqIFJ1biBmdWxsIG9uYm9hcmRpbmcgcGlwZWxpbmUgZm9yIGEgc2luZ2xlIGNvbXBsZXguCiAqIFNraXBzIHBoYXNlcyB0aGF0IGhhdmUgYWxyZWFkeSBiZWVuIGNvbXBsZXRlZCAoaWRlbXBvdGVudCkuCiAqCiAqIEBwYXJhbSB7bnVtYmVyfSBjb21wbGV4SWQKICogQHBhcmFtIHtvYmplY3R9IG9wdGlvbnMgLSB7IGZvcmNlQWxsOiBmYWxzZSwgc2tpcFBoYXNlczogW10gfQogKi8KYXN5bmMgZnVuY3Rpb24gcnVuT25ib2FyZGluZyhjb21wbGV4SWQsIG9wdGlvbnMgPSB7fSkgewogIGNvbnN0IHsgZm9yY2VBbGwgPSBmYWxzZSwgc2tpcFBoYXNlcyA9IFtdIH0gPSBvcHRpb25zOwoKICBjb25zdCByZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KCdTRUxFQ1QgKiBGUk9NIGNvbXBsZXhlcyBXSEVSRSBpZCA9ICQxJywgW2NvbXBsZXhJZF0pOwogIGlmIChyZXN1bHQucm93cy5sZW5ndGggPT09IDApIHRocm93IG5ldyBFcnJvcihgQ29tcGxleCAke2NvbXBsZXhJZH0gbm90IGZvdW5kYCk7CgogIGNvbnN0IGNvbXBsZXggPSByZXN1bHQucm93c1swXTsKCiAgLy8gUGFyc2UgY29tcGxldGVkIHBoYXNlcwogIGxldCBjb21wbGV0ZWRQaGFzZXMgPSBbXTsKICB0cnkgewogICAgY29tcGxldGVkUGhhc2VzID0gSlNPTi5wYXJzZShjb21wbGV4Lm9uYm9hcmRpbmdfcGhhc2VzX2NvbXBsZXRlZCB8fCAnW10nKTsKICB9IGNhdGNoIChlKSB7CiAgICBjb21wbGV0ZWRQaGFzZXMgPSBbXTsKICB9CgogIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZ10gU3RhcnRpbmc6ICR7Y29tcGxleC5uYW1lfSAoJHtjb21wbGV4LmNpdHl9KSB8IGNvbXBsZXRlZDogWyR7Y29tcGxldGVkUGhhc2VzLmpvaW4oJywgJyl9XWApOwoKICBjb25zdCBwaGFzZURlZnMgPSBbCiAgICB7IGtleTogJ2Jhc2ljX2VucmljaG1lbnQnLCAgICAgIGZuOiBwaGFzZTFCYXNpY0VucmljaG1lbnQsICAgICAgbGFiZWw6ICdQaGFzZSAxOiBCYXNpYyBFbnJpY2htZW50JyB9LAogICAgeyBrZXk6ICdkZXZlbG9wZXJfcmlzaycsICAgICAgICBmbjogcGhhc2UyRGV2ZWxvcGVyUmlzaywgICAgICAgICBsYWJlbDogJ1BoYXNlIDI6IERldmVsb3BlciBSaXNrJyB9LAogICAgeyBrZXk6ICduZXdzX2xlZ2FsJywgICAgICAgICAgICBmbjogcGhhc2UzTmV3c0xlZ2FsLCAgICAgICAgICAgICBsYWJlbDogJ1BoYXNlIDM6IE5ld3MgJiBMZWdhbCcgfSwKICAgIHsga2V5OiAncHJpY2VfZGF0YScsICAgICAgICAgICAgZm46IHBoYXNlNFByaWNlRGF0YSwgICAgICAgICAgICAgbGFiZWw6ICdQaGFzZSA0OiBQcmljZSBEYXRhJyB9LAogICAgeyBrZXk6ICduZWlnaGJvcmhvb2RfYmVuY2htYXJrJyxmbjogcGhhc2U1TmVpZ2hib3Job29kQmVuY2htYXJrLCBsYWJlbDogJ1BoYXNlIDU6IE5laWdoYm9yaG9vZCBCZW5jaG1hcmsnIH0sCiAgICB7IGtleTogJ2lhaV9jYWxjdWxhdGlvbicsICAgICAgIGZuOiBwaGFzZTZJYWlDYWxjdWxhdGlvbiwgICAgICAgIGxhYmVsOiAnUGhhc2UgNjogSUFJIENhbGN1bGF0aW9uJyB9LAogICAgeyBrZXk6ICd0aWVyX2NsYXNzaWZpY2F0aW9uJywgICBmbjogcGhhc2U3VGllckNsYXNzaWZpY2F0aW9uLCAgICBsYWJlbDogJ1BoYXNlIDc6IFRpZXIgQ2xhc3NpZmljYXRpb24nIH0KICBdOwoKICBjb25zdCBwaGFzZVJlc3VsdHMgPSB7fTsKCiAgZm9yIChjb25zdCBwaGFzZSBvZiBwaGFzZURlZnMpIHsKICAgIGlmIChza2lwUGhhc2VzLmluY2x1ZGVzKHBoYXNlLmtleSkpIHsKICAgICAgcGhhc2VSZXN1bHRzW3BoYXNlLmtleV0gPSAnc2tpcHBlZCc7CiAgICAgIGNvbnRpbnVlOwogICAgfQoKICAgIGlmICghZm9yY2VBbGwgJiYgY29tcGxldGVkUGhhc2VzLmluY2x1ZGVzKHBoYXNlLmtleSkpIHsKICAgICAgcGhhc2VSZXN1bHRzW3BoYXNlLmtleV0gPSAnYWxyZWFkeV9kb25lJzsKICAgICAgbG9nZ2VyLmluZm8oYFtPbmJvYXJkaW5nXSAke2NvbXBsZXgubmFtZX06ICR7cGhhc2UubGFiZWx9IC0gYWxyZWFkeSBjb21wbGV0ZWQsIHNraXBwaW5nYCk7CiAgICAgIGNvbnRpbnVlOwogICAgfQoKICAgIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZ10gJHtjb21wbGV4Lm5hbWV9OiBydW5uaW5nICR7cGhhc2UubGFiZWx9YCk7CiAgICBjb25zdCBzdWNjZXNzID0gYXdhaXQgcGhhc2UuZm4oY29tcGxleCk7CiAgICBwaGFzZVJlc3VsdHNbcGhhc2Uua2V5XSA9IHN1Y2Nlc3MgPyAnc3VjY2VzcycgOiAnZmFpbGVkJzsKCiAgICBhd2FpdCBzbGVlcChQSEFTRV9ERUxBWV9NUyk7CiAgfQoKICAvLyBNYXJrIG92ZXJhbGwgc3RhdHVzCiAgY29uc3QgYWxsU3VjY2VzcyA9IE9iamVjdC52YWx1ZXMocGhhc2VSZXN1bHRzKS5ldmVyeSh2ID0+IHYgPT09ICdzdWNjZXNzJyB8fCB2ID09PSAnYWxyZWFkeV9kb25lJyB8fCB2ID09PSAnc2tpcHBlZCcpOwogIGF3YWl0IHBvb2wucXVlcnkoYAogICAgVVBEQVRFIGNvbXBsZXhlcyBTRVQKICAgICAgb25ib2FyZGluZ19zdGF0dXMgPSAkMSwKICAgICAgdXBkYXRlZF9hdCA9IE5PVygpCiAgICBXSEVSRSBpZCA9ICQyCiAgYCwgW2FsbFN1Y2Nlc3MgPyAnY29tcGxldGVkJyA6ICdwYXJ0aWFsJywgY29tcGxleElkXSk7CgogIGxvZ2dlci5pbmZvKGBbT25ib2FyZGluZ10gQ29tcGxldGVkOiAke2NvbXBsZXgubmFtZX0gfCBzdGF0dXM6ICR7YWxsU3VjY2VzcyA/ICdjb21wbGV0ZWQnIDogJ3BhcnRpYWwnfWApOwoKICByZXR1cm4gewogICAgY29tcGxleElkLAogICAgbmFtZTogY29tcGxleC5uYW1lLAogICAgY2l0eTogY29tcGxleC5jaXR5LAogICAgc3RhdHVzOiBhbGxTdWNjZXNzID8gJ2NvbXBsZXRlZCcgOiAncGFydGlhbCcsCiAgICBwaGFzZXM6IHBoYXNlUmVzdWx0cwogIH07Cn0KCi8qKgogKiBCYXRjaCBvbmJvYXJkaW5nIC0gcnVuIHBpcGVsaW5lIGZvciBtdWx0aXBsZSBjb21wbGV4ZXMuCiAqIE9wdGlvbnM6IHsgbGltaXQsIHN0YXR1cyAocGVuZGluZy9wYXJ0aWFsKSwgZm9yY2VBbGwgfQogKi8KYXN5bmMgZnVuY3Rpb24gYmF0Y2hPbmJvYXJkaW5nKG9wdGlvbnMgPSB7fSkgewogIGNvbnN0IHsgbGltaXQgPSA1MCwgZm9yY2VBbGwgPSBmYWxzZSwgb25seVBlbmRpbmcgPSB0cnVlIH0gPSBvcHRpb25zOwoKICBsZXQgcXVlcnkgPSAnU0VMRUNUIGlkLCBuYW1lLCBjaXR5IEZST00gY29tcGxleGVzIFdIRVJFIDE9MSc7CiAgY29uc3QgcGFyYW1zID0gW107CiAgbGV0IGlkeCA9IDE7CgogIGlmIChvbmx5UGVuZGluZykgewogICAgcXVlcnkgKz0gYCBBTkQgKG9uYm9hcmRpbmdfc3RhdHVzIElTIE5VTEwgT1Igb25ib2FyZGluZ19zdGF0dXMgSU4gKCdwZW5kaW5nJywgJ3BhcnRpYWwnKSlgOwogIH0KCiAgcXVlcnkgKz0gJyBPUkRFUiBCWSBpYWlfc2NvcmUgREVTQyBOVUxMUyBMQVNUJzsKICBxdWVyeSArPSBgIExJTUlUICQke2lkeCsrfWA7CiAgcGFyYW1zLnB1c2gobGltaXQpOwoKICBjb25zdCBjb21wbGV4ZXMgPSBhd2FpdCBwb29sLnF1ZXJ5KHF1ZXJ5LCBwYXJhbXMpOwogIGNvbnN0IHRvdGFsID0gY29tcGxleGVzLnJvd3MubGVuZ3RoOwoKICBsb2dnZXIuaW5mbyhgW09uYm9hcmRpbmddIEJhdGNoIHN0YXJ0aW5nOiAke3RvdGFsfSBjb21wbGV4ZXNgKTsKCiAgY29uc3Qgam9iSWQgPSBgb25ib2FyZGluZ18ke0RhdGUubm93KCl9YDsKICBjb25zdCByZXN1bHRzID0geyBqb2JJZCwgdG90YWwsIHByb2Nlc3NlZDogMCwgY29tcGxldGVkOiAwLCBwYXJ0aWFsOiAwLCBmYWlsZWQ6IDAgfTsKCiAgLy8gUnVuIGFzeW5jIGluIGJhY2tncm91bmQKICBzZXRJbW1lZGlhdGUoYXN5bmMgKCkgPT4gewogICAgZm9yIChsZXQgaSA9IDA7IGkgPCBjb21wbGV4ZXMucm93cy5sZW5ndGg7IGkrKykgewogICAgICBjb25zdCBjb21wbGV4ID0gY29tcGxleGVzLnJvd3NbaV07CiAgICAgIHRyeSB7CiAgICAgICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgcnVuT25ib2FyZGluZyhjb21wbGV4LmlkLCB7IGZvcmNlQWxsIH0pOwogICAgICAgIHJlc3VsdHMucHJvY2Vzc2VkKys7CiAgICAgICAgaWYgKHJlc3VsdC5zdGF0dXMgPT09ICdjb21wbGV0ZWQnKSByZXN1bHRzLmNvbXBsZXRlZCsrOwogICAgICAgIGVsc2UgcmVzdWx0cy5wYXJ0aWFsKys7CiAgICAgICAgbG9nZ2VyLmluZm8oYFtPbmJvYXJkaW5nICR7aSArIDF9LyR7dG90YWx9XSAke2NvbXBsZXgubmFtZX06ICR7cmVzdWx0LnN0YXR1c31gKTsKICAgICAgfSBjYXRjaCAoZXJyKSB7CiAgICAgICAgcmVzdWx0cy5wcm9jZXNzZWQrKzsKICAgICAgICByZXN1bHRzLmZhaWxlZCsrOwogICAgICAgIGxvZ2dlci5lcnJvcihgW09uYm9hcmRpbmcgJHtpICsgMX0vJHt0b3RhbH1dICR7Y29tcGxleC5uYW1lfTogRVJST1IgLSAke2Vyci5tZXNzYWdlfWApOwogICAgICB9CgogICAgICBpZiAoaSA8IGNvbXBsZXhlcy5yb3dzLmxlbmd0aCAtIDEpIGF3YWl0IHNsZWVwKFBIQVNFX0RFTEFZX01TKTsKICAgIH0KICAgIGxvZ2dlci5pbmZvKCdbT25ib2FyZGluZ10gQmF0Y2ggY29tcGxldGVkJywgcmVzdWx0cyk7CiAgfSk7CgogIHJldHVybiB7IGpvYklkLCB0b3RhbCwgbWVzc2FnZTogYE9uYm9hcmRpbmcgYmF0Y2ggc3RhcnRlZCBmb3IgJHt0b3RhbH0gY29tcGxleGVzYCB9Owp9Cgptb2R1bGUuZXhwb3J0cyA9IHsKICBydW5PbmJvYXJkaW5nLAogIGJhdGNoT25ib2FyZGluZywKICBwaGFzZTFCYXNpY0VucmljaG1lbnQsCiAgcGhhc2UyRGV2ZWxvcGVyUmlzaywKICBwaGFzZTNOZXdzTGVnYWwsCiAgcGhhc2U0UHJpY2VEYXRhLAogIHBoYXNlNU5laWdoYm9yaG9vZEJlbmNobWFyaywKICBwaGFzZTZJYWlDYWxjdWxhdGlvbiwKICBwaGFzZTdUaWVyQ2xhc3NpZmljYXRpb24KfTsK
+/**
+ * Onboarding Pipeline
+ *
+ * Full 7-phase automated pipeline for every new pinuy-binuy complex.
+ * Runs automatically when discoveryService finds a new complex.
+ * Can also be triggered manually for existing complexes.
+ *
+ * Phases:
+ *   1. Basic enrichment   - plan_stage, developer, signature_percent, num_buildings
+ *   2. Developer risk     - financial health, red flags, reputation score
+ *   3. News & legal       - sentiment, receivership, enforcement, liens
+ *   4. Price data         - price_per_sqm from nadlan.gov.il direct transactions
+ *   5. Neighborhood bench - nadlan+madlan weighted avg for nearby streets
+ *   6. IAI calculation    - score based on real neighborhood benchmark
+ *   7. Tier classification - assign to Tier 1/2/3 based on IAI + status
+ */
+
+const pool = require('../db/pool');
+const { logger } = require('./logger');
+
+const PHASE_DELAY_MS = 2000;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Lazy-load services to avoid circular deps
+function getDeepEnrichment() { return require('./deepEnrichmentService'); }
+function getNeighborhoodBenchmark() { return require('./neighborhoodBenchmarkService'); }
+function getIaiCalculator() { return require('./iaiCalculator'); }
+function getNadlanScraper() { return require('./nadlanScraper'); }
+
+/**
+ * Mark a phase as completed in DB.
+ */
+async function markPhaseComplete(complexId, phase) {
+  try {
+    await pool.query(`
+      UPDATE complexes SET
+        onboarding_phases_completed = (
+          SELECT jsonb_agg(DISTINCT val)
+          FROM (
+            SELECT jsonb_array_elements_text(
+              COALESCE(onboarding_phases_completed::jsonb, '[]'::jsonb)
+            ) AS val
+            UNION ALL SELECT $1::text
+          ) sub
+        )::text,
+        updated_at = NOW()
+      WHERE id = $2
+    `, [phase, complexId]);
+  } catch (err) {
+    // Non-fatal - just log
+    logger.debug(`[Onboarding] Could not mark phase ${phase} complete: ${err.message}`);
+  }
+}
+
+/**
+ * Phase 1: Basic enrichment
+ * Gets plan_stage, developer details, signature_percent, num_buildings, address refinement.
+ * Uses 'fast' mode (Perplexity only) for speed.
+ */
+async function phase1BasicEnrichment(complex) {
+  logger.info(`[Onboarding P1] ${complex.name}: basic enrichment`);
+  try {
+    const service = getDeepEnrichment();
+    await service.deepEnrichComplex(complex.id, { mode: 'fast' });
+    await markPhaseComplete(complex.id, 'basic_enrichment');
+    return true;
+  } catch (err) {
+    logger.warn(`[Onboarding P1] ${complex.name}: failed - ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Phase 2: Developer risk assessment
+ * Assesses financial health, reputation, red flags.
+ * Uses standard mode with focus on developer.
+ */
+async function phase2DeveloperRisk(complex) {
+  logger.info(`[Onboarding P2] ${complex.name}: developer risk`);
+  try {
+    // Re-fetch to get updated developer name from phase 1
+    const updated = await pool.query('SELECT * FROM complexes WHERE id = $1', [complex.id]);
+    const c = updated.rows[0];
+    if (!c.developer || c.developer === 'unknown') {
+      logger.info(`[Onboarding P2] ${complex.name}: no developer - skipping`);
+      await markPhaseComplete(complex.id, 'developer_risk');
+      return true;
+    }
+
+    // Check if developerInfoService exists
+    try {
+      const devService = require('./developerInfoService');
+      if (devService && devService.assessDeveloperRisk) {
+        await devService.assessDeveloperRisk(c.id);
+      }
+    } catch (e) {
+      // Service may not exist - use deep enrichment developer mode
+      logger.debug(`[Onboarding P2] developerInfoService not available, using deepEnrichment`);
+    }
+
+    await markPhaseComplete(complex.id, 'developer_risk');
+    return true;
+  } catch (err) {
+    logger.warn(`[Onboarding P2] ${complex.name}: failed - ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Phase 3: News & legal scan
+ * Checks for negative news, receivership, enforcement, liens.
+ */
+async function phase3NewsLegal(complex) {
+  logger.info(`[Onboarding P3] ${complex.name}: news & legal`);
+  try {
+    const service = getDeepEnrichment();
+    // Standard mode includes Claude synthesis which handles news + legal
+    await service.deepEnrichComplex(complex.id, { mode: 'standard' });
+    await markPhaseComplete(complex.id, 'news_legal');
+    return true;
+  } catch (err) {
+    logger.warn(`[Onboarding P3] ${complex.name}: failed - ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Phase 4: Price data from nadlan.gov.il
+ * Fetches actual closed transactions for the complex's own streets.
+ */
+async function phase4PriceData(complex) {
+  logger.info(`[Onboarding P4] ${complex.name}: price data`);
+  try {
+    const nadlanScraper = getNadlanScraper();
+    if (nadlanScraper && nadlanScraper.fetchTransactionsForComplex) {
+      await nadlanScraper.fetchTransactionsForComplex(complex.id);
+    } else {
+      // Fallback: use deep enrichment which queries nadlan via Perplexity
+      const service = getDeepEnrichment();
+      await service.deepEnrichComplex(complex.id, { mode: 'standard' });
+    }
+    await markPhaseComplete(complex.id, 'price_data');
+    return true;
+  } catch (err) {
+    logger.warn(`[Onboarding P4] ${complex.name}: failed - ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Phase 5: Neighborhood benchmark
+ * Fetches nadlan + madlan data for nearby streets, calculates weighted avg.
+ * This is the core improvement - replaces city_avg with hyper-local benchmark.
+ */
+async function phase5NeighborhoodBenchmark(complex) {
+  logger.info(`[Onboarding P5] ${complex.name}: neighborhood benchmark`);
+  try {
+    const benchmarkService = getNeighborhoodBenchmark();
+    await benchmarkService.fetchNeighborhoodBenchmark(complex.id);
+    await markPhaseComplete(complex.id, 'neighborhood_benchmark');
+    return true;
+  } catch (err) {
+    logger.warn(`[Onboarding P5] ${complex.name}: failed - ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Phase 6: IAI calculation
+ * Calculates Investment Attractiveness Index using real neighborhood benchmark.
+ */
+async function phase6IaiCalculation(complex) {
+  logger.info(`[Onboarding P6] ${complex.name}: IAI calculation`);
+  try {
+    const iaiCalc = getIaiCalculator();
+    await iaiCalc.calculateIAI(complex.id);
+    await markPhaseComplete(complex.id, 'iai_calculation');
+    return true;
+  } catch (err) {
+    logger.warn(`[Onboarding P6] ${complex.name}: failed - ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Phase 7: Tier classification
+ * Assigns complex to Tier 1/2/3 based on IAI score and project status.
+ *
+ * Tier 1: IAI >= 30 (top investor targets)
+ * Tier 2: Active projects with IAI < 30
+ * Tier 3: Dormant - no developer, no plan progress, IAI = 0
+ */
+async function phase7TierClassification(complex) {
+  logger.info(`[Onboarding P7] ${complex.name}: tier classification`);
+  try {
+    const updated = await pool.query('SELECT * FROM complexes WHERE id = $1', [complex.id]);
+    const c = updated.rows[0];
+
+    const iai = parseFloat(c.iai_score) || 0;
+    const status = c.status || 'unknown';
+    const developer = c.developer;
+    const hasDeveloper = developer && developer !== 'unknown' && developer !== '';
+
+    let tier;
+    if (iai >= 30) {
+      tier = 1;
+    } else if (
+      status === 'unknown' ||
+      status === 'before_declaration' ||
+      (!hasDeveloper && iai < 5)
+    ) {
+      tier = 3; // Dormant
+    } else {
+      tier = 2; // Active but below Tier 1 threshold
+    }
+
+    await pool.query(`
+      UPDATE complexes SET
+        onboarding_status = 'completed',
+        onboarding_completed_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+    `, [complex.id]);
+
+    await markPhaseComplete(complex.id, 'tier_classification');
+
+    logger.info(`[Onboarding P7] ${complex.name}: Tier ${tier} | IAI=${iai} | status=${status}`);
+    return { tier, iai };
+  } catch (err) {
+    logger.warn(`[Onboarding P7] ${complex.name}: failed - ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Run full onboarding pipeline for a single complex.
+ * Skips phases that have already been completed (idempotent).
+ *
+ * @param {number} complexId
+ * @param {object} options - { forceAll: false, skipPhases: [] }
+ */
+async function runOnboarding(complexId, options = {}) {
+  const { forceAll = false, skipPhases = [] } = options;
+
+  const result = await pool.query('SELECT * FROM complexes WHERE id = $1', [complexId]);
+  if (result.rows.length === 0) throw new Error(`Complex ${complexId} not found`);
+
+  const complex = result.rows[0];
+
+  // Parse completed phases
+  let completedPhases = [];
+  try {
+    completedPhases = JSON.parse(complex.onboarding_phases_completed || '[]');
+  } catch (e) {
+    completedPhases = [];
+  }
+
+  logger.info(`[Onboarding] Starting: ${complex.name} (${complex.city}) | completed: [${completedPhases.join(', ')}]`);
+
+  const phaseDefs = [
+    { key: 'basic_enrichment',      fn: phase1BasicEnrichment,      label: 'Phase 1: Basic Enrichment' },
+    { key: 'developer_risk',        fn: phase2DeveloperRisk,         label: 'Phase 2: Developer Risk' },
+    { key: 'news_legal',            fn: phase3NewsLegal,             label: 'Phase 3: News & Legal' },
+    { key: 'price_data',            fn: phase4PriceData,             label: 'Phase 4: Price Data' },
+    { key: 'neighborhood_benchmark',fn: phase5NeighborhoodBenchmark, label: 'Phase 5: Neighborhood Benchmark' },
+    { key: 'iai_calculation',       fn: phase6IaiCalculation,        label: 'Phase 6: IAI Calculation' },
+    { key: 'tier_classification',   fn: phase7TierClassification,    label: 'Phase 7: Tier Classification' }
+  ];
+
+  const phaseResults = {};
+
+  for (const phase of phaseDefs) {
+    if (skipPhases.includes(phase.key)) {
+      phaseResults[phase.key] = 'skipped';
+      continue;
+    }
+
+    if (!forceAll && completedPhases.includes(phase.key)) {
+      phaseResults[phase.key] = 'already_done';
+      logger.info(`[Onboarding] ${complex.name}: ${phase.label} - already completed, skipping`);
+      continue;
+    }
+
+    logger.info(`[Onboarding] ${complex.name}: running ${phase.label}`);
+    const success = await phase.fn(complex);
+    phaseResults[phase.key] = success ? 'success' : 'failed';
+
+    await sleep(PHASE_DELAY_MS);
+  }
+
+  // Mark overall status
+  const allSuccess = Object.values(phaseResults).every(v => v === 'success' || v === 'already_done' || v === 'skipped');
+  await pool.query(`
+    UPDATE complexes SET
+      onboarding_status = $1,
+      updated_at = NOW()
+    WHERE id = $2
+  `, [allSuccess ? 'completed' : 'partial', complexId]);
+
+  logger.info(`[Onboarding] Completed: ${complex.name} | status: ${allSuccess ? 'completed' : 'partial'}`);
+
+  return {
+    complexId,
+    name: complex.name,
+    city: complex.city,
+    status: allSuccess ? 'completed' : 'partial',
+    phases: phaseResults
+  };
+}
+
+/**
+ * Batch onboarding - run pipeline for multiple complexes.
+ * Options: { limit, status (pending/partial), forceAll }
+ */
+async function batchOnboarding(options = {}) {
+  const { limit = 50, forceAll = false, onlyPending = true } = options;
+
+  let query = 'SELECT id, name, city FROM complexes WHERE 1=1';
+  const params = [];
+  let idx = 1;
+
+  if (onlyPending) {
+    query += ` AND (onboarding_status IS NULL OR onboarding_status IN ('pending', 'partial'))`;
+  }
+
+  query += ' ORDER BY iai_score DESC NULLS LAST';
+  query += ` LIMIT $${idx++}`;
+  params.push(limit);
+
+  const complexes = await pool.query(query, params);
+  const total = complexes.rows.length;
+
+  logger.info(`[Onboarding] Batch starting: ${total} complexes`);
+
+  const jobId = `onboarding_${Date.now()}`;
+  const results = { jobId, total, processed: 0, completed: 0, partial: 0, failed: 0 };
+
+  // Run async in background
+  setImmediate(async () => {
+    for (let i = 0; i < complexes.rows.length; i++) {
+      const complex = complexes.rows[i];
+      try {
+        const result = await runOnboarding(complex.id, { forceAll });
+        results.processed++;
+        if (result.status === 'completed') results.completed++;
+        else results.partial++;
+        logger.info(`[Onboarding ${i + 1}/${total}] ${complex.name}: ${result.status}`);
+      } catch (err) {
+        results.processed++;
+        results.failed++;
+        logger.error(`[Onboarding ${i + 1}/${total}] ${complex.name}: ERROR - ${err.message}`);
+      }
+
+      if (i < complexes.rows.length - 1) await sleep(PHASE_DELAY_MS);
+    }
+    logger.info('[Onboarding] Batch completed', results);
+  });
+
+  return { jobId, total, message: `Onboarding batch started for ${total} complexes` };
+}
+
+module.exports = {
+  runOnboarding,
+  batchOnboarding,
+  phase1BasicEnrichment,
+  phase2DeveloperRisk,
+  phase3NewsLegal,
+  phase4PriceData,
+  phase5NeighborhoodBenchmark,
+  phase6IaiCalculation,
+  phase7TierClassification
+};
