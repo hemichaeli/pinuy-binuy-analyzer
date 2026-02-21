@@ -6,6 +6,7 @@
  * - Urban Renewal Authority (gov.il) - Official complex status
  * - Committee Protocols (mavat.iplan.gov.il) - Planning decisions
  * - Company Registry (data.gov.il) - Developer verification
+ * - Nadlan.gov.il - Government transaction data
  */
 
 const express = require('express');
@@ -21,6 +22,7 @@ function getService(name) {
       case 'urbanRenewal': return require('../services/urbanRenewalAuthorityService');
       case 'committee': return require('../services/committeeProtocolService');
       case 'developer': return require('../services/developerInfoService');
+      case 'nadlan': return require('../services/nadlanScraper');
       default: return null;
     }
   } catch (e) {
@@ -42,15 +44,21 @@ router.get('/status', (req, res) => {
   const urbanRenewal = getService('urbanRenewal');
   const committee = getService('committee');
   const developer = getService('developer');
+  const nadlan = getService('nadlan');
 
   res.json({
-    version: '4.5.0',
+    version: '4.28.1',
     phase: 'Enhanced Data Sources Integration',
     sources: {
       madlan: {
         available: !!madlan,
         description: 'נתוני עסקאות ומחירים מ-madlan.co.il',
         features: ['transaction_history', 'area_statistics', 'price_trends', 'comparables']
+      },
+      nadlan: {
+        available: !!nadlan,
+        description: 'עסקאות מרשות המיסים - nadlan.gov.il',
+        features: ['government_transactions', 'price_per_sqm', 'neighborhood_avg']
       },
       urbanRenewalAuthority: {
         available: !!urbanRenewal,
@@ -68,7 +76,7 @@ router.get('/status', (req, res) => {
         features: ['company_verification', 'risk_assessment', 'status_check']
       }
     },
-    allAvailable: !!(madlan && urbanRenewal && committee && developer),
+    allAvailable: !!(madlan && urbanRenewal && committee && developer && nadlan),
     dataGovIntegration: {
       companiesRegistry: 'https://data.gov.il/dataset/ica_companies',
       description: 'Open API for company data'
@@ -103,7 +111,7 @@ router.get('/madlan/area/:city', async (req, res) => {
 
 /**
  * POST /api/enhanced/madlan/enrich/:complexId
- * Enrich a complex with Madlan data
+ * Enrich a complex with Madlan data (uses Perplexity AI)
  */
 router.post('/madlan/enrich/:complexId', async (req, res) => {
   const madlan = getService('madlan');
@@ -113,39 +121,274 @@ router.post('/madlan/enrich/:complexId', async (req, res) => {
 
   try {
     const complexId = parseInt(req.params.complexId);
-    const complexResult = await pool.query(
-      'SELECT id, name, city, street, address FROM complexes WHERE id = $1',
-      [complexId]
-    );
-
-    if (complexResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Complex not found' });
-    }
-
-    const complex = complexResult.rows[0];
-    const enriched = await madlan.enrichComplexData(complex);
     
-    // Save to database if data was found
-    if (enriched.madlanData?.areaStats?.avgPricePerSqm) {
-      await pool.query(`
-        UPDATE complexes SET
-          madlan_avg_price_sqm = $1,
-          madlan_price_trend = $2,
-          last_madlan_update = NOW()
-        WHERE id = $3
-      `, [
-        enriched.madlanData.areaStats.avgPricePerSqm,
-        enriched.madlanData.priceTrend?.trend || null,
-        complexId
-      ]);
-    }
-
-    res.json(enriched);
+    // fetchMadlanData does SELECT * internally and handles everything
+    const result = await madlan.fetchMadlanData(complexId);
+    res.json(result);
   } catch (err) {
     logger.error('Madlan enrich error', { error: err.message });
     res.status(500).json({ error: err.message });
   }
 });
+
+/**
+ * POST /api/enhanced/madlan/scan-batch
+ * Batch scan complexes via Madlan/Perplexity for transaction data
+ * Body: { limit, city, onlyMissing }
+ */
+router.post('/madlan/scan-batch', async (req, res) => {
+  const madlan = getService('madlan');
+  if (!madlan) {
+    return res.status(503).json({ error: 'Madlan service not available' });
+  }
+
+  const { limit = 10, city, onlyMissing = true } = req.body;
+  const jobId = `madlan_batch_${Date.now()}`;
+
+  // Store job status in memory
+  if (!global._madlanJobs) global._madlanJobs = {};
+  global._madlanJobs[jobId] = { 
+    status: 'running', started: new Date().toISOString(),
+    total: 0, processed: 0, succeeded: 0, failed: 0, results: []
+  };
+
+  res.json({ 
+    message: 'Madlan batch scan started',
+    jobId,
+    params: { limit, city, onlyMissing }
+  });
+
+  // Run in background
+  (async () => {
+    try {
+      let query = 'SELECT id, name, city FROM complexes WHERE 1=1';
+      const params = [];
+      let paramIndex = 1;
+
+      if (onlyMissing) {
+        query += ' AND (madlan_avg_price_sqm IS NULL OR last_madlan_update IS NULL)';
+      }
+      if (city) {
+        query += ` AND city = $${paramIndex++}`;
+        params.push(city);
+      }
+      query += ' ORDER BY iai_score DESC NULLS LAST';
+      query += ` LIMIT $${paramIndex}`;
+      params.push(parseInt(limit));
+
+      const complexes = await pool.query(query, params);
+      const job = global._madlanJobs[jobId];
+      job.total = complexes.rows.length;
+
+      for (const complex of complexes.rows) {
+        try {
+          const result = await madlan.fetchMadlanData(complex.id);
+          job.processed++;
+          if (result.status === 'success') {
+            job.succeeded++;
+          } else {
+            job.failed++;
+          }
+          job.results.push({ id: complex.id, name: complex.name, status: result.status, transactions: result.transactions || 0 });
+          
+          // Rate limit: 3 seconds between Perplexity calls
+          await new Promise(r => setTimeout(r, 3000));
+        } catch (e) {
+          job.processed++;
+          job.failed++;
+          job.results.push({ id: complex.id, name: complex.name, status: 'error', error: e.message });
+        }
+      }
+
+      job.status = 'complete';
+      job.completed = new Date().toISOString();
+
+      // After batch, recalculate neighborhood averages
+      await recalcNeighborhoodAverages();
+
+      logger.info(`Madlan batch complete: ${job.succeeded}/${job.total} succeeded`);
+    } catch (err) {
+      global._madlanJobs[jobId].status = 'error';
+      global._madlanJobs[jobId].error = err.message;
+      logger.error('Madlan batch failed', { error: err.message });
+    }
+  })();
+});
+
+/**
+ * GET /api/enhanced/madlan/job/:jobId
+ * Check batch job status
+ */
+router.get('/madlan/job/:jobId', (req, res) => {
+  const job = (global._madlanJobs || {})[req.params.jobId];
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+});
+
+// =====================================================
+// NADLAN.GOV.IL ROUTES
+// =====================================================
+
+/**
+ * POST /api/enhanced/nadlan/scan/:complexId
+ * Scan a single complex for nadlan.gov.il transactions
+ */
+router.post('/nadlan/scan/:complexId', async (req, res) => {
+  const nadlan = getService('nadlan');
+  if (!nadlan) {
+    return res.status(503).json({ error: 'Nadlan scraper not available' });
+  }
+
+  try {
+    const complexId = parseInt(req.params.complexId);
+    const result = await nadlan.scanComplex(complexId);
+    res.json(result);
+  } catch (err) {
+    logger.error('Nadlan scan error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/enhanced/nadlan/scan-batch
+ * Batch scan complexes via nadlan.gov.il
+ * Body: { limit, city, staleOnly }
+ */
+router.post('/nadlan/scan-batch', async (req, res) => {
+  const nadlan = getService('nadlan');
+  if (!nadlan) {
+    return res.status(503).json({ error: 'Nadlan scraper not available' });
+  }
+
+  const { limit = 10, city, staleOnly = false } = req.body;
+  
+  try {
+    res.json({ 
+      message: 'Nadlan batch scan started',
+      params: { limit, city, staleOnly },
+      note: 'Running in background - check /api/enhanced/enrichment-stats for progress'
+    });
+
+    // Run in background
+    (async () => {
+      try {
+        const result = await nadlan.scanAll({ city, limit: parseInt(limit), staleOnly });
+        
+        // After batch, recalculate neighborhood averages
+        await recalcNeighborhoodAverages();
+        
+        logger.info('Nadlan batch complete', { succeeded: result.succeeded, total: result.total, newTransactions: result.totalNew });
+      } catch (err) {
+        logger.error('Nadlan batch failed', { error: err.message });
+      }
+    })();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================================================
+// NEIGHBORHOOD AVERAGE CALCULATION
+// =====================================================
+
+/**
+ * POST /api/enhanced/recalc-neighborhood-avg
+ * Recalculate neighborhood averages from transaction data
+ */
+router.post('/recalc-neighborhood-avg', async (req, res) => {
+  try {
+    const result = await recalcNeighborhoodAverages();
+    res.json(result);
+  } catch (err) {
+    logger.error('Recalc neighborhood avg error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Recalculate neighborhood averages from stored transactions
+ */
+async function recalcNeighborhoodAverages() {
+  try {
+    // Ensure columns exist
+    await pool.query(`
+      ALTER TABLE complexes ADD COLUMN IF NOT EXISTS nadlan_neighborhood_avg_sqm NUMERIC(10,2);
+      ALTER TABLE complexes ADD COLUMN IF NOT EXISTS madlan_neighborhood_avg_sqm NUMERIC(10,2);
+      ALTER TABLE complexes ADD COLUMN IF NOT EXISTS neighborhood_avg_sqm NUMERIC(10,2);
+      ALTER TABLE complexes ADD COLUMN IF NOT EXISTS transaction_count INTEGER DEFAULT 0;
+    `);
+
+    // Calculate per-complex average from transactions table
+    const txAvg = await pool.query(`
+      SELECT 
+        complex_id,
+        COUNT(*) as tx_count,
+        ROUND(AVG(price_per_sqm)) as avg_price_sqm,
+        ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price_per_sqm)) as median_price_sqm,
+        source
+      FROM transactions
+      WHERE price_per_sqm IS NOT NULL 
+        AND price_per_sqm > 3000 
+        AND price_per_sqm < 200000
+      GROUP BY complex_id, source
+    `);
+
+    let updated = 0;
+    for (const row of txAvg.rows) {
+      const col = row.source === 'madlan' ? 'madlan_neighborhood_avg_sqm' : 'nadlan_neighborhood_avg_sqm';
+      await pool.query(`
+        UPDATE complexes SET 
+          ${col} = $1,
+          transaction_count = GREATEST(COALESCE(transaction_count, 0), $2)
+        WHERE id = $3
+      `, [row.median_price_sqm || row.avg_price_sqm, row.tx_count, row.complex_id]);
+      updated++;
+    }
+
+    // Calculate combined neighborhood_avg_sqm (prefer nadlan, fallback to madlan)
+    const combined = await pool.query(`
+      UPDATE complexes SET
+        neighborhood_avg_sqm = COALESCE(nadlan_neighborhood_avg_sqm, madlan_neighborhood_avg_sqm)
+      WHERE nadlan_neighborhood_avg_sqm IS NOT NULL OR madlan_neighborhood_avg_sqm IS NOT NULL
+      RETURNING id
+    `);
+
+    // Also update accurate_price_sqm where missing, from neighborhood data
+    const priceFill = await pool.query(`
+      UPDATE complexes SET
+        accurate_price_sqm = neighborhood_avg_sqm
+      WHERE accurate_price_sqm IS NULL 
+        AND neighborhood_avg_sqm IS NOT NULL
+      RETURNING id
+    `);
+
+    // Recalculate actual_premium where we now have price data
+    const premiumCalc = await pool.query(`
+      UPDATE complexes SET
+        actual_premium = ROUND(((accurate_price_sqm - city_avg_price_sqm) / NULLIF(city_avg_price_sqm, 0)) * 100, 2)
+      WHERE accurate_price_sqm IS NOT NULL 
+        AND city_avg_price_sqm IS NOT NULL
+        AND city_avg_price_sqm > 0
+        AND actual_premium IS NULL
+      RETURNING id
+    `);
+
+    const result = {
+      message: 'Neighborhood averages recalculated',
+      transactionGroups: txAvg.rows.length,
+      complexesUpdated: updated,
+      combinedAvgSet: combined.rowCount,
+      pricesFilled: priceFill.rowCount,
+      premiumsCalculated: premiumCalc.rowCount
+    };
+
+    logger.info('Neighborhood averages recalculated', result);
+    return result;
+  } catch (err) {
+    logger.error('Recalc neighborhood averages failed', { error: err.message });
+    throw err;
+  }
+}
 
 // =====================================================
 // URBAN RENEWAL AUTHORITY ROUTES
@@ -299,7 +542,7 @@ router.post('/committee/triggers/:complexId', async (req, res) => {
   try {
     const complexId = parseInt(req.params.complexId);
     const complexResult = await pool.query(
-      'SELECT id, name, city, plan_number, street FROM complexes WHERE id = $1',
+      'SELECT id, name, city, plan_number, addresses, address FROM complexes WHERE id = $1',
       [complexId]
     );
 
@@ -492,8 +735,8 @@ router.post('/enrich-all', async (req, res) => {
       const developer = getService('developer');
 
       try {
-        // Build query
-        let query = 'SELECT id, name, city, street, address, developer, plan_number FROM complexes WHERE 1=1';
+        // Build query - use addresses instead of street
+        let query = 'SELECT id, name, city, addresses, address, developer, plan_number FROM complexes WHERE 1=1';
         const params = [];
         let paramIndex = 1;
 
@@ -514,7 +757,7 @@ router.post('/enrich-all', async (req, res) => {
           try {
             // Run requested enrichment source(s)
             if (!source || source === 'all' || source === 'madlan') {
-              if (madlan) await madlan.enrichComplexData(complex);
+              if (madlan) await madlan.fetchMadlanData(complex.id);
             }
             if (!source || source === 'all' || source === 'official') {
               if (urbanRenewal) await urbanRenewal.getComplexOfficialStatus(complex.name, complex.city);
@@ -528,11 +771,14 @@ router.post('/enrich-all', async (req, res) => {
             enriched++;
 
             // Rate limiting
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 3000));
           } catch (e) {
             logger.warn(`Enrichment failed for ${complex.name}`, { error: e.message });
           }
         }
+
+        // Recalculate neighborhood averages after batch
+        await recalcNeighborhoodAverages();
 
         logger.info(`Enrichment complete: ${enriched}/${complexes.rows.length}`);
       } catch (err) {
@@ -561,6 +807,8 @@ router.get('/enrichment-stats', async (req, res) => {
         COUNT(*) FILTER (WHERE committee_last_checked IS NOT NULL) as committee_checked,
         COUNT(*) FILTER (WHERE price_trigger_detected = TRUE) as with_price_triggers,
         COUNT(*) FILTER (WHERE developer_risk_score >= 75) as high_risk_developers,
+        COUNT(*) FILTER (WHERE nadlan_neighborhood_avg_sqm IS NOT NULL) as nadlan_enriched,
+        COUNT(*) FILTER (WHERE neighborhood_avg_sqm IS NOT NULL) as has_neighborhood_avg,
         AVG(madlan_avg_price_sqm) FILTER (WHERE madlan_avg_price_sqm IS NOT NULL) as avg_price_sqm,
         AVG(official_certainty_score) FILTER (WHERE official_certainty_score IS NOT NULL) as avg_certainty
       FROM complexes
@@ -575,6 +823,14 @@ router.get('/enrichment-stats', async (req, res) => {
         madlan: {
           count: parseInt(row.madlan_enriched) || 0,
           percentage: Math.round(((parseInt(row.madlan_enriched) || 0) / total) * 100)
+        },
+        nadlan: {
+          count: parseInt(row.nadlan_enriched) || 0,
+          percentage: Math.round(((parseInt(row.nadlan_enriched) || 0) / total) * 100)
+        },
+        neighborhoodAvg: {
+          count: parseInt(row.has_neighborhood_avg) || 0,
+          percentage: Math.round(((parseInt(row.has_neighborhood_avg) || 0) / total) * 100)
         },
         official: {
           declared: parseInt(row.officially_declared) || 0,
@@ -606,6 +862,8 @@ router.get('/enrichment-stats', async (req, res) => {
         total: parseInt(basicStats.rows[0].total),
         coverage: {
           madlan: { count: 0, percentage: 0 },
+          nadlan: { count: 0, percentage: 0 },
+          neighborhoodAvg: { count: 0, percentage: 0 },
           official: { declared: 0, verified: 0, percentage: 0 },
           developer: { verified: 0, highRisk: 0, percentage: 0 },
           committee: { checked: 0, withTriggers: 0, percentage: 0 }
