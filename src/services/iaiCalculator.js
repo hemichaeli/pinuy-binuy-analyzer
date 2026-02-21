@@ -400,5 +400,7 @@ module.exports = {
   PREMIUM_TABLE, STRONG_DEVELOPERS,
   // v3 specific
   calcPlanningScore, calcPremiumScore, calcMomentumScore,
-  calcScaleScore, calcDeveloperScore, calcDataScore
+  calcScaleScore, calcDeveloperScore, calcDataScore,
+  // Alias for deepEnrichmentService compatibility
+  recalculateComplex: calculateIAI
 };
