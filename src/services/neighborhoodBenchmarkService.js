@@ -2,7 +2,7 @@
  * Neighborhood Benchmark Service
  *
  * Calculates a hyper-local price benchmark for each complex by:
- * 1. Fetching real closed transactions from nadlan.gov.il for nearby streets
+ * 1. Fetching real closed transactions via Claude web_search (nadlan.gov.il data)
  * 2. Fetching market data from madlan.co.il via Perplexity
  * 3. Computing a weighted average (60% nadlan / 40% madlan)
  * 4. Flagging data quality issues when sources diverge > 20%
@@ -15,9 +15,10 @@ const axios = require('axios');
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 const { queryPerplexity, parseJsonResponse } = require('./perplexityService');
+const { fetchNadlanViaClaude } = require('./claudeEnrichmentService');
 
 // NOTE: nadlan.gov.il REST API is now behind reCAPTCHA Enterprise (Feb 2026)
-// Direct API calls return HTML instead of JSON. Using Perplexity for nadlan data instead.
+// Direct API calls return HTML instead of JSON. Using Claude web_search instead.
 const NADLAN_API_ENABLED = false;
 const NADLAN_API_URL = 'https://x4006fhmy5.execute-api.il-central-1.amazonaws.com/api/deal';
 const DELAY_MS = 3000;
@@ -89,7 +90,7 @@ function extractStreets(complex) {
  */
 async function fetchNadlanStreet(street, city) {
   if (!NADLAN_API_ENABLED) {
-    return []; // API behind reCAPTCHA Enterprise - use fetchNadlanViaPerplexity instead
+    return []; // API behind reCAPTCHA Enterprise - use Claude web_search instead
   }
   try {
     const payload = {
@@ -170,59 +171,6 @@ async function fetchNadlanStreet(street, city) {
   } catch (err) {
     logger.warn(`[Benchmark] nadlan error for ${street}, ${city}: ${err.message}`);
     return [];
-  }
-}
-
-/**
- * Fetch nadlan transaction data via Perplexity web search.
- * Workaround for nadlan.gov.il reCAPTCHA Enterprise lockout.
- * Searches for closed transaction data from nadlan.gov.il via Perplexity.
- */
-async function fetchNadlanViaPerplexity(complex, streets) {
-  try {
-    const streetList = streets.join(', ');
-    const prompt = `חפש נתוני עסקאות נדל"ן סגורות מאתר nadlan.gov.il עבור הרחובות: ${streetList} ב${complex.city}.
-
-אני צריך:
-1. מחיר ממוצע למ"ר של דירות שנמכרו ב-24 חודשים האחרונים באותם רחובות
-2. רק עסקאות סגורות - לא מחירי ביקוש
-3. רק דירות מגורים (לא מסחרי)
-
-חפש ב: nadlan.gov.il, yad2 נדל"ן, madlan.co.il, כלכליסט נדל"ן
-החזר JSON בלבד:
-{
-  "nadlan_avg_price_sqm": 0,
-  "nadlan_transactions_count": 0,
-  "nadlan_price_range": {"min": 0, "max": 0},
-  "streets_found": ["רשימת רחובות שנמצאו"],
-  "data_quality": "high/medium/low",
-  "notes": ""
-}
-החזר JSON בלבד.`;
-
-    const systemPrompt = `You are a real estate data extraction assistant for Israel.
-Extract ONLY verified closed transaction data from nadlan.gov.il and related sources.
-Return ONLY valid JSON. All prices in Israeli Shekels (ILS).
-Focus on actual closed deal prices per sqm for apartments.`;
-
-    const rawResponse = await queryPerplexity(prompt, systemPrompt);
-    const data = parseJsonResponse(rawResponse);
-
-    if (!data || !data.nadlan_avg_price_sqm || data.nadlan_avg_price_sqm <= 0) {
-      return null;
-    }
-
-    return {
-      avg_price_sqm: Math.round(data.nadlan_avg_price_sqm),
-      transactions_count: data.nadlan_transactions_count || 0,
-      data_quality: data.data_quality || 'medium',
-      streets_found: data.streets_found || streets,
-      source: 'nadlan_via_perplexity'
-    };
-
-  } catch (err) {
-    logger.warn(`[Benchmark] nadlan via Perplexity error for ${complex.name}: ${err.message}`);
-    return null;
   }
 }
 
@@ -347,7 +295,7 @@ async function fetchNeighborhoodBenchmark(complexId) {
     return { complexId, name: complex.name, status: 'no_address', streets: 0 };
   }
 
-  // Fetch from nadlan - either direct API or via Perplexity
+  // Fetch nadlan data via Claude web_search (primary) or direct API (if re-enabled)
   let allNadlanTransactions = [];
   let nadlanAvg = null;
 
@@ -367,12 +315,18 @@ async function fetchNeighborhoodBenchmark(complexId) {
       }
     }
   } else {
-    // Perplexity-based nadlan data (workaround for reCAPTCHA lockout)
-    const nadlanPerplexity = await fetchNadlanViaPerplexity(complex, streets);
-    if (nadlanPerplexity && nadlanPerplexity.avg_price_sqm > 0) {
-      nadlanAvg = nadlanPerplexity.avg_price_sqm;
-      allNadlanTransactions = [{ price_per_sqm: nadlanAvg, source: 'nadlan_via_perplexity' }];
-      logger.info(`[Benchmark] nadlan via Perplexity: ${nadlanAvg} ILS/sqm (${nadlanPerplexity.data_quality})`);
+    // Claude web_search for nadlan data (primary method since Feb 2026)
+    try {
+      const claudeNadlan = await fetchNadlanViaClaude(complex, streets);
+      if (claudeNadlan && claudeNadlan.avg_price_sqm > 0) {
+        nadlanAvg = claudeNadlan.avg_price_sqm;
+        allNadlanTransactions = [{ price_per_sqm: nadlanAvg, source: 'nadlan_via_claude' }];
+        logger.info(`[Benchmark] nadlan via Claude: ${nadlanAvg} ILS/sqm (${claudeNadlan.data_quality})`);
+      } else {
+        logger.info(`[Benchmark] Claude returned no nadlan data for ${complex.name}`);
+      }
+    } catch (claudeErr) {
+      logger.warn(`[Benchmark] Claude nadlan failed for ${complex.name}: ${claudeErr.message}`);
     }
     await sleep(DELAY_MS);
   }
@@ -504,6 +458,5 @@ module.exports = {
   scanNeighborhoodBenchmarks,
   extractStreets,
   parseAddress,
-  calculateWeightedBenchmark,
-  fetchNadlanViaPerplexity
+  calculateWeightedBenchmark
 };
