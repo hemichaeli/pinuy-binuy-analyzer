@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.28.0';
-const BUILD = '2026-02-19-v4.28.0-fireflies-webhook';
+const VERSION = '4.29.0';
+const BUILD = '2026-02-22-v4.29.0-mavat-building-details';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -262,8 +262,31 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_type ON leads(user_type)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at DESC)`);
     } catch (e) { /* table exists */ }
+
+    // v4.29.0: Mavat building details table
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS building_details (
+          id SERIAL PRIMARY KEY,
+          complex_id INTEGER NOT NULL REFERENCES complexes(id) ON DELETE CASCADE,
+          building_address TEXT,
+          building_number TEXT,
+          existing_units INTEGER,
+          planned_units INTEGER,
+          floors_existing INTEGER,
+          floors_planned INTEGER,
+          notes TEXT,
+          source TEXT DEFAULT 'gemini_mavat',
+          confidence TEXT DEFAULT 'medium',
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_building_details_complex ON building_details(complex_id)`);
+      await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_building_scan TIMESTAMP`);
+    } catch (e) { /* table exists */ }
     
-    logger.info('Auto-migrations completed (v4.28.0 - fireflies-webhook)');
+    logger.info('Auto-migrations completed (v4.29.0 - mavat-building-details)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -418,6 +441,7 @@ function loadAllRoutes() {
     ['./routes/leadRoutes', '/api/leads'],
     ['./routes/botRoutes', '/api/bot'],
     ['./routes/firefliesWebhookRoutes', '/api/fireflies'],
+    ['./routes/mavatBuildingRoutes', '/api/mavat'],
   ];
   
   let loaded = 0, failed = 0;
@@ -475,7 +499,7 @@ app.get('/debug', (req, res) => {
   res.json({
     timestamp: new Date().toISOString(), build: BUILD, version: VERSION, node_version: process.version,
     env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? '(set)' : '(not set)', TRELLO_API_KEY: process.env.TRELLO_API_KEY ? '(set)' : '(not set)', TRELLO_TOKEN: process.env.TRELLO_TOKEN ? '(set)' : '(not set)', TRELLO_BOARD_ID: process.env.TRELLO_BOARD_ID ? '(set)' : '(not set)' },
-    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled', trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured', leads: 'active', whatsapp_bot: 'active', fireflies_webhook: 'active' },
+    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled', trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured', leads: 'active', whatsapp_bot: 'active', fireflies_webhook: 'active', mavat_buildings: 'active' },
     routes: routeLoadResults, scheduler: schedulerStatus
   });
 });
@@ -502,7 +526,8 @@ app.get('/api/info', (req, res) => {
       health: '/health', debug: '/debug', diagnostics: '/diagnostics',
       leads: '/api/leads', bot_health: '/api/bot/health',
       bot_webservice: '/api/bot/webservice', bot_callback: '/api/bot/callback',
-      fireflies_webhook: '/api/fireflies/webhook', fireflies_test: '/api/fireflies/test'
+      fireflies_webhook: '/api/fireflies/webhook', fireflies_test: '/api/fireflies/test',
+      mavat_stats: '/api/mavat/stats', mavat_buildings: '/api/mavat/buildings/:id'
     }
   });
 });
@@ -537,6 +562,7 @@ async function start() {
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`WhatsApp Bot: /api/bot/`);
     logger.info(`Fireflies Webhook: /api/fireflies/webhook`);
+    logger.info(`Mavat Buildings: /api/mavat/`);
   });
 }
 
