@@ -10,7 +10,8 @@ const axios = require('axios');
 const { logger } = require('./logger');
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Use env var for model or default to latest available
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-preview-05-20';
 const DELAY_MS = 1500;
 
 function sleep(ms) {
@@ -18,7 +19,8 @@ function sleep(ms) {
 }
 
 /**
- * Query Gemini API with Google Search grounding
+ * Query Gemini API with Google Search grounding.
+ * Includes automatic model fallback if primary model is unavailable.
  */
 async function queryGemini(prompt, systemPrompt, useGrounding = true) {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -26,47 +28,77 @@ async function queryGemini(prompt, systemPrompt, useGrounding = true) {
     throw new Error('GEMINI_API_KEY not set');
   }
 
-  const url = `${GEMINI_API_URL}/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const models = [GEMINI_MODEL, 'gemini-1.5-flash-latest', 'gemini-2.0-flash-001'];
 
-  const body = {
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: prompt }]
+  for (const model of models) {
+    try {
+      const url = `${GEMINI_API_URL}/${model}:generateContent?key=${apiKey}`;
+
+      const body = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }]
+          }
+        ],
+        systemInstruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096
+        }
+      };
+
+      if (useGrounding) {
+        body.tools = [
+          {
+            google_search: {}
+          }
+        ];
       }
-    ],
-    systemInstruction: {
-      parts: [{ text: systemPrompt }]
-    },
-    generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 4096
+
+      logger.info(`[Gemini] Calling ${model} (grounding=${useGrounding})`);
+
+      const response = await axios.post(url, body, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 60000
+      });
+
+      // Extract text from response
+      const candidates = response.data.candidates || [];
+      if (candidates.length === 0) {
+        logger.warn(`[Gemini] ${model}: no candidates returned`);
+        continue;
+      }
+
+      const parts = candidates[0].content?.parts || [];
+      const textParts = parts
+        .filter(p => p.text)
+        .map(p => p.text);
+
+      if (textParts.length > 0) {
+        logger.info(`[Gemini] ${model}: success`);
+        return textParts.join('\n');
+      }
+
+    } catch (err) {
+      const status = err.response?.status;
+      const errMsg = err.response?.data?.error?.message || err.message;
+      
+      // If model not found or deprecated, try next
+      if (status === 404 || status === 400) {
+        logger.warn(`[Gemini] ${model}: ${status} - ${errMsg.substring(0, 100)}. Trying next model...`);
+        continue;
+      }
+      
+      // For other errors (429 quota, 403 auth), throw immediately
+      throw err;
     }
-  };
-
-  if (useGrounding) {
-    body.tools = [
-      {
-        google_search: {}
-      }
-    ];
   }
 
-  const response = await axios.post(url, body, {
-    headers: { 'Content-Type': 'application/json' },
-    timeout: 60000
-  });
-
-  // Extract text from response
-  const candidates = response.data.candidates || [];
-  if (candidates.length === 0) return null;
-
-  const parts = candidates[0].content?.parts || [];
-  const textParts = parts
-    .filter(p => p.text)
-    .map(p => p.text);
-
-  return textParts.join('\n');
+  logger.warn('[Gemini] All models failed');
+  return null;
 }
 
 /**
@@ -75,14 +107,12 @@ async function queryGemini(prompt, systemPrompt, useGrounding = true) {
 function parseGeminiJson(text) {
   if (!text) return null;
 
-  // Try direct parse
   try {
     return JSON.parse(text);
   } catch (e) {
     // noop
   }
 
-  // Try extracting from markdown code block
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) {
     try {
@@ -92,7 +122,6 @@ function parseGeminiJson(text) {
     }
   }
 
-  // Try finding JSON object in text
   const objectMatch = text.match(/\{[\s\S]*\}/);
   if (objectMatch) {
     try {
@@ -108,7 +137,6 @@ function parseGeminiJson(text) {
 
 /**
  * Fetch madlan/yad2 pricing data via Gemini Google Search
- * Great for: current market prices, listing data, neighborhood comparisons
  */
 async function fetchMadlanViaGemini(complex, streets) {
   try {
@@ -171,7 +199,6 @@ Return ONLY valid JSON, no other text.`;
 
 /**
  * Fetch address/location data via Gemini Google Search
- * Leverages Google's superior address/maps data
  */
 async function fetchAddressData(complex) {
   try {
@@ -207,7 +234,6 @@ Return ONLY valid JSON.`;
 
 /**
  * Fetch nadlan transaction data via Gemini Google Search
- * Backup/complement to Claude for nadlan data
  */
 async function fetchNadlanViaGemini(complex, streets) {
   try {
