@@ -1,5 +1,5 @@
 /**
- * Mavat Building Details Service v2.2
+ * Mavat Building Details Service v2.3
  * 
  * Uses Gemini + Google Search Grounding to extract per-building
  * unit counts from planning documents, news articles, and municipal sites.
@@ -9,6 +9,9 @@
  * Phase B: Extract building-level details with FOCUSED unit-count prompts
  * Phase C: Smart estimation fallback if exact per-building counts unavailable
  *          Now also falls back to existing DB buildings if Phase B fails
+ * 
+ * v2.3 fixes: estimation now runs independently for existing/planned,
+ *             plan_number sanitization, improved confidence tracking
  * 
  * Engine: Gemini 2.5 Flash (with Google Search grounding)
  */
@@ -35,6 +38,22 @@ function sanitizeInt(val) {
   const numMatch = str.match(/(\d+)/);
   if (numMatch) return parseInt(numMatch[1]);
   return null;
+}
+
+/**
+ * Sanitize plan_number - extract clean identifier from Gemini response
+ * Rejects full sentences, keeps only plan number patterns
+ */
+function sanitizePlanNumber(val) {
+  if (!val || val === 'null' || val === 'None') return null;
+  const str = String(val).trim();
+  // If it's a long sentence (>80 chars), it's probably not a real plan number
+  if (str.length > 80) return null;
+  // If it contains common sentence words, reject
+  if (/\b(not|found|explicitly|process|known|project|the)\b/i.test(str)) return null;
+  // Common Hebrew sentence markers
+  if (/\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0|\u05dc\u05d0 \u05d9\u05d3\u05d5\u05e2|\u05d1\u05ea\u05d4\u05dc\u05d9\u05da|\u05d4\u05ea\u05d5\u05db\u05e0\u05d9\u05ea/.test(str)) return null;
+  return str;
 }
 
 /**
@@ -292,14 +311,17 @@ Return ONLY valid JSON (NO markdown backticks):
 
 /**
  * Phase C: Smart estimation - distribute known totals across buildings
+ * v2.3: Handles existing and planned INDEPENDENTLY
  */
 function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
-  if (!buildings || buildings.length === 0) return buildings;
-  if (!totalExisting && !totalPlanned) return buildings;
+  if (!buildings || buildings.length === 0) return { buildings, estimationApplied: false };
+  if (!totalExisting && !totalPlanned) return { buildings, estimationApplied: false };
 
   const hasExisting = buildings.some(b => b.existing_units && b.existing_units > 0);
   const hasPlanned = buildings.some(b => b.planned_units && b.planned_units > 0);
+  let estimationApplied = false;
 
+  // Estimate EXISTING units if missing
   if (totalExisting && !hasExisting) {
     const numBuildings = buildings.length;
     buildings.forEach(b => {
@@ -324,9 +346,11 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
         }
       });
     }
-    buildings.forEach(b => { b.confidence = 'estimated'; });
+    estimationApplied = true;
+    logger.info(`[MavatBuilding] Estimated existing_units: ${totalExisting} across ${numBuildings} buildings`);
   }
 
+  // Estimate PLANNED units if missing (independent of existing)
   if (totalPlanned && !hasPlanned) {
     const hasFloorData = buildings.some(b => {
       const f = sanitizeInt(b.floors_planned);
@@ -352,7 +376,6 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
         } else {
           b.planned_units = totalPlanned - distributed;
         }
-        b.confidence = 'estimated';
       });
     } else {
       let distributed = 0;
@@ -364,12 +387,27 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
         } else {
           b.planned_units = totalPlanned - distributed;
         }
-        b.confidence = 'estimated';
       });
     }
+    estimationApplied = true;
+    logger.info(`[MavatBuilding] Estimated planned_units: ${totalPlanned} across ${buildings.length} buildings`);
   }
 
-  return buildings;
+  // Mark confidence on buildings where estimation was applied
+  if (estimationApplied) {
+    buildings.forEach(b => {
+      // Only mark as estimated if this building's data was actually estimated
+      const existingWasEstimated = totalExisting && !hasExisting;
+      const plannedWasEstimated = totalPlanned && !hasPlanned;
+      if (existingWasEstimated && plannedWasEstimated) {
+        b.confidence = 'estimated';
+      } else if (existingWasEstimated || plannedWasEstimated) {
+        b.confidence = b.confidence === 'medium' ? 'partial_estimated' : b.confidence;
+      }
+    });
+  }
+
+  return { buildings, estimationApplied };
 }
 
 /**
@@ -468,14 +506,19 @@ async function enrichComplex(complexId) {
     logger.info(`[MavatBuilding] Phase A: Finding plan_number for ${complex.name}`);
     const planData = await findPlanNumber(complex);
     
-    if (planData && planData.plan_number && planData.plan_number !== 'null' && planData.plan_number !== null) {
-      await pool.query(
-        'UPDATE complexes SET plan_number = $1 WHERE id = $2 AND plan_number IS NULL',
-        [planData.plan_number, complexId]
-      );
-      complex.plan_number = planData.plan_number;
-      planUpdated = true;
-      logger.info(`[MavatBuilding] Found plan_number: ${planData.plan_number} (${planData.confidence})`);
+    if (planData && planData.plan_number) {
+      const cleanPlan = sanitizePlanNumber(planData.plan_number);
+      if (cleanPlan) {
+        await pool.query(
+          'UPDATE complexes SET plan_number = $1 WHERE id = $2 AND plan_number IS NULL',
+          [cleanPlan, complexId]
+        );
+        complex.plan_number = cleanPlan;
+        planUpdated = true;
+        logger.info(`[MavatBuilding] Found plan_number: ${cleanPlan} (${planData.confidence})`);
+      } else {
+        logger.warn(`[MavatBuilding] Rejected invalid plan_number: "${String(planData.plan_number).substring(0, 80)}"`);
+      }
     }
     
     await sleep(DELAY_BETWEEN_CALLS);
@@ -492,7 +535,7 @@ async function enrichComplex(complexId) {
   if (buildingData && buildingData.buildings && buildingData.buildings.length > 0) {
     buildings = buildingData.buildings;
     
-    // Filter out combined entries
+    // Filter out combined entries (multiple addresses crammed into one)
     const validBuildings = buildings.filter(b => {
       if (!b.address) return false;
       const commaCount = (b.address.match(/,/g) || []).length;
@@ -506,6 +549,11 @@ async function enrichComplex(complexId) {
       logger.warn(`[MavatBuilding] Gemini returned combined address entry, discarding`);
       buildings = [];
     }
+  }
+
+  // Sanitize plan_number from buildingData too
+  if (buildingData && buildingData.plan_number) {
+    buildingData.plan_number = sanitizePlanNumber(buildingData.plan_number);
   }
 
   // FALLBACK: Use existing DB buildings if Phase B failed
@@ -531,32 +579,35 @@ async function enrichComplex(complexId) {
     };
   }
 
-  // Phase C: Smart estimation
+  // Phase C: Smart estimation - ALWAYS run, let function decide what to estimate
   const totalExisting = (buildingData && buildingData.total_existing_units) || complex.existing_units;
   const totalPlanned = (buildingData && buildingData.total_planned_units) || complex.planned_units;
   
-  const hadUnitsBeforeEstimation = buildings.some(b => (b.existing_units && b.existing_units > 0) || (b.planned_units && b.planned_units > 0));
-  
-  if (!hadUnitsBeforeEstimation && (totalExisting || totalPlanned)) {
-    logger.info(`[MavatBuilding] Phase C: Estimating units for ${buildings.length} buildings (total: ${totalExisting}->${totalPlanned})`);
-    buildings = estimateBuildingUnits(buildings, totalExisting, totalPlanned);
-    if (dataSource === 'gemini_mavat') dataSource = 'gemini_mavat+estimation';
+  const { buildings: estimatedBuildings, estimationApplied } = estimateBuildingUnits(
+    buildings, totalExisting, totalPlanned
+  );
+  buildings = estimatedBuildings;
+
+  if (estimationApplied && dataSource === 'gemini_mavat') {
+    dataSource = 'gemini_mavat+estimation';
   }
 
   let dataQuality = (buildingData && buildingData.data_quality) || 'medium';
-  if (!hadUnitsBeforeEstimation && buildings.some(b => b.confidence === 'estimated')) {
-    dataQuality = 'estimated';
+  if (estimationApplied) {
+    const hasAnyExact = buildings.some(b => b.confidence !== 'estimated' && b.confidence !== 'partial_estimated');
+    dataQuality = hasAnyExact ? 'mixed' : 'estimated';
   }
 
   const savedCount = await saveBuildingDetails(complexId, buildings, dataSource);
 
+  // Update complex totals if we got new info
   if (buildingData && buildingData.total_existing_units && !complex.existing_units) {
     await pool.query('UPDATE complexes SET existing_units = $1 WHERE id = $2', [buildingData.total_existing_units, complexId]);
   }
   if (buildingData && buildingData.total_planned_units && !complex.planned_units) {
     await pool.query('UPDATE complexes SET planned_units = $1 WHERE id = $2', [buildingData.total_planned_units, complexId]);
   }
-  if (buildingData && buildingData.plan_number && buildingData.plan_number !== 'null' && !complex.plan_number) {
+  if (buildingData && buildingData.plan_number && !complex.plan_number) {
     await pool.query('UPDATE complexes SET plan_number = $1 WHERE id = $2', [buildingData.plan_number, complexId]);
   }
 
@@ -574,7 +625,7 @@ async function enrichComplex(complexId) {
     buildings_saved: savedCount,
     total_existing: sumExisting || totalExisting,
     total_planned: sumPlanned || totalPlanned,
-    estimation_used: !hadUnitsBeforeEstimation,
+    estimation_used: estimationApplied,
     phase_used: phaseUsed,
     data_quality: dataQuality,
     source: dataSource
@@ -683,8 +734,8 @@ async function getBuildingDetails(complexId) {
     total_existing: buildings.rows.reduce((s, b) => s + (b.existing_units || 0), 0),
     total_planned: buildings.rows.reduce((s, b) => s + (b.planned_units || 0), 0),
     buildings_with_data: buildings.rows.filter(b => b.existing_units || b.planned_units).length,
-    has_exact_data: buildings.rows.some(b => b.confidence !== 'estimated'),
-    estimation_used: buildings.rows.some(b => b.confidence === 'estimated')
+    has_exact_data: buildings.rows.some(b => b.confidence !== 'estimated' && b.confidence !== 'partial_estimated'),
+    estimation_used: buildings.rows.some(b => b.confidence === 'estimated' || b.confidence === 'partial_estimated')
   };
 
   return {
@@ -706,5 +757,6 @@ module.exports = {
   batchEnrich,
   getBuildingDetails,
   parseGeminiJsonRobust,
-  sanitizeInt
+  sanitizeInt,
+  sanitizePlanNumber
 };
