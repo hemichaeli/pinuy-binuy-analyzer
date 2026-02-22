@@ -10,6 +10,7 @@
  *   POST /api/mavat/batch                 - Batch enrich multiple complexes
  *   GET  /api/mavat/stats                 - Building data coverage stats
  *   GET  /api/mavat/missing-plans         - Complexes missing plan_numbers
+ *   POST /api/mavat/cleanup               - Clean bad plan_numbers
  */
 
 const express = require('express');
@@ -91,6 +92,64 @@ router.post('/batch', async (req, res) => {
     });
   } catch (err) {
     logger.error('[MavatRoutes] batch error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cleanup - Clean bad plan_numbers and data quality fixes
+ */
+router.post('/cleanup', async (req, res) => {
+  try {
+    const results = { plan_numbers_cleaned: 0, details: [] };
+
+    // 1. Clean plan_numbers that are full sentences (>60 chars)
+    const longPlans = await pool.query(`
+      UPDATE complexes SET plan_number = NULL 
+      WHERE plan_number IS NOT NULL AND LENGTH(plan_number) > 60
+      RETURNING id, name, city
+    `);
+    results.plan_numbers_cleaned += longPlans.rows.length;
+    longPlans.rows.forEach(r => results.details.push(`Cleaned long plan_number: ${r.name} (${r.city})`));
+
+    // 2. Clean plan_numbers containing sentence words
+    const sentencePlans = await pool.query(`
+      UPDATE complexes SET plan_number = NULL 
+      WHERE plan_number IS NOT NULL AND (
+        plan_number ILIKE '%not explicitly%' OR
+        plan_number ILIKE '%not found%' OR
+        plan_number ILIKE '%unknown%' OR
+        plan_number ILIKE '%in the process%' OR
+        plan_number ILIKE '%could not%' OR
+        plan_number ILIKE '%no plan%' OR
+        plan_number LIKE '%לא נמצא%' OR
+        plan_number LIKE '%לא ידוע%' OR
+        plan_number LIKE '%בתהליך%' OR
+        plan_number LIKE '%התוכנית%'
+      )
+      RETURNING id, name, city
+    `);
+    results.plan_numbers_cleaned += sentencePlans.rows.length;
+    sentencePlans.rows.forEach(r => results.details.push(`Cleaned sentence plan_number: ${r.name} (${r.city})`));
+
+    // 3. Stats after cleanup
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(plan_number) as has_plan,
+        COUNT(last_building_scan) as scanned,
+        (SELECT COUNT(DISTINCT complex_id) FROM building_details) as has_buildings,
+        (SELECT COUNT(*) FROM building_details WHERE existing_units IS NOT NULL) as units_filled
+    `);
+
+    res.json({
+      status: 'ok',
+      cleaned: results.plan_numbers_cleaned,
+      details: results.details,
+      stats_after: stats.rows[0]
+    });
+  } catch (err) {
+    logger.error('[MavatRoutes] cleanup error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
