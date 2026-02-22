@@ -110,7 +110,7 @@ router.post('/cleanup', async (req, res) => {
       RETURNING id, name, city
     `);
     results.plan_numbers_cleaned += longPlans.rows.length;
-    longPlans.rows.forEach(r => results.details.push(`Cleaned long plan_number: ${r.name} (${r.city})`));
+    longPlans.rows.forEach(r => results.details.push(`Cleaned long: ${r.name} (${r.city})`));
 
     // 2. Clean plan_numbers containing sentence words
     const sentencePlans = await pool.query(`
@@ -121,23 +121,19 @@ router.post('/cleanup', async (req, res) => {
         plan_number ILIKE '%unknown%' OR
         plan_number ILIKE '%in the process%' OR
         plan_number ILIKE '%could not%' OR
-        plan_number ILIKE '%no plan%' OR
-        plan_number LIKE '%לא נמצא%' OR
-        plan_number LIKE '%לא ידוע%' OR
-        plan_number LIKE '%בתהליך%' OR
-        plan_number LIKE '%התוכנית%'
+        plan_number ILIKE '%no plan%'
       )
       RETURNING id, name, city
     `);
     results.plan_numbers_cleaned += sentencePlans.rows.length;
-    sentencePlans.rows.forEach(r => results.details.push(`Cleaned sentence plan_number: ${r.name} (${r.city})`));
+    sentencePlans.rows.forEach(r => results.details.push(`Cleaned sentence: ${r.name} (${r.city})`));
 
     // 3. Stats after cleanup
     const stats = await pool.query(`
       SELECT 
-        COUNT(*) as total,
-        COUNT(plan_number) as has_plan,
-        COUNT(last_building_scan) as scanned,
+        (SELECT COUNT(*) FROM complexes) as total,
+        (SELECT COUNT(*) FROM complexes WHERE plan_number IS NOT NULL) as has_plan,
+        (SELECT COUNT(*) FROM complexes WHERE last_building_scan IS NOT NULL) as scanned,
         (SELECT COUNT(DISTINCT complex_id) FROM building_details) as has_buildings,
         (SELECT COUNT(*) FROM building_details WHERE existing_units IS NOT NULL) as units_filled
     `);
