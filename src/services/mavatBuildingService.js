@@ -1,5 +1,5 @@
 /**
- * Mavat Building Details Service v2.3
+ * Mavat Building Details Service v2.4
  * 
  * Uses Gemini + Google Search Grounding to extract per-building
  * unit counts from planning documents, news articles, and municipal sites.
@@ -7,11 +7,12 @@
  * Three-phase approach:
  * Phase A: Find missing plan_numbers via Gemini search
  * Phase B: Extract building-level details with FOCUSED unit-count prompts
+ *          Now with combined-address splitting for better granularity
  * Phase C: Smart estimation fallback if exact per-building counts unavailable
- *          Now also falls back to existing DB buildings if Phase B fails
+ *          Falls back to existing DB buildings if Phase B fails entirely
  * 
- * v2.3 fixes: estimation now runs independently for existing/planned,
- *             plan_number sanitization, improved confidence tracking
+ * v2.4 fixes: combined address splitting, robust DB fallback with logging,
+ *             improved Gemini prompts, better truncated JSON recovery
  * 
  * Engine: Gemini 2.5 Flash (with Google Search grounding)
  */
@@ -47,13 +48,128 @@ function sanitizeInt(val) {
 function sanitizePlanNumber(val) {
   if (!val || val === 'null' || val === 'None') return null;
   const str = String(val).trim();
-  // If it's a long sentence (>80 chars), it's probably not a real plan number
   if (str.length > 80) return null;
-  // If it contains common sentence words, reject
   if (/\b(not|found|explicitly|process|known|project|the)\b/i.test(str)) return null;
-  // Common Hebrew sentence markers
   if (/\u05dc\u05d0 \u05e0\u05de\u05e6\u05d0|\u05dc\u05d0 \u05d9\u05d3\u05d5\u05e2|\u05d1\u05ea\u05d4\u05dc\u05d9\u05da|\u05d4\u05ea\u05d5\u05db\u05e0\u05d9\u05ea/.test(str)) return null;
   return str;
+}
+
+/**
+ * Split a combined address entry into individual buildings
+ * 
+ * Handles patterns like:
+ * - "בן צבי 13, 14, 15, 16" -> ["בן צבי 13", "בן צבי 14", ...]
+ * - "כצנלסון 14-28" -> ["כצנלסון 14", "כצנלסון 16", ...] (even numbers)
+ * - "מתחם בן צבי (כתובות: בן צבי 13, 24, 26)" -> ["בן צבי 13", "בן צבי 24", ...]
+ * - "בן צבי 13; כצנלסון 14, 16" -> ["בן צבי 13", "כצנלסון 14", "כצנלסון 16"]
+ */
+function splitCombinedAddress(addressStr) {
+  if (!addressStr) return [];
+  
+  const results = [];
+  let text = addressStr;
+  
+  // Remove parenthetical labels like "(כתובות קיימות:...)"
+  text = text.replace(/\([^)]*\)\s*/g, '');
+  // Remove "מתחם" prefix
+  text = text.replace(/^\u05de\u05ea\u05d7\u05dd\s+/i, '');
+  
+  // Split by semicolons first (different streets)
+  const segments = text.split(/[;]/);
+  
+  for (const segment of segments) {
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+    
+    // Check if this is "street name number, number, number..."
+    // Hebrew street pattern: letters + numbers
+    const streetMatch = trimmed.match(/^([^\d]+?)(\d[\d\s,\-\u2013\u2014]*)/);
+    
+    if (streetMatch) {
+      const streetName = streetMatch[1].trim();
+      const numbersStr = streetMatch[2].trim();
+      
+      // Split the numbers by commas
+      const numberParts = numbersStr.split(/[,]/);
+      
+      for (const numPart of numberParts) {
+        const cleaned = numPart.trim();
+        if (!cleaned) continue;
+        
+        // Check for range like "14-28"
+        const rangeMatch = cleaned.match(/^(\d+)\s*[-\u2013\u2014]\s*(\d+)$/);
+        if (rangeMatch) {
+          const start = parseInt(rangeMatch[1]);
+          const end = parseInt(rangeMatch[2]);
+          // Generate even numbers (common for Israeli streets)
+          const step = (end - start > 4) ? 2 : 1;
+          for (let n = start; n <= end; n += step) {
+            results.push(`${streetName} ${n}`);
+          }
+        } else {
+          // Single number
+          const num = cleaned.match(/\d+/);
+          if (num) {
+            results.push(`${streetName} ${num[0]}`);
+          }
+        }
+      }
+    } else {
+      // No pattern found, keep as-is
+      results.push(trimmed);
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * Take Gemini buildings array and split any combined-address entries
+ * Returns expanded array where each entry has a single address
+ */
+function expandCombinedBuildings(buildings) {
+  if (!buildings || buildings.length === 0) return [];
+  
+  const expanded = [];
+  
+  for (const b of buildings) {
+    if (!b.address) {
+      expanded.push(b);
+      continue;
+    }
+    
+    const addr = b.address;
+    const commaCount = (addr.match(/,/g) || []).length;
+    const semicolonCount = (addr.match(/;/g) || []).length;
+    const isLong = addr.length > 50;
+    
+    // If it looks like a combined address, split it
+    if (commaCount >= 2 || semicolonCount >= 1 || isLong) {
+      const splitAddresses = splitCombinedAddress(addr);
+      
+      if (splitAddresses.length > 1) {
+        logger.info(`[MavatBuilding] Split combined address into ${splitAddresses.length} buildings`);
+        for (const splitAddr of splitAddresses) {
+          expanded.push({
+            address: splitAddr,
+            existing_units: null, // Can't distribute without more info
+            planned_units: null,
+            floors_existing: b.floors_existing,
+            floors_planned: b.floors_planned,
+            building_type: b.building_type,
+            notes: b.notes ? `Split from combined. ${b.notes}` : 'Split from combined address',
+            confidence: 'low'
+          });
+        }
+        continue;
+      }
+    }
+    
+    // Single address, keep as-is
+    expanded.push(b);
+  }
+  
+  return expanded;
 }
 
 /**
@@ -132,12 +248,18 @@ function parseGeminiJsonRobust(text) {
         }
         
         if (lastCompleteObj > arrayStart) {
-          partial = partial.substring(0, lastCompleteObj + 1);
+          // Truncate after last complete object, close the array and root object
+          const truncated = partial.substring(0, lastCompleteObj + 1) + ']}';
+          try {
+            const parsed = JSON.parse(truncated);
+            logger.info(`[MavatBuilding] Recovered truncated JSON via last-complete-object method`);
+            return parsed;
+          } catch (e) { /* try next method */ }
         }
       }
     }
 
-    // Count and close remaining open structures
+    // Generic: Count and close remaining open structures
     let openBraces = 0, openBrackets = 0, inString = false, escaped = false;
     for (const ch of partial) {
       if (escaped) { escaped = false; continue; }
@@ -160,7 +282,7 @@ function parseGeminiJsonRobust(text) {
     }
   }
 
-  logger.warn('[MavatBuilding] Could not parse JSON from Gemini response', { preview: (text || '').substring(0, 300) });
+  logger.warn('[MavatBuilding] Could not parse JSON from Gemini response', { preview: (text || '').substring(0, 500) });
   return null;
 }
 
@@ -200,8 +322,9 @@ async function queryGeminiBuildings(prompt, systemPrompt) {
   const textParts = parts.filter(p => p.text).map(p => p.text);
   
   if (textParts.length > 0) {
-    logger.info(`[Gemini] ${model}: success (${textParts.join('').length} chars)`);
-    return textParts.join('\n');
+    const fullText = textParts.join('\n');
+    logger.info(`[Gemini] ${model}: success (${fullText.length} chars)`);
+    return fullText;
   }
   return null;
 }
@@ -241,68 +364,72 @@ Return ONLY valid JSON (no markdown):
 
 /**
  * Phase B: Extract per-building details with FOCUSED prompts
+ * v2.4: Stronger prompt for individual building separation
  */
 async function fetchBuildingDetails(complex) {
   const planRef = complex.plan_number ? `Plan number: ${complex.plan_number}` : '';
   
   const knownInfo = [];
-  if (complex.existing_units) knownInfo.push(`${complex.existing_units} existing units`);
-  if (complex.planned_units) knownInfo.push(`${complex.planned_units} planned units`);
-  if (complex.num_buildings) knownInfo.push(`${complex.num_buildings} buildings`);
+  if (complex.existing_units) knownInfo.push(`Total existing: ${complex.existing_units} units`);
+  if (complex.planned_units) knownInfo.push(`Total planned: ${complex.planned_units} units`);
+  if (complex.num_buildings) knownInfo.push(`Number of buildings: ${complex.num_buildings}`);
   if (complex.developer) knownInfo.push(`Developer: ${complex.developer}`);
 
-  const prompt = `Find per-building unit breakdown for this Israeli Pinuy-Binuy project:
+  // v2.4: Much more explicit prompt with example
+  const prompt = `Find the list of building addresses in this Israeli Pinuy-Binuy (\u05E4\u05D9\u05E0\u05D5\u05D9-\u05D1\u05D9\u05E0\u05D5\u05D9) project:
 
 Project: "${complex.name}"
 City: ${complex.city}
 ${planRef}
 ${complex.address ? `Area: ${complex.address}` : ''}
-Known info: ${knownInfo.join(', ') || 'none'}
+${knownInfo.join('\n')}
 
-I need a SEPARATE entry for EACH building address. Do NOT combine all addresses into one entry.
+TASK: List EVERY building address separately. One JSON entry per building number.
 
-For each building, find:
-- How many apartments exist today (before demolition)
-- How many apartments are planned (after construction)  
-- How many floors planned (as a single INTEGER, not a range)
-
-Search these sources:
-- News: ynet, calcalist, globes, TheMarker, nadlancenter.co.il, magdilim.co.il
-- Municipal: ${complex.city} municipality website
-- Developer: ${complex.developer || ''} website
-- Planning: mavat.iplan.gov.il area tables
-- Real estate: madlan.co.il, yad2.co.il
-
-CRITICAL RULES:
-1. Each building = separate JSON entry with ONE address (e.g. "ben tzvi 13", NOT "ben tzvi 13,14,15...")
-2. All numeric fields MUST be integers or null. NOT ranges like "6-15". If range, use the maximum.
-3. floors_planned must be a single number (e.g. 15), not "6-15"
-
-Return ONLY valid JSON (NO markdown backticks):
+EXAMPLE of correct format:
 {
   "buildings": [
-    {
-      "address": "street name and number",
-      "existing_units": null,
-      "planned_units": null,
-      "floors_existing": null,
-      "floors_planned": null,
-      "building_type": "tower/midrise/lowrise",
-      "notes": ""
-    }
-  ],
-  "total_existing_units": 0,
-  "total_planned_units": 0,
+    {"address": "\u05D1\u05DF \u05E6\u05D1\u05D9 13", "existing_units": 24, "planned_units": 80, "floors_existing": 4, "floors_planned": 12, "building_type": "midrise", "notes": ""},
+    {"address": "\u05D1\u05DF \u05E6\u05D1\u05D9 15", "existing_units": 20, "planned_units": 72, "floors_existing": 4, "floors_planned": 10, "building_type": "midrise", "notes": ""},
+    {"address": "\u05DB\u05E6\u05E0\u05DC\u05E1\u05D5\u05DF 14", "existing_units": 16, "planned_units": 64, "floors_existing": 3, "floors_planned": 8, "building_type": "midrise", "notes": ""}
+  ]
+}
+
+WRONG (do NOT do this):
+{"address": "\u05D1\u05DF \u05E6\u05D1\u05D9 13, 15, 17, 19"} <-- WRONG! Must be separate entries
+
+Search these sources for the building list:
+- mavat.iplan.gov.il (plan ${complex.plan_number || ''})
+- ${complex.city} municipality website
+- News: calcalist, globes, ynet, nadlancenter.co.il
+- Developer: ${complex.developer || 'unknown'}
+
+For each building find: existing_units, planned_units, floors_existing, floors_planned.
+All numbers must be integers or null. If unknown, use null.
+
+Return ONLY raw JSON (NO \`\`\` backticks):
+{
+  "buildings": [...],
+  "total_existing_units": ${complex.existing_units || 'null'},
+  "total_planned_units": ${complex.planned_units || 'null'},
   "plan_number": "${complex.plan_number || 'null'}",
   "source": "sources used",
   "data_quality": "high/medium/low"
 }`;
 
-  const systemPrompt = `Israeli real estate data specialist. Each building = SEPARATE entry. All numeric fields = integers or null, NEVER strings or ranges. Return ONLY raw JSON, no markdown.`;
+  const systemPrompt = `You are an Israeli real estate data specialist. CRITICAL: Return ONE entry per building address. Never combine multiple addresses into one entry. All numeric fields must be integers or null, never strings or ranges. Return raw JSON only, no markdown.`;
 
   try {
     const raw = await queryGeminiBuildings(prompt, systemPrompt);
-    return parseGeminiJsonRobust(raw);
+    const parsed = parseGeminiJsonRobust(raw);
+    
+    if (parsed) {
+      logger.info(`[MavatBuilding] Phase B parsed: ${parsed.buildings?.length || 0} buildings, quality: ${parsed.data_quality || 'unknown'}`);
+    } else {
+      logger.warn(`[MavatBuilding] Phase B: JSON parse failed for ${complex.name}`);
+    }
+    
+    return parsed;
   } catch (err) {
     logger.warn(`[MavatBuilding] fetchBuildingDetails failed for ${complex.name}: ${err.message}`);
     return null;
@@ -396,7 +523,6 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
   // Mark confidence on buildings where estimation was applied
   if (estimationApplied) {
     buildings.forEach(b => {
-      // Only mark as estimated if this building's data was actually estimated
       const existingWasEstimated = totalExisting && !hasExisting;
       const plannedWasEstimated = totalPlanned && !hasPlanned;
       if (existingWasEstimated && plannedWasEstimated) {
@@ -412,6 +538,7 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
 
 /**
  * Get existing buildings from DB for fallback estimation
+ * v2.4: Added explicit error logging
  */
 async function getExistingBuildingsFromDB(complexId) {
   try {
@@ -422,6 +549,7 @@ async function getExistingBuildingsFromDB(complexId) {
        ORDER BY building_address`,
       [complexId]
     );
+    logger.info(`[MavatBuilding] DB fallback query returned ${result.rows.length} buildings for complex ${complexId}`);
     return result.rows.map(r => ({
       address: r.building_address,
       building_number: r.building_number,
@@ -433,6 +561,7 @@ async function getExistingBuildingsFromDB(complexId) {
       confidence: r.confidence
     }));
   } catch (e) {
+    logger.error(`[MavatBuilding] DB fallback query FAILED for complex ${complexId}: ${e.message}`);
     return [];
   }
 }
@@ -482,6 +611,7 @@ async function saveBuildingDetails(complexId, buildings, source) {
 
 /**
  * Full enrichment for a single complex
+ * v2.4: Combined address splitting + robust DB fallback
  */
 async function enrichComplex(complexId) {
   await ensureTable();
@@ -533,22 +663,16 @@ async function enrichComplex(complexId) {
   let phaseUsed = 'B';
 
   if (buildingData && buildingData.buildings && buildingData.buildings.length > 0) {
-    buildings = buildingData.buildings;
+    // v2.4: EXPAND combined addresses instead of filtering them out
+    buildings = expandCombinedBuildings(buildingData.buildings);
+    logger.info(`[MavatBuilding] After expansion: ${buildings.length} buildings (from ${buildingData.buildings.length} Gemini entries)`);
     
-    // Filter out combined entries (multiple addresses crammed into one)
-    const validBuildings = buildings.filter(b => {
-      if (!b.address) return false;
-      const commaCount = (b.address.match(/,/g) || []).length;
-      const semicolonCount = (b.address.match(/;/g) || []).length;
-      return commaCount < 2 && semicolonCount < 1;
-    });
-
-    if (validBuildings.length > 0) {
-      buildings = validBuildings;
-    } else if (buildings.length === 1 && buildings[0].address && buildings[0].address.length > 50) {
-      logger.warn(`[MavatBuilding] Gemini returned combined address entry, discarding`);
-      buildings = [];
+    // Only discard if expansion produced nothing useful
+    if (buildings.length === 0) {
+      logger.warn(`[MavatBuilding] Building expansion produced 0 results`);
     }
+  } else {
+    logger.info(`[MavatBuilding] Phase B returned no buildings`);
   }
 
   // Sanitize plan_number from buildingData too
@@ -558,12 +682,15 @@ async function enrichComplex(complexId) {
 
   // FALLBACK: Use existing DB buildings if Phase B failed
   if (buildings.length === 0) {
+    logger.info(`[MavatBuilding] Phase B failed, trying DB fallback for complex ${complexId}`);
     const dbBuildings = await getExistingBuildingsFromDB(complexId);
     if (dbBuildings.length > 0) {
-      logger.info(`[MavatBuilding] Using ${dbBuildings.length} existing DB buildings for estimation fallback`);
+      logger.info(`[MavatBuilding] DB fallback: found ${dbBuildings.length} buildings, using for estimation`);
       buildings = dbBuildings;
       dataSource = 'db_fallback+estimation';
       phaseUsed = 'C_db_fallback';
+    } else {
+      logger.info(`[MavatBuilding] DB fallback: no existing buildings found`);
     }
   }
 
@@ -582,6 +709,8 @@ async function enrichComplex(complexId) {
   // Phase C: Smart estimation - ALWAYS run, let function decide what to estimate
   const totalExisting = (buildingData && buildingData.total_existing_units) || complex.existing_units;
   const totalPlanned = (buildingData && buildingData.total_planned_units) || complex.planned_units;
+  
+  logger.info(`[MavatBuilding] Phase C: Estimation check - ${buildings.length} buildings, totalExisting=${totalExisting}, totalPlanned=${totalPlanned}`);
   
   const { buildings: estimatedBuildings, estimationApplied } = estimateBuildingUnits(
     buildings, totalExisting, totalPlanned
@@ -758,5 +887,7 @@ module.exports = {
   getBuildingDetails,
   parseGeminiJsonRobust,
   sanitizeInt,
-  sanitizePlanNumber
+  sanitizePlanNumber,
+  splitCombinedAddress,
+  expandCombinedBuildings
 };
