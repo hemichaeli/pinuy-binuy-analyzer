@@ -35,6 +35,12 @@ async function queryClaude(prompt, systemPrompt, useWebSearch = true) {
     ]
   };
 
+  const headers = {
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
+    'Content-Type': 'application/json'
+  };
+
   if (useWebSearch) {
     body.tools = [
       {
@@ -42,14 +48,14 @@ async function queryClaude(prompt, systemPrompt, useWebSearch = true) {
         name: 'web_search'
       }
     ];
+    // Web search requires the beta header
+    headers['anthropic-beta'] = 'web-search-2025-03-05';
   }
 
+  logger.info(`[Claude] Calling API (web_search=${useWebSearch})`);
+
   const response = await axios.post(CLAUDE_API_URL, body, {
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json'
-    },
+    headers,
     timeout: 120000
   });
 
@@ -149,6 +155,10 @@ Return ONLY valid JSON, no other text.`;
 
   } catch (err) {
     logger.warn(`[Claude] nadlan error for ${complex.name}: ${err.message}`);
+    // Log full error for debugging
+    if (err.response) {
+      logger.warn(`[Claude] API response: ${JSON.stringify(err.response.data || {}).substring(0, 500)}`);
+    }
     return null;
   }
 }
