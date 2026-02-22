@@ -4,14 +4,19 @@
  * Uses Google Gemini Flash with Google Search grounding for fast, cheap enrichment.
  * Best for: pricing data, addresses, madlan/yad2 listings, location data.
  * Complements Claude (which handles complex Hebrew analysis).
+ * 
+ * Model fallback order (Feb 2026):
+ * 1. gemini-2.5-flash (stable, current)
+ * 2. gemini-3-flash-preview (newest preview)
+ * 3. gemini-2.5-flash-lite (budget fallback)
+ * Note: Gemini 1.5 retired, Gemini 2.0 retiring March 2026
  */
 
 const axios = require('axios');
 const { logger } = require('./logger');
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-// Use env var for model or default to latest available
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-preview-05-20';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const DELAY_MS = 1500;
 
 function sleep(ms) {
@@ -28,7 +33,8 @@ async function queryGemini(prompt, systemPrompt, useGrounding = true) {
     throw new Error('GEMINI_API_KEY not set');
   }
 
-  const models = [GEMINI_MODEL, 'gemini-1.5-flash-latest', 'gemini-2.0-flash-001'];
+  // Current model hierarchy (Feb 2026): 2.5 stable > 3.0 preview > 2.5 lite
+  const models = [GEMINI_MODEL, 'gemini-3-flash-preview', 'gemini-2.5-flash-lite'];
 
   for (const model of models) {
     try {
@@ -88,7 +94,7 @@ async function queryGemini(prompt, systemPrompt, useGrounding = true) {
       
       // If model not found or deprecated, try next
       if (status === 404 || status === 400) {
-        logger.warn(`[Gemini] ${model}: ${status} - ${errMsg.substring(0, 100)}. Trying next model...`);
+        logger.warn(`[Gemini] ${model}: ${status} - ${errMsg.substring(0, 150)}. Trying next model...`);
         continue;
       }
       
