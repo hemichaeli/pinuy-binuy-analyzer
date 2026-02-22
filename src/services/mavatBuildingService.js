@@ -1,5 +1,5 @@
 /**
- * Mavat Building Details Service v2.1
+ * Mavat Building Details Service v2.2
  * 
  * Uses Gemini + Google Search Grounding to extract per-building
  * unit counts from planning documents, news articles, and municipal sites.
@@ -18,6 +18,24 @@ const { logger } = require('./logger');
 const { queryGemini, sleep } = require('./geminiEnrichmentService');
 
 const DELAY_BETWEEN_CALLS = 2000;
+
+/**
+ * Sanitize value to integer for PostgreSQL
+ * Handles: ranges "6-15" -> max, strings "~20" -> 20, null/undefined -> null
+ */
+function sanitizeInt(val) {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number') return isNaN(val) ? null : Math.round(val);
+  const str = String(val).trim();
+  if (!str) return null;
+  // Handle ranges like "6-15" or "6\u201315" -> take max
+  const rangeMatch = str.match(/(\d+)\s*[-\u2013\u2014]\s*(\d+)/);
+  if (rangeMatch) return Math.max(parseInt(rangeMatch[1]), parseInt(rangeMatch[2]));
+  // Handle simple numbers possibly with text like "~20" or "about 30"
+  const numMatch = str.match(/(\d+)/);
+  if (numMatch) return parseInt(numMatch[1]);
+  return null;
+}
 
 /**
  * Auto-create building_details table if not exists
@@ -70,49 +88,16 @@ function parseGeminiJsonRobust(text) {
     } catch (e) { /* continue */ }
   }
 
-  // TRUNCATED JSON RECOVERY: try to fix common truncation patterns
-  // Find the start of JSON
+  // TRUNCATED JSON RECOVERY
   const jsonStart = cleaned.indexOf('{');
   if (jsonStart >= 0) {
     let partial = cleaned.substring(jsonStart);
     
-    // Try progressively closing brackets
-    // Count open/close braces and brackets
-    let braceCount = 0;
-    let bracketCount = 0;
-    let inString = false;
-    let escaped = false;
-    let lastValidPos = 0;
-
-    for (let i = 0; i < partial.length; i++) {
-      const c = partial[i];
-      if (escaped) { escaped = false; continue; }
-      if (c === '\\') { escaped = true; continue; }
-      if (c === '"') { inString = !inString; continue; }
-      if (inString) continue;
-      if (c === '{') braceCount++;
-      if (c === '}') braceCount--;
-      if (c === '[') bracketCount++;
-      if (c === ']') bracketCount--;
-      if (braceCount >= 0 && bracketCount >= 0) lastValidPos = i;
-    }
-
-    // If we're in a truncated string, close it
-    if (inString) {
-      partial = partial.substring(0, lastValidPos + 1) + '"';
-      inString = false;
-    }
-
-    // Close open brackets and braces
-    let suffix = '';
-    // If we're inside a buildings array, close current object and array
-    if (partial.includes('"buildings"') && bracketCount > 0) {
-      // We're likely inside a truncated building entry
-      // Try to find the last complete building entry
-      const buildingsMatch = partial.match(/"buildings"\s*:\s*\[/);
-      if (buildingsMatch) {
-        const arrayStart = partial.indexOf('[', buildingsMatch.index);
-        // Find last complete object (ends with })
+    // If inside buildings array, find last complete building object
+    if (partial.includes('"buildings"')) {
+      const arrMatch = partial.match(/"buildings"\s*:\s*\[/);
+      if (arrMatch) {
+        const arrayStart = partial.indexOf('[', arrMatch.index);
         let lastCompleteObj = arrayStart;
         let depth = 0;
         let inStr = false;
@@ -128,60 +113,27 @@ function parseGeminiJsonRobust(text) {
         }
         
         if (lastCompleteObj > arrayStart) {
-          // Truncate to last complete building, close array and object
           partial = partial.substring(0, lastCompleteObj + 1);
-          // Count remaining open structures
-          let ob = 0, cb = 0;
-          inString = false;
-          escaped = false;
-          for (const ch of partial) {
-            if (escaped) { escaped = false; continue; }
-            if (ch === '\\') { escaped = true; continue; }
-            if (ch === '"') { inString = !inString; continue; }
-            if (inString) continue;
-            if (ch === '{') ob++;
-            if (ch === '}') cb++;
-            if (ch === '[') bracketCount++;
-            if (ch === ']') bracketCount--;
-          }
-          // Recount brackets from scratch
-          let openBraces = 0, openBrackets = 0;
-          inString = false;
-          escaped = false;
-          for (const ch of partial) {
-            if (escaped) { escaped = false; continue; }
-            if (ch === '\\') { escaped = true; continue; }
-            if (ch === '"') { inString = !inString; continue; }
-            if (inString) continue;
-            if (ch === '{') openBraces++;
-            if (ch === '}') openBraces--;
-            if (ch === '[') openBrackets++;
-            if (ch === ']') openBrackets--;
-          }
-          suffix = ']'.repeat(Math.max(0, openBrackets)) + '}'.repeat(Math.max(0, openBraces));
         }
       }
-    } else {
-      // Generic: close remaining structures
-      let openBraces = 0, openBrackets = 0;
-      inString = false;
-      escaped = false;
-      for (const ch of partial) {
-        if (escaped) { escaped = false; continue; }
-        if (ch === '\\') { escaped = true; continue; }
-        if (ch === '"') { inString = !inString; continue; }
-        if (inString) continue;
-        if (ch === '{') openBraces++;
-        if (ch === '}') openBraces--;
-        if (ch === '[') openBrackets++;
-        if (ch === ']') openBrackets--;
-      }
-      suffix = ']'.repeat(Math.max(0, openBrackets)) + '}'.repeat(Math.max(0, openBraces));
     }
 
-    const recovered = partial + suffix;
+    // Count and close remaining open structures
+    let openBraces = 0, openBrackets = 0, inString = false, escaped = false;
+    for (const ch of partial) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === '\\') { escaped = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') openBraces++;
+      if (ch === '}') openBraces--;
+      if (ch === '[') openBrackets++;
+      if (ch === ']') openBrackets--;
+    }
+    const suffix = ']'.repeat(Math.max(0, openBrackets)) + '}'.repeat(Math.max(0, openBraces));
+
     try {
-      const parsed = JSON.parse(recovered);
+      const parsed = JSON.parse(partial + suffix);
       logger.info(`[MavatBuilding] Recovered truncated JSON (${partial.length} chars + ${suffix.length} closing)`);
       return parsed;
     } catch (e) {
@@ -210,7 +162,7 @@ async function queryGeminiBuildings(prompt, systemPrompt) {
     systemInstruction: { parts: [{ text: systemPrompt }] },
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: 16384  // Much higher limit for building detail responses
+      maxOutputTokens: 16384
     },
     tools: [{ google_search: {} }]
   };
@@ -219,7 +171,7 @@ async function queryGeminiBuildings(prompt, systemPrompt) {
   
   const response = await axios.post(url, body, {
     headers: { 'Content-Type': 'application/json' },
-    timeout: 90000  // 90s timeout for complex queries
+    timeout: 90000
   });
 
   const candidates = response.data.candidates || [];
@@ -247,7 +199,7 @@ ${complex.address ? `Address: ${complex.address}` : ''}
 ${complex.developer ? `Developer: ${complex.developer}` : ''}
 
 Search mavat.iplan.gov.il, iplan.gov.il, and ${complex.city} municipality website.
-Plan numbers look like: XXX-XXXXXXX or תמל/XXXX or city/mk/XXXX
+Plan numbers look like: XXX-XXXXXXX or \u05EA\u05DE\u05DC/XXXX or city/mk/XXXX
 
 Return ONLY valid JSON (no markdown):
 {
@@ -270,7 +222,6 @@ Return ONLY valid JSON (no markdown):
 
 /**
  * Phase B: Extract per-building details with FOCUSED prompts
- * Uses higher token limit and structured prompt for better results
  */
 async function fetchBuildingDetails(complex) {
   const planRef = complex.plan_number ? `Plan number: ${complex.plan_number}` : '';
@@ -294,21 +245,21 @@ I need a SEPARATE entry for EACH building address. Do NOT combine all addresses 
 For each building, find:
 - How many apartments exist today (before demolition)
 - How many apartments are planned (after construction)  
-- How many floors planned
+- How many floors planned (as a single INTEGER, not a range)
 
 Search these sources:
 - News: ynet, calcalist, globes, TheMarker, nadlancenter.co.il, magdilim.co.il
 - Municipal: ${complex.city} municipality website
 - Developer: ${complex.developer || ''} website
-- Planning: mavat.iplan.gov.il area tables (טבלאות שטחים)
+- Planning: mavat.iplan.gov.il area tables
 - Real estate: madlan.co.il, yad2.co.il
 
 CRITICAL RULES:
-1. Each building = separate JSON entry with ONE address (e.g. "בן צבי 13", NOT "בן צבי 13,14,15...")
-2. If source says "320 units in 13 buildings" and you can't find per-building, set existing_units to null
-3. Include floors_planned if available (e.g. "5-16 floors" means different buildings have different heights)
+1. Each building = separate JSON entry with ONE address (e.g. "ben tzvi 13", NOT "ben tzvi 13,14,15...")
+2. All numeric fields MUST be integers or null. NOT ranges like "6-15". If range, use the maximum.
+3. floors_planned must be a single number (e.g. 15), not "6-15"
 
-Return ONLY valid JSON (NO markdown backticks, NO \`\`\`):
+Return ONLY valid JSON (NO markdown backticks):
 {
   "buildings": [
     {
@@ -328,7 +279,7 @@ Return ONLY valid JSON (NO markdown backticks, NO \`\`\`):
   "data_quality": "high/medium/low"
 }`;
 
-  const systemPrompt = `You are an Israeli real estate data specialist. Find SPECIFIC per-building unit counts. Each building MUST be a SEPARATE entry with its own address. Return ONLY raw JSON - absolutely no markdown code fences or backticks. If you write \`\`\`json you have FAILED.`;
+  const systemPrompt = `Israeli real estate data specialist. Each building = SEPARATE entry. All numeric fields = integers or null, NEVER strings or ranges. Return ONLY raw JSON, no markdown.`;
 
   try {
     const raw = await queryGeminiBuildings(prompt, systemPrompt);
@@ -341,7 +292,6 @@ Return ONLY valid JSON (NO markdown backticks, NO \`\`\`):
 
 /**
  * Phase C: Smart estimation - distribute known totals across buildings
- * Uses building typology (floors/type) to estimate per-building unit counts
  */
 function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
   if (!buildings || buildings.length === 0) return buildings;
@@ -350,20 +300,17 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
   const hasExisting = buildings.some(b => b.existing_units && b.existing_units > 0);
   const hasPlanned = buildings.some(b => b.planned_units && b.planned_units > 0);
 
-  // Estimate EXISTING units if we have total but not per-building
   if (totalExisting && !hasExisting) {
     const numBuildings = buildings.length;
-    
-    // First pass: use floor count for proportional distribution
     buildings.forEach(b => {
-      if (b.floors_existing) {
-        b.existing_units = b.floors_existing * 4; // ~4 units/floor for old Israeli buildings
+      const floors = sanitizeInt(b.floors_existing);
+      if (floors) {
+        b.existing_units = floors * 4;
       } else {
         b.existing_units = Math.round(totalExisting / numBuildings);
       }
     });
 
-    // Normalize to match total exactly
     const sum = buildings.reduce((s, b) => s + (b.existing_units || 0), 0);
     if (sum !== totalExisting && sum > 0) {
       const ratio = totalExisting / sum;
@@ -380,20 +327,22 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
     buildings.forEach(b => { b.confidence = 'estimated'; });
   }
 
-  // Estimate PLANNED units if we have total but not per-building
   if (totalPlanned && !hasPlanned) {
-    const hasFloorData = buildings.some(b => b.floors_planned && b.floors_planned > 0);
+    const hasFloorData = buildings.some(b => {
+      const f = sanitizeInt(b.floors_planned);
+      return f && f > 0;
+    });
     
     if (hasFloorData) {
       const totalWeight = buildings.reduce((s, b) => {
-        const floors = b.floors_planned || 8;
+        const floors = sanitizeInt(b.floors_planned) || 8;
         const unitsPerFloor = floors > 15 ? 8 : 6;
         return s + (floors * unitsPerFloor);
       }, 0);
 
       let distributed = 0;
       buildings.forEach((b, i) => {
-        const floors = b.floors_planned || 8;
+        const floors = sanitizeInt(b.floors_planned) || 8;
         const unitsPerFloor = floors > 15 ? 8 : 6;
         const weight = (floors * unitsPerFloor) / totalWeight;
         
@@ -406,7 +355,6 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
         b.confidence = 'estimated';
       });
     } else {
-      // Even distribution
       let distributed = 0;
       const avg = Math.round(totalPlanned / buildings.length);
       buildings.forEach((b, i) => {
@@ -471,10 +419,10 @@ async function saveBuildingDetails(complexId, buildings, source) {
           complexId,
           b.address || null,
           b.building_id || b.building_number || null,
-          b.existing_units || null,
-          b.planned_units || null,
-          b.floors_existing || null,
-          b.floors_planned || null,
+          sanitizeInt(b.existing_units),
+          sanitizeInt(b.planned_units),
+          sanitizeInt(b.floors_existing),
+          sanitizeInt(b.floors_planned),
           b.notes || null,
           source || 'gemini_mavat',
           b.confidence || 'medium'
@@ -496,7 +444,6 @@ async function saveBuildingDetails(complexId, buildings, source) {
 
 /**
  * Full enrichment for a single complex
- * Phase A -> Phase B -> Phase C (estimation fallback, including DB fallback)
  */
 async function enrichComplex(complexId) {
   await ensureTable();
@@ -534,7 +481,7 @@ async function enrichComplex(complexId) {
     await sleep(DELAY_BETWEEN_CALLS);
   }
 
-  // Phase B: Get building details with focused prompt
+  // Phase B: Get building details
   logger.info(`[MavatBuilding] Phase B: Fetching building details for ${complex.name}`);
   const buildingData = await fetchBuildingDetails(complex);
 
@@ -545,10 +492,9 @@ async function enrichComplex(complexId) {
   if (buildingData && buildingData.buildings && buildingData.buildings.length > 0) {
     buildings = buildingData.buildings;
     
-    // Filter out combined entries (address contains comma or semicolon with multiple numbers)
+    // Filter out combined entries
     const validBuildings = buildings.filter(b => {
       if (!b.address) return false;
-      // Reject entries that list multiple addresses
       const commaCount = (b.address.match(/,/g) || []).length;
       const semicolonCount = (b.address.match(/;/g) || []).length;
       return commaCount < 2 && semicolonCount < 1;
@@ -557,13 +503,12 @@ async function enrichComplex(complexId) {
     if (validBuildings.length > 0) {
       buildings = validBuildings;
     } else if (buildings.length === 1 && buildings[0].address && buildings[0].address.length > 50) {
-      // Single combined entry - Gemini lumped everything together. Discard and use DB fallback.
       logger.warn(`[MavatBuilding] Gemini returned combined address entry, discarding`);
       buildings = [];
     }
   }
 
-  // FALLBACK: If Phase B returned no valid buildings, use existing DB buildings
+  // FALLBACK: Use existing DB buildings if Phase B failed
   if (buildings.length === 0) {
     const dbBuildings = await getExistingBuildingsFromDB(complexId);
     if (dbBuildings.length > 0) {
@@ -574,7 +519,6 @@ async function enrichComplex(complexId) {
     }
   }
 
-  // If still no buildings at all, return no_data
   if (buildings.length === 0) {
     await pool.query('UPDATE complexes SET last_building_scan = NOW() WHERE id = $1', [complexId]);
     return {
@@ -587,7 +531,7 @@ async function enrichComplex(complexId) {
     };
   }
 
-  // Phase C: Smart estimation if per-building units are missing
+  // Phase C: Smart estimation
   const totalExisting = (buildingData && buildingData.total_existing_units) || complex.existing_units;
   const totalPlanned = (buildingData && buildingData.total_planned_units) || complex.planned_units;
   
@@ -599,36 +543,23 @@ async function enrichComplex(complexId) {
     if (dataSource === 'gemini_mavat') dataSource = 'gemini_mavat+estimation';
   }
 
-  // Determine data quality
   let dataQuality = (buildingData && buildingData.data_quality) || 'medium';
   if (!hadUnitsBeforeEstimation && buildings.some(b => b.confidence === 'estimated')) {
     dataQuality = 'estimated';
   }
 
-  // Save buildings
   const savedCount = await saveBuildingDetails(complexId, buildings, dataSource);
 
-  // Update complex totals if we got better data
   if (buildingData && buildingData.total_existing_units && !complex.existing_units) {
-    await pool.query(
-      'UPDATE complexes SET existing_units = $1 WHERE id = $2',
-      [buildingData.total_existing_units, complexId]
-    );
+    await pool.query('UPDATE complexes SET existing_units = $1 WHERE id = $2', [buildingData.total_existing_units, complexId]);
   }
   if (buildingData && buildingData.total_planned_units && !complex.planned_units) {
-    await pool.query(
-      'UPDATE complexes SET planned_units = $1 WHERE id = $2',
-      [buildingData.total_planned_units, complexId]
-    );
+    await pool.query('UPDATE complexes SET planned_units = $1 WHERE id = $2', [buildingData.total_planned_units, complexId]);
   }
   if (buildingData && buildingData.plan_number && buildingData.plan_number !== 'null' && !complex.plan_number) {
-    await pool.query(
-      'UPDATE complexes SET plan_number = $1 WHERE id = $2',
-      [buildingData.plan_number, complexId]
-    );
+    await pool.query('UPDATE complexes SET plan_number = $1 WHERE id = $2', [buildingData.plan_number, complexId]);
   }
 
-  // Summary stats
   const sumExisting = buildings.reduce((s, b) => s + (b.existing_units || 0), 0);
   const sumPlanned = buildings.reduce((s, b) => s + (b.planned_units || 0), 0);
 
@@ -651,7 +582,7 @@ async function enrichComplex(complexId) {
 }
 
 /**
- * Batch scan: enrich all complexes missing building data
+ * Batch scan
  */
 async function batchEnrich(options = {}) {
   await ensureTable();
@@ -726,7 +657,7 @@ async function batchEnrich(options = {}) {
 }
 
 /**
- * Get building details for a complex from DB
+ * Get building details from DB
  */
 async function getBuildingDetails(complexId) {
   await ensureTable();
@@ -774,5 +705,6 @@ module.exports = {
   enrichComplex,
   batchEnrich,
   getBuildingDetails,
-  parseGeminiJsonRobust
+  parseGeminiJsonRobust,
+  sanitizeInt
 };
