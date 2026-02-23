@@ -1,5 +1,5 @@
 /**
- * Mavat Building Details Service v2.4
+ * Mavat Building Details Service v2.5
  * 
  * Uses Gemini + Google Search Grounding to extract per-building
  * unit counts from planning documents, news articles, and municipal sites.
@@ -11,7 +11,8 @@
  * Phase C: Smart estimation fallback if exact per-building counts unavailable
  *          Falls back to existing DB buildings if Phase B fails entirely
  * 
- * v2.4 fixes: combined address splitting, robust DB fallback with logging,
+ * v2.5 fixes: inclusive batch query (no complexes fall through cracks),
+ *             combined address splitting, robust DB fallback with logging,
  *             improved Gemini prompts, better truncated JSON recovery
  * 
  * Engine: Gemini 2.5 Flash (with Google Search grounding)
@@ -25,17 +26,14 @@ const DELAY_BETWEEN_CALLS = 2000;
 
 /**
  * Sanitize value to integer for PostgreSQL
- * Handles: ranges "6-15" -> max, strings "~20" -> 20, null/undefined -> null
  */
 function sanitizeInt(val) {
   if (val === null || val === undefined) return null;
   if (typeof val === 'number') return isNaN(val) ? null : Math.round(val);
   const str = String(val).trim();
   if (!str) return null;
-  // Handle ranges like "6-15" or "6\u201315" -> take max
   const rangeMatch = str.match(/(\d+)\s*[-\u2013\u2014]\s*(\d+)/);
   if (rangeMatch) return Math.max(parseInt(rangeMatch[1]), parseInt(rangeMatch[2]));
-  // Handle simple numbers possibly with text like "~20" or "about 30"
   const numMatch = str.match(/(\d+)/);
   if (numMatch) return parseInt(numMatch[1]);
   return null;
@@ -43,7 +41,6 @@ function sanitizeInt(val) {
 
 /**
  * Sanitize plan_number - extract clean identifier from Gemini response
- * Rejects full sentences, keeps only plan number patterns
  */
 function sanitizePlanNumber(val) {
   if (!val || val === 'null' || val === 'None') return null;
@@ -56,12 +53,6 @@ function sanitizePlanNumber(val) {
 
 /**
  * Split a combined address entry into individual buildings
- * 
- * Handles patterns like:
- * - "בן צבי 13, 14, 15, 16" -> ["בן צבי 13", "בן צבי 14", ...]
- * - "כצנלסון 14-28" -> ["כצנלסון 14", "כצנלסון 16", ...] (even numbers)
- * - "מתחם בן צבי (כתובות: בן צבי 13, 24, 26)" -> ["בן צבי 13", "בן צבי 24", ...]
- * - "בן צבי 13; כצנלסון 14, 16" -> ["בן צבי 13", "כצנלסון 14", "כצנלסון 16"]
  */
 function splitCombinedAddress(addressStr) {
   if (!addressStr) return [];
@@ -69,45 +60,36 @@ function splitCombinedAddress(addressStr) {
   const results = [];
   let text = addressStr;
   
-  // Remove parenthetical labels like "(כתובות קיימות:...)"
   text = text.replace(/\([^)]*\)\s*/g, '');
-  // Remove "מתחם" prefix
   text = text.replace(/^\u05de\u05ea\u05d7\u05dd\s+/i, '');
   
-  // Split by semicolons first (different streets)
   const segments = text.split(/[;]/);
   
   for (const segment of segments) {
     const trimmed = segment.trim();
     if (!trimmed) continue;
     
-    // Check if this is "street name number, number, number..."
-    // Hebrew street pattern: letters + numbers
     const streetMatch = trimmed.match(/^([^\d]+?)(\d[\d\s,\-\u2013\u2014]*)/);
     
     if (streetMatch) {
       const streetName = streetMatch[1].trim();
       const numbersStr = streetMatch[2].trim();
       
-      // Split the numbers by commas
       const numberParts = numbersStr.split(/[,]/);
       
       for (const numPart of numberParts) {
         const cleaned = numPart.trim();
         if (!cleaned) continue;
         
-        // Check for range like "14-28"
         const rangeMatch = cleaned.match(/^(\d+)\s*[-\u2013\u2014]\s*(\d+)$/);
         if (rangeMatch) {
           const start = parseInt(rangeMatch[1]);
           const end = parseInt(rangeMatch[2]);
-          // Generate even numbers (common for Israeli streets)
           const step = (end - start > 4) ? 2 : 1;
           for (let n = start; n <= end; n += step) {
             results.push(`${streetName} ${n}`);
           }
         } else {
-          // Single number
           const num = cleaned.match(/\d+/);
           if (num) {
             results.push(`${streetName} ${num[0]}`);
@@ -115,7 +97,6 @@ function splitCombinedAddress(addressStr) {
         }
       }
     } else {
-      // No pattern found, keep as-is
       results.push(trimmed);
     }
   }
@@ -125,7 +106,6 @@ function splitCombinedAddress(addressStr) {
 
 /**
  * Take Gemini buildings array and split any combined-address entries
- * Returns expanded array where each entry has a single address
  */
 function expandCombinedBuildings(buildings) {
   if (!buildings || buildings.length === 0) return [];
@@ -143,7 +123,6 @@ function expandCombinedBuildings(buildings) {
     const semicolonCount = (addr.match(/;/g) || []).length;
     const isLong = addr.length > 50;
     
-    // If it looks like a combined address, split it
     if (commaCount >= 2 || semicolonCount >= 1 || isLong) {
       const splitAddresses = splitCombinedAddress(addr);
       
@@ -152,7 +131,7 @@ function expandCombinedBuildings(buildings) {
         for (const splitAddr of splitAddresses) {
           expanded.push({
             address: splitAddr,
-            existing_units: null, // Can't distribute without more info
+            existing_units: null,
             planned_units: null,
             floors_existing: b.floors_existing,
             floors_planned: b.floors_planned,
@@ -165,7 +144,6 @@ function expandCombinedBuildings(buildings) {
       }
     }
     
-    // Single address, keep as-is
     expanded.push(b);
   }
   
@@ -202,20 +180,16 @@ async function ensureTable() {
 
 /**
  * Robust JSON parser for Gemini responses
- * Handles: markdown backticks, truncated JSON, partial arrays
  */
 function parseGeminiJsonRobust(text) {
   if (!text) return null;
 
-  // Strip markdown backticks first
   let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
 
-  // Try direct parse
   try {
     return JSON.parse(cleaned);
   } catch (e) { /* continue */ }
 
-  // Try extracting largest JSON object
   const objectMatch = cleaned.match(/\{[\s\S]*\}/);
   if (objectMatch) {
     try {
@@ -223,12 +197,10 @@ function parseGeminiJsonRobust(text) {
     } catch (e) { /* continue */ }
   }
 
-  // TRUNCATED JSON RECOVERY
   const jsonStart = cleaned.indexOf('{');
   if (jsonStart >= 0) {
     let partial = cleaned.substring(jsonStart);
     
-    // If inside buildings array, find last complete building object
     if (partial.includes('"buildings"')) {
       const arrMatch = partial.match(/"buildings"\s*:\s*\[/);
       if (arrMatch) {
@@ -248,7 +220,6 @@ function parseGeminiJsonRobust(text) {
         }
         
         if (lastCompleteObj > arrayStart) {
-          // Truncate after last complete object, close the array and root object
           const truncated = partial.substring(0, lastCompleteObj + 1) + ']}';
           try {
             const parsed = JSON.parse(truncated);
@@ -259,7 +230,6 @@ function parseGeminiJsonRobust(text) {
       }
     }
 
-    // Generic: Count and close remaining open structures
     let openBraces = 0, openBrackets = 0, inString = false, escaped = false;
     for (const ch of partial) {
       if (escaped) { escaped = false; continue; }
@@ -364,7 +334,6 @@ Return ONLY valid JSON (no markdown):
 
 /**
  * Phase B: Extract per-building details with FOCUSED prompts
- * v2.4: Stronger prompt for individual building separation
  */
 async function fetchBuildingDetails(complex) {
   const planRef = complex.plan_number ? `Plan number: ${complex.plan_number}` : '';
@@ -375,7 +344,6 @@ async function fetchBuildingDetails(complex) {
   if (complex.num_buildings) knownInfo.push(`Number of buildings: ${complex.num_buildings}`);
   if (complex.developer) knownInfo.push(`Developer: ${complex.developer}`);
 
-  // v2.4: Much more explicit prompt with example
   const prompt = `Find the list of building addresses in this Israeli Pinuy-Binuy (\u05E4\u05D9\u05E0\u05D5\u05D9-\u05D1\u05D9\u05E0\u05D5\u05D9) project:
 
 Project: "${complex.name}"
@@ -438,7 +406,6 @@ Return ONLY raw JSON (NO \`\`\` backticks):
 
 /**
  * Phase C: Smart estimation - distribute known totals across buildings
- * v2.3: Handles existing and planned INDEPENDENTLY
  */
 function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
   if (!buildings || buildings.length === 0) return { buildings, estimationApplied: false };
@@ -448,7 +415,6 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
   const hasPlanned = buildings.some(b => b.planned_units && b.planned_units > 0);
   let estimationApplied = false;
 
-  // Estimate EXISTING units if missing
   if (totalExisting && !hasExisting) {
     const numBuildings = buildings.length;
     buildings.forEach(b => {
@@ -477,7 +443,6 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
     logger.info(`[MavatBuilding] Estimated existing_units: ${totalExisting} across ${numBuildings} buildings`);
   }
 
-  // Estimate PLANNED units if missing (independent of existing)
   if (totalPlanned && !hasPlanned) {
     const hasFloorData = buildings.some(b => {
       const f = sanitizeInt(b.floors_planned);
@@ -520,7 +485,6 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
     logger.info(`[MavatBuilding] Estimated planned_units: ${totalPlanned} across ${buildings.length} buildings`);
   }
 
-  // Mark confidence on buildings where estimation was applied
   if (estimationApplied) {
     buildings.forEach(b => {
       const existingWasEstimated = totalExisting && !hasExisting;
@@ -538,7 +502,6 @@ function estimateBuildingUnits(buildings, totalExisting, totalPlanned) {
 
 /**
  * Get existing buildings from DB for fallback estimation
- * v2.4: Added explicit error logging
  */
 async function getExistingBuildingsFromDB(complexId) {
   try {
@@ -611,7 +574,6 @@ async function saveBuildingDetails(complexId, buildings, source) {
 
 /**
  * Full enrichment for a single complex
- * v2.4: Combined address splitting + robust DB fallback
  */
 async function enrichComplex(complexId) {
   await ensureTable();
@@ -663,11 +625,9 @@ async function enrichComplex(complexId) {
   let phaseUsed = 'B';
 
   if (buildingData && buildingData.buildings && buildingData.buildings.length > 0) {
-    // v2.4: EXPAND combined addresses instead of filtering them out
     buildings = expandCombinedBuildings(buildingData.buildings);
     logger.info(`[MavatBuilding] After expansion: ${buildings.length} buildings (from ${buildingData.buildings.length} Gemini entries)`);
     
-    // Only discard if expansion produced nothing useful
     if (buildings.length === 0) {
       logger.warn(`[MavatBuilding] Building expansion produced 0 results`);
     }
@@ -675,7 +635,6 @@ async function enrichComplex(complexId) {
     logger.info(`[MavatBuilding] Phase B returned no buildings`);
   }
 
-  // Sanitize plan_number from buildingData too
   if (buildingData && buildingData.plan_number) {
     buildingData.plan_number = sanitizePlanNumber(buildingData.plan_number);
   }
@@ -706,7 +665,7 @@ async function enrichComplex(complexId) {
     };
   }
 
-  // Phase C: Smart estimation - ALWAYS run, let function decide what to estimate
+  // Phase C: Smart estimation
   const totalExisting = (buildingData && buildingData.total_existing_units) || complex.existing_units;
   const totalPlanned = (buildingData && buildingData.total_planned_units) || complex.planned_units;
   
@@ -729,7 +688,6 @@ async function enrichComplex(complexId) {
 
   const savedCount = await saveBuildingDetails(complexId, buildings, dataSource);
 
-  // Update complex totals if we got new info
   if (buildingData && buildingData.total_existing_units && !complex.existing_units) {
     await pool.query('UPDATE complexes SET existing_units = $1 WHERE id = $2', [buildingData.total_existing_units, complexId]);
   }
@@ -762,16 +720,17 @@ async function enrichComplex(complexId) {
 }
 
 /**
- * Batch scan
+ * Batch scan - v2.5: inclusive query, no complexes fall through cracks
  */
 async function batchEnrich(options = {}) {
   await ensureTable();
   
   const { city, limit = 10, staleOnly = true } = options;
 
+  // v2.5: Include ALL complexes with any unit data, not just those with num_buildings
   let query = `SELECT id, name, city FROM complexes 
                WHERE status NOT IN ('unknown')
-               AND num_buildings IS NOT NULL AND num_buildings > 0`;
+               AND (num_buildings > 0 OR existing_units > 0 OR planned_units > 0)`;
   const params = [];
   let idx = 1;
 
