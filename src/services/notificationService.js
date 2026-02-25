@@ -1,1 +1,433 @@
-LyoqCiAqIE5vdGlmaWNhdGlvbiBTZXJ2aWNlIHYzIC0gU21hcnQgRW1haWwgRGVsaXZlcnkKICogCiAqIFNlbmRzIGFsZXJ0cyBhbmQgc2NhbiBzdGF0dXMgdmlhIGVtYWlsIHRvOgogKiAxLiBQZXJzb25hbCBlbWFpbCAoaGVtaS5taWNoYWVsaUBnbWFpbC5jb20pIC0gYWx3YXlzIHdvcmtzCiAqIDIuIE9mZmljZSBlbWFpbCAoT2ZmaWNlQHUtci1xdWFudHVtLmNvbSkgCiAqIDMuIFRyZWxsbyBib2FyZCAtIERJU0FCTEVEIChzeXN0ZW0gYWxlcnRzIG5vdyBpbiBRVUFOVFVNIGRhc2hib2FyZCkKICogCiAqIFNtYXJ0IHByb3ZpZGVyIHNlbGVjdGlvbjoKICogLSBUcmllcyBSZXNlbmQgZmlyc3QgKG5vIFNNVFAgcG9ydCBuZWVkZWQgb24gUmFpbHdheSkKICogLSBGYWxscyBiYWNrIHRvIFNNVFAgaWYgUmVzZW5kIGZhaWxzIChlLmcuLCBzYW5kYm94IGRvbWFpbiByZXN0cmljdGlvbnMpCiAqIC0gTG9ncyBhbGwgZGVsaXZlcnkgYXR0ZW1wdHMgZm9yIGRlYnVnZ2luZwogKi8KCmNvbnN0IHBvb2wgPSByZXF1aXJlKCcuLi9kYi9wb29sJyk7CmNvbnN0IHsgbG9nZ2VyIH0gPSByZXF1aXJlKCcuL2xvZ2dlcicpOwoKLy8gTm90aWZpY2F0aW9uIHRhcmdldHMgLSBwZXJzb25hbCBlbWFpbCBmaXJzdCAoYWx3YXlzIHdvcmtzIHdpdGggUmVzZW5kIHNhbmRib3gpCmNvbnN0IFBFUlNPTkFMX0VNQUlMID0gcHJvY2Vzcy5lbnYuUEVSU09OQUxfRU1BSUwgfHwgJ2hlbWkubWljaGFlbGlAZ21haWwuY29tJzsKY29uc3QgT0ZGSUNFX0VNQUlMID0gcHJvY2Vzcy5lbnYuT0ZGSUNFX0VNQUlMIHx8ICdPZmZpY2VAdS1yLXF1YW50dW0uY29tJzsKY29uc3QgVFJFTExPX0VNQUlMID0gcHJvY2Vzcy5lbnYuVFJFTExPX0JPQVJEX0VNQUlMIHx8ICd1dGhfbGltaXRlZCtjOW90c3dldHBnZGZwaGRwb2VoY0Bib2FyZHMudHJlbGxvLmNvbSc7CgovLyBBbGwgbm90aWZpY2F0aW9uIHRhcmdldHMKLy8gQWxlcnQgbm90aWZpY2F0aW9ucyAtIG5vIGxvbmdlciBzZW50IHRvIFRyZWxsbyAoc3lzdGVtIGFsZXJ0cyBub3cgaW4gUVVBTlRVTSBkYXNoYm9hcmQpCmNvbnN0IE5PVElGSUNBVElPTl9FTUFJTFMgPSBbUEVSU09OQUxfRU1BSUwsIE9GRklDRV9FTUFJTF0uZmlsdGVyKEJvb2xlYW4pOwoKLy8gU2V2ZXJpdHkgLT4gZW1vamkgbWFwcGluZyBmb3IgZW1haWwgc3ViamVjdHMKY29uc3QgU0VWRVJJVFlfRU1PSkkgPSB7CiAgY3JpdGljYWw6ICfwn5qoJywKICBoaWdoOiAn8J+UtCcsCiAgbWVkaXVtOiAn8J+foScsCiAgaW5mbzogJ+KEue+4jycKfTsKCmNvbnN0IEFMRVJUX1RZUEVfTEFCRUwgPSB7CiAgc3RhdHVzX2NoYW5nZTogJ9ep15nXoNeV15kg16HXmNeY15XXoScsCiAgY29tbWl0dGVlX2FwcHJvdmFsOiAn15DXmdep15XXqCDXldei15PXlCcsCiAgb3Bwb3J0dW5pdHk6ICfXlNeW15PXnteg15XXqiDXlNep16fXoteUJywKICBzdHJlc3NlZF9zZWxsZXI6ICfXnteV15vXqCDXnNeX15XXpScsCiAgcHJpY2VfZHJvcDogJ9eZ16jXmdeT16og157Xl9eZ16gnLAogIG5ld19jb21wbGV4OiAn157XqteX150g15fXk9epJwp9OwoKLyoqCiAqIFNlbmQgZW1haWwgdmlhIFJlc2VuZCBIVFRQIEFQSQogKi8KYXN5bmMgZnVuY3Rpb24gc2VuZFZpYVJlc2VuZCh0bywgc3ViamVjdCwgaHRtbEJvZHksIHRleHRCb2R5KSB7CiAgY29uc3QgYXBpS2V5ID0gcHJvY2Vzcy5lbnYuUkVTRU5EX0FQSV9LRVk7CiAgaWYgKCFhcGlLZXkpIHJldHVybiB7IHNlbnQ6IGZhbHNlLCBlcnJvcjogJ1JFU0VORF9BUElfS0VZIG5vdCBzZXQnLCBwcm92aWRlcjogJ3Jlc2VuZCcgfTsKCiAgY29uc3QgZnJvbUFkZHJlc3MgPSBwcm9jZXNzLmVudi5FTUFJTF9GUk9NIHx8ICdRVUFOVFVNIDxvbmJvYXJkaW5nQHJlc2VuZC5kZXY+JzsKCiAgdHJ5IHsKICAgIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgZmV0Y2goJ2h0dHBzOi8vYXBpLnJlc2VuZC5jb20vZW1haWxzJywgewogICAgICBtZXRob2Q6ICdQT1NUJywKICAgICAgaGVhZGVyczogewogICAgICAgICdBdXRob3JpemF0aW9uJzogYEJlYXJlciAke2FwaUtleX1gLAogICAgICAgICdDb250ZW50LVR5cGUnOiAnYXBwbGljYXRpb24vanNvbicKICAgICAgfSwKICAgICAgYm9keTogSlNPTi5zdHJpbmdpZnkoewogICAgICAgIGZyb206IGZyb21BZGRyZXNzLAogICAgICAgIHRvOiBbdG9dLAogICAgICAgIHN1YmplY3Q6IHN1YmplY3QsCiAgICAgICAgaHRtbDogaHRtbEJvZHksCiAgICAgICAgdGV4dDogdGV4dEJvZHkgfHwgaHRtbEJvZHkucmVwbGFjZSgvPFtePl0qPi9nLCAnJykKICAgICAgfSkKICAgIH0pOwoKICAgIGNvbnN0IGRhdGEgPSBhd2FpdCByZXNwb25zZS5qc29uKCk7CgogICAgaWYgKHJlc3BvbnNlLm9rKSB7CiAgICAgIGxvZ2dlci5pbmZvKGDinInvuI8gUmVzZW5kOiBzZW50IHRvICR7dG99YCwgeyBpZDogZGF0YS5pZCB9KTsKICAgICAgcmV0dXJuIHsgc2VudDogdHJ1ZSwgbWVzc2FnZUlkOiBkYXRhLmlkLCBwcm92aWRlcjogJ3Jlc2VuZCcgfTsKICAgIH0gZWxzZSB7CiAgICAgIGxvZ2dlci53YXJuKGBSZXNlbmQgZmFpbGVkIGZvciAke3RvfTogJHtkYXRhLm1lc3NhZ2UgfHwgcmVzcG9uc2Uuc3RhdHVzfWAsIHsgc3RhdHVzOiByZXNwb25zZS5zdGF0dXMgfSk7CiAgICAgIHJldHVybiB7IHNlbnQ6IGZhbHNlLCBlcnJvcjogZGF0YS5tZXNzYWdlIHx8IGBIVFRQICR7cmVzcG9uc2Uuc3RhdHVzfWAsIHN0YXR1c0NvZGU6IHJlc3BvbnNlLnN0YXR1cywgcHJvdmlkZXI6ICdyZXNlbmQnIH07CiAgICB9CiAgfSBjYXRjaCAoZXJyKSB7CiAgICBsb2dnZXIuZXJyb3IoYFJlc2VuZCBlcnJvciBmb3IgJHt0b31gLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHJldHVybiB7IHNlbnQ6IGZhbHNlLCBlcnJvcjogZXJyLm1lc3NhZ2UsIHByb3ZpZGVyOiAncmVzZW5kJyB9OwogIH0KfQoKLyoqCiAqIFNlbmQgZW1haWwgdmlhIFNNVFAgKG5vZGVtYWlsZXIpCiAqLwphc3luYyBmdW5jdGlvbiBzZW5kVmlhU01UUCh0bywgc3ViamVjdCwgaHRtbEJvZHksIHRleHRCb2R5KSB7CiAgY29uc3Qgc210cEhvc3QgPSBwcm9jZXNzLmVudi5TTVRQX0hPU1Q7CiAgY29uc3Qgc210cFVzZXIgPSBwcm9jZXNzLmVudi5TTVRQX1VTRVI7CiAgY29uc3Qgc210cFBhc3MgPSBwcm9jZXNzLmVudi5TTVRQX1BBU1M7CgogIGlmICghc210cEhvc3QgfHwgIXNtdHBVc2VyIHx8ICFzbXRwUGFzcykgewogICAgcmV0dXJuIHsgc2VudDogZmFsc2UsIGVycm9yOiAnU01UUCBub3QgY29uZmlndXJlZCcsIHByb3ZpZGVyOiAnc210cCcgfTsKICB9CgogIHRyeSB7CiAgICBjb25zdCBub2RlbWFpbGVyID0gcmVxdWlyZSgnbm9kZW1haWxlcicpOwogICAgY29uc3QgdHJhbnNwb3J0ZXIgPSBub2RlbWFpbGVyLmNyZWF0ZVRyYW5zcG9ydCh7CiAgICAgIGhvc3Q6IHNtdHBIb3N0LAogICAgICBwb3J0OiBwYXJzZUludChwcm9jZXNzLmVudi5TTVRQX1BPUlQgfHwgJzU4NycpLAogICAgICBzZWN1cmU6IHByb2Nlc3MuZW52LlNNVFBfU0VDVVJFID09PSAndHJ1ZScsCiAgICAgIGF1dGg6IHsgdXNlcjogc210cFVzZXIsIHBhc3M6IHNtdHBQYXNzIH0sCiAgICAgIGNvbm5lY3Rpb25UaW1lb3V0OiAxMDAwMCwKICAgICAgZ3JlZXRpbmdUaW1lb3V0OiAxMDAwMCwKICAgICAgc29ja2V0VGltZW91dDogMTUwMDAKICAgIH0pOwoKICAgIGNvbnN0IGluZm8gPSBhd2FpdCB0cmFuc3BvcnRlci5zZW5kTWFpbCh7CiAgICAgIGZyb206IHByb2Nlc3MuZW52LlNNVFBfRlJPTSB8fCBzbXRwVXNlciwKICAgICAgdG8sCiAgICAgIHN1YmplY3QsCiAgICAgIGh0bWw6IGh0bWxCb2R5LAogICAgICB0ZXh0OiB0ZXh0Qm9keSB8fCBodG1sQm9keS5yZXBsYWNlKC88W14+XSo+L2csICcnKQogICAgfSk7CgogICAgbG9nZ2VyLmluZm8oYOKcie+4jyBTTVRQOiBzZW50IHRvICR7dG99YCwgeyBtZXNzYWdlSWQ6IGluZm8ubWVzc2FnZUlkIH0pOwogICAgcmV0dXJuIHsgc2VudDogdHJ1ZSwgbWVzc2FnZUlkOiBpbmZvLm1lc3NhZ2VJZCwgcHJvdmlkZXI6ICdzbXRwJyB9OwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKGBTTVRQIGZhaWxlZCBmb3IgJHt0b31gLCB7IGVycm9yOiBlcnIubWVzc2FnZSwgY29kZTogZXJyLmNvZGUgfSk7CiAgICByZXR1cm4geyBzZW50OiBmYWxzZSwgZXJyb3I6IGVyci5tZXNzYWdlLCBjb2RlOiBlcnIuY29kZSwgcHJvdmlkZXI6ICdzbXRwJyB9OwogIH0KfQoKLyoqCiAqIFNlbmQgYSBzaW5nbGUgZW1haWwgLSB0cmllcyBSZXNlbmQgZmlyc3QsIGZhbGxzIGJhY2sgdG8gU01UUAogKiBTbWFydDogaWYgUmVzZW5kIGZhaWxzIChlLmcuLCA0MDMgc2FuZGJveCksIGF1dG9tYXRpY2FsbHkgdHJpZXMgU01UUAogKi8KYXN5bmMgZnVuY3Rpb24gc2VuZEVtYWlsKHRvLCBzdWJqZWN0LCBodG1sQm9keSwgdGV4dEJvZHkpIHsKICAvLyBUcnkgUmVzZW5kIGZpcnN0CiAgaWYgKHByb2Nlc3MuZW52LlJFU0VORF9BUElfS0VZKSB7CiAgICBjb25zdCByZXNlbmRSZXN1bHQgPSBhd2FpdCBzZW5kVmlhUmVzZW5kKHRvLCBzdWJqZWN0LCBodG1sQm9keSwgdGV4dEJvZHkpOwogICAgaWYgKHJlc2VuZFJlc3VsdC5zZW50KSByZXR1cm4gcmVzZW5kUmVzdWx0OwogICAgCiAgICAvLyBSZXNlbmQgZmFpbGVkIC0gZmFsbCBiYWNrIHRvIFNNVFAKICAgIGxvZ2dlci5pbmZvKGBSZXNlbmQgZmFpbGVkIGZvciAke3RvfSwgdHJ5aW5nIFNNVFAgZmFsbGJhY2suLi5gKTsKICB9CiAgCiAgLy8gVHJ5IFNNVFAgKGVpdGhlciBhcyBmYWxsYmFjayBvciBwcmltYXJ5KQogIGlmIChwcm9jZXNzLmVudi5TTVRQX0hPU1QgJiYgcHJvY2Vzcy5lbnYuU01UUF9VU0VSICYmIHByb2Nlc3MuZW52LlNNVFBfUEFTUykgewogICAgcmV0dXJuIHNlbmRWaWFTTVRQKHRvLCBzdWJqZWN0LCBodG1sQm9keSwgdGV4dEJvZHkpOwogIH0KICAKICByZXR1cm4geyBzZW50OiBmYWxzZSwgZXJyb3I6ICdObyBlbWFpbCBwcm92aWRlciBhdmFpbGFibGUnLCBwcm92aWRlcjogJ25vbmUnIH07Cn0KCi8qKgogKiBGb3JtYXQgYSBzaW5nbGUgYWxlcnQgZm9yIFRyZWxsbyBjYXJkIChlbWFpbCBib2R5IC0+IGNhcmQgZGVzY3JpcHRpb24pCiAqLwpmdW5jdGlvbiBmb3JtYXRBbGVydEZvclRyZWxsbyhhbGVydCkgewogIGNvbnN0IGVtb2ppID0gU0VWRVJJVFlfRU1PSklbYWxlcnQuc2V2ZXJpdHldIHx8ICcnOwogIGNvbnN0IHR5cGVMYWJlbCA9IEFMRVJUX1RZUEVfTEFCRUxbYWxlcnQuYWxlcnRfdHlwZV0gfHwgYWxlcnQuYWxlcnRfdHlwZTsKICAKICBsZXQgYm9keSA9IGAjIyAke2FsZXJ0LnRpdGxlfVxuXG5gOwogIGJvZHkgKz0gYCR7YWxlcnQubWVzc2FnZX1cblxuYDsKICBib2R5ICs9IGAtLS1cbmA7CiAgYm9keSArPSBgKirXodeV15I6KiogJHt0eXBlTGFiZWx9XG5gOwogIGJvZHkgKz0gYCoq15fXldee16jXlDoqKiAke2FsZXJ0LnNldmVyaXR5fVxuYDsKICBib2R5ICs9IGAqKteq15DXqNeZ15o6KiogJHtuZXcgRGF0ZShhbGVydC5jcmVhdGVkX2F0KS50b0xvY2FsZVN0cmluZygnaGUtSUwnLCB7IHRpbWVab25lOiAnQXNpYS9KZXJ1c2FsZW0nIH0pfVxuYDsKCiAgaWYgKGFsZXJ0LmRhdGEpIHsKICAgIGNvbnN0IGRhdGEgPSB0eXBlb2YgYWxlcnQuZGF0YSA9PT0gJ3N0cmluZycgPyBKU09OLnBhcnNlKGFsZXJ0LmRhdGEpIDogYWxlcnQuZGF0YTsKICAgIGlmIChkYXRhLm9sZF9zdGF0dXMgJiYgZGF0YS5uZXdfc3RhdHVzKSB7CiAgICAgIGJvZHkgKz0gYCoq16HXmNeY15XXoSDXmdep1586KiogJHtkYXRhLm9sZF9zdGF0dXN9IC0+ICoq15fXk9epOioqICR7ZGF0YS5uZXdfc3RhdHVzfVxuYDsKICAgIH0KICAgIGlmIChkYXRhLmNvbW1pdHRlZSkgewogICAgICBib2R5ICs9IGAqKteV16LXk9eUOioqICR7ZGF0YS5jb21taXR0ZWUgPT09ICdsb2NhbCcgPyAn157Xp9eV157XmdeqJyA6ICfXnteX15XXlteZ16onfVxuYDsKICAgIH0KICAgIGlmIChkYXRhLm9sZF9pYWkgIT09IHVuZGVmaW5lZCkgewogICAgICBib2R5ICs9IGAqKklBSToqKiAke2RhdGEub2xkX2lhaX0gLT4gJHtkYXRhLm5ld19pYWl9XG5gOwogICAgfQogICAgaWYgKGRhdGEuc3NpX3Njb3JlKSB7CiAgICAgIGJvZHkgKz0gYCoqU1NJOioqICR7ZGF0YS5zc2lfc2NvcmV9XG5gOwogICAgfQogICAgaWYgKGRhdGEuZHJvcF9wZXJjZW50KSB7CiAgICAgIGJvZHkgKz0gYCoq15nXqNeZ15PXlDoqKiAke2RhdGEuZHJvcF9wZXJjZW50fSVcbmA7CiAgICB9CiAgfQoKICBjb25zdCBzdWJqZWN0ID0gYCR7ZW1vaml9IFtRVUFOVFVNXSAke3R5cGVMYWJlbH06ICR7YWxlcnQudGl0bGV9YDsKICByZXR1cm4geyBzdWJqZWN0LCBib2R5IH07Cn0KCi8qKgogKiBGb3JtYXQgYWxlcnQgYXMgSFRNTCBmb3Igb2ZmaWNlIGVtYWlsCiAqLwpmdW5jdGlvbiBmb3JtYXRBbGVydEhUTUwoYWxlcnQpIHsKICBjb25zdCBlbW9qaSA9IFNFVkVSSVRZX0VNT0pJW2FsZXJ0LnNldmVyaXR5XSB8fCAnJzsKICBjb25zdCB0eXBlTGFiZWwgPSBBTEVSVF9UWVBFX0xBQkVMW2FsZXJ0LmFsZXJ0X3R5cGVdIHx8IGFsZXJ0LmFsZXJ0X3R5cGU7CiAgY29uc3Qgc2V2ZXJpdHlDb2xvciA9IHsKICAgIGNyaXRpY2FsOiAnI2RjMjYyNicsIGhpZ2g6ICcjZWY0NDQ0JywgbWVkaXVtOiAnI2Y1OWUwYicsIGluZm86ICcjM2I4MmY2JwogIH1bYWxlcnQuc2V2ZXJpdHldIHx8ICcjNmI3MjgwJzsKCiAgcmV0dXJuIGAKICAgIDxkaXYgc3R5bGU9ImJvcmRlci1sZWZ0OiA0cHggc29saWQgJHtzZXZlcml0eUNvbG9yfTsgcGFkZGluZzogMTJweCAxNnB4OyBtYXJnaW46IDhweCAwOyBiYWNrZ3JvdW5kOiAjZjlmYWZiOyI+CiAgICAgIDxoMyBzdHlsZT0ibWFyZ2luOiAwIDAgOHB4OyBjb2xvcjogJHtzZXZlcml0eUNvbG9yfTsiPiR7ZW1vaml9ICR7YWxlcnQudGl0bGV9PC9oMz4KICAgICAgPHAgc3R5bGU9Im1hcmdpbjogMCAwIDhweDsgY29sb3I6ICMzNzQxNTE7Ij4ke2FsZXJ0Lm1lc3NhZ2V9PC9wPgogICAgICA8cCBzdHlsZT0ibWFyZ2luOiAwOyBmb250LXNpemU6IDEycHg7IGNvbG9yOiAjOWNhM2FmOyI+CiAgICAgICAgJHt0eXBlTGFiZWx9IHwgJHthbGVydC5zZXZlcml0eX0gfCAke25ldyBEYXRlKGFsZXJ0LmNyZWF0ZWRfYXQpLnRvTG9jYWxlU3RyaW5nKCdoZS1JTCcsIHsgdGltZVpvbmU6ICdBc2lhL0plcnVzYWxlbScgfSl9CiAgICAgIDwvcD4KICAgIDwvZGl2PgogIGA7Cn0KCi8qKgogKiBTZW5kIHJlYWwtdGltZSBub3RpZmljYXRpb24gZm9yIGEgaGlnaC1zZXZlcml0eSBhbGVydAogKi8KYXN5bmMgZnVuY3Rpb24gc2VuZEFsZXJ0Tm90aWZpY2F0aW9uKGFsZXJ0KSB7CiAgaWYgKCFhbGVydCB8fCAhWydjcml0aWNhbCcsICdoaWdoJ10uaW5jbHVkZXMoYWxlcnQuc2V2ZXJpdHkpKSByZXR1cm4gMDsKCiAgY29uc3QgdHJlbGxvRm9ybWF0ID0gZm9ybWF0QWxlcnRGb3JUcmVsbG8oYWxlcnQpOwogIGNvbnN0IGh0bWxCb2R5ID0gZm9ybWF0QWxlcnRIVE1MKGFsZXJ0KTsKICBjb25zdCBzdWJqZWN0ID0gdHJlbGxvRm9ybWF0LnN1YmplY3Q7CgogIGxldCBzZW50Q291bnQgPSAwOwoKICAvLyBTZW5kIHRvIGFsbCBub3RpZmljYXRpb24gZW1haWxzCiAgZm9yIChjb25zdCBlbWFpbCBvZiBOT1RJRklDQVRJT05fRU1BSUxTKSB7CiAgICB0cnkgewogICAgICBjb25zdCBpc1BlcnNvbmFsT3JPZmZpY2UgPSBlbWFpbCAhPT0gVFJFTExPX0VNQUlMOwogICAgICBjb25zdCBib2R5ID0gaXNQZXJzb25hbE9yT2ZmaWNlID8gYAogICAgICAgIDxkaXYgZGlyPSJydGwiIHN0eWxlPSJmb250LWZhbWlseTogQXJpYWwsIHNhbnMtc2VyaWY7IG1heC13aWR0aDogNjAwcHg7Ij4KICAgICAgICAgIDxoMiBzdHlsZT0iY29sb3I6ICMxZjI5Mzc7Ij5RVUFOVFVNIC0g15TXqteo15DXlCDXl9eT16nXlDwvaDI+CiAgICAgICAgICAke2h0bWxCb2R5fQogICAgICAgICAgPGhyIHN0eWxlPSJib3JkZXI6IG5vbmU7IGJvcmRlci10b3A6IDFweCBzb2xpZCAjZTVlN2ViOyBtYXJnaW46IDE2cHggMDsiPgogICAgICAgICAgPHAgc3R5bGU9ImZvbnQtc2l6ZTogMTFweDsgY29sb3I6ICM5Y2EzYWY7Ij4KICAgICAgICAgICAgUVVBTlRVTSB2NC4yMCB8IDxhIGhyZWY9Imh0dHBzOi8vcGludXktYmludXktYW5hbHl6ZXItcHJvZHVjdGlvbi51cC5yYWlsd2F5LmFwcC9hcGkvZGFzaGJvYXJkIj5EYXNoYm9hcmQ8L2E+CiAgICAgICAgICA8L3A+CiAgICAgICAgPC9kaXY+CiAgICAgIGAgOiB0cmVsbG9Gb3JtYXQuYm9keTsKCiAgICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IHNlbmRFbWFpbChlbWFpbCwgc3ViamVjdCwgYm9keSwgZW1haWwgPT09IFRSRUxMT19FTUFJTCA/IHRyZWxsb0Zvcm1hdC5ib2R5IDogdW5kZWZpbmVkKTsKICAgICAgaWYgKHJlc3VsdC5zZW50KSBzZW50Q291bnQrKzsKICAgIH0gY2F0Y2ggKGVycikgewogICAgICBsb2dnZXIud2FybihgRmFpbGVkIHRvIHNlbmQgYWxlcnQgdG8gJHtlbWFpbH1gLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIH0KICB9CgogIGlmIChzZW50Q291bnQgPiAwKSB7CiAgICB0cnkgewogICAgICBhd2FpdCBwb29sLnF1ZXJ5KCdVUERBVEUgYWxlcnRzIFNFVCBzZW50X2F0ID0gTk9XKCkgV0hFUkUgaWQgPSAkMScsIFthbGVydC5pZF0pOwogICAgfSBjYXRjaCAoZXJyKSB7CiAgICAgIGxvZ2dlci53YXJuKCdGYWlsZWQgdG8gbWFyayBhbGVydCBhcyBzZW50JywgeyBhbGVydElkOiBhbGVydC5pZCwgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgfQogIH0KCiAgcmV0dXJuIHNlbnRDb3VudDsKfQoKLyoqCiAqIFNlbmQgYWxsIHVuc2VudCBoaWdoLXNldmVyaXR5IGFsZXJ0cwogKi8KYXN5bmMgZnVuY3Rpb24gc2VuZFBlbmRpbmdBbGVydHMoKSB7CiAgdHJ5IHsKICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IHBvb2wucXVlcnkoYAogICAgICBTRUxFQ1QgYS4qLCBjLm5hbWUgYXMgY29tcGxleF9uYW1lLCBjLmNpdHkKICAgICAgRlJPTSBhbGVydHMgYQogICAgICBMRUZUIEpPSU4gY29tcGxleGVzIGMgT04gYS5jb21wbGV4X2lkID0gYy5pZAogICAgICBXSEVSRSBhLnNlbnRfYXQgSVMgTlVMTCBBTkQgYS5zZXZlcml0eSBJTiAoJ2NyaXRpY2FsJywgJ2hpZ2gnKQogICAgICBPUkRFUiBCWSBhLmNyZWF0ZWRfYXQgQVNDCiAgICAgIExJTUlUIDIwCiAgICBgKTsKCiAgICBpZiAocmVzdWx0LnJvd3MubGVuZ3RoID09PSAwKSB7CiAgICAgIGxvZ2dlci5pbmZvKCdObyBwZW5kaW5nIGFsZXJ0cyB0byBzZW5kJyk7CiAgICAgIHJldHVybiB7IHRvdGFsQWxlcnRzOiAwLCBzZW50OiAwIH07CiAgICB9CgogICAgbGV0IHNlbnQgPSAwOwogICAgZm9yIChjb25zdCBhbGVydCBvZiByZXN1bHQucm93cykgewogICAgICBjb25zdCBjb3VudCA9IGF3YWl0IHNlbmRBbGVydE5vdGlmaWNhdGlvbihhbGVydCk7CiAgICAgIGlmIChjb3VudCA+IDApIHNlbnQrKzsKICAgICAgYXdhaXQgbmV3IFByb21pc2UociA9PiBzZXRUaW1lb3V0KHIsIDEwMDApKTsKICAgIH0KCiAgICBsb2dnZXIuaW5mbyhgU2VudCAke3NlbnR9LyR7cmVzdWx0LnJvd3MubGVuZ3RofSBwZW5kaW5nIGFsZXJ0c2ApOwogICAgcmV0dXJuIHsgdG90YWxBbGVydHM6IHJlc3VsdC5yb3dzLmxlbmd0aCwgc2VudCB9OwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKCdGYWlsZWQgdG8gc2VuZCBwZW5kaW5nIGFsZXJ0cycsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgcmV0dXJuIHsgZXJyb3I6IGVyci5tZXNzYWdlIH07CiAgfQp9CgovKioKICogQWxpYXMgZm9yIHdlZWtseSBzY2FubmVyIGNvbXBhdGliaWxpdHkKICovCmFzeW5jIGZ1bmN0aW9uIHNlbmRQZW5kaW5nTm90aWZpY2F0aW9ucygpIHsKICByZXR1cm4gc2VuZFBlbmRpbmdBbGVydHMoKTsKfQoKLyoqCiAqIFNlbmQgd2Vla2x5IGRpZ2VzdCBlbWFpbAogKi8KYXN5bmMgZnVuY3Rpb24gc2VuZFdlZWtseURpZ2VzdChzY2FuUmVzdWx0KSB7CiAgaWYgKCFzY2FuUmVzdWx0KSByZXR1cm47CgogIGNvbnN0IHN1YmplY3QgPSBg8J+TiiBbUVVBTlRVTV0g16HXmdeb15XXnSDXqdeR15XXoteZIC0gUGludXkgQmludXkgQW5hbHl6ZXJgOwoKICBjb25zdCBhbGVydHNSZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgIFNFTEVDVCBhLiosIGMubmFtZSBhcyBjb21wbGV4X25hbWUsIGMuY2l0eQogICAgRlJPTSBhbGVydHMgYQogICAgTEVGVCBKT0lOIGNvbXBsZXhlcyBjIE9OIGEuY29tcGxleF9pZCA9IGMuaWQKICAgIFdIRVJFIGEuY3JlYXRlZF9hdCA+IE5PVygpIC0gSU5URVJWQUwgJzcgZGF5cycKICAgIE9SREVSIEJZIAogICAgICBDQVNFIGEuc2V2ZXJpdHkgCiAgICAgICAgV0hFTiAnY3JpdGljYWwnIFRIRU4gMSBXSEVOICdoaWdoJyBUSEVOIDIgCiAgICAgICAgV0hFTiAnbWVkaXVtJyBUSEVOIDMgRUxTRSA0IAogICAgICBFTkQsCiAgICAgIGEuY3JlYXRlZF9hdCBERVNDCiAgICBMSU1JVCAzMAogIGApOwoKICBjb25zdCB0b3BPcHBzID0gYXdhaXQgcG9vbC5xdWVyeShgCiAgICBTRUxFQ1QgbmFtZSwgY2l0eSwgc3RhdHVzLCBpYWlfc2NvcmUsIGFjdHVhbF9wcmVtaXVtCiAgICBGUk9NIGNvbXBsZXhlcyBXSEVSRSBpYWlfc2NvcmUgPj0gNTAKICAgIE9SREVSIEJZIGlhaV9zY29yZSBERVNDIExJTUlUIDEwCiAgYCk7CgogIGxldCBodG1sID0gYAogICAgPGRpdiBkaXI9InJ0bCIgc3R5bGU9ImZvbnQtZmFtaWx5OiBBcmlhbCwgc2Fucy1zZXJpZjsgbWF4LXdpZHRoOiA3MDBweDsgbWFyZ2luOiAwIGF1dG87Ij4KICAgICAgPGgxIHN0eWxlPSJjb2xvcjogIzFmMjkzNzsgYm9yZGVyLWJvdHRvbTogMnB4IHNvbGlkICMzYjgyZjY7IHBhZGRpbmctYm90dG9tOiA4cHg7Ij4KICAgICAgICDwn5OKIFFVQU5UVU0gLSDXodeZ15vXldedINep15HXldei15kKICAgICAgPC9oMT4KICAgICAgCiAgICAgIDxkaXYgc3R5bGU9ImJhY2tncm91bmQ6ICNmMGY5ZmY7IHBhZGRpbmc6IDE2cHg7IGJvcmRlci1yYWRpdXM6IDhweDsgbWFyZ2luOiAxNnB4IDA7Ij4KICAgICAgICA8aDMgc3R5bGU9Im1hcmdpbjogMCAwIDhweDsgY29sb3I6ICMxZTQwYWY7Ij7XqteV16bXkNeV16og16HXqNeZ16fXlDwvaDM+CiAgICAgICAgPHRhYmxlIHN0eWxlPSJ3aWR0aDogMTAwJTsgYm9yZGVyLWNvbGxhcHNlOiBjb2xsYXBzZTsiPgogIGA7CgogIGlmIChzY2FuUmVzdWx0Lm5hZGxhbikgaHRtbCArPSBgPHRyPjx0ZCBzdHlsZT0icGFkZGluZzogNHB4IDhweDsiPm5hZGxhbi5nb3YuaWw8L3RkPjx0ZD4ke3NjYW5SZXN1bHQubmFkbGFuLm5ld1RyYW5zYWN0aW9ucyB8fCBzY2FuUmVzdWx0Lm5hZGxhbi5uZXdUeCB8fCAwfSDXoteh16fXkNeV16og15fXk9ep15XXqjwvdGQ+PC90cj5gOwogIGlmIChzY2FuUmVzdWx0LnlhZDIpIGh0bWwgKz0gYDx0cj48dGQgc3R5bGU9InBhZGRpbmc6IDRweCA4cHg7Ij55YWQyPC90ZD48dGQ+JHtzY2FuUmVzdWx0LnlhZDIubmV3IHx8IHNjYW5SZXN1bHQueWFkMi5uZXdMaXN0aW5ncyB8fCAwfSDXnteV15PXoteV16og15fXk9ep15XXqiwgJHtzY2FuUmVzdWx0LnlhZDIucHJpY2VDaGFuZ2VzIHx8IDB9INep15nXoNeV15nXmSDXnteX15nXqDwvdGQ+PC90cj5gOwogIGlmIChzY2FuUmVzdWx0Lm1hdmF0KSBodG1sICs9IGA8dHI+PHRkIHN0eWxlPSJwYWRkaW5nOiA0cHggOHB4OyI+bWF2YXQ8L3RkPjx0ZD4ke3NjYW5SZXN1bHQubWF2YXQuc3RhdHVzQ2hhbmdlcyB8fCAwfSDXqdeZ16DXldeZ15kg16HXmNeY15XXoSwgJHtzY2FuUmVzdWx0Lm1hdmF0LmNvbW1pdHRlZVVwZGF0ZXMgfHwgMH0g15DXmdep15XXqNeZINeV16LXk9eUPC90ZD48L3RyPmA7CiAgaWYgKHNjYW5SZXN1bHQuYmVuY2htYXJrcykgaHRtbCArPSBgPHRyPjx0ZCBzdHlsZT0icGFkZGluZzogNHB4IDhweDsiPkJlbmNobWFya3M8L3RkPjx0ZD4ke3NjYW5SZXN1bHQuYmVuY2htYXJrcy5jYWxjdWxhdGVkIHx8IDB9INeX15XXqdeR15U8L3RkPjwvdHI+YDsKCiAgaHRtbCArPSBgCiAgICAgICAgPC90YWJsZT4KICAgICAgICA8cCBzdHlsZT0ibWFyZ2luOiA4cHggMCAwOyBmb250LXNpemU6IDEycHg7IGNvbG9yOiAjNmI3MjgwOyI+157XqdeaOiAke3NjYW5SZXN1bHQuZHVyYXRpb24gfHwgJ04vQSd9IHwgJHtzY2FuUmVzdWx0LmFsZXJ0c0dlbmVyYXRlZCB8fCAwfSDXlNeq16jXkNeV16o8L3A+CiAgICAgIDwvZGl2PgogIGA7CgogIGlmIChhbGVydHNSZXN1bHQucm93cy5sZW5ndGggPiAwKSB7CiAgICBodG1sICs9IGA8aDMgc3R5bGU9ImNvbG9yOiAjMWYyOTM3OyBtYXJnaW4tdG9wOiAyNHB4OyI+15TXqteo15DXldeqINeU16nXkdeV16IgKCR7YWxlcnRzUmVzdWx0LnJvd3MubGVuZ3RofSk8L2gzPmA7CiAgICBmb3IgKGNvbnN0IGFsZXJ0IG9mIGFsZXJ0c1Jlc3VsdC5yb3dzKSB7CiAgICAgIGh0bWwgKz0gZm9ybWF0QWxlcnRIVE1MKGFsZXJ0KTsKICAgIH0KICB9CgogIGlmICh0b3BPcHBzLnJvd3MubGVuZ3RoID4gMCkgewogICAgaHRtbCArPSBgCiAgICAgIDxoMyBzdHlsZT0iY29sb3I6ICMxZjI5Mzc7IG1hcmdpbi10b3A6IDI0cHg7Ij5Ub3AgMTAg15TXlteT157XoNeV15nXldeqPC9oMz4KICAgICAgPHRhYmxlIHN0eWxlPSJ3aWR0aDogMTAwJTsgYm9yZGVyLWNvbGxhcHNlOiBjb2xsYXBzZTsgZm9udC1zaXplOiAxM3B4OyI+CiAgICAgICAgPHRoZWFkPgogICAgICAgICAgPHRyIHN0eWxlPSJiYWNrZ3JvdW5kOiAjZjNmNGY2OyI+CiAgICAgICAgICAgIDx0aCBzdHlsZT0icGFkZGluZzogOHB4OyB0ZXh0LWFsaWduOiByaWdodDsiPtep1508L3RoPgogICAgICAgICAgICA8dGggc3R5bGU9InBhZGRpbmc6IDhweDsgdGV4dC1hbGlnbjogcmlnaHQ7Ij7XoteZ16g8L3RoPgogICAgICAgICAgICA8dGggc3R5bGU9InBhZGRpbmc6IDhweDsgdGV4dC1hbGlnbjogY2VudGVyOyI+16HXmNeY15XXoTwvdGg+CiAgICAgICAgICAgIDx0aCBzdHlsZT0icGFkZGluZzogOHB4OyB0ZXh0LWFsaWduOiBjZW50ZXI7Ij5JQUk8L3RoPgogICAgICAgICAgICA8dGggc3R5bGU9InBhZGRpbmc6IDhweDsgdGV4dC1hbGlnbjogY2VudGVyOyI+16TXqNee15nXlDwvdGg+CiAgICAgICAgICA8L3RyPgogICAgICAgIDwvdGhlYWQ+CiAgICAgICAgPHRib2R5PgogICAgYDsKICAgIGZvciAoY29uc3Qgb3BwIG9mIHRvcE9wcHMucm93cykgewogICAgICBjb25zdCBpYWlDb2xvciA9IG9wcC5pYWlfc2NvcmUgPj0gNzAgPyAnIzE2YTM0YScgOiBvcHAuaWFpX3Njb3JlID49IDUwID8gJyNjYThhMDQnIDogJyM2YjcyODAnOwogICAgICBodG1sICs9IGAKICAgICAgICA8dHIgc3R5bGU9ImJvcmRlci1ib3R0b206IDFweCBzb2xpZCAjZTVlN2ViOyI+CiAgICAgICAgICA8dGQgc3R5bGU9InBhZGRpbmc6IDZweCA4cHg7Ij4ke29wcC5uYW1lfTwvdGQ+CiAgICAgICAgICA8dGQgc3R5bGU9InBhZGRpbmc6IDZweCA4cHg7Ij4ke29wcC5jaXR5fTwvdGQ+CiAgICAgICAgICA8dGQgc3R5bGU9InBhZGRpbmc6IDZweCA4cHg7IHRleHQtYWxpZ246IGNlbnRlcjsiPiR7b3BwLnN0YXR1c308L3RkPgogICAgICAgICAgPHRkIHN0eWxlPSJwYWRkaW5nOiA2cHggOHB4OyB0ZXh0LWFsaWduOiBjZW50ZXI7IGNvbG9yOiAke2lhaUNvbG9yfTsgZm9udC13ZWlnaHQ6IGJvbGQ7Ij4ke29wcC5pYWlfc2NvcmV9PC90ZD4KICAgICAgICAgIDx0ZCBzdHlsZT0icGFkZGluZzogNnB4IDhweDsgdGV4dC1hbGlnbjogY2VudGVyOyI+JHtvcHAuYWN0dWFsX3ByZW1pdW0gPyBvcHAuYWN0dWFsX3ByZW1pdW0gKyAnJScgOiAnTi9BJ308L3RkPgogICAgICAgIDwvdHI+CiAgICAgIGA7CiAgICB9CiAgICBodG1sICs9IGA8L3Rib2R5PjwvdGFibGU+YDsKICB9CgogIGh0bWwgKz0gYAogICAgICA8aHIgc3R5bGU9ImJvcmRlcjogbm9uZTsgYm9yZGVyLXRvcDogMXB4IHNvbGlkICNlNWU3ZWI7IG1hcmdpbjogMjRweCAwIDhweDsiPgogICAgICA8cCBzdHlsZT0iZm9udC1zaXplOiAxMXB4OyBjb2xvcjogIzljYTNhZjsgdGV4dC1hbGlnbjogY2VudGVyOyI+CiAgICAgICAgUVVBTlRVTSB2NC4yMCAtIERpcmVjdCBBUEkgTW9kZSB8CiAgICAgICAgPGEgaHJlZj0iaHR0cHM6Ly9waW51eS1iaW51eS1hbmFseXplci1wcm9kdWN0aW9uLnVwLnJhaWx3YXkuYXBwL2FwaS9kYXNoYm9hcmQiPkRhc2hib2FyZDwvYT4KICAgICAgPC9wPgogICAgPC9kaXY+CiAgYDsKCiAgY29uc3QgdHJlbGxvVGV4dCA9IGDXodeZ15vXldedINep15HXldei15kgUVVBTlRVTVxuXG5gICsKICAgIGDXodeo15nXp9eUOiAke3NjYW5SZXN1bHQuc3VtbWFyeSB8fCAnTi9BJ31cblxuYCArCiAgICBg15TXqteo15DXldeqOiAke2FsZXJ0c1Jlc3VsdC5yb3dzLmxlbmd0aH1cbmAgKwogICAgYWxlcnRzUmVzdWx0LnJvd3Muc2xpY2UoMCwgMTApLm1hcChhID0+IGAtICR7YS50aXRsZX06ICR7YS5tZXNzYWdlfWApLmpvaW4oJ1xuJykgKwogICAgYFxuXG5Ub3Ag15TXlteT157XoNeV15nXldeqOlxuYCArCiAgICB0b3BPcHBzLnJvd3MubWFwKG8gPT4gYC0gJHtvLm5hbWV9ICgke28uY2l0eX0pIElBST0ke28uaWFpX3Njb3JlfWApLmpvaW4oJ1xuJyk7CgogIGxldCBzZW50ID0gMDsKICAvLyBTZW5kIEhUTUwgdG8gcGVyc29uYWwgYW5kIG9mZmljZQogIGZvciAoY29uc3QgZW1haWwgb2YgW1BFUlNPTkFMX0VNQUlMLCBPRkZJQ0VfRU1BSUxdKSB7CiAgICBpZiAoZW1haWwpIHsKICAgICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgc2VuZEVtYWlsKGVtYWlsLCBzdWJqZWN0LCBodG1sKTsKICAgICAgaWYgKHJlc3VsdC5zZW50KSBzZW50Kys7CiAgICB9CiAgfQogIC8vIFNlbmQgdGV4dCB0byBUcmVsbG8KICBpZiAoVFJFTExPX0VNQUlMKSB7CiAgICBjb25zdCByZXN1bHQgPSBhd2FpdCBzZW5kRW1haWwoVFJFTExPX0VNQUlMLCBzdWJqZWN0LCB0cmVsbG9UZXh0LCB0cmVsbG9UZXh0KTsKICAgIGlmIChyZXN1bHQuc2VudCkgc2VudCsrOwogIH0KCiAgbG9nZ2VyLmluZm8oYFdlZWtseSBkaWdlc3Qgc2VudCB0byAke3NlbnR9LyR7Tk9USUZJQ0FUSU9OX0VNQUlMUy5sZW5ndGh9IHJlY2lwaWVudHNgKTsKICByZXR1cm4geyBzZW50LCByZWNpcGllbnRzOiBOT1RJRklDQVRJT05fRU1BSUxTIH07Cn0KCi8qKgogKiBDaGVjayBpZiBub3RpZmljYXRpb25zIGFyZSBjb25maWd1cmVkCiAqLwpmdW5jdGlvbiBpc0NvbmZpZ3VyZWQoKSB7CiAgaWYgKHByb2Nlc3MuZW52LlJFU0VORF9BUElfS0VZKSByZXR1cm4gdHJ1ZTsKICByZXR1cm4gISEocHJvY2Vzcy5lbnYuU01UUF9IT1NUICYmIHByb2Nlc3MuZW52LlNNVFBfVVNFUiAmJiBwcm9jZXNzLmVudi5TTVRQX1BBU1MpOwp9CgovKioKICogR2V0IGFjdGl2ZSBwcm92aWRlciBpbmZvCiAqLwpmdW5jdGlvbiBnZXRQcm92aWRlcigpIHsKICBjb25zdCBwcm92aWRlcnMgPSBbXTsKICBpZiAocHJvY2Vzcy5lbnYuUkVTRU5EX0FQSV9LRVkpIHByb3ZpZGVycy5wdXNoKCdyZXNlbmQnKTsKICBpZiAocHJvY2Vzcy5lbnYuU01UUF9IT1NUKSBwcm92aWRlcnMucHVzaCgnc210cCcpOwogIHJldHVybiBwcm92aWRlcnMubGVuZ3RoID8gcHJvdmlkZXJzLmpvaW4oJysnKSA6ICdub25lJzsKfQoKbW9kdWxlLmV4cG9ydHMgPSB7CiAgc2VuZEFsZXJ0Tm90aWZpY2F0aW9uLAogIHNlbmRQZW5kaW5nQWxlcnRzLAogIHNlbmRQZW5kaW5nTm90aWZpY2F0aW9ucywKICBzZW5kV2Vla2x5RGlnZXN0LAogIHNlbmRFbWFpbCwKICBpc0NvbmZpZ3VyZWQsCiAgZ2V0UHJvdmlkZXIsCiAgTk9USUZJQ0FUSU9OX0VNQUlMUywKICBQRVJTT05BTF9FTUFJTCwKICBPRkZJQ0VfRU1BSUwsCiAgVFJFTExPX0VNQUlMCn07Cg==
+/**
+ * Notification Service v3 - Smart Email Delivery
+ * 
+ * Sends alerts and scan status via email to:
+ * 1. Personal email (hemi.michaeli@gmail.com) - always works
+ * 2. Office email (Office@u-r-quantum.com) 
+ * 3. Trello board - DISABLED (system alerts now in QUANTUM dashboard)
+ * 
+ * Smart provider selection:
+ * - Tries Resend first (no SMTP port needed on Railway)
+ * - Falls back to SMTP if Resend fails (e.g., sandbox domain restrictions)
+ * - Logs all delivery attempts for debugging
+ */
+
+const pool = require('../db/pool');
+const { logger } = require('./logger');
+
+// Notification targets - personal email first (always works with Resend sandbox)
+const PERSONAL_EMAIL = process.env.PERSONAL_EMAIL || 'hemi.michaeli@gmail.com';
+const OFFICE_EMAIL = process.env.OFFICE_EMAIL || 'Office@u-r-quantum.com';
+const TRELLO_EMAIL = process.env.TRELLO_BOARD_EMAIL || 'uth_limited+c9otswetpgdfphdpoehc@boards.trello.com';
+
+// All notification targets
+// Alert notifications - no longer sent to Trello (system alerts now in QUANTUM dashboard)
+const NOTIFICATION_EMAILS = [PERSONAL_EMAIL, OFFICE_EMAIL].filter(Boolean);
+
+// Severity -> emoji mapping for email subjects
+const SEVERITY_EMOJI = {
+  critical: '\u{1F6A8}',
+  high: '\u{1F534}',
+  medium: '\u{1F7E1}',
+  info: '\u2139\uFE0F'
+};
+
+const ALERT_TYPE_LABEL = {
+  status_change: '\u05E9\u05D9\u05E0\u05D5\u05D9 \u05E1\u05D8\u05D8\u05D5\u05E1',
+  committee_approval: '\u05D0\u05D9\u05E9\u05D5\u05E8 \u05D5\u05E2\u05D3\u05D4',
+  opportunity: '\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA \u05D4\u05E9\u05E7\u05E2\u05D4',
+  stressed_seller: '\u05DE\u05D5\u05DB\u05E8 \u05DC\u05D7\u05D5\u05E5',
+  price_drop: '\u05D9\u05E8\u05D9\u05D3\u05EA \u05DE\u05D7\u05D9\u05E8',
+  new_complex: '\u05DE\u05EA\u05D7\u05DD \u05D7\u05D3\u05E9'
+};
+
+/**
+ * Send email via Resend HTTP API
+ */
+async function sendViaResend(to, subject, htmlBody, textBody) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return { sent: false, error: 'RESEND_API_KEY not set', provider: 'resend' };
+
+  const fromAddress = process.env.EMAIL_FROM || 'QUANTUM <onboarding@resend.dev>';
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [to],
+        subject: subject,
+        html: htmlBody,
+        text: textBody || htmlBody.replace(/<[^>]*>/g, '')
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      logger.info(`\u2709\uFE0F Resend: sent to ${to}`, { id: data.id });
+      return { sent: true, messageId: data.id, provider: 'resend' };
+    } else {
+      logger.warn(`Resend failed for ${to}: ${data.message || response.status}`, { status: response.status });
+      return { sent: false, error: data.message || `HTTP ${response.status}`, statusCode: response.status, provider: 'resend' };
+    }
+  } catch (err) {
+    logger.error(`Resend error for ${to}`, { error: err.message });
+    return { sent: false, error: err.message, provider: 'resend' };
+  }
+}
+
+/**
+ * Send email via SMTP (nodemailer)
+ */
+async function sendViaSMTP(to, subject, htmlBody, textBody) {
+  const smtpHost = process.env.SMTP_HOST;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpHost || !smtpUser || !smtpPass) {
+    return { sent: false, error: 'SMTP not configured', provider: 'smtp' };
+  }
+
+  try {
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: { user: smtpUser, pass: smtpPass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000
+    });
+
+    const info = await transporter.sendMail({
+      from: process.env.SMTP_FROM || smtpUser,
+      to,
+      subject,
+      html: htmlBody,
+      text: textBody || htmlBody.replace(/<[^>]*>/g, '')
+    });
+
+    logger.info(`\u2709\uFE0F SMTP: sent to ${to}`, { messageId: info.messageId });
+    return { sent: true, messageId: info.messageId, provider: 'smtp' };
+  } catch (err) {
+    logger.error(`SMTP failed for ${to}`, { error: err.message, code: err.code });
+    return { sent: false, error: err.message, code: err.code, provider: 'smtp' };
+  }
+}
+
+/**
+ * Send a single email - tries Resend first, falls back to SMTP
+ */
+async function sendEmail(to, subject, htmlBody, textBody) {
+  if (process.env.RESEND_API_KEY) {
+    const resendResult = await sendViaResend(to, subject, htmlBody, textBody);
+    if (resendResult.sent) return resendResult;
+    logger.info(`Resend failed for ${to}, trying SMTP fallback...`);
+  }
+  
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    return sendViaSMTP(to, subject, htmlBody, textBody);
+  }
+  
+  return { sent: false, error: 'No email provider available', provider: 'none' };
+}
+
+/**
+ * Format a single alert for Trello card
+ */
+function formatAlertForTrello(alert) {
+  const emoji = SEVERITY_EMOJI[alert.severity] || '';
+  const typeLabel = ALERT_TYPE_LABEL[alert.alert_type] || alert.alert_type;
+  
+  let body = `## ${alert.title}\n\n`;
+  body += `${alert.message}\n\n`;
+  body += `---\n`;
+  body += `**\u05E1\u05D5\u05D2:** ${typeLabel}\n`;
+  body += `**\u05D7\u05D5\u05DE\u05E8\u05D4:** ${alert.severity}\n`;
+  body += `**\u05EA\u05D0\u05E8\u05D9\u05DA:** ${new Date(alert.created_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}\n`;
+
+  if (alert.data) {
+    const data = typeof alert.data === 'string' ? JSON.parse(alert.data) : alert.data;
+    if (data.old_status && data.new_status) {
+      body += `**\u05E1\u05D8\u05D8\u05D5\u05E1 \u05D9\u05E9\u05DF:** ${data.old_status} -> **\u05D7\u05D3\u05E9:** ${data.new_status}\n`;
+    }
+    if (data.committee) {
+      body += `**\u05D5\u05E2\u05D3\u05D4:** ${data.committee === 'local' ? '\u05DE\u05E7\u05D5\u05DE\u05D9\u05EA' : '\u05DE\u05D7\u05D5\u05D6\u05D9\u05EA'}\n`;
+    }
+    if (data.old_iai !== undefined) {
+      body += `**IAI:** ${data.old_iai} -> ${data.new_iai}\n`;
+    }
+    if (data.ssi_score) {
+      body += `**SSI:** ${data.ssi_score}\n`;
+    }
+    if (data.drop_percent) {
+      body += `**\u05D9\u05E8\u05D9\u05D3\u05D4:** ${data.drop_percent}%\n`;
+    }
+  }
+
+  const subject = `${emoji} [QUANTUM] ${typeLabel}: ${alert.title}`;
+  return { subject, body };
+}
+
+/**
+ * Format alert as HTML for office email
+ */
+function formatAlertHTML(alert) {
+  const emoji = SEVERITY_EMOJI[alert.severity] || '';
+  const typeLabel = ALERT_TYPE_LABEL[alert.alert_type] || alert.alert_type;
+  const severityColor = {
+    critical: '#dc2626', high: '#ef4444', medium: '#f59e0b', info: '#3b82f6'
+  }[alert.severity] || '#6b7280';
+
+  return `
+    <div style="border-left: 4px solid ${severityColor}; padding: 12px 16px; margin: 8px 0; background: #f9fafb;">
+      <h3 style="margin: 0 0 8px; color: ${severityColor};">${emoji} ${alert.title}</h3>
+      <p style="margin: 0 0 8px; color: #374151;">${alert.message}</p>
+      <p style="margin: 0; font-size: 12px; color: #9ca3af;">
+        ${typeLabel} | ${alert.severity} | ${new Date(alert.created_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * Send real-time notification for a high-severity alert
+ */
+async function sendAlertNotification(alert) {
+  if (!alert || !['critical', 'high'].includes(alert.severity)) return 0;
+
+  const trelloFormat = formatAlertForTrello(alert);
+  const htmlBody = formatAlertHTML(alert);
+  const subject = trelloFormat.subject;
+
+  let sentCount = 0;
+
+  for (const email of NOTIFICATION_EMAILS) {
+    try {
+      const isPersonalOrOffice = email !== TRELLO_EMAIL;
+      const body = isPersonalOrOffice ? `
+        <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px;">
+          <h2 style="color: #1f2937;">QUANTUM - \u05D4\u05EA\u05E8\u05D0\u05D4 \u05D7\u05D3\u05E9\u05D4</h2>
+          ${htmlBody}
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 16px 0;">
+          <p style="font-size: 11px; color: #9ca3af;">
+            QUANTUM v4.20 | <a href="https://pinuy-binuy-analyzer-production.up.railway.app/api/dashboard">Dashboard</a>
+          </p>
+        </div>
+      ` : trelloFormat.body;
+
+      const result = await sendEmail(email, subject, body, email === TRELLO_EMAIL ? trelloFormat.body : undefined);
+      if (result.sent) sentCount++;
+    } catch (err) {
+      logger.warn(`Failed to send alert to ${email}`, { error: err.message });
+    }
+  }
+
+  if (sentCount > 0) {
+    try {
+      await pool.query('UPDATE alerts SET sent_at = NOW() WHERE id = $1', [alert.id]);
+    } catch (err) {
+      logger.warn('Failed to mark alert as sent', { alertId: alert.id, error: err.message });
+    }
+  }
+
+  return sentCount;
+}
+
+/**
+ * Send all unsent high-severity alerts
+ */
+async function sendPendingAlerts() {
+  try {
+    const result = await pool.query(`
+      SELECT a.*, c.name as complex_name, c.city
+      FROM alerts a
+      LEFT JOIN complexes c ON a.complex_id = c.id
+      WHERE a.sent_at IS NULL AND a.severity IN ('critical', 'high')
+      ORDER BY a.created_at ASC
+      LIMIT 20
+    `);
+
+    if (result.rows.length === 0) {
+      logger.info('No pending alerts to send');
+      return { totalAlerts: 0, sent: 0 };
+    }
+
+    let sent = 0;
+    for (const alert of result.rows) {
+      const count = await sendAlertNotification(alert);
+      if (count > 0) sent++;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    logger.info(`Sent ${sent}/${result.rows.length} pending alerts`);
+    return { totalAlerts: result.rows.length, sent };
+  } catch (err) {
+    logger.error('Failed to send pending alerts', { error: err.message });
+    return { error: err.message };
+  }
+}
+
+/**
+ * Alias for weekly scanner compatibility
+ */
+async function sendPendingNotifications() {
+  return sendPendingAlerts();
+}
+
+/**
+ * Send weekly digest email
+ */
+async function sendWeeklyDigest(scanResult) {
+  if (!scanResult) return;
+
+  const subject = `\u{1F4CA} [QUANTUM] \u05E1\u05D9\u05DB\u05D5\u05DD \u05E9\u05D1\u05D5\u05E2\u05D9 - Pinuy Binuy Analyzer`;
+
+  const alertsResult = await pool.query(`
+    SELECT a.*, c.name as complex_name, c.city
+    FROM alerts a
+    LEFT JOIN complexes c ON a.complex_id = c.id
+    WHERE a.created_at > NOW() - INTERVAL '7 days'
+    ORDER BY 
+      CASE a.severity 
+        WHEN 'critical' THEN 1 WHEN 'high' THEN 2 
+        WHEN 'medium' THEN 3 ELSE 4 
+      END,
+      a.created_at DESC
+    LIMIT 30
+  `);
+
+  const topOpps = await pool.query(`
+    SELECT name, city, status, iai_score, actual_premium
+    FROM complexes WHERE iai_score >= 50
+    ORDER BY iai_score DESC LIMIT 10
+  `);
+
+  let html = `
+    <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
+      <h1 style="color: #1f2937; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">
+        \u{1F4CA} QUANTUM - \u05E1\u05D9\u05DB\u05D5\u05DD \u05E9\u05D1\u05D5\u05E2\u05D9
+      </h1>
+      
+      <div style="background: #f0f9ff; padding: 16px; border-radius: 8px; margin: 16px 0;">
+        <h3 style="margin: 0 0 8px; color: #1e40af;">\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05E1\u05E8\u05D9\u05E7\u05D4</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+  `;
+
+  if (scanResult.nadlan) html += `<tr><td style="padding: 4px 8px;">nadlan.gov.il</td><td>${scanResult.nadlan.newTransactions || scanResult.nadlan.newTx || 0} \u05E2\u05E1\u05E7\u05D0\u05D5\u05EA \u05D7\u05D3\u05E9\u05D5\u05EA</td></tr>`;
+  if (scanResult.yad2) html += `<tr><td style="padding: 4px 8px;">yad2</td><td>${scanResult.yad2.new || scanResult.yad2.newListings || 0} \u05DE\u05D5\u05D3\u05E2\u05D5\u05EA \u05D7\u05D3\u05E9\u05D5\u05EA, ${scanResult.yad2.priceChanges || 0} \u05E9\u05D9\u05E0\u05D5\u05D9\u05D9 \u05DE\u05D7\u05D9\u05E8</td></tr>`;
+  if (scanResult.mavat) html += `<tr><td style="padding: 4px 8px;">mavat</td><td>${scanResult.mavat.statusChanges || 0} \u05E9\u05D9\u05E0\u05D5\u05D9\u05D9 \u05E1\u05D8\u05D8\u05D5\u05E1, ${scanResult.mavat.committeeUpdates || 0} \u05D0\u05D9\u05E9\u05D5\u05E8\u05D9 \u05D5\u05E2\u05D3\u05D4</td></tr>`;
+  if (scanResult.benchmarks) html += `<tr><td style="padding: 4px 8px;">Benchmarks</td><td>${scanResult.benchmarks.calculated || 0} \u05D7\u05D5\u05E9\u05D1\u05D5</td></tr>`;
+
+  html += `
+        </table>
+        <p style="margin: 8px 0 0; font-size: 12px; color: #6b7280;">\u05DE\u05E9\u05DA: ${scanResult.duration || 'N/A'} | ${scanResult.alertsGenerated || 0} \u05D4\u05EA\u05E8\u05D0\u05D5\u05EA</p>
+      </div>
+  `;
+
+  if (alertsResult.rows.length > 0) {
+    html += `<h3 style="color: #1f2937; margin-top: 24px;">\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA \u05D4\u05E9\u05D1\u05D5\u05E2 (${alertsResult.rows.length})</h3>`;
+    for (const alert of alertsResult.rows) {
+      html += formatAlertHTML(alert);
+    }
+  }
+
+  if (topOpps.rows.length > 0) {
+    html += `
+      <h3 style="color: #1f2937; margin-top: 24px;">Top 10 \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="background: #f3f4f6;">
+            <th style="padding: 8px; text-align: right;">\u05E9\u05DD</th>
+            <th style="padding: 8px; text-align: right;">\u05E2\u05D9\u05E8</th>
+            <th style="padding: 8px; text-align: center;">\u05E1\u05D8\u05D8\u05D5\u05E1</th>
+            <th style="padding: 8px; text-align: center;">IAI</th>
+            <th style="padding: 8px; text-align: center;">\u05E4\u05E8\u05DE\u05D9\u05D4</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    for (const opp of topOpps.rows) {
+      const iaiColor = opp.iai_score >= 70 ? '#16a34a' : opp.iai_score >= 50 ? '#ca8a04' : '#6b7280';
+      html += `
+        <tr style="border-bottom: 1px solid #e5e7eb;">
+          <td style="padding: 6px 8px;">${opp.name}</td>
+          <td style="padding: 6px 8px;">${opp.city}</td>
+          <td style="padding: 6px 8px; text-align: center;">${opp.status}</td>
+          <td style="padding: 6px 8px; text-align: center; color: ${iaiColor}; font-weight: bold;">${opp.iai_score}</td>
+          <td style="padding: 6px 8px; text-align: center;">${opp.actual_premium ? opp.actual_premium + '%' : 'N/A'}</td>
+        </tr>
+      `;
+    }
+    html += `</tbody></table>`;
+  }
+
+  html += `
+      <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0 8px;">
+      <p style="font-size: 11px; color: #9ca3af; text-align: center;">
+        QUANTUM v4.20 - Direct API Mode |
+        <a href="https://pinuy-binuy-analyzer-production.up.railway.app/api/dashboard">Dashboard</a>
+      </p>
+    </div>
+  `;
+
+  const trelloText = `\u05E1\u05D9\u05DB\u05D5\u05DD \u05E9\u05D1\u05D5\u05E2\u05D9 QUANTUM\n\n` +
+    `\u05E1\u05E8\u05D9\u05E7\u05D4: ${scanResult.summary || 'N/A'}\n\n` +
+    `\u05D4\u05EA\u05E8\u05D0\u05D5\u05EA: ${alertsResult.rows.length}\n` +
+    alertsResult.rows.slice(0, 10).map(a => `- ${a.title}: ${a.message}`).join('\n') +
+    `\n\nTop \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05D9\u05D5\u05EA:\n` +
+    topOpps.rows.map(o => `- ${o.name} (${o.city}) IAI=${o.iai_score}`).join('\n');
+
+  let sent = 0;
+  for (const email of [PERSONAL_EMAIL, OFFICE_EMAIL]) {
+    if (email) {
+      const result = await sendEmail(email, subject, html);
+      if (result.sent) sent++;
+    }
+  }
+  if (TRELLO_EMAIL) {
+    const result = await sendEmail(TRELLO_EMAIL, subject, trelloText, trelloText);
+    if (result.sent) sent++;
+  }
+
+  logger.info(`Weekly digest sent to ${sent}/${NOTIFICATION_EMAILS.length} recipients`);
+  return { sent, recipients: NOTIFICATION_EMAILS };
+}
+
+/**
+ * Check if notifications are configured
+ */
+function isConfigured() {
+  if (process.env.RESEND_API_KEY) return true;
+  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+/**
+ * Get active provider info
+ */
+function getProvider() {
+  const providers = [];
+  if (process.env.RESEND_API_KEY) providers.push('resend');
+  if (process.env.SMTP_HOST) providers.push('smtp');
+  return providers.length ? providers.join('+') : 'none';
+}
+
+module.exports = {
+  sendAlertNotification,
+  sendPendingAlerts,
+  sendPendingNotifications,
+  sendWeeklyDigest,
+  sendEmail,
+  isConfigured,
+  getProvider,
+  NOTIFICATION_EMAILS,
+  PERSONAL_EMAIL,
+  OFFICE_EMAIL,
+  TRELLO_EMAIL
+};
