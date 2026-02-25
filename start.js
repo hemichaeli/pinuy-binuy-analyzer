@@ -85,13 +85,13 @@ console.log('[START] Starting server...');
 require('./src/index.js');
 
 // ============================================================
-// Phase 4: Initialize Scan Watchdog (after server is up)
+// Phase 4: Missed scan detection (30s after startup)
 // ============================================================
-setTimeout(() => {
+setTimeout(async () => {
   try {
-    const { initWatchdog } = require('./src/jobs/scanWatchdog');
-    initWatchdog();
+    const { checkMissedScans } = require('./src/jobs/missedScanDetector');
+    await checkMissedScans();
   } catch (err) {
-    console.log('[START] Watchdog init failed:', err.message);
+    console.log('[START] Missed scan check failed:', err.message);
   }
-}, 5000);
+}, 30000);
