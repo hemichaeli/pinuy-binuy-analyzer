@@ -8,13 +8,10 @@ const path = require('path');
 console.log('[START] Checking for base64-encoded files...');
 
 function isBase64Encoded(content) {
-  // Base64 JS files start with base64 chars and have no typical JS patterns in first 100 chars
   const first100 = content.substring(0, 100);
-  // Must not start with typical JS: /*, const, var, let, ', ", (, {, //
   if (/^(\s*(\/\*|\/\/|const |var |let |import |module|'|"|require|\(|\{|class ))/.test(first100)) {
     return false;
   }
-  // Check if it looks like base64 (only base64 chars, no spaces in first 80 chars)
   const first80noNewline = first100.replace(/[\r\n]/g, '').substring(0, 80);
   return /^[A-Za-z0-9+/=]{60,}$/.test(first80noNewline);
 }
@@ -30,7 +27,6 @@ function fixBase64Files(dir) {
       const content = fs.readFileSync(filePath, 'utf8');
       if (isBase64Encoded(content)) {
         const decoded = Buffer.from(content.trim(), 'base64').toString('utf8');
-        // Verify decoded content looks like JS
         if (/^(\s*(\/\*|\/\/|const |var |let |import |module|'|"|require))/.test(decoded.substring(0, 50))) {
           fs.writeFileSync(filePath, decoded, 'utf8');
           console.log(`[START] FIXED base64: ${file} (${content.length} -> ${decoded.length} bytes)`);
@@ -87,3 +83,15 @@ if (fs.existsSync(dashFile)) {
 // ============================================================
 console.log('[START] Starting server...');
 require('./src/index.js');
+
+// ============================================================
+// Phase 4: Initialize Scan Watchdog (after server is up)
+// ============================================================
+setTimeout(() => {
+  try {
+    const { initWatchdog } = require('./src/jobs/scanWatchdog');
+    initWatchdog();
+  } catch (err) {
+    console.log('[START] Watchdog init failed:', err.message);
+  }
+}, 5000);
