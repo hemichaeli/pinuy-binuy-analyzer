@@ -442,11 +442,63 @@ async function processListing(listing, complexId, complexCity) {
   }
 }
 
+
+/**
+ * Create alert for a new listing in a high-IAI complex
+ */
+async function createNewListingAlert(listingId, complexId, listing, iai_score) {
+  if (!iai_score || iai_score < 40) return; // Only alert for investment-grade complexes
+
+  const complex = await pool.query('SELECT name, city FROM complexes WHERE id = $1', [complexId]);
+  if (complex.rows.length === 0) return;
+
+  const c = complex.rows[0];
+  const severity = iai_score >= 70 ? 'high' : 'medium';
+  const price = listing.asking_price ? `${parseInt(listing.asking_price).toLocaleString('he-IL')} ₪` : 'מחיר לא ידוע';
+  const rooms = listing.rooms ? `${listing.rooms} חד'` : '';
+  const area = listing.area_sqm ? `${listing.area_sqm}מ"ר` : '';
+
+  const urgencyFlag = (listing.is_urgent || listing.is_foreclosure || listing.is_inheritance)
+    ? ' 🚨 ' + [
+        listing.is_foreclosure ? 'כינוס' : null,
+        listing.is_inheritance ? 'ירושה' : null,
+        listing.is_urgent ? 'דחוף' : null
+      ].filter(Boolean).join(' | ')
+    : '';
+
+  const title = `מודעה חדשה: ${c.name} (${c.city})${urgencyFlag}`;
+  const message = `${listing.address || ''} | ${rooms} ${area} | ${price} | IAI: ${iai_score}`;
+
+  try {
+    await pool.query(
+      `INSERT INTO alerts (complex_id, listing_id, alert_type, severity, title, message, data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT DO NOTHING`,
+      [
+        complexId, listingId, 'new_listing', severity, title, message,
+        JSON.stringify({
+          listing_id: listingId,
+          iai_score,
+          is_foreclosure: listing.is_foreclosure,
+          is_inheritance: listing.is_inheritance,
+          is_urgent: listing.is_urgent,
+          price: listing.asking_price,
+          rooms: listing.rooms,
+          area_sqm: listing.area_sqm
+        })
+      ]
+    );
+    logger.info(`[YAD2] New listing alert created for ${c.name}: ${title}`);
+  } catch (err) {
+    logger.warn(`[YAD2] Failed to create new listing alert`, { error: err.message });
+  }
+}
+
 /**
  * Generate alert for significant price drop
  */
 async function createPriceDropAlert(listingId, complexId, dropPercent, currentPrice, originalPrice, address) {
-  if (dropPercent < 10) return; // Only alert on drops > 10%
+  if (dropPercent < 5) return; // Only alert on drops > 5%
 
   const complex = await pool.query('SELECT name, city FROM complexes WHERE id = $1', [complexId]);
   if (complex.rows.length === 0) return;
@@ -472,7 +524,7 @@ async function createPriceDropAlert(listingId, complexId, dropPercent, currentPr
  */
 async function scanComplex(complexId) {
   const complexResult = await pool.query(
-    'SELECT id, name, city, addresses FROM complexes WHERE id = $1',
+    'SELECT id, name, city, addresses, iai_score FROM complexes WHERE id = $1',
     [complexId]
   );
   if (complexResult.rows.length === 0) {
@@ -480,7 +532,7 @@ async function scanComplex(complexId) {
   }
 
   const complex = complexResult.rows[0];
-  logger.info(`Scanning yad2 for: ${complex.name} (${complex.city})`);
+  logger.info(`Scanning yad2 for: ${complex.name} (${complex.city}) IAI=${complex.iai_score || 0}`);
 
   const data = await queryYad2Listings(complex);
   
@@ -489,11 +541,13 @@ async function scanComplex(complexId) {
   let priceChanges = 0;
   let errors = 0;
   const priceDrops = [];
+  const newListingIds = []; // Track new listings for alerts
 
   for (const listing of data.listings) {
     const result = await processListing(listing, complexId, complex.city);
     if (result.action === 'inserted') {
       newListings++;
+      if (result.id) { newListingIds.push({ id: result.id, listing }); }
     } else if (result.action === 'updated') {
       updatedListings++;
       if (result.priceChanged) {
@@ -525,6 +579,11 @@ async function scanComplex(complexId) {
     }
   }
 
+  // Generate alerts for new listings in high-IAI complexes
+  for (const { id, listing } of newListingIds) {
+    await createNewListingAlert(id, complexId, listing, complex.iai_score);
+  }
+
   // Mark old listings as inactive (only if we got results)
   if (data.listings.length > 0) {
     await pool.query(
@@ -550,6 +609,7 @@ async function scanComplex(complexId) {
     updatedListings,
     priceChanges,
     priceDropAlerts: priceDrops.length,
+    newListingAlerts: newListingIds.length,
     errors
   };
 }
@@ -639,5 +699,8 @@ module.exports = {
   queryYad2Direct,
   queryYad2Perplexity,
   processListing,
-  getCityCode
+  getCityCode,
+  createNewListingAlert,
+  createPriceDropAlert
 };
+
