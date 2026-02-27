@@ -1,1 +1,427 @@
-Y29uc3QgY3JvbiA9IHJlcXVpcmUoJ25vZGUtY3JvbicpOwpjb25zdCB7IGxvZ2dlciB9ID0gcmVxdWlyZSgnLi4vc2VydmljZXMvbG9nZ2VyJyk7CmNvbnN0IHsgc2hvdWxkU2tpcFRvZGF5IH0gPSByZXF1aXJlKCcuLi9jb25maWcvaXNyYWVsaUhvbGlkYXlzJyk7CgovLyBMYXp5LWxvYWQgc2VydmljZXMgdG8gYXZvaWQgY2lyY3VsYXIgZGVwcwpmdW5jdGlvbiBnZXRTY2FuUHJpb3JpdHkoKSB7IHRyeSB7IHJldHVybiByZXF1aXJlKCcuLi9zZXJ2aWNlcy9zY2FuUHJpb3JpdHlTZXJ2aWNlJyk7IH0gY2F0Y2goZSkgeyByZXR1cm4gbnVsbDsgfSB9CmZ1bmN0aW9uIGdldFNtYXJ0QmF0Y2goKSB7IHRyeSB7IHJldHVybiByZXF1aXJlKCcuLi9zZXJ2aWNlcy9zbWFydEJhdGNoU2VydmljZScpOyB9IGNhdGNoKGUpIHsgcmV0dXJuIG51bGw7IH0gfQoKLyoqCiAqIFFVQU5UVU0gSW50ZWxsaWdlbnQgU2NhbiBTY2hlZHVsZXIgdjIuMCAtIERlcGxveS1TYWZlCiAqIAogKiBORVcgaW4gdjIuMDogSm9iIHBlcnNpc3RlbmNlIGFjcm9zcyBSYWlsd2F5IGRlcGxveXMKICogLSBKb2JzIHBlcnNpc3QgdG8gUG9zdGdyZVNRTCBzY2FuX2pvYnMgdGFibGUKICogLSBPbiBkZXBsb3kvcmVzdGFydCwgaW50ZXJydXB0ZWQgam9icyBhdXRvLXJlc3VtZSBmcm9tIGxhc3QgY29tcGxldGVkIGNvbXBsZXgKICogLSBDaGFpbiBxdWV1ZSBwZXJzaXN0cyBhY3Jvc3MgcmVzdGFydHMKICogLSBTSUdURVJNIGhhbmRsZXIgbWFya3Mgam9icyBhcyBpbnRlcnJ1cHRlZCBiZWZvcmUgc2h1dGRvd24KICogCiAqIFNDSEVEVUxFOgogKiAgIFRpZXIgMSAoSE9UIH41MCk6ICAgU1RBTkRBUkQgd2Vla2x5IFN1biAwODowMCwgRlVMTCBtb250aGx5IDFzdCBTdW4KICogICBUaWVyIDIgKEFDVElWRSk6ICAgIFNUQU5EQVJEIGJpLXdlZWtseSBNb24gMDg6MDAKICogICBUaWVyIDMgKERPUk1BTlQpOiAgIEZBU1QgbW9udGhseSAxc3QgVHVlIDA4OjAwCiAqICAgTGlzdGluZ3M6ICAgICAgICAgICAgRGFpbHkgMDc6MDAgKDcgZGF5cy93ZWVrKQogKiAgIFNTSTogICAgICAgICAgICAgICAgIERhaWx5IDA5OjAwCiAqICAgUFNTOiAgICAgICAgICAgICAgICAgV2VkIDA2OjAwCiAqICAgSUFJOiAgICAgICAgICAgICAgICAgQWZ0ZXIgZXZlcnkgZW5yaWNobWVudCBiYXRjaAogKiAgIEpvYiBNb25pdG9yOiAgICAgICAgIEV2ZXJ5IDIgbWludXRlcwogKiAgIEVzdC4gfiQyNjAtMjkwL21vbnRoCiAqLwoKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci8vIFNUQVRFCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpjb25zdCBzY2hlZHVsZXJTdGF0ZSA9IHsKICBhY3RpdmVKb2JzOiB7fSwKICBjaGFpblF1ZXVlOiBbXSwKICBsYXN0UnVuczoge30sCiAgbGFzdFBTU1Jhbms6IG51bGwsCiAgYml3ZWVrbHlUb2dnbGU6IGZhbHNlLAogIHN0YXRzOiB7IHRvdGFsU2NhbnM6IDAsIHRvdGFsQ29zdDogMCB9LAogIHNjaGVkdWxlZFRhc2tzOiBbXSwKICByZXN1bWVkSm9iczogW10KfTsKCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQovLyBIRUxQRVJTCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpmdW5jdGlvbiBpc0VucmljaG1lbnREYXkoKSB7CiAgY29uc3Qgbm93ID0gbmV3IERhdGUoKTsKICBjb25zdCBpc3JhZWxUaW1lID0gbmV3IERhdGUobm93LnRvTG9jYWxlU3RyaW5nKCdlbi1VUycsIHsgdGltZVpvbmU6ICdBc2lhL0plcnVzYWxlbScgfSkpOwogIGNvbnN0IGRheSA9IGlzcmFlbFRpbWUuZ2V0RGF5KCk7CiAgaWYgKGRheSA9PT0gNSB8fCBkYXkgPT09IDYpIHsgbG9nZ2VyLmluZm8oJ1tTQ0hFRFVMRVJdIFNraXBwaW5nOiBTaGFiYmF0Jyk7IHJldHVybiBmYWxzZTsgfQogIGNvbnN0IGhvbGlkYXlDaGVjayA9IHNob3VsZFNraXBUb2RheSgpOwogIGlmIChob2xpZGF5Q2hlY2suc2hvdWxkU2tpcCkgeyBsb2dnZXIuaW5mbyhgW1NDSEVEVUxFUl0gU2tpcHBpbmc6ICR7aG9saWRheUNoZWNrLnJlYXNvbiB8fCAnaG9saWRheSd9YCk7IHJldHVybiBmYWxzZTsgfQogIHJldHVybiB0cnVlOwp9CgpmdW5jdGlvbiBpc0ZpcnN0U3VuZGF5T2ZNb250aCgpIHsKICBjb25zdCBub3cgPSBuZXcgRGF0ZSgpOwogIGNvbnN0IGlzcmFlbFRpbWUgPSBuZXcgRGF0ZShub3cudG9Mb2NhbGVTdHJpbmcoJ2VuLVVTJywgeyB0aW1lWm9uZTogJ0FzaWEvSmVydXNhbGVtJyB9KSk7CiAgcmV0dXJuIGlzcmFlbFRpbWUuZ2V0RGF0ZSgpIDw9IDcgJiYgaXNyYWVsVGltZS5nZXREYXkoKSA9PT0gMDsKfQoKZnVuY3Rpb24gaXNGaXJzdE9yVGhpcmRXZWVrKCkgewogIGNvbnN0IG5vdyA9IG5ldyBEYXRlKCk7CiAgY29uc3QgaXNyYWVsVGltZSA9IG5ldyBEYXRlKG5vdy50b0xvY2FsZVN0cmluZygnZW4tVVMnLCB7IHRpbWVab25lOiAnQXNpYS9KZXJ1c2FsZW0nIH0pKTsKICBjb25zdCBkID0gaXNyYWVsVGltZS5nZXREYXRlKCk7CiAgcmV0dXJuIChkID49IDEgJiYgZCA8PSA3KSB8fCAoZCA+PSAxNSAmJiBkIDw9IDIxKTsKfQoKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci8vIFNDQU4gTEFVTkNIRVIKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CmFzeW5jIGZ1bmN0aW9uIGxhdW5jaFRpZXJTY2FuKHRpZXIsIG1vZGVPdmVycmlkZSA9IG51bGwpIHsKICBjb25zdCBzbWFydEJhdGNoID0gZ2V0U21hcnRCYXRjaCgpOwogIGNvbnN0IHNjYW5Qcmlvcml0eSA9IGdldFNjYW5Qcmlvcml0eSgpOwogIGlmICghc21hcnRCYXRjaCB8fCAhc2NhblByaW9yaXR5KSB7IGxvZ2dlci5lcnJvcignW1NDSEVEVUxFUl0gU2VydmljZXMgbm90IGF2YWlsYWJsZScpOyByZXR1cm4gbnVsbDsgfQoKICB0cnkgewogICAgY29uc3QgcmFua2luZyA9IGF3YWl0IHNjYW5Qcmlvcml0eS5jYWxjdWxhdGVBbGxQcmlvcml0aWVzKCk7CiAgICBsZXQgaWRzID0gW10sIG1vZGUgPSBtb2RlT3ZlcnJpZGUsIHRpZXJMYWJlbCA9ICcnOwogICAgY29uc3QgY29zdE1hcCA9IHsgZnVsbDogMS4yMywgc3RhbmRhcmQ6IDAuMjYsIGZhc3Q6IDAuMTUsIHR1cmJvOiAwLjA1IH07CgogICAgc3dpdGNoICh0aWVyKSB7CiAgICAgIGNhc2UgJzEnOiBjYXNlICcxc3RhbmRhcmQnOgogICAgICAgIGlkcyA9IHJhbmtpbmcudG9wXzUwLm1hcChjID0+IGMuaWQpOyBtb2RlID0gbW9kZSB8fCAnc3RhbmRhcmQnOyB0aWVyTGFiZWwgPSAnVGllciAxIEhPVCc7IGJyZWFrOwogICAgICBjYXNlICcxZnVsbCc6CiAgICAgICAgaWRzID0gcmFua2luZy50b3BfNTAubWFwKGMgPT4gYy5pZCk7IG1vZGUgPSBtb2RlIHx8ICdmdWxsJzsgdGllckxhYmVsID0gJ1RpZXIgMSBIT1QgKEZVTEwpJzsgYnJlYWs7CiAgICAgIGNhc2UgJzInOgogICAgICAgIGlkcyA9IHJhbmtpbmcuYWN0aXZlLm1hcChjID0+IGMuaWQpOyBtb2RlID0gbW9kZSB8fCAnc3RhbmRhcmQnOyB0aWVyTGFiZWwgPSAnVGllciAyIEFDVElWRSc7IGJyZWFrOwogICAgICBjYXNlICczJzoKICAgICAgICBpZHMgPSByYW5raW5nLmRvcm1hbnQubWFwKGMgPT4gYy5pZCk7IG1vZGUgPSBtb2RlIHx8ICdmYXN0JzsgdGllckxhYmVsID0gJ1RpZXIgMyBET1JNQU5UJzsgYnJlYWs7CiAgICAgIGRlZmF1bHQ6IGxvZ2dlci53YXJuKGBbU0NIRURVTEVSXSBVbmtub3duIHRpZXI6ICR7dGllcn1gKTsgcmV0dXJuIG51bGw7CiAgICB9CgogICAgaWYgKGlkcy5sZW5ndGggPT09IDApIHsgbG9nZ2VyLndhcm4oYFtTQ0hFRFVMRVJdIE5vIGNvbXBsZXhlcyBmb3IgJHt0aWVyTGFiZWx9YCk7IHJldHVybiBudWxsOyB9CgogICAgY29uc3QgZXN0aW1hdGVkQ29zdCA9IHBhcnNlRmxvYXQoKGlkcy5sZW5ndGggKiAoY29zdE1hcFttb2RlXSB8fCAwLjI2KSkudG9GaXhlZCgyKSk7CiAgICBsb2dnZXIuaW5mbyhgW1NDSEVEVUxFUl0gTGF1bmNoaW5nICR7dGllckxhYmVsfTogJHtpZHMubGVuZ3RofSBjb21wbGV4ZXMsIG1vZGU9JHttb2RlfSwgfiQke2VzdGltYXRlZENvc3R9YCk7CgogICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgc21hcnRCYXRjaC5lbnJpY2hCeUlkcyhpZHMsIG1vZGUsIHsKICAgICAgdGllciwKICAgICAgY2hhaW5RdWV1ZTogc2NoZWR1bGVyU3RhdGUuY2hhaW5RdWV1ZS5zbGljZSgpLAogICAgICBlc3RpbWF0ZWRDb3N0CiAgICB9KTsKICAgIAogICAgaWYgKHJlc3VsdC5qb2JJZCkgewogICAgICBzY2hlZHVsZXJTdGF0ZS5hY3RpdmVKb2JzW3Jlc3VsdC5qb2JJZF0gPSB7CiAgICAgICAgdGllciwgbW9kZSwgY291bnQ6IGlkcy5sZW5ndGgsCiAgICAgICAgc3RhcnRlZEF0OiBuZXcgRGF0ZSgpLnRvSVNPU3RyaW5nKCksCiAgICAgICAgZXN0aW1hdGVkQ29zdAogICAgICB9OwogICAgICBzY2hlZHVsZXJTdGF0ZS5zdGF0cy50b3RhbFNjYW5zKys7CiAgICAgIGxvZ2dlci5pbmZvKGBbU0NIRURVTEVSXSBKb2IgJHtyZXN1bHQuam9iSWR9IHN0YXJ0ZWQgZm9yICR7dGllckxhYmVsfWApOwogICAgfQogICAgcmV0dXJuIHJlc3VsdDsKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci5lcnJvcihgW1NDSEVEVUxFUl0gRmFpbGVkIHRvIGxhdW5jaCB0aWVyICR7dGllcn1gLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgIHJldHVybiBudWxsOwogIH0KfQoKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci8vIENIQUlOIE1BTkFHRU1FTlQKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CmZ1bmN0aW9uIGNoYWluQWZ0ZXIoYWZ0ZXJKb2JJZCwgdGllciwgbW9kZSkgewogIHNjaGVkdWxlclN0YXRlLmNoYWluUXVldWUucHVzaCh7IGFmdGVySm9iOiBhZnRlckpvYklkLCB0aWVyLCBtb2RlIH0pOwogIGxvZ2dlci5pbmZvKGBbU0NIRURVTEVSXSBDaGFpbmVkIHRpZXIgJHt0aWVyfSAoJHttb2RlfSkgYWZ0ZXIgJHthZnRlckpvYklkfS4gUXVldWU6ICR7c2NoZWR1bGVyU3RhdGUuY2hhaW5RdWV1ZS5sZW5ndGh9YCk7CiAgcmV0dXJuIHNjaGVkdWxlclN0YXRlLmNoYWluUXVldWUubGVuZ3RoOwp9CgovLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KLy8gSk9CIE1PTklUT1IgKGV2ZXJ5IDIgbWluKQovLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KYXN5bmMgZnVuY3Rpb24gbW9uaXRvckpvYnMoKSB7CiAgY29uc3Qgc21hcnRCYXRjaCA9IGdldFNtYXJ0QmF0Y2goKTsKICBpZiAoIXNtYXJ0QmF0Y2gpIHJldHVybjsKCiAgZm9yIChjb25zdCBbam9iSWQsIG1ldGFdIG9mIE9iamVjdC5lbnRyaWVzKHNjaGVkdWxlclN0YXRlLmFjdGl2ZUpvYnMpKSB7CiAgICB0cnkgewogICAgICBjb25zdCBzdGF0dXMgPSBzbWFydEJhdGNoLmdldFNtYXJ0QmF0Y2hTdGF0dXMoam9iSWQpOwogICAgICBpZiAoIXN0YXR1cykgY29udGludWU7CgogICAgICBpZiAoc3RhdHVzLnN0YXR1cyA9PT0gJ2NvbXBsZXRlZCcgfHwgc3RhdHVzLnN0YXR1cyA9PT0gJ2Vycm9yJykgewogICAgICAgIHNjaGVkdWxlclN0YXRlLmxhc3RSdW5zW21ldGEudGllcl0gPSB7CiAgICAgICAgICBqb2JJZCwKICAgICAgICAgIGVucmljaGVkOiBzdGF0dXMuZW5yaWNoZWQsIHRvdGFsOiBzdGF0dXMudG90YWwsCiAgICAgICAgICBmaWVsZHM6IHN0YXR1cy50b3RhbEZpZWxkc1VwZGF0ZWQsIGVycm9yczogc3RhdHVzLmVycm9ycywKICAgICAgICAgIGNvc3Q6IG1ldGEuZXN0aW1hdGVkQ29zdCwKICAgICAgICAgIGR1cmF0aW9uOiBzdGF0dXMuY29tcGxldGVkQXQgPyAKICAgICAgICAgICAgKChuZXcgRGF0ZShzdGF0dXMuY29tcGxldGVkQXQpIC0gbmV3IERhdGUoc3RhdHVzLnN0YXJ0ZWRBdCkpIC8gNjAwMDApLnRvRml4ZWQoMSkgKyAnbWluJyA6ICc/JywKICAgICAgICAgIGNvbXBsZXRlZEF0OiBzdGF0dXMuY29tcGxldGVkQXQsCiAgICAgICAgICByZXN1bWVkOiBzdGF0dXMucmVzdW1lZCB8fCBmYWxzZSwKICAgICAgICAgIHJlc3VtZUNvdW50OiBzdGF0dXMucmVzdW1lQ291bnQgfHwgMAogICAgICAgIH07CiAgICAgICAgc2NoZWR1bGVyU3RhdGUuc3RhdHMudG90YWxDb3N0ICs9IG1ldGEuZXN0aW1hdGVkQ29zdDsKICAgICAgICBsb2dnZXIuaW5mbyhgW1NDSEVEVUxFUl0gSm9iICR7am9iSWR9IGRvbmU6ICR7c3RhdHVzLmVucmljaGVkfS8ke3N0YXR1cy50b3RhbH0sIH4kJHttZXRhLmVzdGltYXRlZENvc3R9YCk7CgogICAgICAgIC8vIENoYWluIHF1ZXVlCiAgICAgICAgY29uc3QgY2hhaW5JZHggPSBzY2hlZHVsZXJTdGF0ZS5jaGFpblF1ZXVlLmZpbmRJbmRleChjID0+IGMuYWZ0ZXJKb2IgPT09IGpvYklkKTsKICAgICAgICBpZiAoY2hhaW5JZHggPj0gMCkgewogICAgICAgICAgY29uc3QgY2hhaW4gPSBzY2hlZHVsZXJTdGF0ZS5jaGFpblF1ZXVlW2NoYWluSWR4XTsKICAgICAgICAgIHNjaGVkdWxlclN0YXRlLmNoYWluUXVldWUuc3BsaWNlKGNoYWluSWR4LCAxKTsKICAgICAgICAgIGxvZ2dlci5pbmZvKGBbU0NIRURVTEVSXSBDaGFpbiB0cmlnZ2VyOiB0aWVyICR7Y2hhaW4udGllcn0gKCR7Y2hhaW4ubW9kZX0pIGFmdGVyICR7am9iSWR9YCk7CiAgICAgICAgICBjb25zdCBuZXh0Sm9iID0gYXdhaXQgbGF1bmNoVGllclNjYW4oY2hhaW4udGllciwgY2hhaW4ubW9kZSk7CiAgICAgICAgICBpZiAobmV4dEpvYiAmJiBuZXh0Sm9iLmpvYklkKSB7CiAgICAgICAgICAgIGZvciAoY29uc3QgciBvZiBzY2hlZHVsZXJTdGF0ZS5jaGFpblF1ZXVlKSB7CiAgICAgICAgICAgICAgaWYgKHIuYWZ0ZXJKb2IgPT09IGpvYklkKSB7IHIuYWZ0ZXJKb2IgPSBuZXh0Sm9iLmpvYklkOyB9CiAgICAgICAgICAgIH0KICAgICAgICAgIH0KICAgICAgICB9CgogICAgICAgIC8vIElBSSByZWNhbGMKICAgICAgICB0cnkgewogICAgICAgICAgY29uc3QgcG9vbCA9IHJlcXVpcmUoJy4uL2RiL3Bvb2wnKTsKICAgICAgICAgIGF3YWl0IHBvb2wucXVlcnkoYAogICAgICAgICAgICBVUERBVEUgY29tcGxleGVzIFNFVCAKICAgICAgICAgICAgICBpYWlfc2NvcmUgPSBDT0FMRVNDRSgKICAgICAgICAgICAgICAgIENBU0UgV0hFTiBhY2N1cmF0ZV9wcmljZV9zcW0gPiAwIEFORCBjaXR5X2F2Z19wcmljZV9zcW0gPiAwIAogICAgICAgICAgICAgICAgVEhFTiBMRUFTVCgxMDAsIEdSRUFURVNUKDAsCiAgICAgICAgICAgICAgICAgIChDQVNFIFdIRU4gcHJpY2VfdnNfY2l0eV9hdmcgPCAtMTAgVEhFTiAyNSBXSEVOIHByaWNlX3ZzX2NpdHlfYXZnIDwgMCBUSEVOIDE1IEVMU0UgNSBFTkQpICsKICAgICAgICAgICAgICAgICAgKENBU0UgV0hFTiBwbGFuX3N0YWdlIElOICgnYXBwcm92ZWQnLCdwZXJtaXQnKSBUSEVOIDMwIFdIRU4gcGxhbl9zdGFnZSA9ICdkZXBvc2l0JyBUSEVOIDIwIFdIRU4gcGxhbl9zdGFnZSA9ICdjb21taXR0ZWUnIFRIRU4gMTAgRUxTRSA1IEVORCkgKwogICAgICAgICAgICAgICAgICAoQ0FTRSBXSEVOIGRldmVsb3Blcl9yZXB1dGF0aW9uX3Njb3JlID49IDgwIFRIRU4gMjAgV0hFTiBkZXZlbG9wZXJfcmVwdXRhdGlvbl9zY29yZSA+PSA2MCBUSEVOIDEwIEVMU0UgNSBFTkQpICsKICAgICAgICAgICAgICAgICAgKENBU0UgV0hFTiBuZXdzX3NlbnRpbWVudCA9ICdwb3NpdGl2ZScgVEhFTiAxNSBXSEVOIG5ld3Nfc2VudGltZW50ID0gJ25ldXRyYWwnIFRIRU4gMTAgRUxTRSAwIEVORCkgKwogICAgICAgICAgICAgICAgICAoQ0FTRSBXSEVOIGlzX3JlY2VpdmVyc2hpcCBUSEVOIDEwIEVMU0UgMCBFTkQpCiAgICAgICAgICAgICAgICApKSBFTFNFIGlhaV9zY29yZSBFTkQsIGlhaV9zY29yZSksCiAgICAgICAgICAgICAgdXBkYXRlZF9hdCA9IE5PVygpCiAgICAgICAgICAgIFdIRVJFIHVwZGF0ZWRfYXQgPiBOT1coKSAtIElOVEVSVkFMICcxIGhvdXInCiAgICAgICAgICBgKTsKICAgICAgICAgIGxvZ2dlci5pbmZvKCdbU0NIRURVTEVSXSBJQUkgcmVjYWxjdWxhdGVkJyk7CiAgICAgICAgfSBjYXRjaCAoZSkgeyBsb2dnZXIud2FybignW1NDSEVEVUxFUl0gSUFJIHJlY2FsYyBmYWlsZWQnLCB7IGVycm9yOiBlLm1lc3NhZ2UgfSk7IH0KCiAgICAgICAgZGVsZXRlIHNjaGVkdWxlclN0YXRlLmFjdGl2ZUpvYnNbam9iSWRdOwogICAgICB9CiAgICB9IGNhdGNoIChlcnIpIHsKICAgICAgbG9nZ2VyLmVycm9yKGBbU0NIRURVTEVSXSBNb25pdG9yIGVycm9yIGZvciAke2pvYklkfWAsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgfQogIH0KfQoKLy8gPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09Ci8vIEFVVE8tUkVTVU1FIE9OIFNUQVJUVVAgKHYyLjApCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQphc3luYyBmdW5jdGlvbiByZXN1bWVJbnRlcnJ1cHRlZEpvYnMoKSB7CiAgY29uc3Qgc21hcnRCYXRjaCA9IGdldFNtYXJ0QmF0Y2goKTsKICBpZiAoIXNtYXJ0QmF0Y2ggfHwgIXNtYXJ0QmF0Y2guZmluZEludGVycnVwdGVkSm9icykgewogICAgbG9nZ2VyLmluZm8oJ1tTQ0hFRFVMRVJdIFNtYXJ0IGJhdGNoIHYyIG5vdCBhdmFpbGFibGUsIHNraXBwaW5nIHJlc3VtZScpOwogICAgcmV0dXJuOwogIH0KCiAgdHJ5IHsKICAgIGNvbnN0IGludGVycnVwdGVkID0gYXdhaXQgc21hcnRCYXRjaC5maW5kSW50ZXJydXB0ZWRKb2JzKCk7CiAgICBpZiAoaW50ZXJydXB0ZWQubGVuZ3RoID09PSAwKSB7CiAgICAgIGxvZ2dlci5pbmZvKCdbU0NIRURVTEVSXSBObyBpbnRlcnJ1cHRlZCBqb2JzIC0gY2xlYW4gc3RhcnR1cCcpOwogICAgICByZXR1cm47CiAgICB9CgogICAgbG9nZ2VyLmluZm8oYFtTQ0hFRFVMRVJdIEZvdW5kICR7aW50ZXJydXB0ZWQubGVuZ3RofSBpbnRlcnJ1cHRlZCBqb2IocykgLSByZXN1bWluZy4uLmApOwoKICAgIGZvciAoY29uc3Qgam9iIG9mIGludGVycnVwdGVkKSB7CiAgICAgIHRyeSB7CiAgICAgICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgc21hcnRCYXRjaC5yZXN1bWVJbnRlcnJ1cHRlZEpvYihqb2IpOwogICAgICAgIGlmIChyZXN1bHQpIHsKICAgICAgICAgIHNjaGVkdWxlclN0YXRlLmFjdGl2ZUpvYnNbcmVzdWx0LmpvYklkXSA9IHsKICAgICAgICAgICAgdGllcjogam9iLnRpZXIsIG1vZGU6IGpvYi5tb2RlLCBjb3VudDogcmVzdWx0LnRvdGFsLAogICAgICAgICAgICBzdGFydGVkQXQ6IGpvYi5zdGFydGVkX2F0LAogICAgICAgICAgICBlc3RpbWF0ZWRDb3N0OiBwYXJzZUZsb2F0KGpvYi5lc3RpbWF0ZWRfY29zdCB8fCAwKSwKICAgICAgICAgICAgcmVzdW1lZDogdHJ1ZSwgcmVzdW1lQ291bnQ6IHJlc3VsdC5yZXN1bWVDb3VudAogICAgICAgICAgfTsKCiAgICAgICAgICAvLyBSZXN0b3JlIGNoYWluIHF1ZXVlCiAgICAgICAgICBpZiAocmVzdWx0LmNoYWluUXVldWUgJiYgcmVzdWx0LmNoYWluUXVldWUubGVuZ3RoID4gMCkgewogICAgICAgICAgICBmb3IgKGNvbnN0IGNoYWluIG9mIHJlc3VsdC5jaGFpblF1ZXVlKSB7CiAgICAgICAgICAgICAgc2NoZWR1bGVyU3RhdGUuY2hhaW5RdWV1ZS5wdXNoKHsKICAgICAgICAgICAgICAgIGFmdGVySm9iOiByZXN1bHQuam9iSWQsIHRpZXI6IGNoYWluLnRpZXIsIG1vZGU6IGNoYWluLm1vZGUKICAgICAgICAgICAgICB9KTsKICAgICAgICAgICAgfQogICAgICAgICAgICBsb2dnZXIuaW5mbyhgW1NDSEVEVUxFUl0gUmVzdG9yZWQgJHtyZXN1bHQuY2hhaW5RdWV1ZS5sZW5ndGh9IGNoYWluKHMpIGZvciAke3Jlc3VsdC5qb2JJZH1gKTsKICAgICAgICAgIH0KCiAgICAgICAgICBzY2hlZHVsZXJTdGF0ZS5yZXN1bWVkSm9icy5wdXNoKHsKICAgICAgICAgICAgam9iSWQ6IHJlc3VsdC5qb2JJZCwgdGllcjogam9iLnRpZXIsIG1vZGU6IGpvYi5tb2RlLAogICAgICAgICAgICBjb21wbGV0ZWQ6IHJlc3VsdC5jb21wbGV0ZWQsIHJlbWFpbmluZzogcmVzdWx0LnJlbWFpbmluZywKICAgICAgICAgICAgdG90YWw6IHJlc3VsdC50b3RhbCwgcmVzdW1lQ291bnQ6IHJlc3VsdC5yZXN1bWVDb3VudCwKICAgICAgICAgICAgcmVzdW1lZEF0OiBuZXcgRGF0ZSgpLnRvSVNPU3RyaW5nKCkKICAgICAgICAgIH0pOwoKICAgICAgICAgIGxvZ2dlci5pbmZvKGBbU0NIRURVTEVSXSBSRVNVTUVEOiAke3Jlc3VsdC5qb2JJZH0gLSAke3Jlc3VsdC5jb21wbGV0ZWR9LyR7cmVzdWx0LnRvdGFsfSBkb25lLCAke3Jlc3VsdC5yZW1haW5pbmd9IGxlZnQgKHJlc3VtZSAjJHtyZXN1bHQucmVzdW1lQ291bnR9KWApOwogICAgICAgIH0KICAgICAgfSBjYXRjaCAoZXJyKSB7CiAgICAgICAgbG9nZ2VyLmVycm9yKGBbU0NIRURVTEVSXSBGYWlsZWQgdG8gcmVzdW1lICR7am9iLmpvYl9pZH1gLCB7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICAgICAgfQogICAgfQogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKCdbU0NIRURVTEVSXSBSZXN1bWUgY2hlY2sgZmFpbGVkJywgeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9CgovLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KLy8gQ1JPTiBJTklUCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpmdW5jdGlvbiBpbml0U2NoZWR1bGVyKCkgewogIGxvZ2dlci5pbmZvKCdbU0NIRURVTEVSXSBRVUFOVFVNIFNjaGVkdWxlciB2Mi4wIChkZXBsb3ktc2FmZSkgaW5pdGlhbGl6aW5nLi4uJyk7CgogIC8vIEpvYiBNb25pdG9yOiBldmVyeSAyIG1pbgogIHNjaGVkdWxlclN0YXRlLnNjaGVkdWxlZFRhc2tzLnB1c2goCiAgICBjcm9uLnNjaGVkdWxlKCcqLzIgKiAqICogKicsICgpID0+IG1vbml0b3JKb2JzKCksIHsgdGltZXpvbmU6ICdBc2lhL0plcnVzYWxlbScgfSkKICApOwoKICAvLyBUaWVyIDE6IFN1biAwODowMAogIHNjaGVkdWxlclN0YXRlLnNjaGVkdWxlZFRhc2tzLnB1c2goCiAgICBjcm9uLnNjaGVkdWxlKCcwIDggKiAqIDAnLCBhc3luYyAoKSA9PiB7CiAgICAgIGlmICghaXNFbnJpY2htZW50RGF5KCkpIHJldHVybjsKICAgICAgaWYgKGlzRmlyc3RTdW5kYXlPZk1vbnRoKCkpIHsKICAgICAgICBsb2dnZXIuaW5mbygnW1NDSEVEVUxFUl0gTW9udGhseSBGVUxMIGZvciBUaWVyIDEnKTsKICAgICAgICBjb25zdCBqb2IgPSBhd2FpdCBsYXVuY2hUaWVyU2NhbignMWZ1bGwnKTsKICAgICAgICBpZiAoam9iKSBzY2hlZHVsZXJTdGF0ZS5jaGFpblF1ZXVlLnB1c2goeyBhZnRlckpvYjogam9iLmpvYklkLCB0aWVyOiAnMicsIG1vZGU6ICdzdGFuZGFyZCcgfSk7CiAgICAgIH0gZWxzZSB7CiAgICAgICAgbG9nZ2VyLmluZm8oJ1tTQ0hFRFVMRVJdIFdlZWtseSBTVEFOREFSRCBmb3IgVGllciAxJyk7CiAgICAgICAgYXdhaXQgbGF1bmNoVGllclNjYW4oJzEnKTsKICAgICAgfQogICAgfSwgeyB0aW1lem9uZTogJ0FzaWEvSmVydXNhbGVtJyB9KQogICk7CgogIC8vIFRpZXIgMjogTW9uIDA4OjAwIGJpLXdlZWtseQogIHNjaGVkdWxlclN0YXRlLnNjaGVkdWxlZFRhc2tzLnB1c2goCiAgICBjcm9uLnNjaGVkdWxlKCcwIDggKiAqIDEnLCBhc3luYyAoKSA9PiB7CiAgICAgIGlmICghaXNFbnJpY2htZW50RGF5KCkpIHJldHVybjsKICAgICAgc2NoZWR1bGVyU3RhdGUuYml3ZWVrbHlUb2dnbGUgPSAhc2NoZWR1bGVyU3RhdGUuYml3ZWVrbHlUb2dnbGU7CiAgICAgIGlmICghc2NoZWR1bGVyU3RhdGUuYml3ZWVrbHlUb2dnbGUpIHsgbG9nZ2VyLmluZm8oJ1tTQ0hFRFVMRVJdIFRpZXIgMiBza2lwIChiaS13ZWVrbHkpJyk7IHJldHVybjsgfQogICAgICBsb2dnZXIuaW5mbygnW1NDSEVEVUxFUl0gQmktd2Vla2x5IFNUQU5EQVJEIGZvciBUaWVyIDInKTsKICAgICAgYXdhaXQgbGF1bmNoVGllclNjYW4oJzInKTsKICAgIH0sIHsgdGltZXpvbmU6ICdBc2lhL0plcnVzYWxlbScgfSkKICApOwoKICAvLyBUaWVyIDM6IFR1ZSAwODowMCBtb250aGx5CiAgc2NoZWR1bGVyU3RhdGUuc2NoZWR1bGVkVGFza3MucHVzaCgKICAgIGNyb24uc2NoZWR1bGUoJzAgOCAqICogMicsIGFzeW5jICgpID0+IHsKICAgICAgaWYgKCFpc0VucmljaG1lbnREYXkoKSkgcmV0dXJuOwogICAgICBpZiAoIWlzRmlyc3RPclRoaXJkV2VlaygpKSByZXR1cm47CiAgICAgIGxvZ2dlci5pbmZvKCdbU0NIRURVTEVSXSBNb250aGx5IEZBU1QgZm9yIFRpZXIgMycpOwogICAgICBhd2FpdCBsYXVuY2hUaWVyU2NhbignMycpOwogICAgfSwgeyB0aW1lem9uZTogJ0FzaWEvSmVydXNhbGVtJyB9KQogICk7CgogIC8vIExpc3RpbmdzOiBEYWlseSAwNzowMAogIHNjaGVkdWxlclN0YXRlLnNjaGVkdWxlZFRhc2tzLnB1c2goCiAgICBjcm9uLnNjaGVkdWxlKCcwIDcgKiAqIConLCBhc3luYyAoKSA9PiB7CiAgICAgIGxvZ2dlci5pbmZvKCdbU0NIRURVTEVSXSBEYWlseSBsaXN0aW5ncyBzY2FuJyk7CiAgICAgIHRyeSB7IGNvbnN0IHkgPSByZXF1aXJlKCcuLi9zZXJ2aWNlcy95YWQyU2NyYXBlcicpOyBpZiAoeT8uc2NyYXBlQWxsKSBhd2FpdCB5LnNjcmFwZUFsbCgpOyB9IGNhdGNoIChlKSB7IGxvZ2dlci53YXJuKCdbU0NIRURVTEVSXSBZYWQyIGZhaWxlZCcsIHsgZXJyb3I6IGUubWVzc2FnZSB9KTsgfQogICAgICB0cnkgeyBjb25zdCBrID0gcmVxdWlyZSgnLi4vc2VydmljZXMva29uZXNJc3JhZWxTZXJ2aWNlJyk7IGlmIChrPy5mZXRjaExpc3RpbmdzKSBhd2FpdCBrLmZldGNoTGlzdGluZ3MoKTsgfSBjYXRjaCAoZSkgeyBsb2dnZXIud2FybignW1NDSEVEVUxFUl0gS29uZXMgZmFpbGVkJywgeyBlcnJvcjogZS5tZXNzYWdlIH0pOyB9CiAgICB9LCB7IHRpbWV6b25lOiAnQXNpYS9KZXJ1c2FsZW0nIH0pCiAgKTsKCiAgLy8gU1NJOiBEYWlseSAwOTowMAogIHNjaGVkdWxlclN0YXRlLnNjaGVkdWxlZFRhc2tzLnB1c2goCiAgICBjcm9uLnNjaGVkdWxlKCcwIDkgKiAqIConLCBhc3luYyAoKSA9PiB7CiAgICAgIGxvZ2dlci5pbmZvKCdbU0NIRURVTEVSXSBEYWlseSBTU0kgcmVjYWxjJyk7CiAgICAgIHRyeSB7IGNvbnN0IHsgY2FsY3VsYXRlQWxsU1NJIH0gPSByZXF1aXJlKCcuLi9zZXJ2aWNlcy9zc2lDYWxjdWxhdG9yJyk7IGF3YWl0IGNhbGN1bGF0ZUFsbFNTSSgpOyB9IGNhdGNoIChlKSB7IGxvZ2dlci53YXJuKCdbU0NIRURVTEVSXSBTU0kgZmFpbGVkJywgeyBlcnJvcjogZS5tZXNzYWdlIH0pOyB9CiAgICB9LCB7IHRpbWV6b25lOiAnQXNpYS9KZXJ1c2FsZW0nIH0pCiAgKTsKCiAgLy8gUFNTOiBXZWQgMDY6MDAKICBzY2hlZHVsZXJTdGF0ZS5zY2hlZHVsZWRUYXNrcy5wdXNoKAogICAgY3Jvbi5zY2hlZHVsZSgnMCA2ICogKiAzJywgYXN5bmMgKCkgPT4gewogICAgICBpZiAoIWlzRW5yaWNobWVudERheSgpKSByZXR1cm47CiAgICAgIGxvZ2dlci5pbmZvKCdbU0NIRURVTEVSXSBQU1MgcmUtcmFua2luZycpOwogICAgICB0cnkgewogICAgICAgIGNvbnN0IHNwID0gZ2V0U2NhblByaW9yaXR5KCk7IGlmICghc3ApIHJldHVybjsKICAgICAgICBjb25zdCByID0gYXdhaXQgc3AuY2FsY3VsYXRlQWxsUHJpb3JpdGllcygpOwogICAgICAgIHNjaGVkdWxlclN0YXRlLmxhc3RQU1NSYW5rID0gewogICAgICAgICAgdGltZXN0YW1wOiBuZXcgRGF0ZSgpLnRvSVNPU3RyaW5nKCksCiAgICAgICAgICB0aWVyczogeyBob3Q6IHIudGllcnMuaG90LmNvdW50LCBhY3RpdmU6IHIudGllcnMuYWN0aXZlLmNvdW50LCBkb3JtYW50OiByLnRpZXJzLmRvcm1hbnQuY291bnQgfSwKICAgICAgICAgIHRvcDU6IHIudG9wXzUwLnNsaWNlKDAsIDUpLm1hcChjID0+ICh7IG5hbWU6IGMubmFtZSwgY2l0eTogYy5jaXR5LCBwc3M6IGMucHNzIH0pKQogICAgICAgIH07CiAgICAgICAgbG9nZ2VyLmluZm8oYFtTQ0hFRFVMRVJdIFBTUzogSE9UPSR7ci50aWVycy5ob3QuY291bnR9LCBBQ1RJVkU9JHtyLnRpZXJzLmFjdGl2ZS5jb3VudH0sIERPUk1BTlQ9JHtyLnRpZXJzLmRvcm1hbnQuY291bnR9YCk7CiAgICAgIH0gY2F0Y2ggKGUpIHsgbG9nZ2VyLndhcm4oJ1tTQ0hFRFVMRVJdIFBTUyBmYWlsZWQnLCB7IGVycm9yOiBlLm1lc3NhZ2UgfSk7IH0KICAgIH0sIHsgdGltZXpvbmU6ICdBc2lhL0plcnVzYWxlbScgfSkKICApOwoKCiAgLy8gTW9ybmluZyBJbnRlbGxpZ2VuY2UgUmVwb3J0OiBEYWlseSAwNzozMCAoYWZ0ZXIgbGlzdGluZ3Mgc2NhbiBhdCAwNzowMCkKICBzY2hlZHVsZXJTdGF0ZS5zY2hlZHVsZWRUYXNrcy5wdXNoKAogICAgY3Jvbi5zY2hlZHVsZSgnMzAgNyAqICogKicsIGFzeW5jICgpID0+IHsKICAgICAgbG9nZ2VyLmluZm8oJ1tTQ0hFRFVMRVJdIE1vcm5pbmcgSW50ZWxsaWdlbmNlIFJlcG9ydCAtIGdlbmVyYXRpbmcuLi4nKTsKICAgICAgdHJ5IHsKICAgICAgICBjb25zdCB7IHNlbmRNb3JuaW5nUmVwb3J0IH0gPSByZXF1aXJlKCcuLi9zZXJ2aWNlcy9tb3JuaW5nUmVwb3J0U2VydmljZScpOwogICAgICAgIGNvbnN0IHJlc3VsdCA9IGF3YWl0IHNlbmRNb3JuaW5nUmVwb3J0KCk7CiAgICAgICAgbG9nZ2VyLmluZm8oJ1tTQ0hFRFVMRVJdIE1vcm5pbmcgUmVwb3J0IHNlbnQ6JywgcmVzdWx0LnN0YXRzKTsKICAgICAgfSBjYXRjaCAoZSkgeyBsb2dnZXIud2FybignW1NDSEVEVUxFUl0gTW9ybmluZyBSZXBvcnQgZmFpbGVkOicsIGUubWVzc2FnZSk7IH0KICAgIH0sIHsgdGltZXpvbmU6ICdBc2lhL0plcnVzYWxlbScgfSkKICApOwoKICBsb2dnZXIuaW5mbygnW1NDSEVEVUxFUl0gQ3JvbiByZWdpc3RlcmVkLiBBdXRvLXJlc3VtZSBjaGVjayBpbiAxNXMuLi4nKTsKCiAgLy8gQXV0by1yZXN1bWUgaW50ZXJydXB0ZWQgam9icyBhZnRlciBzdGFydHVwCiAgc2V0VGltZW91dChhc3luYyAoKSA9PiB7CiAgICB0cnkgeyBhd2FpdCByZXN1bWVJbnRlcnJ1cHRlZEpvYnMoKTsgfQogICAgY2F0Y2ggKGVycikgeyBsb2dnZXIuZXJyb3IoJ1tTQ0hFRFVMRVJdIEF1dG8tcmVzdW1lIGZhaWxlZCcsIHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOyB9CiAgfSwgMTUwMDApOwp9CgovLyA9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KLy8gU1RBVFVTCi8vID09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PQpmdW5jdGlvbiBnZXRTY2hlZHVsZXJTdGF0dXMoKSB7CiAgcmV0dXJuIHsKICAgIHZlcnNpb246ICcyLjAtZGVwbG95LXNhZmUnLAogICAgYWN0aXZlSm9iczogT2JqZWN0LmtleXMoc2NoZWR1bGVyU3RhdGUuYWN0aXZlSm9icykubGVuZ3RoLAogICAgYWN0aXZlSm9iRGV0YWlsczogc2NoZWR1bGVyU3RhdGUuYWN0aXZlSm9icywKICAgIGNoYWluUXVldWU6IHNjaGVkdWxlclN0YXRlLmNoYWluUXVldWUsCiAgICBsYXN0UnVuczogc2NoZWR1bGVyU3RhdGUubGFzdFJ1bnMsCiAgICBsYXN0UFNTUmFuazogc2NoZWR1bGVyU3RhdGUubGFzdFBTU1JhbmssCiAgICBzdGF0czogc2NoZWR1bGVyU3RhdGUuc3RhdHMsCiAgICBiaXdlZWtseVRvZ2dsZTogc2NoZWR1bGVyU3RhdGUuYml3ZWVrbHlUb2dnbGUsCiAgICByZXN1bWVkSm9iczogc2NoZWR1bGVyU3RhdGUucmVzdW1lZEpvYnMsCiAgICBuZXh0RW5yaWNobWVudERheTogaXNFbnJpY2htZW50RGF5KCkgPyAndG9kYXknIDogJ25leHQgYnVzaW5lc3MgZGF5JywKICAgIHBlcnNpc3RlbmNlOiAnUG9zdGdyZVNRTCBzY2FuX2pvYnMnCiAgfTsKfQoKbW9kdWxlLmV4cG9ydHMgPSB7IAogIGluaXRTY2hlZHVsZXIsIGxhdW5jaFRpZXJTY2FuLCBjaGFpbkFmdGVyLCBtb25pdG9ySm9icywKICBnZXRTY2hlZHVsZXJTdGF0dXMsIHNjaGVkdWxlclN0YXRlLCByZXN1bWVJbnRlcnJ1cHRlZEpvYnMKfTsK
+const cron = require('node-cron');
+const { logger } = require('../services/logger');
+const { shouldSkipToday } = require('../config/israeliHolidays');
+
+// Lazy-load services to avoid circular deps
+function getScanPriority() { try { return require('../services/scanPriorityService'); } catch(e) { return null; } }
+function getSmartBatch() { try { return require('../services/smartBatchService'); } catch(e) { return null; } }
+
+/**
+ * QUANTUM Intelligent Scan Scheduler v2.0 - Deploy-Safe
+ * 
+ * NEW in v2.0: Job persistence across Railway deploys
+ * - Jobs persist to PostgreSQL scan_jobs table
+ * - On deploy/restart, interrupted jobs auto-resume from last completed complex
+ * - Chain queue persists across restarts
+ * - SIGTERM handler marks jobs as interrupted before shutdown
+ * 
+ * SCHEDULE:
+ *   Tier 1 (HOT ~50):   STANDARD weekly Sun 08:00, FULL monthly 1st Sun
+ *   Tier 2 (ACTIVE):    STANDARD bi-weekly Mon 08:00
+ *   Tier 3 (DORMANT):   FAST monthly 1st Tue 08:00
+ *   Listings:            Daily 07:00 (7 days/week)
+ *   SSI:                 Daily 09:00
+ *   PSS:                 Wed 06:00
+ *   IAI:                 After every enrichment batch
+ *   Job Monitor:         Every 2 minutes
+ *   Est. ~$260-290/month
+ */
+
+// ============================================================
+// STATE
+// ============================================================
+const schedulerState = {
+  activeJobs: {},
+  chainQueue: [],
+  lastRuns: {},
+  lastPSSRank: null,
+  biweeklyToggle: false,
+  stats: { totalScans: 0, totalCost: 0 },
+  scheduledTasks: [],
+  resumedJobs: []
+};
+
+// ============================================================
+// HELPERS
+// ============================================================
+function isEnrichmentDay() {
+  const now = new Date();
+  const israelTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const day = israelTime.getDay();
+  if (day === 5 || day === 6) { logger.info('[SCHEDULER] Skipping: Shabbat'); return false; }
+  const holidayCheck = shouldSkipToday();
+  if (holidayCheck.shouldSkip) { logger.info(`[SCHEDULER] Skipping: ${holidayCheck.reason || 'holiday'}`); return false; }
+  return true;
+}
+
+function isFirstSundayOfMonth() {
+  const now = new Date();
+  const israelTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  return israelTime.getDate() <= 7 && israelTime.getDay() === 0;
+}
+
+function isFirstOrThirdWeek() {
+  const now = new Date();
+  const israelTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const d = israelTime.getDate();
+  return (d >= 1 && d <= 7) || (d >= 15 && d <= 21);
+}
+
+// ============================================================
+// SCAN LAUNCHER
+// ============================================================
+async function launchTierScan(tier, modeOverride = null) {
+  const smartBatch = getSmartBatch();
+  const scanPriority = getScanPriority();
+  if (!smartBatch || !scanPriority) { logger.error('[SCHEDULER] Services not available'); return null; }
+
+  try {
+    const ranking = await scanPriority.calculateAllPriorities();
+    let ids = [], mode = modeOverride, tierLabel = '';
+    const costMap = { full: 1.23, standard: 0.26, fast: 0.15, turbo: 0.05 };
+
+    switch (tier) {
+      case '1': case '1standard':
+        ids = ranking.top_50.map(c => c.id); mode = mode || 'standard'; tierLabel = 'Tier 1 HOT'; break;
+      case '1full':
+        ids = ranking.top_50.map(c => c.id); mode = mode || 'full'; tierLabel = 'Tier 1 HOT (FULL)'; break;
+      case '2':
+        ids = ranking.active.map(c => c.id); mode = mode || 'standard'; tierLabel = 'Tier 2 ACTIVE'; break;
+      case '3':
+        ids = ranking.dormant.map(c => c.id); mode = mode || 'fast'; tierLabel = 'Tier 3 DORMANT'; break;
+      default: logger.warn(`[SCHEDULER] Unknown tier: ${tier}`); return null;
+    }
+
+    if (ids.length === 0) { logger.warn(`[SCHEDULER] No complexes for ${tierLabel}`); return null; }
+
+    const estimatedCost = parseFloat((ids.length * (costMap[mode] || 0.26)).toFixed(2));
+    logger.info(`[SCHEDULER] Launching ${tierLabel}: ${ids.length} complexes, mode=${mode}, ~$${estimatedCost}`);
+
+    const result = await smartBatch.enrichByIds(ids, mode, {
+      tier,
+      chainQueue: schedulerState.chainQueue.slice(),
+      estimatedCost
+    });
+    
+    if (result.jobId) {
+      schedulerState.activeJobs[result.jobId] = {
+        tier, mode, count: ids.length,
+        startedAt: new Date().toISOString(),
+        estimatedCost
+      };
+      schedulerState.stats.totalScans++;
+      logger.info(`[SCHEDULER] Job ${result.jobId} started for ${tierLabel}`);
+    }
+    return result;
+  } catch (err) {
+    logger.error(`[SCHEDULER] Failed to launch tier ${tier}`, { error: err.message });
+    return null;
+  }
+}
+
+// ============================================================
+// CHAIN MANAGEMENT
+// ============================================================
+function chainAfter(afterJobId, tier, mode) {
+  schedulerState.chainQueue.push({ afterJob: afterJobId, tier, mode });
+  logger.info(`[SCHEDULER] Chained tier ${tier} (${mode}) after ${afterJobId}. Queue: ${schedulerState.chainQueue.length}`);
+  return schedulerState.chainQueue.length;
+}
+
+// ============================================================
+// JOB MONITOR (every 2 min)
+// ============================================================
+async function monitorJobs() {
+  const smartBatch = getSmartBatch();
+  if (!smartBatch) return;
+
+  for (const [jobId, meta] of Object.entries(schedulerState.activeJobs)) {
+    try {
+      const status = smartBatch.getSmartBatchStatus(jobId);
+      if (!status) continue;
+
+      if (status.status === 'completed' || status.status === 'error') {
+        schedulerState.lastRuns[meta.tier] = {
+          jobId,
+          enriched: status.enriched, total: status.total,
+          fields: status.totalFieldsUpdated, errors: status.errors,
+          cost: meta.estimatedCost,
+          duration: status.completedAt ? 
+            ((new Date(status.completedAt) - new Date(status.startedAt)) / 60000).toFixed(1) + 'min' : '?',
+          completedAt: status.completedAt,
+          resumed: status.resumed || false,
+          resumeCount: status.resumeCount || 0
+        };
+        schedulerState.stats.totalCost += meta.estimatedCost;
+        logger.info(`[SCHEDULER] Job ${jobId} done: ${status.enriched}/${status.total}, ~$${meta.estimatedCost}`);
+
+        // Chain queue
+        const chainIdx = schedulerState.chainQueue.findIndex(c => c.afterJob === jobId);
+        if (chainIdx >= 0) {
+          const chain = schedulerState.chainQueue[chainIdx];
+          schedulerState.chainQueue.splice(chainIdx, 1);
+          logger.info(`[SCHEDULER] Chain trigger: tier ${chain.tier} (${chain.mode}) after ${jobId}`);
+          const nextJob = await launchTierScan(chain.tier, chain.mode);
+          if (nextJob && nextJob.jobId) {
+            for (const r of schedulerState.chainQueue) {
+              if (r.afterJob === jobId) { r.afterJob = nextJob.jobId; }
+            }
+          }
+        }
+
+        // IAI recalc
+        try {
+          const pool = require('../db/pool');
+          await pool.query(`
+            UPDATE complexes SET 
+              iai_score = COALESCE(
+                CASE WHEN accurate_price_sqm > 0 AND city_avg_price_sqm > 0 
+                THEN LEAST(100, GREATEST(0,
+                  (CASE WHEN price_vs_city_avg < -10 THEN 25 WHEN price_vs_city_avg < 0 THEN 15 ELSE 5 END) +
+                  (CASE WHEN plan_stage IN ('approved','permit') THEN 30 WHEN plan_stage = 'deposit' THEN 20 WHEN plan_stage = 'committee' THEN 10 ELSE 5 END) +
+                  (CASE WHEN developer_reputation_score >= 80 THEN 20 WHEN developer_reputation_score >= 60 THEN 10 ELSE 5 END) +
+                  (CASE WHEN news_sentiment = 'positive' THEN 15 WHEN news_sentiment = 'neutral' THEN 10 ELSE 0 END) +
+                  (CASE WHEN is_receivership THEN 10 ELSE 0 END)
+                )) ELSE iai_score END, iai_score),
+              updated_at = NOW()
+            WHERE updated_at > NOW() - INTERVAL '1 hour'
+          `);
+          logger.info('[SCHEDULER] IAI recalculated');
+        } catch (e) { logger.warn('[SCHEDULER] IAI recalc failed', { error: e.message }); }
+
+        delete schedulerState.activeJobs[jobId];
+      }
+    } catch (err) {
+      logger.error(`[SCHEDULER] Monitor error for ${jobId}`, { error: err.message });
+    }
+  }
+}
+
+// ============================================================
+// AUTO-RESUME ON STARTUP (v2.0)
+// ============================================================
+async function resumeInterruptedJobs() {
+  const smartBatch = getSmartBatch();
+  if (!smartBatch || !smartBatch.findInterruptedJobs) {
+    logger.info('[SCHEDULER] Smart batch v2 not available, skipping resume');
+    return;
+  }
+
+  try {
+    const interrupted = await smartBatch.findInterruptedJobs();
+    if (interrupted.length === 0) {
+      logger.info('[SCHEDULER] No interrupted jobs - clean startup');
+      return;
+    }
+
+    logger.info(`[SCHEDULER] Found ${interrupted.length} interrupted job(s) - resuming...`);
+
+    for (const job of interrupted) {
+      try {
+        const result = await smartBatch.resumeInterruptedJob(job);
+        if (result) {
+          schedulerState.activeJobs[result.jobId] = {
+            tier: job.tier, mode: job.mode, count: result.total,
+            startedAt: job.started_at,
+            estimatedCost: parseFloat(job.estimated_cost || 0),
+            resumed: true, resumeCount: result.resumeCount
+          };
+
+          // Restore chain queue
+          if (result.chainQueue && result.chainQueue.length > 0) {
+            for (const chain of result.chainQueue) {
+              schedulerState.chainQueue.push({
+                afterJob: result.jobId, tier: chain.tier, mode: chain.mode
+              });
+            }
+            logger.info(`[SCHEDULER] Restored ${result.chainQueue.length} chain(s) for ${result.jobId}`);
+          }
+
+          schedulerState.resumedJobs.push({
+            jobId: result.jobId, tier: job.tier, mode: job.mode,
+            completed: result.completed, remaining: result.remaining,
+            total: result.total, resumeCount: result.resumeCount,
+            resumedAt: new Date().toISOString()
+          });
+
+          logger.info(`[SCHEDULER] RESUMED: ${result.jobId} - ${result.completed}/${result.total} done, ${result.remaining} left (resume #${result.resumeCount})`);
+        }
+      } catch (err) {
+        logger.error(`[SCHEDULER] Failed to resume ${job.job_id}`, { error: err.message });
+      }
+    }
+  } catch (err) {
+    logger.error('[SCHEDULER] Resume check failed', { error: err.message });
+  }
+}
+
+// ============================================================
+// CRON INIT
+// ============================================================
+function initScheduler() {
+  logger.info('[SCHEDULER] QUANTUM Scheduler v2.0 (deploy-safe) initializing...');
+
+  // Job Monitor: every 2 min
+  schedulerState.scheduledTasks.push(
+    cron.schedule('*/2 * * * *', () => monitorJobs(), { timezone: 'Asia/Jerusalem' })
+  );
+
+  // Tier 1: Sun 08:00
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 8 * * 0', async () => {
+      if (!isEnrichmentDay()) return;
+      if (isFirstSundayOfMonth()) {
+        logger.info('[SCHEDULER] Monthly FULL for Tier 1');
+        const job = await launchTierScan('1full');
+        if (job) schedulerState.chainQueue.push({ afterJob: job.jobId, tier: '2', mode: 'standard' });
+      } else {
+        logger.info('[SCHEDULER] Weekly STANDARD for Tier 1');
+        await launchTierScan('1');
+      }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // Tier 2: Mon 08:00 bi-weekly
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 8 * * 1', async () => {
+      if (!isEnrichmentDay()) return;
+      schedulerState.biweeklyToggle = !schedulerState.biweeklyToggle;
+      if (!schedulerState.biweeklyToggle) { logger.info('[SCHEDULER] Tier 2 skip (bi-weekly)'); return; }
+      logger.info('[SCHEDULER] Bi-weekly STANDARD for Tier 2');
+      await launchTierScan('2');
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // Tier 3: Tue 08:00 monthly
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 8 * * 2', async () => {
+      if (!isEnrichmentDay()) return;
+      if (!isFirstOrThirdWeek()) return;
+      logger.info('[SCHEDULER] Monthly FAST for Tier 3');
+      await launchTierScan('3');
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // Listings: Daily 07:00
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 7 * * *', async () => {
+      logger.info('[SCHEDULER] Daily listings scan');
+      try { const y = require('../services/yad2Scraper'); if (y?.scrapeAll) await y.scrapeAll(); } catch (e) { logger.warn('[SCHEDULER] Yad2 failed', { error: e.message }); }
+      try { const k = require('../services/konesIsraelService'); if (k?.fetchListings) await k.fetchListings(); } catch (e) { logger.warn('[SCHEDULER] Kones failed', { error: e.message }); }
+      // Send pending alerts immediately after listings scan
+      try {
+        const ns = getNotificationService();
+        if (ns?.sendPendingAlerts) {
+          const alertResult = await ns.sendPendingAlerts();
+          logger.info('[SCHEDULER] Pending alerts sent after listings scan:', alertResult);
+        }
+      } catch (e) { logger.warn('[SCHEDULER] Alert send failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // SSI: Daily 09:00
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 9 * * *', async () => {
+      logger.info('[SCHEDULER] Daily SSI recalc');
+      try { const { calculateAllSSI } = require('../services/ssiCalculator'); await calculateAllSSI(); } catch (e) { logger.warn('[SCHEDULER] SSI failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // PSS: Wed 06:00
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 6 * * 3', async () => {
+      if (!isEnrichmentDay()) return;
+      logger.info('[SCHEDULER] PSS re-ranking');
+      try {
+        const sp = getScanPriority(); if (!sp) return;
+        const r = await sp.calculateAllPriorities();
+        schedulerState.lastPSSRank = {
+          timestamp: new Date().toISOString(),
+          tiers: { hot: r.tiers.hot.count, active: r.tiers.active.count, dormant: r.tiers.dormant.count },
+          top5: r.top_50.slice(0, 5).map(c => ({ name: c.name, city: c.city, pss: c.pss }))
+        };
+        logger.info(`[SCHEDULER] PSS: HOT=${r.tiers.hot.count}, ACTIVE=${r.tiers.active.count}, DORMANT=${r.tiers.dormant.count}`);
+      } catch (e) { logger.warn('[SCHEDULER] PSS failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+
+  // Tier 1 Express Scan: Every 4h during business hours (checks for urgent new listings)
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 11,15,19 * * 0-4', async () => {
+      if (!isEnrichmentDay()) return;
+      logger.info('[SCHEDULER] Tier 1 express yad2 scan (4h cycle)');
+      try {
+        const y = require('../services/yad2Scraper');
+        if (y?.scanAll) {
+          const result = await y.scanAll({ staleOnly: false, limit: 50, iai_min: 60 });
+          logger.info(`[SCHEDULER] Express scan: ${result.totalNew} new, ${result.totalAlerts} alerts`);
+          // Immediately send any new alerts
+          const ns = getNotificationService();
+          if (ns?.sendPendingAlerts && (result.totalNew > 0 || result.totalAlerts > 0)) {
+            await ns.sendPendingAlerts();
+          }
+        }
+      } catch (e) { logger.warn('[SCHEDULER] Express scan failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // Hourly Alert Check: Catch any unsent alerts
+  schedulerState.scheduledTasks.push(
+    cron.schedule('30 * * * *', async () => {
+      try {
+        const ns = getNotificationService();
+        if (ns?.sendPendingAlerts) {
+          const result = await ns.sendPendingAlerts();
+          if (result.totalAlerts > 0) {
+            logger.info(`[SCHEDULER] Hourly alert check: sent ${result.sent}/${result.totalAlerts}`);
+          }
+        }
+      } catch (e) { logger.warn('[SCHEDULER] Hourly alert check failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // Morning Intelligence Report: Daily 07:30 (after listings scan at 07:00)
+  schedulerState.scheduledTasks.push(
+    cron.schedule('30 7 * * *', async () => {
+      logger.info('[SCHEDULER] Morning Intelligence Report - generating...');
+      try {
+        const { sendMorningReport } = require('../services/morningReportService');
+        const result = await sendMorningReport();
+        logger.info('[SCHEDULER] Morning Report sent:', result.stats);
+      } catch (e) { logger.warn('[SCHEDULER] Morning Report failed:', e.message); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  logger.info('[SCHEDULER] Cron registered. Auto-resume check in 15s...');
+
+  // Auto-resume interrupted jobs after startup
+  setTimeout(async () => {
+    try { await resumeInterruptedJobs(); }
+    catch (err) { logger.error('[SCHEDULER] Auto-resume failed', { error: err.message }); }
+  }, 15000);
+}
+
+// ============================================================
+// STATUS
+// ============================================================
+function getSchedulerStatus() {
+  return {
+    version: '2.0-deploy-safe',
+    activeJobs: Object.keys(schedulerState.activeJobs).length,
+    activeJobDetails: schedulerState.activeJobs,
+    chainQueue: schedulerState.chainQueue,
+    lastRuns: schedulerState.lastRuns,
+    lastPSSRank: schedulerState.lastPSSRank,
+    stats: schedulerState.stats,
+    biweeklyToggle: schedulerState.biweeklyToggle,
+    resumedJobs: schedulerState.resumedJobs,
+    nextEnrichmentDay: isEnrichmentDay() ? 'today' : 'next business day',
+    persistence: 'PostgreSQL scan_jobs'
+  };
+}
+
+module.exports = { 
+  initScheduler, launchTierScan, chainAfter, monitorJobs,
+  getSchedulerStatus, schedulerState, resumeInterruptedJobs
+};
