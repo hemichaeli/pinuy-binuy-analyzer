@@ -1,38 +1,7 @@
 {
-  "name": "pinuy-binuy-analyzer",
-  "version": "4.29.0",
-  "description": "Investment analyzer for Pinuy Binuy (Urban Renewal) projects in Israel",
-  "main": "src/index.js",
-  "scripts": {
-    "start": "node start.js",
-    "dev": "node start.js",
-    "db:migrate": "node src/db/migrate.js",
-    "db:seed": "node src/db/seed.js",
-    "db:reset": "node src/db/migrate.js && node src/db/seed.js",
-    "scan": "node src/jobs/weeklyScanner.js",
-    "test": "echo \"No tests yet\""
-  },
-  "build": "2026-02-20-v4.29.0-iai-v3-6axis-scoring",
-  "dependencies": {
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
-    "pg": "^8.12.0",
-    "node-cron": "^3.0.3",
-    "axios": "^1.7.2",
-    "cheerio": "^1.0.0",
-    "dotenv": "^16.4.5",
-    "winston": "^3.13.0",
-    "helmet": "^7.1.0",
-    "express-rate-limit": "^7.2.0",
-    "nodemailer": "^6.9.13",
-    "resend": "^3.2.0",
-    "xml2js": "^0.6.2",
-    "puppeteer-core": "^22.0.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "content": "{\n  \"name\": \"pinuy-binuy-analyzer\",\n  \"version\": \"4.29.0\",\n  \"description\": \"Investment analyzer for Pinuy Binuy (Urban Renewal) projects in Israel\",\n  \"main\": \"src/index.js\",\n  \"scripts\": {\n    \"start\": \"node start.js\",\n    \"dev\": \"node start.js\",\n    \"db:migrate\": \"node src/db/migrate.js\",\n    \"db:seed\": \"node src/db/seed.js\",\n    \"db:reset\": \"node src/db/migrate.js && node src/db/seed.js\",\n    \"scan\": \"node src/jobs/weeklyScanner.js\",\n    \"test\": \"echo \\\"No tests yet\\\"\"\n  },\n  \"build\": \"2026-02-20-v4.29.0-iai-v3-6axis-scoring\",\n  \"dependencies\": {\n    \"express\": \"^4.18.2\",\n    \"cors\": \"^2.8.5\",\n    \"pg\": \"^8.12.0\",\n    \"node-cron\": \"^3.0.3\",\n    \"axios\": \"^1.7.2\",\n    \"cheerio\": \"^1.0.0\",\n    \"dotenv\": \"^16.4.5\",\n    \"winston\": \"^3.13.0\",\n    \"helmet\": \"^7.1.0\",\n    \"express-rate-limit\": \"^7.2.0\",\n    \"nodemailer\": \"^6.9.13\",\n    \"resend\": \"^3.2.0\",\n    \"xml2js\": \"^0.6.2\",\n    \"puppeteer-core\": \"^22.0.0\"\n  },\n  \"devDependencies\": {\n    \"nodemon\": \"^3.1.0\"\n  },\n  \"engines\": {\n    \"node\": \">=18.0.0\"\n  }\n}\n",
+  "sha": "dc0743080e8823245e2853bb80c4c5b5f59e6696",
+  "name": "package.json",
+  "path": "package.json",
+  "size": 1022
 }
