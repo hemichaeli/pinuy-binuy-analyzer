@@ -52,7 +52,6 @@ router.post('/fix-stuck', async (req, res) => {
     const { scanId, force } = req.body;
     
     if (scanId) {
-      // Fix specific scan
       const result = await pool.query(`
         UPDATE scan_logs 
         SET status = 'failed', 
@@ -72,7 +71,6 @@ router.post('/fix-stuck', async (req, res) => {
       });
     }
     
-    // Fix all stuck scans (running > 2 hours)
     const stuckScans = await pool.query(`
       UPDATE scan_logs 
       SET status = 'failed', 
@@ -135,7 +133,6 @@ router.get('/health', async (req, res) => {
       }
     };
     
-    // Test database
     try {
       await pool.query('SELECT 1');
       health.database = 'healthy';
@@ -143,7 +140,6 @@ router.get('/health', async (req, res) => {
       health.database = 'error';
     }
     
-    // Check stuck scans
     try {
       const stuck = await pool.query(`
         SELECT COUNT(*) as count 
@@ -155,7 +151,6 @@ router.get('/health', async (req, res) => {
       health.scans = 'error';
     }
     
-    // Check notifications
     try {
       health.notifications = notificationService.isConfigured() ? 'configured' : 'not-configured';
     } catch (e) {
@@ -182,7 +177,6 @@ router.get('/health', async (req, res) => {
 
 // ============================================================
 // POST /api/scan/ai - DUAL AI SCAN (Anthropic Research + Perplexity Deep Research)
-// This is the primary intelligent scan - runs BOTH AIs in parallel
 // ============================================================
 router.post('/ai', async (req, res) => {
   try {
@@ -193,15 +187,11 @@ router.post('/ai', async (req, res) => {
     const { city, limit, complexId, staleOnly, model } = req.body;
     const perplexityModel = model || PERPLEXITY_MODEL_SCAN;
 
-    // Single complex scan
     if (complexId) {
       try {
         const result = await dualScanComplex(parseInt(complexId), { perplexityModel });
-        
-        // Recalculate scores after scan
         try { await calculateSSI(parseInt(complexId)); } catch (e) {}
         try { await calculateIAI(parseInt(complexId)); } catch (e) {}
-
         return res.json({ 
           message: 'Dual AI scan complete', 
           result,
@@ -216,7 +206,6 @@ router.post('/ai', async (req, res) => {
       }
     }
 
-    // Batch scan
     const running = await pool.query(
       "SELECT id FROM scan_logs WHERE status = 'running' AND scan_type LIKE 'dual_ai%' AND started_at > NOW() - INTERVAL '2 hours'"
     );
@@ -240,7 +229,6 @@ router.post('/ai', async (req, res) => {
       note: `Scanning with Anthropic Research + Perplexity ${perplexityModel} in parallel`
     });
 
-    // Run async
     (async () => {
       try {
         const results = await dualScanAll({
@@ -250,7 +238,6 @@ router.post('/ai', async (req, res) => {
           perplexityModel
         });
 
-        // Recalculate all scores
         try { await calculateAllSSI(); } catch (e) { logger.warn('SSI recalc failed', { error: e.message }); }
         try { await calculateAllIAI(); } catch (e) { logger.warn('IAI recalc failed', { error: e.message }); }
 
@@ -263,7 +250,6 @@ router.post('/ai', async (req, res) => {
             `${results.totalNewTx} tx, ${results.totalNewListings} listings`, scanId]
         );
 
-        // Send notifications for significant changes
         if ((results.totalNewTx > 0 || results.totalNewListings > 0) && notificationService.isConfigured()) {
           await notificationService.sendPendingAlerts();
         }
@@ -311,7 +297,6 @@ router.post('/discovery', async (req, res) => {
 
     const { region, city, limit } = req.body;
 
-    // Single city discovery
     if (city) {
       const scanLog = await pool.query(
         `INSERT INTO scan_logs (scan_type, status) VALUES ('discovery_city', 'running') RETURNING *`
@@ -363,7 +348,6 @@ router.post('/discovery', async (req, res) => {
       return;
     }
 
-    // Region or full discovery
     const scanLog = await pool.query(
       `INSERT INTO scan_logs (scan_type, status) VALUES ('discovery_full', 'running') RETURNING *`
     );
@@ -939,10 +923,112 @@ router.get('/results', async (req, res) => {
   }
 });
 
-// GET /api/scan/:id
+// GET /api/scan/status - Scan system overview
+router.get('/status', async (req, res) => {
+  try {
+    const total = await pool.query('SELECT COUNT(*) as count FROM scan_logs');
+    const running = await pool.query("SELECT COUNT(*) as count FROM scan_logs WHERE status = 'running'");
+    const completed = await pool.query("SELECT COUNT(*) as count FROM scan_logs WHERE status = 'completed'");
+    const failed = await pool.query("SELECT COUNT(*) as count FROM scan_logs WHERE status = 'failed'");
+    const recent24h = await pool.query("SELECT COUNT(*) as count FROM scan_logs WHERE started_at > NOW() - INTERVAL '24 hours'");
+    const recent7d = await pool.query("SELECT COUNT(*) as count FROM scan_logs WHERE started_at > NOW() - INTERVAL '7 days'");
+    const lastScan = await pool.query('SELECT * FROM scan_logs ORDER BY started_at DESC LIMIT 1');
+    const lastSuccess = await pool.query("SELECT * FROM scan_logs WHERE status = 'completed' ORDER BY completed_at DESC LIMIT 1");
+
+    res.json({
+      totalScans: parseInt(total.rows[0].count),
+      running: parseInt(running.rows[0].count),
+      completed: parseInt(completed.rows[0].count),
+      failed: parseInt(failed.rows[0].count),
+      last24h: parseInt(recent24h.rows[0].count),
+      last7d: parseInt(recent7d.rows[0].count),
+      lastScan: lastScan.rows[0] || null,
+      lastSuccess: lastSuccess.rows[0] || null,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    logger.error('Scan status failed', { error: err.message });
+    res.status(500).json({ error: `Failed to get scan status: ${err.message}` });
+  }
+});
+
+// GET /api/scan/morning-report - Daily morning briefing
+router.get('/morning-report', async (req, res) => {
+  try {
+    const recentScans = await pool.query(`
+      SELECT id, scan_type, status, started_at, completed_at, 
+             complexes_scanned, new_transactions, new_listings, updated_listings, 
+             status_changes, errors, summary
+      FROM scan_logs 
+      WHERE started_at > NOW() - INTERVAL '24 hours'
+      ORDER BY started_at DESC
+    `);
+
+    const complexStats = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE iai_score IS NOT NULL) as with_iai,
+        COUNT(*) FILTER (WHERE ssi_score IS NOT NULL) as with_ssi,
+        COUNT(*) FILTER (WHERE iai_score >= 70) as high_iai,
+        COUNT(*) FILTER (WHERE ssi_score >= 60) as high_ssi,
+        ROUND(AVG(iai_score)::numeric, 1) as avg_iai,
+        ROUND(AVG(ssi_score)::numeric, 1) as avg_ssi
+      FROM complexes
+    `);
+
+    const newTransactions = await pool.query(
+      "SELECT COUNT(*) as count FROM transactions WHERE created_at > NOW() - INTERVAL '24 hours'"
+    );
+    const newListings = await pool.query(
+      "SELECT COUNT(*) as count FROM listings WHERE created_at > NOW() - INTERVAL '24 hours'"
+    );
+    const newAlerts = await pool.query(
+      "SELECT COUNT(*) as count FROM alerts WHERE created_at > NOW() - INTERVAL '24 hours'"
+    );
+
+    // Auto-fix stuck scans
+    const fixResult = await pool.query(`
+      UPDATE scan_logs SET status = 'failed', completed_at = NOW(),
+        errors = 'Auto-failed by morning report - scan stuck > 2 hours'
+      WHERE status = 'running' AND started_at < NOW() - INTERVAL '2 hours'
+    `);
+
+    const stats = complexStats.rows[0];
+    res.json({
+      report_date: new Date().toISOString(),
+      system_health: 'operational',
+      scans_last_24h: recentScans.rows.length,
+      scans: recentScans.rows,
+      portfolio: {
+        total_complexes: parseInt(stats.total),
+        with_iai: parseInt(stats.with_iai),
+        with_ssi: parseInt(stats.with_ssi),
+        high_iai_opportunities: parseInt(stats.high_iai),
+        high_ssi_stressed: parseInt(stats.high_ssi),
+        avg_iai: parseFloat(stats.avg_iai) || 0,
+        avg_ssi: parseFloat(stats.avg_ssi) || 0
+      },
+      new_data_24h: {
+        transactions: parseInt(newTransactions.rows[0].count),
+        listings: parseInt(newListings.rows[0].count),
+        alerts: parseInt(newAlerts.rows[0].count)
+      },
+      maintenance: {
+        stuck_scans_auto_fixed: fixResult.rowCount
+      }
+    });
+  } catch (err) {
+    logger.error('Morning report failed', { error: err.message });
+    res.status(500).json({ error: `Morning report failed: ${err.message}` });
+  }
+});
+
+// GET /api/scan/:id - MUST BE LAST (catch-all)
 router.get('/:id', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM scan_logs WHERE id = $1', [parseInt(req.params.id)]);
+    const scanId = parseInt(req.params.id);
+    if (isNaN(scanId)) return res.status(400).json({ error: 'Invalid scan ID - must be a number' });
+    const result = await pool.query('SELECT * FROM scan_logs WHERE id = $1', [scanId]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Scan not found' });
     res.json(result.rows[0]);
   } catch (err) {
