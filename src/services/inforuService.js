@@ -3,86 +3,100 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 /**
- * INFORU SMS & WhatsApp Service for QUANTUM
- * Uses InforUMobile API (https://apidoc.inforu.co.il)
- * Token: Set via INFORU_API_TOKEN env variable
+ * INFORU SMS Service for QUANTUM (Fixed v2)
+ * Uses InforUMobile API - Correct XML format with Username/Password auth
+ * 
+ * Required env vars:
+ *   INFORU_USERNAME - Account username from InforUMobile
+ *   INFORU_PASSWORD - Account password from InforUMobile
+ * 
+ * API docs: https://uapi.inforu.co.il/SendMessageXml.ashx?InforuXML={xml}
  */
 
-const INFORU_XML_URL = 'https://api.inforu.co.il/SendMessageXml.ashx';
-const INFORU_REST_URL = 'https://capi.inforu.co.il/api/v2/SMS/SendSms';
+const INFORU_XML_URL = 'https://uapi.inforu.co.il/SendMessageXml.ashx';
 const DEFAULT_SENDER = 'QUANTUM';
 
 const TEMPLATES = {
   seller_initial: {
-    name: 'פנייה ראשונית למוכר',
-    template: `שלום {name},
-ראיתי שיש לך נכס למכירה ב{address}, {city}.
-אני מ-QUANTUM, משרד תיווך המתמחה בפינוי-בינוי.
-יש לנו קונים רציניים לאזור שלך.
-אשמח לשוחח - {agent_phone}
+    name: '\u05E4\u05E0\u05D9\u05D9\u05D4 \u05E8\u05D0\u05E9\u05D5\u05E0\u05D9\u05EA \u05DC\u05DE\u05D5\u05DB\u05E8',
+    template: `\u05E9\u05DC\u05D5\u05DD {name},
+\u05E8\u05D0\u05D9\u05EA\u05D9 \u05E9\u05D9\u05E9 \u05DC\u05DA \u05E0\u05DB\u05E1 \u05DC\u05DE\u05DB\u05D9\u05E8\u05D4 \u05D1{address}, {city}.
+\u05D0\u05E0\u05D9 \u05DE-QUANTUM, \u05DE\u05E9\u05E8\u05D3 \u05EA\u05D9\u05D5\u05D5\u05DA \u05D4\u05DE\u05EA\u05DE\u05D7\u05D4 \u05D1\u05E4\u05D9\u05E0\u05D5\u05D9-\u05D1\u05D9\u05E0\u05D5\u05D9.
+\u05D9\u05E9 \u05DC\u05E0\u05D5 \u05E7\u05D5\u05E0\u05D9\u05DD \u05E8\u05E6\u05D9\u05E0\u05D9\u05D9\u05DD \u05DC\u05D0\u05D6\u05D5\u05E8 \u05E9\u05DC\u05DA.
+\u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05D5\u05D7\u05D7 - {agent_phone}
 QUANTUM Real Estate`,
     maxLength: 480
   },
   seller_followup: {
-    name: 'מעקב למוכר',
-    template: `שלום {name},
-פניתי אליך לפני מספר ימים בנוגע לנכס ב{address}.
-עדיין יש לנו עניין רב מצד קונים.
-נשמח לעזור - {agent_phone}
+    name: '\u05DE\u05E2\u05E7\u05D1 \u05DC\u05DE\u05D5\u05DB\u05E8',
+    template: `\u05E9\u05DC\u05D5\u05DD {name},
+\u05E4\u05E0\u05D9\u05EA\u05D9 \u05D0\u05DC\u05D9\u05DA \u05DC\u05E4\u05E0\u05D9 \u05DE\u05E1\u05E4\u05E8 \u05D9\u05DE\u05D9\u05DD \u05D1\u05E0\u05D5\u05D2\u05E2 \u05DC\u05E0\u05DB\u05E1 \u05D1{address}.
+\u05E2\u05D3\u05D9\u05D9\u05DF \u05D9\u05E9 \u05DC\u05E0\u05D5 \u05E2\u05E0\u05D9\u05D9\u05DF \u05E8\u05D1 \u05DE\u05E6\u05D3 \u05E7\u05D5\u05E0\u05D9\u05DD.
+\u05E0\u05E9\u05DE\u05D7 \u05DC\u05E2\u05D6\u05D5\u05E8 - {agent_phone}
 QUANTUM`,
     maxLength: 320
   },
   buyer_opportunity: {
-    name: 'הזדמנות לקונה',
-    template: `שלום {name},
-יש לנו הזדמנות חדשה שמתאימה לך:
+    name: '\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA \u05DC\u05E7\u05D5\u05E0\u05D4',
+    template: `\u05E9\u05DC\u05D5\u05DD {name},
+\u05D9\u05E9 \u05DC\u05E0\u05D5 \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA \u05D7\u05D3\u05E9\u05D4 \u05E9\u05DE\u05EA\u05D0\u05D9\u05DE\u05D4 \u05DC\u05DA:
 {complex_name}, {city}
-מכפיל: x{multiplier} | סטטוס: {status}
-לפרטים: {agent_phone}
+\u05DE\u05DB\u05E4\u05D9\u05DC: x{multiplier} | \u05E1\u05D8\u05D8\u05D5\u05E1: {status}
+\u05DC\u05E4\u05E8\u05D8\u05D9\u05DD: {agent_phone}
 QUANTUM`,
     maxLength: 320
   },
   kones_inquiry: {
-    name: 'פנייה לכונס',
-    template: `לכבוד עו"ד {name},
-בנוגע לנכס בכינוס ב{address}, {city}.
-אנו מ-QUANTUM, משרד תיווך מתמחה בפינוי-בינוי.
-יש לנו קונים פוטנציאליים מיידיים.
-נשמח לשיתוף פעולה - {agent_phone}`,
+    name: '\u05E4\u05E0\u05D9\u05D9\u05D4 \u05DC\u05DB\u05D5\u05E0\u05E1',
+    template: `\u05DC\u05DB\u05D1\u05D5\u05D3 \u05E2\u05D5"\u05D3 {name},
+\u05D1\u05E0\u05D5\u05D2\u05E2 \u05DC\u05E0\u05DB\u05E1 \u05D1\u05DB\u05D9\u05E0\u05D5\u05E1 \u05D1{address}, {city}.
+\u05D0\u05E0\u05D5 \u05DE-QUANTUM, \u05DE\u05E9\u05E8\u05D3 \u05EA\u05D9\u05D5\u05D5\u05DA \u05DE\u05EA\u05DE\u05D7\u05D4 \u05D1\u05E4\u05D9\u05E0\u05D5\u05D9-\u05D1\u05D9\u05E0\u05D5\u05D9.
+\u05D9\u05E9 \u05DC\u05E0\u05D5 \u05E7\u05D5\u05E0\u05D9\u05DD \u05E4\u05D5\u05D8\u05E0\u05E6\u05D9\u05D0\u05DC\u05D9\u05D9\u05DD \u05DE\u05D9\u05D9\u05D3\u05D9\u05D9\u05DD.
+\u05E0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05D9\u05EA\u05D5\u05E3 \u05E4\u05E2\u05D5\u05DC\u05D4 - {agent_phone}`,
     maxLength: 480
   }
 };
 
-function buildXmlPayload(token, recipients, message, senderName = DEFAULT_SENDER) {
-  const escapeXml = (str) => str
+/**
+ * Build INFORU XML payload (correct format per official API docs)
+ * Uses Username + Password auth, semicolon-separated phones, <Sender> tag
+ */
+function buildXmlPayload(username, password, recipients, message, senderName = DEFAULT_SENDER) {
+  const escapeXml = (str) => String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 
+  // INFORU expects semicolon-separated phone numbers in single PhoneNumber element
   const phoneNumbers = Array.isArray(recipients) ? recipients : [recipients];
-  const recipientXml = phoneNumbers.map(p => `<PhoneNumber>${escapeXml(p)}</PhoneNumber>`).join('\n    ');
+  const phoneString = phoneNumbers.join(';');
 
   return `<Inforu>
-  <User>
-    <Token>${escapeXml(token)}</Token>
-  </User>
-  <Content Type="sms">
-    <Message>${escapeXml(message)}</Message>
-  </Content>
-  <Recipients>
-    ${recipientXml}
-  </Recipients>
-  <Settings>
-    <SenderName>${escapeXml(senderName)}</SenderName>
-  </Settings>
+<User>
+<Username>${escapeXml(username)}</Username>
+<Password>${escapeXml(password)}</Password>
+</User>
+<Content Type="sms">
+<Message>${escapeXml(message)}</Message>
+</Content>
+<Recipients>
+<PhoneNumber>${escapeXml(phoneString)}</PhoneNumber>
+</Recipients>
+<Settings>
+<Sender>${escapeXml(senderName)}</Sender>
+</Settings>
 </Inforu>`;
 }
 
 async function sendSms(recipients, message, options = {}) {
-  const token = process.env.INFORU_API_TOKEN;
-  if (!token) throw new Error('INFORU_API_TOKEN not configured');
+  const username = process.env.INFORU_USERNAME;
+  const password = process.env.INFORU_PASSWORD;
+  
+  if (!username || !password) {
+    throw new Error('INFORU_USERNAME and INFORU_PASSWORD must be configured in environment variables');
+  }
 
   const senderName = options.senderName || DEFAULT_SENDER;
   const phones = (Array.isArray(recipients) ? recipients : [recipients]).map(normalizePhone).filter(Boolean);
@@ -92,11 +106,13 @@ async function sendSms(recipients, message, options = {}) {
   const maxSingleSms = isHebrew ? 70 : 160;
   const segments = Math.ceil(message.length / maxSingleSms);
 
-  const xml = buildXmlPayload(token, phones, message, senderName);
+  const xml = buildXmlPayload(username, password, phones, message, senderName);
 
   try {
-    const response = await axios.post(INFORU_XML_URL, xml, {
-      headers: { 'Content-Type': 'text/xml; charset=utf-8' },
+    // INFORU API requires form-urlencoded with InforuXML parameter
+    const response = await axios.post(INFORU_XML_URL, null, {
+      params: { InforuXML: xml },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
       timeout: 30000
     });
 
@@ -229,18 +245,42 @@ async function getStats() {
 }
 
 async function checkAccountStatus() {
-  const token = process.env.INFORU_API_TOKEN;
-  if (!token) return { configured: false, error: 'INFORU_API_TOKEN not set' };
+  const username = process.env.INFORU_USERNAME;
+  const password = process.env.INFORU_PASSWORD;
+  
+  if (!username || !password) {
+    return { 
+      configured: false, 
+      error: 'INFORU_USERNAME and INFORU_PASSWORD not set. Set these in Railway environment variables.',
+      hint: 'Login to inforu.co.il to find your API credentials'
+    };
+  }
+  
   try {
-    const xml = buildXmlPayload(token, '0000000000', 'test', 'TEST');
-    const response = await axios.post(INFORU_XML_URL, xml, {
-      headers: { 'Content-Type': 'text/xml; charset=utf-8' }, timeout: 10000
+    // Send to invalid number just to verify credentials work
+    const xml = buildXmlPayload(username, password, '0000000000', 'credential_check', 'TEST');
+    const response = await axios.post(INFORU_XML_URL, null, {
+      params: { InforuXML: xml },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
+      timeout: 10000
     });
     const statusMatch = response.data.match(/<Status>(.*?)<\/Status>/);
+    const descMatch = response.data.match(/<Description>(.*?)<\/Description>/);
     const status = statusMatch ? parseInt(statusMatch[1]) : -999;
-    return { configured: true, tokenValid: status !== -2 && status !== -3, status, rawResponse: response.data };
+    const description = descMatch ? descMatch[1] : 'Unknown';
+    
+    // Status -2 = bad credentials, -18 = wrong number (means credentials work!)
+    const credentialsValid = status !== -2 && status !== -3 && status !== -4;
+    
+    return { 
+      configured: true, 
+      credentialsValid,
+      status, 
+      description,
+      rawResponse: response.data 
+    };
   } catch (err) {
-    return { configured: true, tokenValid: false, error: err.message };
+    return { configured: true, credentialsValid: false, error: err.message };
   }
 }
 
