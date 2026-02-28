@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.30.0';
-const BUILD = '2026-02-28-v4.30.0-messaging-sidebar';
+const VERSION = '4.31.0';
+const BUILD = '2026-03-01-v4.31.0-messaging-outreach';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -285,8 +285,25 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_building_details_complex ON building_details(complex_id)`);
       await pool.query(`ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_building_scan TIMESTAMP`);
     } catch (e) { /* table exists */ }
+
+    // v4.31.0: Messaging outreach - phone/contact on listings, channel on messages
+    const v431Columns = [
+      'ALTER TABLE listings ADD COLUMN IF NOT EXISTS phone TEXT',
+      'ALTER TABLE listings ADD COLUMN IF NOT EXISTS contact_name TEXT',
+      'ALTER TABLE listings ADD COLUMN IF NOT EXISTS platform_message_id TEXT',
+      'ALTER TABLE listing_messages ADD COLUMN IF NOT EXISTS channel TEXT DEFAULT \'auto\'',
+      'ALTER TABLE listing_messages ADD COLUMN IF NOT EXISTS platform_ref TEXT'
+    ];
+    for (const sql of v431Columns) {
+      try { await pool.query(sql); } catch (e) { /* column exists */ }
+    }
+    try {
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listings_phone ON listings(phone) WHERE phone IS NOT NULL`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listings_message_status ON listings(message_status)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_listing_messages_channel ON listing_messages(channel)`);
+    } catch (e) { /* indexes exist */ }
     
-    logger.info('Auto-migrations completed (v4.30.0 - messaging-sidebar)');
+    logger.info('Auto-migrations completed (v4.31.0 - messaging-outreach)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
