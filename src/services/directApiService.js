@@ -291,9 +291,9 @@ async function scanComplex(complexId) {
     logger.warn(`[Mavat] Error for ${complex.name}`, { error: err.message });
   }
 
-  // Update last scan timestamp
+  // Update dedicated scan timestamp (NOT updated_at which gets reset by enrichment/other updates)
   await pool.query(
-    `UPDATE complexes SET updated_at = NOW() WHERE id = $1`,
+    `UPDATE complexes SET last_direct_api_scan = NOW() WHERE id = $1`,
     [complexId]
   );
 
@@ -312,6 +312,15 @@ async function scanComplex(complexId) {
  * Scan multiple complexes using direct APIs
  */
 async function scanAll(options = {}) {
+  // Ensure dedicated scan tracking column exists (like last_yad2_scan)
+  try {
+    await pool.query(`
+      ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_direct_api_scan TIMESTAMP;
+    `);
+  } catch (e) {
+    logger.warn('Could not ensure last_direct_api_scan column', { error: e.message });
+  }
+
   let query = 'SELECT id, name, city FROM complexes WHERE 1=1';
   const params = [];
   let paramIndex = 1;
@@ -329,7 +338,8 @@ async function scanAll(options = {}) {
   }
 
   if (options.staleOnly) {
-    query += ` AND (updated_at IS NULL OR updated_at < NOW() - INTERVAL '7 days')`;
+    // Use dedicated scan column - not updated_at which gets reset by enrichment
+    query += ` AND (last_direct_api_scan IS NULL OR last_direct_api_scan < NOW() - INTERVAL '3 days')`;
   }
 
   query += ' ORDER BY iai_score DESC NULLS LAST, name ASC';
