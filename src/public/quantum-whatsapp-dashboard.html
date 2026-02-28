@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUANTUM WhatsApp Management Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        quantum: {
+                            50: '#f0f9ff',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            900: '#0c4a6e'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .loading { animation: pulse 2s infinite; }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-quantum-700 to-quantum-900 text-white shadow-lg">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold">QUANTUM WhatsApp</h1>
+                    <p class="text-quantum-200">מערכת ניהול הודעות ל-Pinuy-Binuy</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="status-indicator" class="flex items-center gap-2">
+                        <div class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                        <span id="status-text">מתחבר...</span>
+                    </div>
+                    <button onclick="runIntegrationTest()" class="bg-white text-quantum-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 transition">
+                        בדיקה מלאה
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="container mx-auto px-6 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- System Status -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">🔧 סטטוס מערכת</h2>
+                <div id="system-status" class="space-y-3">
+                    <div class="loading">טוען נתונים...</div>
+                </div>
+            </div>
+
+            <!-- Templates Status -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">📱 Templates</h2>
+                <div id="templates-status" class="space-y-3">
+                    <div class="loading">טוען נתונים...</div>
+                </div>
+                <button onclick="createAllTemplates()" class="w-full mt-4 bg-quantum-600 text-white py-2 rounded-lg hover:bg-quantum-700 transition">
+                    יצירת כל ה-Templates
+                </button>
+            </div>
+
+            <!-- Campaigns -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">🎯 Campaigns</h2>
+                <div id="campaigns-status" class="space-y-3">
+                    <div class="loading">טוען נתונים...</div>
+                </div>
+            </div>
+
+            <!-- Quick Send -->
+            <div class="bg-white rounded-xl shadow-lg p-6 lg:col-span-2">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">⚡ שליחה מהירה</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">מספר טלפון</label>
+                        <input type="text" id="phone-input" value="0522377712" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-quantum-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Template</label>
+                        <select id="template-select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-quantum-500">
+                            <option value="institutional_message">הודעה מוסדית (נבדק)</option>
+                            <option value="test_message">הודעת בדיקה</option>
+                            <option value="seller_initial">פנייה למוכר</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input type="text" id="name-var" placeholder="שם (משתנה)" class="px-3 py-2 border border-gray-300 rounded-lg">
+                    <input type="text" id="city-var" placeholder="עיר (משתנה)" class="px-3 py-2 border border-gray-300 rounded-lg">
+                    <input type="text" id="address-var" placeholder="כתובת (משתנה)" class="px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+                <button onclick="sendQuickMessage()" class="w-full mt-4 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition font-medium">
+                    שלח הודעה
+                </button>
+                <div id="send-result" class="mt-4"></div>
+            </div>
+
+            <!-- Analytics -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">📊 אנליטיקס</h2>
+                <div id="analytics-data" class="space-y-3">
+                    <div class="loading">טוען נתונים...</div>
+                </div>
+            </div>
+
+            <!-- Test Results -->
+            <div class="bg-white rounded-xl shadow-lg p-6 lg:col-span-3">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">🧪 תוצאות בדיקות</h2>
+                <div id="test-results" class="space-y-2">
+                    <p class="text-gray-600">לחץ על "בדיקה מלאה" להרצת כל הבדיקות</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div id="loading-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden items-center justify-center">
+        <div class="bg-white rounded-xl p-8 m-4 text-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-quantum-600 mx-auto mb-4"></div>
+            <h3 class="text-lg font-medium text-gray-800 mb-2">מבצע פעולה</h3>
+            <p id="loading-text" class="text-gray-600">אנא המתן...</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        // Utility Functions
+        function showLoading(text = 'אנא המתן...') {
+            document.getElementById('loading-text').textContent = text;
+            document.getElementById('loading-modal').classList.remove('hidden');
+            document.getElementById('loading-modal').classList.add('flex');
+        }
+        
+        function hideLoading() {
+            document.getElementById('loading-modal').classList.add('hidden');
+            document.getElementById('loading-modal').classList.remove('flex');
+        }
+        
+        function showResult(elementId, content, isError = false) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="fade-in p-3 rounded-lg ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">${content}</div>`;
+        }
+        
+        function formatStatus(status) {
+            const colors = {
+                'ok': 'text-green-600',
+                'success': 'text-green-600', 
+                'true': 'text-green-600',
+                'working': 'text-green-600',
+                'failed': 'text-red-600',
+                'false': 'text-red-600',
+                'error': 'text-red-600'
+            };
+            const color = colors[String(status).toLowerCase()] || 'text-gray-600';
+            return `<span class="${color}">${status}</span>`;
+        }
+
+        // System Status
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                let html = `
+                    <div class="text-sm space-y-2">
+                        <div class="flex justify-between">
+                            <span>מערכת:</span> ${formatStatus(data.status)}
+                        </div>
+                        <div class="flex justify-between">
+                            <span>גרסה:</span> <span class="font-mono text-xs">${data.version}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>מתחמים:</span> <span>${data.complexes?.toLocaleString() || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>רשימות:</span> <span>${data.listings?.toLocaleString() || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Routes:</span> <span>${data.routes_loaded || 0}/${(data.routes_loaded + data.routes_failed) || 0}</span>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('system-status').innerHTML = html;
+                
+                // Update status indicator
+                document.getElementById('status-text').textContent = data.status === 'ok' ? 'מחובר' : 'שגיאה';
+                
+            } catch (error) {
+                document.getElementById('system-status').innerHTML = `<div class="text-red-600">שגיאה: ${error.message}</div>`;
+            }
+        }
+
+        // Templates Status
+        async function loadTemplatesStatus() {
+            try {
+                // Check INFORU templates
+                const inforuResponse = await fetch(`${API_BASE}/api/inforu/whatsapp/templates`);
+                const inforuData = await inforuResponse.json();
+                
+                // Check QUANTUM templates status
+                const quantumResponse = await fetch(`${API_BASE}/api/quantum/templates/status`);
+                const quantumData = await quantumResponse.json();
+                
+                const totalTemplates = inforuData.Data?.Count || 0;
+                const approvedTemplates = inforuData.Data?.List?.filter(t => 
+                    t.ApprovalStatusDescription === 'APPROVED'
+                ).length || 0;
+                
+                const quantumApproved = Object.values(quantumData.quantumTemplates || {}).filter(t => t.approved).length;
+                const quantumPending = Object.values(quantumData.quantumTemplates || {}).filter(t => t.created && !t.approved).length;
+                const quantumNotCreated = Object.values(quantumData.quantumTemplates || {}).filter(t => !t.created).length;
+                
+                let html = `
+                    <div class="text-sm space-y-2">
+                        <div class="flex justify-between">
+                            <span>סה"כ Templates:</span> <span>${totalTemplates}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>מאושרים:</span> <span class="text-green-600">${approvedTemplates}</span>
+                        </div>
+                        <div class="bg-gray-50 p-2 rounded mt-2">
+                            <div class="font-medium text-xs text-gray-700 mb-1">QUANTUM Templates:</div>
+                            <div class="flex justify-between text-xs">
+                                <span>מאושרים:</span> <span class="text-green-600">${quantumApproved}</span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span>ממתינים:</span> <span class="text-yellow-600">${quantumPending}</span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span>לא נוצרו:</span> <span class="text-gray-600">${quantumNotCreated}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('templates-status').innerHTML = html;
+                
+            } catch (error) {
+                document.getElementById('templates-status').innerHTML = `<div class="text-red-600">שגיאה: ${error.message}</div>`;
+            }
+        }
+
+        // Campaigns Status
+        async function loadCampaignsStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/quantum/campaigns`);
+                const data = await response.json();
+                
+                const campaignCount = Object.keys(data.campaigns || {}).length;
+                const templateCount = Object.keys(data.templates || {}).length;
+                
+                let html = `
+                    <div class="text-sm space-y-2">
+                        <div class="flex justify-between">
+                            <span>Campaigns:</span> <span>${campaignCount}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Templates:</span> <span>${templateCount}</span>
+                        </div>
+                        <div class="mt-3 space-y-1">
+                `;
+                
+                Object.keys(data.campaigns || {}).forEach(key => {
+                    const priority = data.campaigns[key].priority;
+                    const color = priority === 'urgent' ? 'text-red-600' : priority === 'high' ? 'text-orange-600' : 'text-blue-600';
+                    html += `<div class="text-xs ${color}">${key}</div>`;
+                });
+                
+                html += `</div></div>`;
+                document.getElementById('campaigns-status').innerHTML = html;
+                
+            } catch (error) {
+                document.getElementById('campaigns-status').innerHTML = `<div class="text-red-600">שגיאה: ${error.message}</div>`;
+            }
+        }
+
+        // Analytics
+        async function loadAnalytics() {
+            try {
+                const response = await fetch(`${API_BASE}/api/quantum/analytics`);
+                const data = await response.json();
+                
+                let html = `
+                    <div class="text-sm space-y-2">
+                        <div class="flex justify-between">
+                            <span>נשלחו:</span> <span>${data.summary?.totalSent || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>הצליחו:</span> <span class="text-green-600">${data.summary?.successful || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>נכשלו:</span> <span class="text-red-600">${data.summary?.failed || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>אחוז הצלחה:</span> <span>${data.summary?.successRate || 0}%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>נמענים:</span> <span>${data.summary?.uniqueRecipients || 0}</span>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('analytics-data').innerHTML = html;
+                
+            } catch (error) {
+                document.getElementById('analytics-data').innerHTML = `<div class="text-red-600">שגיאה: ${error.message}</div>`;
+            }
+        }
+
+        // Quick Send Message
+        async function sendQuickMessage() {
+            const phone = document.getElementById('phone-input').value;
+            const template = document.getElementById('template-select').value;
+            const name = document.getElementById('name-var').value;
+            const city = document.getElementById('city-var').value;
+            const address = document.getElementById('address-var').value;
+            
+            if (!phone) {
+                showResult('send-result', 'אנא הזן מספר טלפון', true);
+                return;
+            }
+            
+            try {
+                showLoading('שולח הודעה...');
+                
+                const payload = {
+                    phone,
+                    template,
+                    variables: { name, city, address },
+                    options: { source: 'dashboard_quick_send' }
+                };
+                
+                const response = await fetch(`${API_BASE}/api/quantum/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                hideLoading();
+                
+                if (result.success) {
+                    showResult('send-result', `✅ הודעה נשלחה בהצלחה! Template: ${result.quantum?.templateType}`);
+                } else {
+                    showResult('send-result', `❌ השליחה נכשלה: ${result.description}`, true);
+                }
+                
+                // Refresh analytics
+                setTimeout(loadAnalytics, 2000);
+                
+            } catch (error) {
+                hideLoading();
+                showResult('send-result', `שגיאה: ${error.message}`, true);
+            }
+        }
+
+        // Create All Templates
+        async function createAllTemplates() {
+            try {
+                showLoading('יוצר QUANTUM Templates...');
+                
+                const response = await fetch(`${API_BASE}/api/quantum/templates/create-all`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+                hideLoading();
+                
+                if (response.ok) {
+                    alert(`יצירת Templates החלה! ${result.templates?.length || 0} templates יתווספו.\\n\\nזה יקח כמה דקות בגלל rate limiting.`);
+                    setTimeout(loadTemplatesStatus, 5000);
+                } else {
+                    alert(`שגיאה ביצירת Templates: ${result.error}`);
+                }
+                
+            } catch (error) {
+                hideLoading();
+                alert(`שגיאה: ${error.message}`);
+            }
+        }
+
+        // Run Integration Test
+        async function runIntegrationTest() {
+            try {
+                showLoading('מריץ בדיקות אינטגרציה...');
+                
+                const QuantumTester = await import(`${API_BASE}/api/quantum/test`);
+                const results = await QuantumTester.runTests();
+                
+                hideLoading();
+                
+                let html = `
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold">תוצאות בדיקות</h3>
+                            <div class="text-sm">
+                                <span class="text-green-600">${results.summary.passed} הצליחו</span> |
+                                <span class="text-red-600">${results.summary.failed} נכשלו</span> |
+                                <span class="text-yellow-600">${results.summary.skipped} דולגו</span>
+                            </div>
+                        </div>
+                        <div class="space-y-2 max-h-64 overflow-y-auto">
+                `;
+                
+                results.tests.forEach(test => {
+                    const icon = test.status === 'PASSED' ? '✅' : test.status === 'FAILED' ? '❌' : '⏭️';
+                    const color = test.status === 'PASSED' ? 'text-green-700' : test.status === 'FAILED' ? 'text-red-700' : 'text-yellow-700';
+                    html += `
+                        <div class="flex items-center justify-between p-2 bg-white rounded text-sm">
+                            <span class="${color}">${icon} ${test.name}</span>
+                            <span class="text-xs text-gray-500">${test.duration || 0}ms</span>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+                document.getElementById('test-results').innerHTML = html;
+                
+            } catch (error) {
+                hideLoading();
+                document.getElementById('test-results').innerHTML = `<div class="text-red-600">שגיאה בהרצת בדיקות: ${error.message}</div>`;
+            }
+        }
+
+        // Initialize Dashboard
+        async function initDashboard() {
+            await Promise.all([
+                loadSystemStatus(),
+                loadTemplatesStatus(), 
+                loadCampaignsStatus(),
+                loadAnalytics()
+            ]);
+        }
+
+        // Auto refresh every 30 seconds
+        setInterval(() => {
+            initDashboard();
+        }, 30000);
+
+        // Initialize on load
+        window.addEventListener('load', initDashboard);
+    </script>
+</body>
+</html>
