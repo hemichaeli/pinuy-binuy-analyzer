@@ -9,7 +9,7 @@
  * 
  * Supports:
  *   - Auto-send on new listing discovery
- *   - Filter-based batch send (city, SSI, price, rooms, area, platform, complex)
+ *   - Filter-based batch send (city, SSI, price, rooms, area, source, complex)
  *   - Configurable templates per platform
  *   - Rate limiting and throttling
  *   - Message tracking and analytics
@@ -115,7 +115,7 @@ function fillTemplate(templateStr, listing, extraVars = {}) {
     rooms: listing.rooms || '',
     area: listing.area_sqm || '',
     floor: listing.floor || '',
-    platform: listing.platform || 'yad2',
+    platform: listing.source || 'yad2',
     complex_name: listing.complex_name || '',
     contact_name: listing.contact_name || '',
     agent_phone: autoSendConfig.agent_phone,
@@ -129,7 +129,7 @@ function fillTemplate(templateStr, listing, extraVars = {}) {
 }
 
 async function sendToListing(listing, messageText, options = {}) {
-  const platform = (listing.platform || 'yad2').toLowerCase();
+  const platform = (listing.source || 'yad2').toLowerCase();
   const result = { listing_id: listing.id, platform, channel: 'unknown', success: false, message_text: messageText, error: null };
   
   try {
@@ -235,20 +235,21 @@ async function sendByFilter(filters = {}, templateId = 'yad2_seller', extraVars 
   
   if (filters.city) { conditions.push(`l.city = $${paramIdx++}`); params.push(filters.city); }
   if (filters.cities && filters.cities.length) { conditions.push(`l.city = ANY($${paramIdx++})`); params.push(filters.cities); }
-  if (filters.platform) { conditions.push(`l.platform = $${paramIdx++}`); params.push(filters.platform); }
+  if (filters.source) { conditions.push(`l.source = $${paramIdx++}`); params.push(filters.source); }
+  if (filters.platform) { conditions.push(`l.source = $${paramIdx++}`); params.push(filters.platform); }
   if (filters.min_price) { conditions.push(`l.asking_price >= $${paramIdx++}`); params.push(filters.min_price); }
   if (filters.max_price) { conditions.push(`l.asking_price <= $${paramIdx++}`); params.push(filters.max_price); }
   if (filters.min_rooms) { conditions.push(`l.rooms >= $${paramIdx++}`); params.push(filters.min_rooms); }
   if (filters.max_rooms) { conditions.push(`l.rooms <= $${paramIdx++}`); params.push(filters.max_rooms); }
   if (filters.min_area) { conditions.push(`l.area_sqm >= $${paramIdx++}`); params.push(filters.min_area); }
   if (filters.complex_id) { conditions.push(`l.complex_id = $${paramIdx++}`); params.push(filters.complex_id); }
-  if (filters.min_ssi) { conditions.push(`c.avg_ssi >= $${paramIdx++}`); params.push(filters.min_ssi); }
+  if (filters.min_ssi) { conditions.push(`l.ssi_score >= $${paramIdx++}`); params.push(filters.min_ssi); }
   if (filters.min_iai) { conditions.push(`c.iai_score >= $${paramIdx++}`); params.push(filters.min_iai); }
   
   const limit = filters.limit || 50;
   
   const result = await pool.query(`
-    SELECT l.*, c.name as complex_name, c.avg_ssi, c.iai_score
+    SELECT l.*, c.name as complex_name, c.iai_score
     FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id
     WHERE ${conditions.join(' AND ')}
     ORDER BY l.created_at DESC LIMIT ${limit}
@@ -295,18 +296,18 @@ async function autoSendToNewListings(newListingIds = []) {
   for (const listingId of idsToProcess) {
     try {
       const listingResult = await pool.query(
-        `SELECT l.*, c.name as complex_name, c.avg_ssi, c.iai_score
+        `SELECT l.*, c.name as complex_name, c.iai_score
          FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id WHERE l.id = $1`,
         [listingId]
       );
       if (listingResult.rows.length === 0) continue;
       const listing = listingResult.rows[0];
       
-      if (autoSendConfig.platforms.length > 0 && !autoSendConfig.platforms.includes(listing.platform)) continue;
+      if (autoSendConfig.platforms.length > 0 && !autoSendConfig.platforms.includes(listing.source)) continue;
       
       const f = autoSendConfig.filters;
       if (f.city && listing.city !== f.city) continue;
-      if (f.min_ssi && listing.avg_ssi < f.min_ssi) continue;
+      if (f.min_ssi && listing.ssi_score < f.min_ssi) continue;
       if (f.min_iai && listing.iai_score < f.min_iai) continue;
       if (f.max_price && listing.asking_price > f.max_price) continue;
       
@@ -354,9 +355,9 @@ async function previewMessage(listingId, templateId, extraVars = {}) {
     listing_id: listingId,
     template_id: templateId,
     message: fillTemplate(template.template, listing, extraVars),
-    platform: listing.platform,
-    channel: { yad2: 'yad2_chat', kones: 'sms', receivership: 'sms', facebook: 'manual_facebook' }[(listing.platform || '').toLowerCase()] || 'manual',
-    listing_summary: { address: listing.address, city: listing.city, price: listing.asking_price, rooms: listing.rooms, platform: listing.platform }
+    source: listing.source,
+    channel: { yad2: 'yad2_chat', kones: 'sms', receivership: 'sms', facebook: 'manual_facebook' }[(listing.source || '').toLowerCase()] || 'manual',
+    listing_summary: { address: listing.address, city: listing.city, price: listing.asking_price, rooms: listing.rooms, source: listing.source }
   };
 }
 
@@ -371,10 +372,10 @@ async function getDashboardStats() {
       COUNT(*) FILTER (WHERE deal_status = 'בטיפול') as in_progress
     FROM listings WHERE is_active = TRUE
   `);
-  const byPlatform = await pool.query(`
-    SELECT platform, COUNT(*) as count,
+  const bySource = await pool.query(`
+    SELECT source, COUNT(*) as count,
       COUNT(*) FILTER (WHERE message_status = 'נשלחה') as sent
-    FROM listings WHERE is_active = TRUE GROUP BY platform ORDER BY count DESC
+    FROM listings WHERE is_active = TRUE GROUP BY source ORDER BY count DESC
   `);
   const byCity = await pool.query(`
     SELECT city, COUNT(*) as count,
@@ -382,11 +383,11 @@ async function getDashboardStats() {
     FROM listings WHERE is_active = TRUE GROUP BY city ORDER BY count DESC LIMIT 20
   `);
   const recent = await pool.query(`
-    SELECT lm.*, l.address, l.city, l.platform
+    SELECT lm.*, l.address, l.city, l.source
     FROM listing_messages lm JOIN listings l ON lm.listing_id = l.id
     ORDER BY lm.created_at DESC LIMIT 20
   `);
-  return { overview: stats.rows[0], by_platform: byPlatform.rows, by_city: byCity.rows, recent_messages: recent.rows, auto_send: getAutoSendConfig() };
+  return { overview: stats.rows[0], by_source: bySource.rows, by_city: byCity.rows, recent_messages: recent.rows, auto_send: getAutoSendConfig() };
 }
 
 async function ensureMessagingTables() {
