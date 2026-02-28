@@ -3,89 +3,111 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 /**
- * INFORU SMS Service for QUANTUM (Fixed v2)
- * Uses InforUMobile API - Correct XML format with Username/Password auth
- * 
- * Required env vars:
- *   INFORU_USERNAME - Account username from InforUMobile
- *   INFORU_PASSWORD - Account password from InforUMobile
- * 
- * API docs: https://uapi.inforu.co.il/SendMessageXml.ashx?InforuXML={xml}
+ * INFORU SMS + WhatsApp Service for QUANTUM
+ * SMS: UAPI XML endpoint
+ * WhatsApp: CAPI v2 REST endpoint
  */
 
 const INFORU_XML_URL = 'https://uapi.inforu.co.il/SendMessageXml.ashx';
+const INFORU_CAPI_BASE = 'https://capi.inforu.co.il/api/v2';
 const DEFAULT_SENDER = 'QUANTUM';
 
-const TEMPLATES = {
+// --- SMS Templates (free-text) ---
+const SMS_TEMPLATES = {
   seller_initial: {
-    name: '\u05E4\u05E0\u05D9\u05D9\u05D4 \u05E8\u05D0\u05E9\u05D5\u05E0\u05D9\u05EA \u05DC\u05DE\u05D5\u05DB\u05E8',
-    template: `\u05E9\u05DC\u05D5\u05DD {name},
-\u05E8\u05D0\u05D9\u05EA\u05D9 \u05E9\u05D9\u05E9 \u05DC\u05DA \u05E0\u05DB\u05E1 \u05DC\u05DE\u05DB\u05D9\u05E8\u05D4 \u05D1{address}, {city}.
-\u05D0\u05E0\u05D9 \u05DE-QUANTUM, \u05DE\u05E9\u05E8\u05D3 \u05EA\u05D9\u05D5\u05D5\u05DA \u05D4\u05DE\u05EA\u05DE\u05D7\u05D4 \u05D1\u05E4\u05D9\u05E0\u05D5\u05D9-\u05D1\u05D9\u05E0\u05D5\u05D9.
-\u05D9\u05E9 \u05DC\u05E0\u05D5 \u05E7\u05D5\u05E0\u05D9\u05DD \u05E8\u05E6\u05D9\u05E0\u05D9\u05D9\u05DD \u05DC\u05D0\u05D6\u05D5\u05E8 \u05E9\u05DC\u05DA.
-\u05D0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05D5\u05D7\u05D7 - {agent_phone}
+    name: 'פנייה ראשונית למוכר',
+    template: `שלום {name},
+ראיתי שיש לך נכס למכירה ב{address}, {city}.
+אני מ-QUANTUM, משרד תיווך המתמחה בפינוי-בינוי.
+יש לנו קונים רציניים לאזור שלך.
+אשמח לשוחח - {agent_phone}
 QUANTUM Real Estate`,
     maxLength: 480
   },
   seller_followup: {
-    name: '\u05DE\u05E2\u05E7\u05D1 \u05DC\u05DE\u05D5\u05DB\u05E8',
-    template: `\u05E9\u05DC\u05D5\u05DD {name},
-\u05E4\u05E0\u05D9\u05EA\u05D9 \u05D0\u05DC\u05D9\u05DA \u05DC\u05E4\u05E0\u05D9 \u05DE\u05E1\u05E4\u05E8 \u05D9\u05DE\u05D9\u05DD \u05D1\u05E0\u05D5\u05D2\u05E2 \u05DC\u05E0\u05DB\u05E1 \u05D1{address}.
-\u05E2\u05D3\u05D9\u05D9\u05DF \u05D9\u05E9 \u05DC\u05E0\u05D5 \u05E2\u05E0\u05D9\u05D9\u05DF \u05E8\u05D1 \u05DE\u05E6\u05D3 \u05E7\u05D5\u05E0\u05D9\u05DD.
-\u05E0\u05E9\u05DE\u05D7 \u05DC\u05E2\u05D6\u05D5\u05E8 - {agent_phone}
+    name: 'מעקב למוכר',
+    template: `שלום {name},
+פניתי אליך לפני מספר ימים בנוגע לנכס ב{address}.
+עדיין יש לנו עניין רב מצד קונים.
+נשמח לעזור - {agent_phone}
 QUANTUM`,
     maxLength: 320
   },
   buyer_opportunity: {
-    name: '\u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA \u05DC\u05E7\u05D5\u05E0\u05D4',
-    template: `\u05E9\u05DC\u05D5\u05DD {name},
-\u05D9\u05E9 \u05DC\u05E0\u05D5 \u05D4\u05D6\u05D3\u05DE\u05E0\u05D5\u05EA \u05D7\u05D3\u05E9\u05D4 \u05E9\u05DE\u05EA\u05D0\u05D9\u05DE\u05D4 \u05DC\u05DA:
+    name: 'הזדמנות לקונה',
+    template: `שלום {name},
+יש לנו הזדמנות חדשה שמתאימה לך:
 {complex_name}, {city}
-\u05DE\u05DB\u05E4\u05D9\u05DC: x{multiplier} | \u05E1\u05D8\u05D8\u05D5\u05E1: {status}
-\u05DC\u05E4\u05E8\u05D8\u05D9\u05DD: {agent_phone}
+מכפיל: x{multiplier} | סטטוס: {status}
+לפרטים: {agent_phone}
 QUANTUM`,
     maxLength: 320
   },
   kones_inquiry: {
-    name: '\u05E4\u05E0\u05D9\u05D9\u05D4 \u05DC\u05DB\u05D5\u05E0\u05E1',
-    template: `\u05DC\u05DB\u05D1\u05D5\u05D3 \u05E2\u05D5"\u05D3 {name},
-\u05D1\u05E0\u05D5\u05D2\u05E2 \u05DC\u05E0\u05DB\u05E1 \u05D1\u05DB\u05D9\u05E0\u05D5\u05E1 \u05D1{address}, {city}.
-\u05D0\u05E0\u05D5 \u05DE-QUANTUM, \u05DE\u05E9\u05E8\u05D3 \u05EA\u05D9\u05D5\u05D5\u05DA \u05DE\u05EA\u05DE\u05D7\u05D4 \u05D1\u05E4\u05D9\u05E0\u05D5\u05D9-\u05D1\u05D9\u05E0\u05D5\u05D9.
-\u05D9\u05E9 \u05DC\u05E0\u05D5 \u05E7\u05D5\u05E0\u05D9\u05DD \u05E4\u05D5\u05D8\u05E0\u05E6\u05D9\u05D0\u05DC\u05D9\u05D9\u05DD \u05DE\u05D9\u05D9\u05D3\u05D9\u05D9\u05DD.
-\u05E0\u05E9\u05DE\u05D7 \u05DC\u05E9\u05D9\u05EA\u05D5\u05E3 \u05E4\u05E2\u05D5\u05DC\u05D4 - {agent_phone}`,
+    name: 'פנייה לכונס',
+    template: `לכבוד עו"ד {name},
+בנוגע לנכס בכינוס ב{address}, {city}.
+אנו מ-QUANTUM, משרד תיווך המתמחה בפינוי-בינוי.
+יש לנו קונים פוטנציאליים מיידיים.
+נשמח לשיתוף פעולה - {agent_phone}`,
     maxLength: 480
   }
 };
 
-/**
- * Build INFORU XML payload (correct format per official API docs)
- * Uses Username + Password auth, semicolon-separated phones, <Sender> tag
- */
+// --- WhatsApp Templates (INFORU approved) ---
+const WA_TEMPLATES = {
+  seller_initial: {
+    templateId: '245719',
+    name: 'quantum_seller_initial',
+    params: ['name', 'address']
+  },
+  seller_followup: {
+    templateId: '245722',
+    name: 'quantum_seller_followup',
+    params: ['name', 'address']
+  },
+  buyer_opportunity: {
+    templateId: '245720',
+    name: 'quantum_buyer_opportunity',
+    params: ['name', 'property_desc', 'details']
+  },
+  kones_inquiry: {
+    templateId: '245721',
+    name: 'quantum_kones_inquiry',
+    params: ['name', 'address']
+  }
+};
+
+// ==================== AUTH ====================
+
+function getBasicAuth() {
+  const username = process.env.INFORU_USERNAME;
+  const password = process.env.INFORU_PASSWORD;
+  if (!username || !password) throw new Error('INFORU credentials not configured');
+  return 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+}
+
+// ==================== SMS ====================
+
 function buildXmlPayload(username, password, recipients, message, senderName = DEFAULT_SENDER) {
-  const escapeXml = (str) => String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  const esc = (str) => String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
-  // INFORU expects semicolon-separated phone numbers in single PhoneNumber element
-  const phoneNumbers = Array.isArray(recipients) ? recipients : [recipients];
-  const phoneString = phoneNumbers.join(';');
-
+  const phones = Array.isArray(recipients) ? recipients : [recipients];
   return `<Inforu>
 <User>
-<Username>${escapeXml(username)}</Username>
-<Password>${escapeXml(password)}</Password>
+<Username>${esc(username)}</Username>
+<Password>${esc(password)}</Password>
 </User>
 <Content Type="sms">
-<Message>${escapeXml(message)}</Message>
+<Message>${esc(message)}</Message>
 </Content>
 <Recipients>
-<PhoneNumber>${escapeXml(phoneString)}</PhoneNumber>
+<PhoneNumber>${esc(phones.join(';'))}</PhoneNumber>
 </Recipients>
 <Settings>
-<Sender>${escapeXml(senderName)}</Sender>
+<Sender>${esc(senderName)}</Sender>
 </Settings>
 </Inforu>`;
 }
@@ -93,61 +115,262 @@ function buildXmlPayload(username, password, recipients, message, senderName = D
 async function sendSms(recipients, message, options = {}) {
   const username = process.env.INFORU_USERNAME;
   const password = process.env.INFORU_PASSWORD;
-  
-  if (!username || !password) {
-    throw new Error('INFORU_USERNAME and INFORU_PASSWORD must be configured in environment variables');
-  }
+  if (!username || !password) throw new Error('INFORU credentials not configured');
 
-  const senderName = options.senderName || DEFAULT_SENDER;
   const phones = (Array.isArray(recipients) ? recipients : [recipients]).map(normalizePhone).filter(Boolean);
-  if (phones.length === 0) throw new Error('No valid phone numbers provided');
+  if (phones.length === 0) throw new Error('No valid phone numbers');
 
   const isHebrew = /[\u0590-\u05FF]/.test(message);
-  const maxSingleSms = isHebrew ? 70 : 160;
-  const segments = Math.ceil(message.length / maxSingleSms);
-
-  const xml = buildXmlPayload(username, password, phones, message, senderName);
+  const segments = Math.ceil(message.length / (isHebrew ? 70 : 160));
+  const xml = buildXmlPayload(username, password, phones, message, options.senderName || DEFAULT_SENDER);
 
   try {
-    // INFORU API requires form-urlencoded with InforuXML parameter
     const response = await axios.post(INFORU_XML_URL, null, {
       params: { InforuXML: xml },
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
       timeout: 30000
     });
 
-    const statusMatch = response.data.match(/<Status>(.*?)<\/Status>/);
-    const descMatch = response.data.match(/<Description>(.*?)<\/Description>/);
-    const countMatch = response.data.match(/<NumberOfRecipients>(.*?)<\/NumberOfRecipients>/);
-
-    const status = statusMatch ? parseInt(statusMatch[1]) : -999;
-    const description = descMatch ? descMatch[1] : 'Unknown';
-    const recipientCount = countMatch ? parseInt(countMatch[1]) : 0;
+    const status = parseInt((response.data.match(/<Status>(.*?)<\/Status>/) || [])[1] || '-999');
+    const description = (response.data.match(/<Description>(.*?)<\/Description>/) || [])[1] || 'Unknown';
+    const recipientCount = parseInt((response.data.match(/<NumberOfRecipients>(.*?)<\/NumberOfRecipients>/) || [])[1] || '0');
 
     const result = {
-      success: status === 1,
-      status,
-      description,
-      recipientsCount: recipientCount,
-      messageSegments: segments,
-      phones,
-      timestamp: new Date().toISOString()
+      success: status === 1, status, description,
+      recipientsCount: recipientCount, messageSegments: segments,
+      phones, channel: 'sms', timestamp: new Date().toISOString()
     };
 
-    await logMessage(result, message, phones, options);
-
-    if (status !== 1) {
-      logger.warn('INFORU SMS failed', { status, description, phones });
-    } else {
-      logger.info(`INFORU SMS sent to ${recipientCount} recipients`, { phones });
-    }
+    await logMessage(result, message, phones, { ...options, channel: 'sms' });
+    if (status === 1) logger.info(`SMS sent to ${recipientCount} recipients`, { phones });
+    else logger.warn('SMS failed', { status, description, phones });
 
     return result;
   } catch (err) {
-    logger.error('INFORU API error', { error: err.message });
+    logger.error('SMS API error', { error: err.message });
     throw err;
   }
 }
+
+// ==================== WHATSAPP ====================
+
+/**
+ * Send WhatsApp template message via CAPI
+ * @param {string|string[]} recipients - Phone number(s)
+ * @param {string} templateKey - Key from WA_TEMPLATES
+ * @param {object} variables - Template parameter values
+ * @param {object} options - Additional options
+ */
+async function sendWhatsApp(recipients, templateKey, variables = {}, options = {}) {
+  const tmpl = WA_TEMPLATES[templateKey];
+  if (!tmpl) throw new Error(`WhatsApp template "${templateKey}" not found`);
+
+  const phones = (Array.isArray(recipients) ? recipients : [recipients]).map(normalizePhoneLocal).filter(Boolean);
+  if (phones.length === 0) throw new Error('No valid phone numbers');
+
+  // Build template parameters
+  const templateParams = tmpl.params.map((paramName, idx) => ({
+    Name: `[#${idx + 1}#]`,
+    Type: 'Text',
+    Value: variables[paramName] || variables[`param${idx + 1}`] || ''
+  }));
+
+  // Build recipients array
+  const recipientsArray = phones.map(phone => ({ Phone: phone }));
+
+  const payload = {
+    Data: {
+      TemplateId: tmpl.templateId,
+      ...(templateParams.length > 0 ? { TemplateParameters: templateParams } : {}),
+      Recipients: recipientsArray
+    }
+  };
+
+  try {
+    const response = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/SendWhatsApp`, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': getBasicAuth()
+      },
+      timeout: 30000
+    });
+
+    const data = response.data;
+    const result = {
+      success: data.StatusId === 1,
+      status: data.StatusId,
+      description: data.StatusDescription,
+      recipientsCount: data.Data?.Recipients || 0,
+      errors: data.Data?.Errors || null,
+      phones, channel: 'whatsapp',
+      templateKey, templateId: tmpl.templateId,
+      timestamp: new Date().toISOString()
+    };
+
+    // Build message text for logging
+    const msgText = `[WA Template: ${tmpl.name}] ${JSON.stringify(variables)}`;
+    await logMessage(result, msgText, phones, { ...options, channel: 'whatsapp', templateKey });
+
+    if (data.StatusId === 1) logger.info(`WhatsApp sent to ${data.Data?.Recipients} recipients`, { templateKey, phones });
+    else logger.warn('WhatsApp send failed', { status: data.StatusId, description: data.StatusDescription, errors: data.Data?.Errors });
+
+    return result;
+  } catch (err) {
+    logger.error('WhatsApp API error', { error: err.message, templateKey });
+    throw err;
+  }
+}
+
+/**
+ * Send WhatsApp chat message (only within 24h window)
+ */
+async function sendWhatsAppChat(phone, message, options = {}) {
+  const normalizedPhone = normalizePhoneLocal(phone);
+  if (!normalizedPhone) throw new Error('Invalid phone number');
+
+  const payload = {
+    Data: {
+      Message: message,
+      Phone: normalizedPhone,
+      ...(options.mediaUrl ? { MessageMedia: options.mediaUrl } : {}),
+      Settings: {
+        ...(options.customerMessageId ? { CustomerMessageId: options.customerMessageId } : {}),
+        ...(options.customerParameter ? { CustomerParameter: options.customerParameter } : {})
+      }
+    }
+  };
+
+  try {
+    const response = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/SendWhatsAppChat`, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': getBasicAuth()
+      },
+      timeout: 30000
+    });
+
+    const data = response.data;
+    const result = {
+      success: data.StatusId === 1,
+      status: data.StatusId,
+      description: data.StatusDescription,
+      phone: normalizedPhone, channel: 'whatsapp_chat',
+      timestamp: new Date().toISOString()
+    };
+
+    await logMessage(result, message, [normalizedPhone], { ...options, channel: 'whatsapp_chat' });
+    return result;
+  } catch (err) {
+    logger.error('WhatsApp Chat API error', { error: err.message });
+    throw err;
+  }
+}
+
+/**
+ * Get list of WhatsApp templates from INFORU
+ */
+async function getWhatsAppTemplates() {
+  try {
+    const response = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/GetTemplateList`, 
+      { Data: {} },
+      {
+        headers: { 'Content-Type': 'application/json', 'Authorization': getBasicAuth() },
+        timeout: 15000
+      }
+    );
+    return response.data;
+  } catch (err) {
+    logger.error('Failed to get WA templates', { error: err.message });
+    throw err;
+  }
+}
+
+/**
+ * Get WhatsApp template details
+ */
+async function getWhatsAppTemplate(templateId) {
+  try {
+    const response = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/GetTemplate`,
+      { Data: { TemplateId: String(templateId) } },
+      {
+        headers: { 'Content-Type': 'application/json', 'Authorization': getBasicAuth() },
+        timeout: 15000
+      }
+    );
+    return response.data;
+  } catch (err) {
+    logger.error('Failed to get WA template', { error: err.message, templateId });
+    throw err;
+  }
+}
+
+/**
+ * Pull incoming WhatsApp messages
+ */
+async function pullIncomingWhatsApp(batchSize = 100) {
+  try {
+    const response = await axios.post(`${INFORU_CAPI_BASE}/PullData`,
+      { Data: { Type: 'IncomingMessagesWhatsapp', BatchSize: batchSize } },
+      {
+        headers: { 'Content-Type': 'application/json', 'Authorization': getBasicAuth() },
+        timeout: 15000
+      }
+    );
+    return response.data;
+  } catch (err) {
+    logger.error('Failed to pull WA messages', { error: err.message });
+    throw err;
+  }
+}
+
+/**
+ * Pull WhatsApp delivery reports
+ */
+async function pullWhatsAppDLR(batchSize = 100) {
+  try {
+    const response = await axios.post(`${INFORU_CAPI_BASE}/PullData`,
+      { Data: { Type: 'DeliveryNotificationWhatsapp', BatchSize: batchSize } },
+      {
+        headers: { 'Content-Type': 'application/json', 'Authorization': getBasicAuth() },
+        timeout: 15000
+      }
+    );
+    return response.data;
+  } catch (err) {
+    logger.error('Failed to pull WA DLR', { error: err.message });
+    throw err;
+  }
+}
+
+// ==================== DUAL CHANNEL ====================
+
+/**
+ * Send message on both SMS and WhatsApp
+ */
+async function sendDualChannel(recipients, templateKey, variables = {}, options = {}) {
+  const results = { sms: null, whatsapp: null };
+
+  // Send SMS
+  try {
+    const smsMessage = fillTemplate(templateKey, variables);
+    results.sms = await sendSms(recipients, smsMessage, options);
+  } catch (err) {
+    results.sms = { success: false, error: err.message, channel: 'sms' };
+  }
+
+  // Send WhatsApp (if template exists)
+  if (WA_TEMPLATES[templateKey]) {
+    try {
+      results.whatsapp = await sendWhatsApp(recipients, templateKey, variables, options);
+    } catch (err) {
+      results.whatsapp = { success: false, error: err.message, channel: 'whatsapp' };
+    }
+  }
+
+  return results;
+}
+
+// ==================== HELPERS ====================
 
 function normalizePhone(phone) {
   if (!phone) return null;
@@ -160,9 +383,19 @@ function normalizePhone(phone) {
   return null;
 }
 
+// For WhatsApp CAPI - keep local format (05x)
+function normalizePhoneLocal(phone) {
+  if (!phone) return null;
+  let cleaned = phone.toString().replace(/[\s\-\(\)\.]/g, '');
+  if (cleaned.startsWith('+972')) cleaned = '0' + cleaned.substring(4);
+  if (cleaned.startsWith('972')) cleaned = '0' + cleaned.substring(3);
+  if (cleaned.startsWith('05') && cleaned.length === 10) return cleaned;
+  return cleaned;
+}
+
 function fillTemplate(templateKey, variables) {
-  const tmpl = TEMPLATES[templateKey];
-  if (!tmpl) throw new Error(`Template "${templateKey}" not found`);
+  const tmpl = SMS_TEMPLATES[templateKey];
+  if (!tmpl) throw new Error(`SMS template "${templateKey}" not found`);
   let message = tmpl.template;
   for (const [key, value] of Object.entries(variables)) {
     message = message.replace(new RegExp(`\\{${key}\\}`, 'g'), value || '');
@@ -171,31 +404,45 @@ function fillTemplate(templateKey, variables) {
 }
 
 async function bulkSend(templateKey, recipientsList, options = {}) {
+  const channel = options.channel || 'sms';
   const results = { total: recipientsList.length, sent: 0, failed: 0, errors: [], details: [] };
   const batchSize = options.batchSize || 10;
-  const delayBetweenBatches = options.delayMs || 2000;
+  const delayMs = options.delayMs || 2000;
 
   for (let i = 0; i < recipientsList.length; i += batchSize) {
     const batch = recipientsList.slice(i, i + batchSize);
     for (const recipient of batch) {
       try {
-        const message = fillTemplate(templateKey, recipient.variables || {});
-        const result = await sendSms(recipient.phone, message, {
-          ...options, listingId: recipient.listingId, complexId: recipient.complexId
-        });
-        if (result.success) results.sent++; else { results.failed++; results.errors.push({ phone: recipient.phone, error: result.description }); }
+        let result;
+        if (channel === 'whatsapp') {
+          result = await sendWhatsApp(recipient.phone, templateKey, recipient.variables || {}, options);
+        } else if (channel === 'dual') {
+          result = await sendDualChannel(recipient.phone, templateKey, recipient.variables || {}, options);
+        } else {
+          const message = fillTemplate(templateKey, recipient.variables || {});
+          result = await sendSms(recipient.phone, message, options);
+        }
+
+        const success = channel === 'dual' 
+          ? (result.sms?.success || result.whatsapp?.success)
+          : result.success;
+
+        if (success) results.sent++; 
+        else { results.failed++; results.errors.push({ phone: recipient.phone, error: result.description || 'Failed' }); }
         results.details.push(result);
       } catch (err) {
         results.failed++;
         results.errors.push({ phone: recipient.phone, error: err.message });
       }
     }
-    if (i + batchSize < recipientsList.length) await new Promise(r => setTimeout(r, delayBetweenBatches));
+    if (i + batchSize < recipientsList.length) await new Promise(r => setTimeout(r, delayMs));
   }
 
-  logger.info(`Bulk SMS complete: ${results.sent}/${results.total} sent`, { templateKey, failed: results.failed });
+  logger.info(`Bulk ${channel} complete: ${results.sent}/${results.total}`, { templateKey, channel });
   return results;
 }
+
+// ==================== LOGGING & STATUS ====================
 
 async function logMessage(result, message, phones, options = {}) {
   try {
@@ -232,56 +479,78 @@ async function logMessage(result, message, phones, options = {}) {
 async function getStats() {
   try {
     const stats = await pool.query(`
-      SELECT COUNT(*) as total_sent, COUNT(CASE WHEN status = 'sent' THEN 1 END) as successful,
+      SELECT 
+        channel,
+        COUNT(*) as total_sent, 
+        COUNT(CASE WHEN status = 'sent' THEN 1 END) as successful,
         COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
-        COUNT(DISTINCT phone) as unique_recipients, COUNT(DISTINCT complex_id) as complexes_contacted,
-        MIN(created_at) as first_message, MAX(created_at) as last_message
+        COUNT(DISTINCT phone) as unique_recipients,
+        MIN(created_at) as first_message, 
+        MAX(created_at) as last_message
       FROM sent_messages
+      GROUP BY channel
     `);
-    return stats.rows[0] || { total_sent: 0, successful: 0, failed: 0, unique_recipients: 0, complexes_contacted: 0 };
+    return stats.rows;
   } catch (err) {
-    return { total_sent: 0, successful: 0, failed: 0, unique_recipients: 0, complexes_contacted: 0 };
+    return [];
   }
 }
 
 async function checkAccountStatus() {
   const username = process.env.INFORU_USERNAME;
   const password = process.env.INFORU_PASSWORD;
-  
   if (!username || !password) {
-    return { 
-      configured: false, 
-      error: 'INFORU_USERNAME and INFORU_PASSWORD not set. Set these in Railway environment variables.',
-      hint: 'Login to inforu.co.il to find your API credentials'
-    };
+    return { configured: false, error: 'INFORU credentials not set' };
   }
-  
+
+  const result = { configured: true, sms: null, whatsapp: null };
+
+  // Check SMS
   try {
-    // Send to invalid number just to verify credentials work
-    const xml = buildXmlPayload(username, password, '0000000000', 'credential_check', 'TEST');
-    const response = await axios.post(INFORU_XML_URL, null, {
+    const xml = buildXmlPayload(username, password, '0000000000', 'check', 'TEST');
+    const resp = await axios.post(INFORU_XML_URL, null, {
       params: { InforuXML: xml },
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
       timeout: 10000
     });
-    const statusMatch = response.data.match(/<Status>(.*?)<\/Status>/);
-    const descMatch = response.data.match(/<Description>(.*?)<\/Description>/);
-    const status = statusMatch ? parseInt(statusMatch[1]) : -999;
-    const description = descMatch ? descMatch[1] : 'Unknown';
-    
-    // Status -2 = bad credentials, -18 = wrong number (means credentials work!)
-    const credentialsValid = status !== -2 && status !== -3 && status !== -4;
-    
-    return { 
-      configured: true, 
-      credentialsValid,
-      status, 
-      description,
-      rawResponse: response.data 
+    const status = parseInt((resp.data.match(/<Status>(.*?)<\/Status>/) || [])[1] || '-999');
+    result.sms = { working: status !== -2 && status !== -3, status };
+  } catch (err) {
+    result.sms = { working: false, error: err.message };
+  }
+
+  // Check WhatsApp
+  try {
+    const resp = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/GetTemplateList`,
+      { Data: {} },
+      { headers: { 'Content-Type': 'application/json', 'Authorization': getBasicAuth() }, timeout: 10000 }
+    );
+    result.whatsapp = { 
+      working: resp.data.StatusId === 1, 
+      templateCount: resp.data.Data?.Count || 0,
+      status: resp.data.StatusId
     };
   } catch (err) {
-    return { configured: true, credentialsValid: false, error: err.message };
+    result.whatsapp = { working: false, error: err.message };
   }
+
+  return result;
 }
 
-module.exports = { sendSms, bulkSend, fillTemplate, normalizePhone, getStats, checkAccountStatus, TEMPLATES };
+module.exports = {
+  // SMS
+  sendSms, fillTemplate, 
+  // WhatsApp
+  sendWhatsApp, sendWhatsAppChat,
+  getWhatsAppTemplates, getWhatsAppTemplate,
+  pullIncomingWhatsApp, pullWhatsAppDLR,
+  // Dual
+  sendDualChannel,
+  // Bulk
+  bulkSend,
+  // Utils
+  normalizePhone, normalizePhoneLocal,
+  getStats, checkAccountStatus,
+  // Constants
+  SMS_TEMPLATES, WA_TEMPLATES
+};
