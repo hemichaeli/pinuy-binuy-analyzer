@@ -201,16 +201,17 @@ async function enrichSignaturesBatch({ limit = 20, minIai = 0, staleOnly = true 
 }
 
 /**
- * Safe numeric casting helper
- * Wraps column in CASE to only CAST when value is actually numeric
- * Prevents "invalid input syntax for type numeric" errors
+ * Safe numeric cast for TEXT columns that may contain non-numeric values.
+ * signature_confidence is stored as TEXT and may contain values like 'low', 'high', etc.
  */
-const SAFE_NUMERIC = (col) => `CAST(CASE WHEN ${col} ~ '^[0-9]+(\\.[0-9]+)?$' THEN ${col} ELSE NULL END AS NUMERIC)`;
+const SAFE_TEXT_TO_NUM = (col) => `CAST(CASE WHEN ${col}::text ~ '^[0-9]+(\\.[0-9]+)?$' THEN ${col}::text ELSE NULL END AS NUMERIC)`;
 
 /**
  * Get signature coverage stats
- * Uses safe numeric casting to handle columns that may contain
- * non-numeric TEXT values like 'low', 'high', 'medium'
+ * 
+ * Column types:
+ *   signature_percent    - INTEGER (safe to use directly in math)
+ *   signature_confidence - TEXT (may contain 'low','medium','high' or numeric strings)
  */
 async function getSignatureStats() {
   const result = await pool.query(`
@@ -219,11 +220,11 @@ async function getSignatureStats() {
       COUNT(CASE WHEN signature_percent IS NOT NULL AND signature_source IS NOT NULL THEN 1 END) as has_signature,
       COUNT(CASE WHEN signature_source = 'protocol' THEN 1 END) as from_protocol,
       COUNT(CASE WHEN signature_source = 'press' THEN 1 END) as from_press,
-      AVG(${SAFE_NUMERIC('signature_percent')}) as avg_signature,
-      AVG(${SAFE_NUMERIC('signature_confidence')}) as avg_confidence,
-      COUNT(CASE WHEN ${SAFE_NUMERIC('signature_percent')} >= 80 THEN 1 END) as above_80,
-      COUNT(CASE WHEN ${SAFE_NUMERIC('signature_percent')} >= 60 AND ${SAFE_NUMERIC('signature_percent')} < 80 THEN 1 END) as between_60_80,
-      COUNT(CASE WHEN ${SAFE_NUMERIC('signature_percent')} < 60 THEN 1 END) as below_60
+      AVG(CASE WHEN signature_percent IS NOT NULL AND signature_source IS NOT NULL THEN signature_percent END) as avg_signature,
+      AVG(${SAFE_TEXT_TO_NUM('signature_confidence')}) as avg_confidence,
+      COUNT(CASE WHEN signature_percent >= 80 THEN 1 END) as above_80,
+      COUNT(CASE WHEN signature_percent >= 60 AND signature_percent < 80 THEN 1 END) as between_60_80,
+      COUNT(CASE WHEN signature_percent IS NOT NULL AND signature_percent < 60 THEN 1 END) as below_60
     FROM complexes
   `);
   return result.rows[0];
