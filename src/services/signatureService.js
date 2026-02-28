@@ -201,9 +201,15 @@ async function enrichSignaturesBatch({ limit = 20, minIai = 0, staleOnly = true 
 }
 
 /**
+ * Safe numeric cast helper for SQL
+ * Handles columns that may contain non-numeric TEXT values like 'low', 'high', 'medium'
+ */
+const SAFE_NUM = (col) => `CASE WHEN ${col} ~ '^[0-9]+(\\.[0-9]+)?$' THEN CAST(${col} AS NUMERIC) ELSE NULL END`;
+
+/**
  * Get signature coverage stats
- * NOTE: signature_percent and signature_confidence may be stored as TEXT,
- * so we CAST to NUMERIC for aggregate functions
+ * NOTE: signature_percent and signature_confidence may be stored as TEXT
+ * with non-numeric values, so we safely cast using regex validation
  */
 async function getSignatureStats() {
   const result = await pool.query(`
@@ -212,11 +218,11 @@ async function getSignatureStats() {
       COUNT(CASE WHEN signature_percent IS NOT NULL AND signature_source IS NOT NULL THEN 1 END) as has_signature,
       COUNT(CASE WHEN signature_source = 'protocol' THEN 1 END) as from_protocol,
       COUNT(CASE WHEN signature_source = 'press' THEN 1 END) as from_press,
-      AVG(CASE WHEN signature_percent IS NOT NULL AND signature_source IS NOT NULL THEN CAST(signature_percent AS NUMERIC) END) as avg_signature,
-      AVG(CASE WHEN signature_confidence IS NOT NULL THEN CAST(signature_confidence AS NUMERIC) END) as avg_confidence,
-      COUNT(CASE WHEN CAST(signature_percent AS NUMERIC) >= 80 THEN 1 END) as above_80,
-      COUNT(CASE WHEN CAST(signature_percent AS NUMERIC) >= 60 AND CAST(signature_percent AS NUMERIC) < 80 THEN 1 END) as between_60_80,
-      COUNT(CASE WHEN CAST(signature_percent AS NUMERIC) < 60 AND signature_percent IS NOT NULL THEN 1 END) as below_60
+      AVG(CASE WHEN signature_percent IS NOT NULL AND signature_source IS NOT NULL AND signature_percent ~ '^[0-9]+(\\.[0-9]+)?$' THEN CAST(signature_percent AS NUMERIC) END) as avg_signature,
+      AVG(CASE WHEN signature_confidence IS NOT NULL AND signature_confidence ~ '^[0-9]+(\\.[0-9]+)?$' THEN CAST(signature_confidence AS NUMERIC) END) as avg_confidence,
+      COUNT(CASE WHEN signature_percent ~ '^[0-9]+(\\.[0-9]+)?$' AND CAST(signature_percent AS NUMERIC) >= 80 THEN 1 END) as above_80,
+      COUNT(CASE WHEN signature_percent ~ '^[0-9]+(\\.[0-9]+)?$' AND CAST(signature_percent AS NUMERIC) >= 60 AND CAST(signature_percent AS NUMERIC) < 80 THEN 1 END) as between_60_80,
+      COUNT(CASE WHEN signature_percent ~ '^[0-9]+(\\.[0-9]+)?$' AND CAST(signature_percent AS NUMERIC) < 60 THEN 1 END) as below_60
     FROM complexes
   `);
   return result.rows[0];
