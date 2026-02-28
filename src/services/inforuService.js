@@ -54,28 +54,70 @@ QUANTUM`,
   }
 };
 
-// --- WhatsApp Templates (INFORU approved) ---
+// --- WhatsApp Templates (INFORU approved - real template IDs) ---
 const WA_TEMPLATES = {
-  seller_initial: {
-    templateId: '245719',
-    name: 'quantum_seller_initial',
-    params: ['name', 'address']
+  // Template: קישור לתיקייה ציבורית של דירה מעודכן
+  file_link_updated: {
+    templateId: '214803',
+    name: 'קישור לתיקייה ציבורית של דירה מעודכן',
+    params: ['name'],  // היי [#1#]
+    hasButtons: true,
+    buttonType: 'URL'
   },
-  seller_followup: {
-    templateId: '245722',
-    name: 'quantum_seller_followup',
-    params: ['name', 'address']
+  // Template: קישור לתיקייה ציבורית של דירה
+  file_link_basic: {
+    templateId: '213960',
+    name: 'קישור לתיקייה ציבורית של דירה',
+    params: ['name'],  // היי [#1#]
+    hasButtons: false
   },
-  buyer_opportunity: {
-    templateId: '245720',
-    name: 'quantum_buyer_opportunity',
-    params: ['name', 'property_desc', 'details']
+  // Template: אישור השתתפות לפרויקט
+  project_attendance: {
+    templateId: '212543',
+    name: 'אישור השתתפות לפרויקט',
+    params: ['name', 'project_name'],  // שלום [#1#], פרויקט [#2#]
+    hasButtons: true,
+    buttonType: 'QUICK_REPLY'
   },
-  kones_inquiry: {
-    templateId: '245721',
-    name: 'quantum_kones_inquiry',
-    params: ['name', 'address']
+  // Template: אישור השתתפות (מפורט)
+  meeting_attendance: {
+    templateId: '211339',
+    name: 'אישור השתתפות',
+    params: ['name', 'meeting_type', 'date', 'address', 'time', 'attendees'],
+    hasButtons: true,
+    buttonType: 'QUICK_REPLY'
+  },
+  // Template: מוסד 2 (tested and working!)
+  institutional_message: {
+    templateId: '200763',
+    name: 'מוסד 2',
+    params: [],  // No parameters
+    hasButtons: false
+  },
+  // Template: מוסד (original)
+  institutional_original: {
+    templateId: '200683',
+    name: 'מוסד',
+    params: [],
+    hasButtons: false
+  },
+  // Template: היכרות לנציגות מתחם 1 עם דן קושניר
+  representative_intro: {
+    templateId: '180735',
+    name: 'היכרות לנציגות מתחם 1 עם דן קושניר',
+    params: [],
+    hasButtons: true,
+    buttonType: 'QUICK_REPLY'
   }
+};
+
+// QUANTUM-specific template mappings
+const QUANTUM_WA_MAPPINGS = {
+  seller_initial: 'file_link_basic',      // Use basic file link template
+  seller_followup: 'institutional_message', // Use working tested template
+  buyer_opportunity: 'project_attendance',   // Use project attendance template
+  kones_inquiry: 'representative_intro',     // Use intro template
+  test_message: 'institutional_message'      // For testing - working template
 };
 
 // ==================== AUTH ====================
@@ -157,23 +199,28 @@ async function sendSms(recipients, message, options = {}) {
 /**
  * Send WhatsApp template message via CAPI
  * @param {string|string[]} recipients - Phone number(s)
- * @param {string} templateKey - Key from WA_TEMPLATES
+ * @param {string} templateKey - Key from WA_TEMPLATES or QUANTUM_WA_MAPPINGS
  * @param {object} variables - Template parameter values
  * @param {object} options - Additional options
  */
 async function sendWhatsApp(recipients, templateKey, variables = {}, options = {}) {
-  const tmpl = WA_TEMPLATES[templateKey];
-  if (!tmpl) throw new Error(`WhatsApp template "${templateKey}" not found`);
+  // Map QUANTUM template keys to actual WA templates
+  const actualTemplateKey = QUANTUM_WA_MAPPINGS[templateKey] || templateKey;
+  const tmpl = WA_TEMPLATES[actualTemplateKey];
+  
+  if (!tmpl) throw new Error(`WhatsApp template "${templateKey}" -> "${actualTemplateKey}" not found`);
 
   const phones = (Array.isArray(recipients) ? recipients : [recipients]).map(normalizePhoneLocal).filter(Boolean);
   if (phones.length === 0) throw new Error('No valid phone numbers');
 
-  // Build template parameters
-  const templateParams = tmpl.params.map((paramName, idx) => ({
-    Name: `[#${idx + 1}#]`,
-    Type: 'Text',
-    Value: variables[paramName] || variables[`param${idx + 1}`] || ''
-  }));
+  // Build template parameters (only if template has params)
+  const templateParams = tmpl.params && tmpl.params.length > 0 
+    ? tmpl.params.map((paramName, idx) => ({
+        Name: `[#${idx + 1}#]`,
+        Type: 'Text',
+        Value: variables[paramName] || variables[`param${idx + 1}`] || ''
+      }))
+    : [];
 
   // Build recipients array
   const recipientsArray = phones.map(phone => ({ Phone: phone }));
@@ -203,20 +250,35 @@ async function sendWhatsApp(recipients, templateKey, variables = {}, options = {
       recipientsCount: data.Data?.Recipients || 0,
       errors: data.Data?.Errors || null,
       phones, channel: 'whatsapp',
-      templateKey, templateId: tmpl.templateId,
+      templateKey: actualTemplateKey, 
+      originalTemplateKey: templateKey,
+      templateId: tmpl.templateId,
       timestamp: new Date().toISOString()
     };
 
     // Build message text for logging
     const msgText = `[WA Template: ${tmpl.name}] ${JSON.stringify(variables)}`;
-    await logMessage(result, msgText, phones, { ...options, channel: 'whatsapp', templateKey });
+    await logMessage(result, msgText, phones, { ...options, channel: 'whatsapp', templateKey: actualTemplateKey });
 
-    if (data.StatusId === 1) logger.info(`WhatsApp sent to ${data.Data?.Recipients} recipients`, { templateKey, phones });
-    else logger.warn('WhatsApp send failed', { status: data.StatusId, description: data.StatusDescription, errors: data.Data?.Errors });
+    if (data.StatusId === 1) {
+      logger.info(`WhatsApp sent to ${data.Data?.Recipients} recipients`, { 
+        templateKey: actualTemplateKey, 
+        originalKey: templateKey,
+        templateId: tmpl.templateId,
+        phones 
+      });
+    } else {
+      logger.warn('WhatsApp send failed', { 
+        status: data.StatusId, 
+        description: data.StatusDescription, 
+        errors: data.Data?.Errors,
+        templateKey: actualTemplateKey
+      });
+    }
 
     return result;
   } catch (err) {
-    logger.error('WhatsApp API error', { error: err.message, templateKey });
+    logger.error('WhatsApp API error', { error: err.message, templateKey: actualTemplateKey });
     throw err;
   }
 }
@@ -358,8 +420,8 @@ async function sendDualChannel(recipients, templateKey, variables = {}, options 
     results.sms = { success: false, error: err.message, channel: 'sms' };
   }
 
-  // Send WhatsApp (if template exists)
-  if (WA_TEMPLATES[templateKey]) {
+  // Send WhatsApp (if mapping exists)
+  if (QUANTUM_WA_MAPPINGS[templateKey] || WA_TEMPLATES[templateKey]) {
     try {
       results.whatsapp = await sendWhatsApp(recipients, templateKey, variables, options);
     } catch (err) {
@@ -458,17 +520,19 @@ async function logMessage(result, message, phones, options = {}) {
         listing_id INTEGER,
         complex_id INTEGER,
         channel VARCHAR(20) DEFAULT 'sms',
+        template_id VARCHAR(50),
         sender VARCHAR(50) DEFAULT 'QUANTUM',
         created_at TIMESTAMP DEFAULT NOW()
       )
     `);
     for (const phone of phones) {
       await pool.query(
-        `INSERT INTO sent_messages (phone, message, template_key, status, status_code, status_description, listing_id, complex_id, channel)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO sent_messages (phone, message, template_key, status, status_code, status_description, listing_id, complex_id, channel, template_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [phone, message.substring(0, 500), options.templateKey || null,
          result.success ? 'sent' : 'failed', result.status, result.description,
-         options.listingId || null, options.complexId || null, options.channel || 'sms']
+         options.listingId || null, options.complexId || null, options.channel || 'sms',
+         result.templateId || null]
       );
     }
   } catch (err) {
@@ -503,18 +567,19 @@ async function checkAccountStatus() {
     return { configured: false, error: 'INFORU credentials not set' };
   }
 
-  const result = { configured: true, sms: null, whatsapp: null };
+  const result = { configured: true, credentialsValid: true, sms: null, whatsapp: null };
 
   // Check SMS
   try {
-    const xml = buildXmlPayload(username, password, '0000000000', 'check', 'TEST');
+    const xml = buildXmlPayload(username, password, '0000000000', 'QUANTUM test message', 'QUANTUM');
     const resp = await axios.post(INFORU_XML_URL, null, {
       params: { InforuXML: xml },
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
       timeout: 10000
     });
     const status = parseInt((resp.data.match(/<Status>(.*?)<\/Status>/) || [])[1] || '-999');
-    result.sms = { working: status !== -2 && status !== -3, status };
+    const description = (resp.data.match(/<Description>(.*?)<\/Description>/) || [])[1] || 'Unknown';
+    result.sms = { working: status === 1, status, description };
   } catch (err) {
     result.sms = { working: false, error: err.message };
   }
@@ -525,10 +590,17 @@ async function checkAccountStatus() {
       { Data: {} },
       { headers: { 'Content-Type': 'application/json', 'Authorization': getBasicAuth() }, timeout: 10000 }
     );
+    const templateCount = resp.data.Data?.Count || 0;
     result.whatsapp = { 
       working: resp.data.StatusId === 1, 
-      templateCount: resp.data.Data?.Count || 0,
-      status: resp.data.StatusId
+      templateCount,
+      status: resp.data.StatusId,
+      description: resp.data.StatusDescription || 'Success',
+      templates: templateCount > 0 ? resp.data.Data.List.slice(0, 5).map(t => ({
+        id: t.TemplateId,
+        name: t.TemplateName,
+        status: t.ApprovalStatusDescription
+      })) : []
     };
   } catch (err) {
     result.whatsapp = { working: false, error: err.message };
@@ -552,5 +624,5 @@ module.exports = {
   normalizePhone, normalizePhoneLocal,
   getStats, checkAccountStatus,
   // Constants
-  SMS_TEMPLATES, WA_TEMPLATES
+  SMS_TEMPLATES, WA_TEMPLATES, QUANTUM_WA_MAPPINGS
 };
