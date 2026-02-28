@@ -3,11 +3,13 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 /**
- * Nadlan.gov.il Transaction Scraper v2.1
+ * Nadlan.gov.il Transaction Scraper v2.2
  * Fetches real transaction data from Israel Tax Authority's open API.
  * Falls back to Perplexity AI queries when direct API fails or returns HTML.
  * 
  * API: https://www.nadlan.gov.il/Nadlan.REST/Main/GetAssestAndDeals
+ * 
+ * v2.2: Uses dedicated last_nadlan_scan column for stale checks instead of updated_at
  */
 
 const NADLAN_API_URL = 'https://www.nadlan.gov.il/Nadlan.REST/Main/GetAssestAndDeals';
@@ -368,6 +370,12 @@ async function scanComplex(complexId) {
       }
     }
 
+    // Update dedicated nadlan scan timestamp (NOT updated_at)
+    await pool.query(
+      `UPDATE complexes SET last_nadlan_scan = NOW() WHERE id = $1`,
+      [complexId]
+    );
+
     logger.info(`Nadlan scan for "${name}": ${allTransactions.length} found, ${newTransactions} new (source: ${source}), neighborhood_avg: ${neighborhoodAvg || 'N/A'}`);
 
     return {
@@ -389,6 +397,15 @@ async function scanComplex(complexId) {
 async function scanAll(options = {}) {
   const { city, limit, staleOnly } = options;
 
+  // Ensure dedicated scan tracking column exists (like last_yad2_scan)
+  try {
+    await pool.query(`
+      ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_nadlan_scan TIMESTAMP;
+    `);
+  } catch (e) {
+    logger.warn('Could not ensure last_nadlan_scan column', { error: e.message });
+  }
+
   let query = 'SELECT id, name, city, addresses FROM complexes WHERE 1=1';
   const params = [];
 
@@ -398,7 +415,8 @@ async function scanAll(options = {}) {
   }
 
   if (staleOnly) {
-    query += ` AND (updated_at < NOW() - INTERVAL '7 days' OR updated_at IS NULL)`;
+    // Use dedicated scan column - not updated_at which gets reset by enrichment
+    query += ` AND (last_nadlan_scan IS NULL OR last_nadlan_scan < NOW() - INTERVAL '7 days')`;
   }
 
   query += ' ORDER BY iai_score DESC NULLS LAST';
