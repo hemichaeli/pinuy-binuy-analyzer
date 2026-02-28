@@ -336,6 +336,10 @@ async function sendScanStatusNotification(result) {
 /**
  * Run the daily scan with DIRECT JSON APIs (no Perplexity!)
  * v4.8.2: Direct API mode - nadlan.gov.il, yad2, mavat
+ * 
+ * STALE LOGIC: Daily scan uses staleHours=20 so it always finds work
+ * (since it runs every 24h, anything >20h old is eligible)
+ * Manual scans keep the default 72h (3 day) threshold
  */
 async function runWeeklyScan(options = {}) {
   const { forceAll = false, includeDiscovery = true } = options;
@@ -359,10 +363,12 @@ async function runWeeklyScan(options = {}) {
     const beforeSnapshot = await snapshotStatuses();
 
     // Step 1: Direct API Scan (nadlan + yad2 + mavat)
+    // Uses staleHours=20 so daily scan always finds complexes to scan
+    // (daily scan runs every 24h, so 20h threshold ensures continuous coverage)
     let directApiResults = { total: 0, scanned: 0, succeeded: 0, totalNewTransactions: 0, totalNewListings: 0 };
     try {
-      logger.info('Step 1/8: Running Direct API scan (nadlan + yad2 + mavat)...');
-      directApiResults = await directApi.scanAll({ staleOnly, limit: 129 });
+      logger.info('Step 1/8: Running Direct API scan (nadlan + yad2 + mavat) [staleHours=20]...');
+      directApiResults = await directApi.scanAll({ staleOnly, limit: 129, staleHours: 20 });
       logger.info(`Direct API: ${directApiResults.succeeded}/${directApiResults.total} ok, ${directApiResults.totalNewTransactions} tx, ${directApiResults.totalNewListings} listings`);
       tracker.add('direct_api', 'סריקת API ישיר (nadlan + yad2 + mavat)', true, 
         `${directApiResults.succeeded}/${directApiResults.total} מתחמים, ${directApiResults.totalNewTransactions} עסקאות, ${directApiResults.totalNewListings} מודעות`);
