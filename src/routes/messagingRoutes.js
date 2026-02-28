@@ -160,8 +160,7 @@ router.get('/unsent', async (req, res) => {
     let conditions = [`l.is_active = TRUE`, `(l.message_status IS NULL OR l.message_status = 'לא נשלחה')`];
     let params = []; let idx = 1;
     if (req.query.city) { conditions.push(`l.city = $${idx++}`); params.push(req.query.city); }
-    if (req.query.platform) { conditions.push(`l.source = $${idx++}`); params.push(req.query.platform); }
-    if (req.query.source) { conditions.push(`l.source = $${idx++}`); params.push(req.query.source); }
+    if (req.query.platform || req.query.source) { conditions.push(`l.source = $${idx++}`); params.push(req.query.platform || req.query.source); }
     if (req.query.min_ssi) { conditions.push(`l.ssi_score >= $${idx++}`); params.push(parseFloat(req.query.min_ssi)); }
     if (req.query.min_iai) { conditions.push(`c.iai_score >= $${idx++}`); params.push(parseFloat(req.query.min_iai)); }
     if (req.query.max_price) { conditions.push(`l.asking_price <= $${idx++}`); params.push(parseFloat(req.query.max_price)); }
@@ -171,7 +170,7 @@ router.get('/unsent', async (req, res) => {
     
     const result = await pool.query(`
       SELECT l.id, l.address, l.city, l.asking_price, l.rooms, l.area_sqm, l.floor,
-             l.source, l.url, l.source_listing_id, l.contact_phone,
+             l.source, l.url, l.source_listing_id,
              l.message_status, l.deal_status, l.created_at, l.ssi_score,
              c.name as complex_name, c.iai_score
       FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id
