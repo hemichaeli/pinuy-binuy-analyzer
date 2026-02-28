@@ -43,6 +43,144 @@ function getDiscoveryService() {
 }
 
 // ============================================================
+// CRITICAL SYSTEM FIXES - Priority 1 Issues
+// ============================================================
+
+// POST /api/scan/fix-stuck - Fix stuck scans
+router.post('/fix-stuck', async (req, res) => {
+  try {
+    const { scanId, force } = req.body;
+    
+    if (scanId) {
+      // Fix specific scan
+      const result = await pool.query(`
+        UPDATE scan_logs 
+        SET status = 'failed', 
+            completed_at = NOW(),
+            errors = 'Marked as failed - scan was stuck'
+        WHERE id = $1 AND status = 'running'
+        RETURNING *
+      `, [scanId]);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Scan not found or not in running state' });
+      }
+      
+      return res.json({ 
+        message: `Scan ${scanId} marked as failed`,
+        fixed_scan: result.rows[0]
+      });
+    }
+    
+    // Fix all stuck scans (running > 2 hours)
+    const stuckScans = await pool.query(`
+      UPDATE scan_logs 
+      SET status = 'failed', 
+          completed_at = NOW(),
+          errors = 'Auto-failed - scan stuck for > 2 hours'
+      WHERE status = 'running' 
+        AND started_at < NOW() - INTERVAL '2 hours'
+      RETURNING *
+    `);
+    
+    res.json({ 
+      message: `Fixed ${stuckScans.rows.length} stuck scans`,
+      fixed_scans: stuckScans.rows
+    });
+  } catch (err) {
+    logger.error('Fix stuck scans failed', { error: err.message });
+    res.status(500).json({ error: `Failed to fix stuck scans: ${err.message}` });
+  }
+});
+
+// GET /api/scan/scheduler/status - Debug scheduler status
+router.get('/scheduler/status', async (req, res) => {
+  try {
+    const totalScans = await pool.query('SELECT COUNT(*) as count FROM scan_logs');
+    const runningScans = await pool.query("SELECT COUNT(*) as count FROM scan_logs WHERE status = 'running'");
+    const recentScans = await pool.query(`
+      SELECT COUNT(*) as count 
+      FROM scan_logs 
+      WHERE started_at > NOW() - INTERVAL '24 hours'
+    `);
+    const lastScan = await pool.query(`
+      SELECT * FROM scan_logs 
+      ORDER BY started_at DESC 
+      LIMIT 1
+    `);
+    
+    res.json({
+      totalScans: parseInt(totalScans.rows[0].count),
+      runningScans: parseInt(runningScans.rows[0].count),
+      recentScans: parseInt(recentScans.rows[0].count),
+      lastScan: lastScan.rows[0] || null,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    logger.error('Scheduler status failed', { error: err.message });
+    res.status(500).json({ error: `Failed to get scheduler status: ${err.message}` });
+  }
+});
+
+// GET /api/scan/health - System health check
+router.get('/health', async (req, res) => {
+  try {
+    const health = {
+      database: 'unknown',
+      scans: 'unknown', 
+      notifications: 'unknown',
+      ai_services: {
+        claude: isClaudeConfigured() ? 'configured' : 'not-configured',
+        perplexity: isPerplexityConfigured() ? 'configured' : 'not-configured'
+      }
+    };
+    
+    // Test database
+    try {
+      await pool.query('SELECT 1');
+      health.database = 'healthy';
+    } catch (e) {
+      health.database = 'error';
+    }
+    
+    // Check stuck scans
+    try {
+      const stuck = await pool.query(`
+        SELECT COUNT(*) as count 
+        FROM scan_logs 
+        WHERE status = 'running' AND started_at < NOW() - INTERVAL '2 hours'
+      `);
+      health.scans = stuck.rows[0].count > 0 ? 'stuck-scans-detected' : 'healthy';
+    } catch (e) {
+      health.scans = 'error';
+    }
+    
+    // Check notifications
+    try {
+      health.notifications = notificationService.isConfigured() ? 'configured' : 'not-configured';
+    } catch (e) {
+      health.notifications = 'error';
+    }
+    
+    const isHealthy = health.database === 'healthy' && 
+                      !health.scans.includes('stuck') && 
+                      !health.scans.includes('error');
+    
+    res.status(isHealthy ? 200 : 500).json({
+      status: isHealthy ? 'healthy' : 'degraded',
+      timestamp: new Date().toISOString(),
+      ...health
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: 'error',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// ============================================================
 // POST /api/scan/ai - DUAL AI SCAN (Anthropic Research + Perplexity Deep Research)
 // This is the primary intelligent scan - runs BOTH AIs in parallel
 // ============================================================
@@ -740,11 +878,23 @@ router.post('/notifications', async (req, res) => {
 
 // GET /api/scan/notifications/status
 router.get('/notifications/status', (req, res) => {
-  res.json({
-    configured: notificationService.isConfigured(),
-    provider: notificationService.getProvider(),
-    recipients: notificationService.NOTIFICATION_EMAILS
-  });
+  try {
+    res.json({
+      configured: notificationService.isConfigured(),
+      provider: notificationService.getProvider(),
+      recipients: notificationService.NOTIFICATION_EMAILS,
+      email_service: notificationService.EMAIL_SERVICE || 'not-set',
+      sms_service: notificationService.SMS_SERVICE || 'not-set',
+      status: 'operational'
+    });
+  } catch (err) {
+    logger.error('Notification status failed', { error: err.message });
+    res.status(500).json({ 
+      configured: false,
+      error: err.message,
+      status: 'error'
+    });
+  }
 });
 
 // POST /api/scan/complex/:id - Scan single complex using Direct API
