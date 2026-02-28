@@ -207,7 +207,7 @@ async function scanComplex(complexId) {
            (complex_id, transaction_date, price, area_sqm, rooms, floor, 
             price_per_sqm, address, city, source)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [complexId, tx.date, tx.price, tx.area_sqm, tx.rooms, tx.floor,
+          [complexId, tx.date, tx.area_sqm, tx.rooms, tx.floor,
            pricePerSqm, tx.address, complex.city, tx.source]
         );
         newTransactions++;
@@ -310,9 +310,15 @@ async function scanComplex(complexId) {
 
 /**
  * Scan multiple complexes using direct APIs
+ * @param {Object} options
+ * @param {string} options.city - Filter by city
+ * @param {string} options.status - Filter by status
+ * @param {number} options.limit - Max complexes to scan
+ * @param {boolean} options.staleOnly - Only scan stale complexes (default true)
+ * @param {number} options.staleHours - Hours threshold for stale (default 72 = 3 days)
  */
 async function scanAll(options = {}) {
-  // Ensure dedicated scan tracking column exists (like last_yad2_scan)
+  // Ensure dedicated scan tracking column exists
   try {
     await pool.query(`
       ALTER TABLE complexes ADD COLUMN IF NOT EXISTS last_direct_api_scan TIMESTAMP;
@@ -338,8 +344,10 @@ async function scanAll(options = {}) {
   }
 
   if (options.staleOnly) {
-    // Use dedicated scan column - not updated_at which gets reset by enrichment
-    query += ` AND (last_direct_api_scan IS NULL OR last_direct_api_scan < NOW() - INTERVAL '3 days')`;
+    // Configurable stale threshold - default 72 hours (3 days)
+    const staleHours = options.staleHours || 72;
+    query += ` AND (last_direct_api_scan IS NULL OR last_direct_api_scan < NOW() - INTERVAL '${parseInt(staleHours)} hours')`;
+    logger.info(`[DirectAPI] staleOnly filter: ${staleHours} hours threshold`);
   }
 
   query += ' ORDER BY iai_score DESC NULLS LAST, name ASC';
@@ -352,7 +360,7 @@ async function scanAll(options = {}) {
   const complexes = await pool.query(query, params);
   const total = complexes.rows.length;
 
-  logger.info(`[DirectAPI] Starting scan of ${total} complexes`, { options });
+  logger.info(`[DirectAPI] Starting scan of ${total} complexes`, { options: { ...options, staleHours: options.staleHours || 72 } });
 
   const results = {
     total,
@@ -404,10 +412,36 @@ async function scanAll(options = {}) {
   return results;
 }
 
+/**
+ * Get stale distribution for diagnostics
+ */
+async function getStaleDistribution() {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE last_direct_api_scan IS NULL) as never_scanned,
+        COUNT(*) FILTER (WHERE last_direct_api_scan IS NOT NULL AND last_direct_api_scan < NOW() - INTERVAL '3 days') as stale_3d,
+        COUNT(*) FILTER (WHERE last_direct_api_scan IS NOT NULL AND last_direct_api_scan < NOW() - INTERVAL '1 day') as stale_1d,
+        COUNT(*) FILTER (WHERE last_direct_api_scan IS NOT NULL AND last_direct_api_scan < NOW() - INTERVAL '20 hours') as stale_20h,
+        COUNT(*) FILTER (WHERE last_direct_api_scan >= NOW() - INTERVAL '20 hours') as fresh_20h,
+        COUNT(*) FILTER (WHERE last_direct_api_scan >= NOW() - INTERVAL '1 day') as fresh_1d,
+        COUNT(*) FILTER (WHERE last_direct_api_scan >= NOW() - INTERVAL '3 days') as fresh_3d,
+        MIN(last_direct_api_scan) as oldest_scan,
+        MAX(last_direct_api_scan) as newest_scan
+      FROM complexes
+    `);
+    return result.rows[0];
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
 module.exports = {
   fetchNadlanTransactions,
   fetchYad2Listings,
   fetchMavatStatus,
   scanComplex,
-  scanAll
+  scanAll,
+  getStaleDistribution
 };
