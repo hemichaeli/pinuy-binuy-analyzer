@@ -1,10 +1,14 @@
 /**
- * WhatsApp Webhook - Working with hemichaeli credentials but QUANTUM department
- * Hybrid approach: working credentials + QUANTUM branding
+ * QUANTUM WhatsApp Bot - Production Ready v2.0
+ * Using QUANTUM business account credentials
  */
 
 const express = require('express');
 const router = express.Router();
+
+// QUANTUM Business Account Credentials
+const QUANTUM_USERNAME = 'QUANTUM';
+const QUANTUM_TOKEN = '95452ace-07cf-48be-8671-a197c15d3c17';
 
 // Simple AI call function
 async function callClaude(systemPrompt, userPrompt) {
@@ -42,16 +46,15 @@ const SALES_SYSTEM_PROMPT = `אתה QUANTUM Sales AI - המתווך הדיגיט
 
 תגובות לפי סיטואציות:
 - פתיחה: "שלום! אני מ-QUANTUM 👋 איך קוראים לך?"
+- מוכר: "מעולה! איפה הנכס ומה סוגו? יש לנו קונים מחפשים"
+- קונה: "נהדר! איזה אזור מעניין אותך? יש לנו נכסים מיוחדים"
 - אין מתווך: "מעולה! יש לך יתרון - תוכל לבחור את הטובים ביותר"
 - יש מתווך: "איך אתה מרגיש עם ההתקדמות?"
 - לא מרוצה ממתווך: "יש לנו גישה לקונים/נכסים שאחרים לא מכירים"
 
 היה קצר, ישיר ומקצועי.`;
 
-// Working credentials (hemichaeli) + QUANTUM branding
-const WORKING_AUTH = Buffer.from('hemichaeli:4e9d8256-b2da-4d95-9540-63e940aadc9a').toString('base64');
-
-// INFORU webhook receiver - WORKING CREDENTIALS + QUANTUM BRANDING
+// INFORU webhook receiver - QUANTUM BUSINESS ACCOUNT
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
     const messageData = req.body;
@@ -62,38 +65,38 @@ router.post('/whatsapp/webhook', async (req, res) => {
       return res.status(400).json({ error: 'Missing phone or message' });
     }
     
-    console.log('📱 WhatsApp webhook message:', { phone, message: message.substring(0, 50) });
+    console.log('📱 WhatsApp QUANTUM message:', { phone, message: message.substring(0, 50) });
     
     // Generate AI response
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
-    // Send response via INFORU with working credentials + QUANTUM branding
+    // Send response via INFORU with QUANTUM Business Account
     const axios = require('axios');
+    const auth = Buffer.from(`${QUANTUM_USERNAME}:${QUANTUM_TOKEN}`).toString('base64');
     
     await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        SenderName: "QUANTUM",
-        Department: "QUANTUM"
+        SenderName: "QUANTUM"
       }
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${WORKING_AUTH}`
+        'Authorization': `Basic ${auth}`
       }
     });
     
-    console.log('✅ WhatsApp response sent from QUANTUM department to', phone);
-    res.json({ success: true, processed: true, department: 'QUANTUM', webhook: true });
+    console.log('✅ QUANTUM WhatsApp response sent to', phone);
+    res.json({ success: true, processed: true, account: 'QUANTUM' });
     
   } catch (error) {
-    console.error('❌ WhatsApp webhook error:', error.message);
+    console.error('❌ QUANTUM WhatsApp webhook error:', error.message);
     res.status(500).json({ error: 'Processing failed' });
   }
 });
 
-// Manual trigger for testing - WORKING CREDENTIALS + QUANTUM BRANDING
+// Manual trigger for testing - QUANTUM BUSINESS ACCOUNT
 router.post('/whatsapp/trigger', async (req, res) => {
   try {
     const { phone, message } = req.body;
@@ -102,23 +105,23 @@ router.post('/whatsapp/trigger', async (req, res) => {
       return res.status(400).json({ error: 'Phone and message required' });
     }
     
-    console.log('🔧 Manual trigger with QUANTUM branding:', { phone, message });
+    console.log('🔧 QUANTUM Manual trigger:', { phone, message });
     
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
     const axios = require('axios');
+    const auth = Buffer.from(`${QUANTUM_USERNAME}:${QUANTUM_TOKEN}`).toString('base64');
     
     const result = await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        SenderName: "QUANTUM",
-        Department: "QUANTUM"
+        SenderName: "QUANTUM"
       }
     }, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Basic ${WORKING_AUTH}`
+        'Authorization': `Basic ${auth}`
       }
     });
     
@@ -127,17 +130,17 @@ router.post('/whatsapp/trigger', async (req, res) => {
       aiResponse, 
       inforuResult: result.data,
       senderName: "QUANTUM",
-      department: "QUANTUM",
-      note: "Working credentials with QUANTUM branding"
+      account: "QUANTUM",
+      credentials: `${QUANTUM_USERNAME}:${QUANTUM_TOKEN.substring(0, 8)}...`
     });
     
   } catch (error) {
-    console.error('Manual trigger error:', error.message);
+    console.error('QUANTUM Manual trigger error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Simple stats endpoint
+// Stats endpoint - QUANTUM VERSION
 router.get('/whatsapp/stats', async (req, res) => {
   try {
     res.json({
@@ -150,8 +153,8 @@ router.get('/whatsapp/stats', async (req, res) => {
         buyers: 0,
         high_confidence: 0
       },
-      note: 'Working credentials with QUANTUM branding',
-      department: 'QUANTUM',
+      note: 'QUANTUM Business Account - advanced analytics coming soon',
+      account: 'QUANTUM',
       senderName: 'QUANTUM'
     });
   } catch (error) {
