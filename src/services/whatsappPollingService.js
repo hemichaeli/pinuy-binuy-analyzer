@@ -1,15 +1,17 @@
 const { logger } = require('./logger');
 
 let inforuService;
+let quantumResponseHandler;
 try {
   inforuService = require('./inforuService');
+  quantumResponseHandler = require('./quantumResponseHandler');
 } catch (err) {
-  logger.warn('INFORU service not available for polling', { error: err.message });
+  logger.warn('Services not available for polling', { error: err.message });
 }
 
 /**
- * QUANTUM WhatsApp Polling Service
- * Since INFORU doesn't have webhooks, we poll for incoming messages every 10 seconds
+ * QUANTUM WhatsApp Polling Service - Enhanced with Auto-Response
+ * Polls INFORU for incoming messages and processes them through QUANTUM Response Handler
  */
 
 class WhatsAppPollingService {
@@ -19,6 +21,8 @@ class WhatsAppPollingService {
     this.intervalId = null;
     this.consecutiveErrors = 0;
     this.maxConsecutiveErrors = 5;
+    this.messagesProcessed = 0;
+    this.lastSuccessfulPoll = null;
   }
 
   async start() {
@@ -27,7 +31,11 @@ class WhatsAppPollingService {
       return;
     }
 
-    logger.info('Starting WhatsApp incoming message polling', { interval: this.pollInterval });
+    logger.info('Starting QUANTUM WhatsApp polling with auto-response', { 
+      interval: this.pollInterval,
+      responseHandler: !!quantumResponseHandler
+    });
+    
     this.isPolling = true;
     this.consecutiveErrors = 0;
 
@@ -39,7 +47,7 @@ class WhatsAppPollingService {
   async stop() {
     if (!this.isPolling) return;
 
-    logger.info('Stopping WhatsApp polling');
+    logger.info('Stopping QUANTUM WhatsApp polling');
     this.isPolling = false;
     if (this.intervalId) {
       clearInterval(this.intervalId);
@@ -53,28 +61,30 @@ class WhatsAppPollingService {
     try {
       // Pull incoming WhatsApp messages
       const incoming = await inforuService.pullIncomingWhatsApp(50);
+      
       if (incoming.StatusId === 1 && incoming.Data?.List?.length > 0) {
-        logger.info(`Received ${incoming.Data.List.length} incoming WhatsApp messages`);
+        logger.info(`📥 Received ${incoming.Data.List.length} incoming WhatsApp messages`);
         
-        // Process each message
+        // Process each message through QUANTUM Response Handler
         for (const message of incoming.Data.List) {
           await this.processIncomingMessage(message);
+          this.messagesProcessed++;
         }
       }
 
       // Pull delivery reports
       const dlr = await inforuService.pullWhatsAppDLR(50);
       if (dlr.StatusId === 1 && dlr.Data?.List?.length > 0) {
-        logger.info(`Received ${dlr.Data.List.length} WhatsApp delivery reports`);
+        logger.info(`📋 Received ${dlr.Data.List.length} WhatsApp delivery reports`);
         
-        // Process delivery reports
         for (const report of dlr.Data.List) {
           await this.processDeliveryReport(report);
         }
       }
 
-      // Reset error counter on successful poll
+      // Update success metrics
       this.consecutiveErrors = 0;
+      this.lastSuccessfulPoll = new Date();
 
     } catch (err) {
       this.consecutiveErrors++;
@@ -85,7 +95,7 @@ class WhatsAppPollingService {
 
       // Stop polling if too many consecutive errors
       if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
-        logger.error('Too many consecutive polling errors, stopping service');
+        logger.error('❌ Too many consecutive polling errors, stopping service');
         await this.stop();
       }
     }
@@ -93,134 +103,181 @@ class WhatsAppPollingService {
 
   async processIncomingMessage(message) {
     try {
-      logger.info('Processing incoming WhatsApp message', {
-        from: message.Phone,
-        text: message.Message?.substring(0, 50),
-        timestamp: message.Timestamp
-      });
-
-      // Extract phone number and message text
       const phone = message.Phone;
       const text = message.Message || '';
       const timestamp = message.Timestamp;
+      const messageId = message.MessageId;
 
-      // Forward to QUANTUM Bot for processing
-      await this.forwardToBot(phone, text, {
-        source: 'whatsapp_incoming',
-        messageId: message.MessageId,
-        timestamp: timestamp,
-        rawData: message
+      logger.info('📱 Processing incoming WhatsApp message', {
+        from: phone,
+        preview: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
+        messageId: messageId
       });
+
+      // Enhanced message data
+      const messageData = {
+        phone: phone,
+        message: text,
+        customerMessageId: messageId,
+        timestamp: timestamp,
+        source: 'whatsapp_incoming',
+        rawData: message
+      };
+
+      // Process through QUANTUM Response Handler
+      if (quantumResponseHandler) {
+        const result = await quantumResponseHandler.processIncomingMessage(messageData);
+        
+        logger.info(`✅ Message processed`, {
+          phone: phone,
+          category: result.analysis?.category,
+          responded: !!result.response,
+          nextAction: result.analysis?.nextAction
+        });
+      } else {
+        // Fallback to basic bot forwarding
+        logger.warn('QUANTUM Response Handler not available, using fallback');
+        await this.fallbackToBasicBot(phone, text, messageData);
+      }
 
     } catch (err) {
-      logger.error('Error processing incoming WhatsApp message', { 
+      logger.error('❌ Error processing incoming WhatsApp message', { 
         error: err.message, 
-        message: message 
+        phone: message.Phone,
+        stack: err.stack
       });
+      
+      // Send error message to user
+      try {
+        await inforuService.sendWhatsAppChat(
+          message.Phone, 
+          '🤖 מתנצל על התקלה הטכנית. נציג QUANTUM יחזור אליך בהקדם.',
+          { source: 'error_fallback' }
+        );
+      } catch (replyErr) {
+        logger.error('Failed to send error reply', { error: replyErr.message });
+      }
     }
   }
 
   async processDeliveryReport(report) {
     try {
-      logger.info('Processing WhatsApp delivery report', {
+      logger.info('📊 Processing WhatsApp delivery report', {
         phone: report.Phone,
         status: report.Status,
-        messageId: report.MessageId
+        messageId: report.MessageId,
+        timestamp: report.Timestamp
       });
 
-      // Log delivery status for monitoring
-      // Could update database records, trigger notifications, etc.
+      // Update database with delivery status
+      try {
+        const pool = require('../db/pool');
+        await pool.query(`
+          UPDATE sent_messages 
+          SET 
+            status = CASE 
+              WHEN $1 = 'delivered' THEN 'delivered'
+              WHEN $1 = 'read' THEN 'read'
+              WHEN $1 = 'failed' THEN 'failed'
+              ELSE 'sent'
+            END,
+            updated_at = NOW()
+          WHERE platform_message_id = $2
+        `, [report.Status, report.MessageId]);
+      } catch (dbErr) {
+        logger.error('Failed to update delivery status in DB:', dbErr);
+      }
 
     } catch (err) {
-      logger.error('Error processing WhatsApp delivery report', { 
+      logger.error('❌ Error processing WhatsApp delivery report', { 
         error: err.message, 
         report: report 
       });
     }
   }
 
-  async forwardToBot(phone, text, metadata) {
+  // Fallback method if QUANTUM Response Handler is not available
+  async fallbackToBasicBot(phone, text, metadata) {
     try {
-      // Simulate bot webservice call structure
-      const botRequest = {
-        chat: {
-          sender: phone,
-          id: phone
-        },
-        parameters: [],
-        value: {
-          string: text
-        }
-      };
+      // Simple auto-response
+      const basicResponse = text.toLowerCase().includes('לא') || text.toLowerCase().includes('stop') 
+        ? 'הבנתי. תודה שהשבת. לא נכתוב יותר.'
+        : 'תודה שכתבת! נציג QUANTUM יחזור אליך בהקדם.';
 
-      // Call the bot's Claude decision function directly
-      const axios = require('axios');
-      const response = await axios.post(
-        'http://localhost:3000/api/bot/webservice',  // Internal call
-        botRequest,
-        { 
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 15000 
-        }
-      );
+      await inforuService.sendWhatsAppChat(phone, basicResponse, {
+        source: 'basic_fallback'
+      });
 
-      if (response.data?.actions) {
-        // Process bot actions - send replies via WhatsApp
-        for (const action of response.data.actions) {
-          if (action.type === 'SendMessage' && action.text) {
-            await this.sendWhatsAppReply(phone, action.text);
-          }
-        }
-      }
+      logger.info(`📤 Sent basic fallback response to ${phone}`);
 
     } catch (err) {
-      logger.error('Error forwarding to bot', { error: err.message, phone });
-      
-      // Send error message to user
-      try {
-        await this.sendWhatsAppReply(phone, 'מתנצל על התקלה. נציג יחזור אליך בהקדם.');
-      } catch (replyErr) {
-        logger.error('Failed to send error reply', { error: replyErr.message, phone });
-      }
+      logger.error('❌ Fallback response failed', { error: err.message, phone });
     }
   }
 
-  async sendWhatsAppReply(phone, text) {
-    try {
-      // Use WhatsApp Chat API (24-hour window for replies)
-      const result = await inforuService.sendWhatsAppChat(phone, text);
-      
-      if (result.success) {
-        logger.info('WhatsApp reply sent', { phone, length: text.length });
-      } else {
-        logger.warn('WhatsApp reply failed', { phone, error: result.description });
-      }
-
-      return result;
-    } catch (err) {
-      logger.error('Error sending WhatsApp reply', { error: err.message, phone });
-      throw err;
-    }
-  }
+  // ==================== STATUS & METRICS ====================
 
   getStatus() {
     return {
       isPolling: this.isPolling,
       intervalMs: this.pollInterval,
       consecutiveErrors: this.consecutiveErrors,
-      inforuAvailable: !!inforuService
+      messagesProcessed: this.messagesProcessed,
+      lastSuccessfulPoll: this.lastSuccessfulPoll,
+      uptime: this.lastSuccessfulPoll ? Date.now() - this.lastSuccessfulPoll.getTime() : null,
+      services: {
+        inforuAvailable: !!inforuService,
+        responseHandlerAvailable: !!quantumResponseHandler
+      },
+      health: this.consecutiveErrors < this.maxConsecutiveErrors ? 'healthy' : 'degraded'
     };
+  }
+
+  getMetrics() {
+    return {
+      messagesProcessed: this.messagesProcessed,
+      consecutiveErrors: this.consecutiveErrors,
+      isPolling: this.isPolling,
+      lastPoll: this.lastSuccessfulPoll,
+      errorRate: this.messagesProcessed > 0 ? (this.consecutiveErrors / this.messagesProcessed) : 0
+    };
+  }
+
+  async restartPolling() {
+    logger.info('🔄 Restarting WhatsApp polling service');
+    await this.stop();
+    setTimeout(() => this.start(), 2000); // Wait 2 seconds before restart
   }
 }
 
 // Singleton instance
 const pollingService = new WhatsAppPollingService();
 
-// Auto-start polling when service loads (if INFORU available)
-if (inforuService && process.env.NODE_ENV === 'production') {
+// ==================== AUTO-START IN PRODUCTION ====================
+
+if (inforuService && quantumResponseHandler && process.env.NODE_ENV === 'production') {
+  logger.info('🚀 Auto-starting QUANTUM WhatsApp polling in production');
   // Start after 5 seconds to let server fully initialize
   setTimeout(() => pollingService.start(), 5000);
+} else {
+  logger.warn('⚠️ QUANTUM WhatsApp polling not auto-started', {
+    inforuService: !!inforuService,
+    responseHandler: !!quantumResponseHandler,
+    env: process.env.NODE_ENV
+  });
 }
+
+// ==================== GRACEFUL SHUTDOWN ====================
+
+process.on('SIGTERM', async () => {
+  logger.info('🛑 Received SIGTERM, stopping WhatsApp polling gracefully');
+  await pollingService.stop();
+});
+
+process.on('SIGINT', async () => {
+  logger.info('🛑 Received SIGINT, stopping WhatsApp polling gracefully');
+  await pollingService.stop();
+});
 
 module.exports = {
   WhatsAppPollingService,
