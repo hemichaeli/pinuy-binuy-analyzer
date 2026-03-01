@@ -1,13 +1,18 @@
 /**
- * WhatsApp Webhook - Updated with Correct Business Number
- * Messages sent from +972 3-757-2229 (037572229)
+ * WhatsApp Webhook - Business Number Configuration Note
+ * Current: Messages sent from +972-3-511-5010 (INFORU default)
+ * Desired: Messages sent from +972-3-757-2229 (Business number)
+ * 
+ * NOTE: Sender number is controlled by INFORU panel settings, not API
  */
 
 const express = require('express');
 const router = express.Router();
 
-// Business phone configuration
-const BUSINESS_PHONE = "972037572229"; // +972 3-757-2229
+// Current phone (from INFORU panel)
+const CURRENT_PHONE = "972351150100"; // +972-3-511-5010
+// Desired business phone
+const DESIRED_PHONE = "972037572229"; // +972-3-757-2229
 
 // Simple AI call function
 async function callClaude(systemPrompt, userPrompt) {
@@ -51,7 +56,7 @@ const SALES_SYSTEM_PROMPT = `אתה QUANTUM Sales AI - המתווך הדיגיט
 
 היה קצר, ישיר ומקצועי.`;
 
-// INFORU webhook receiver - FROM BUSINESS NUMBER
+// INFORU webhook receiver
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
     const messageData = req.body;
@@ -67,7 +72,8 @@ router.post('/whatsapp/webhook', async (req, res) => {
     // Generate AI response
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
-    // Send response via INFORU FROM BUSINESS NUMBER
+    // Send response via INFORU
+    // NOTE: Sender number controlled by INFORU panel, not API
     const axios = require('axios');
     const auth = Buffer.from('hemichaeli:4e9d8256-b2da-4d95-9540-63e940aadc9a').toString('base64');
     
@@ -75,8 +81,9 @@ router.post('/whatsapp/webhook', async (req, res) => {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        From: BUSINESS_PHONE,  // 🎯 שליחה מהמספר העסקי החדש!
         SenderName: "QUANTUM"
+        // NOTE: From field ignored by INFORU API
+        // Sender number must be changed in INFORU panel
       }
     }, {
       headers: {
@@ -85,7 +92,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
       }
     });
     
-    console.log('✅ WhatsApp response sent from', BUSINESS_PHONE, 'to', phone);
+    console.log('✅ WhatsApp response sent to', phone, '(from INFORU default number)');
     res.json({ success: true, processed: true });
     
   } catch (error) {
@@ -94,7 +101,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
   }
 });
 
-// Manual trigger for testing - FROM BUSINESS NUMBER
+// Manual trigger for testing
 router.post('/whatsapp/trigger', async (req, res) => {
   try {
     const { phone, message } = req.body;
@@ -103,7 +110,7 @@ router.post('/whatsapp/trigger', async (req, res) => {
       return res.status(400).json({ error: 'Phone and message required' });
     }
     
-    console.log('🔧 Manual trigger from', BUSINESS_PHONE);
+    console.log('🔧 Manual trigger (from INFORU default number)');
     
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
@@ -114,8 +121,8 @@ router.post('/whatsapp/trigger', async (req, res) => {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        From: BUSINESS_PHONE,  // 🎯 שליחה מהמספר העסקי החדש!
         SenderName: "QUANTUM"
+        // NOTE: From field ignored by INFORU API
       }
     }, {
       headers: {
@@ -128,8 +135,9 @@ router.post('/whatsapp/trigger', async (req, res) => {
       success: true, 
       aiResponse, 
       inforuResult: result.data,
-      sentFrom: BUSINESS_PHONE,  // מראה מאיזה מספר נשלח
-      senderName: "QUANTUM"
+      currentPhone: CURRENT_PHONE,
+      desiredPhone: DESIRED_PHONE,
+      note: "Sender number controlled by INFORU panel settings"
     });
     
   } catch (error) {
@@ -138,14 +146,18 @@ router.post('/whatsapp/trigger', async (req, res) => {
   }
 });
 
-// Simple stats endpoint
+// Stats endpoint with number configuration info
 router.get('/whatsapp/stats', async (req, res) => {
   try {
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
-      businessPhone: BUSINESS_PHONE,
-      displayPhone: "+972 3-757-2229",
+      phoneNumbers: {
+        current: CURRENT_PHONE,
+        currentDisplay: "+972-3-511-5010", 
+        desired: DESIRED_PHONE,
+        desiredDisplay: "+972-3-757-2229"
+      },
       stats: {
         total_leads: 0,
         leads_today: 0,
@@ -153,7 +165,8 @@ router.get('/whatsapp/stats', async (req, res) => {
         buyers: 0,
         high_confidence: 0
       },
-      note: 'Messages sent from business number +972 3-757-2229'
+      note: "To change sender number: Update INFORU panel settings",
+      inforuPanel: "https://panel.inforu.co.il"
     });
   } catch (error) {
     console.error('Stats error:', error.message);
