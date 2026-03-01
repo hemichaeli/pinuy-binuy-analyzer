@@ -19,7 +19,8 @@ function loadAllRoutes() {
     ['./routes/admin', '/api/admin'],
     ['./routes/enrichmentRoutes', '/api/enrichment'],
     ['./routes/inforuRoutes', '/api/inforu'],
-    ['./routes/quantumWhatsAppRoutes', '/api/quantum'],  // NEW: QUANTUM WhatsApp templates & campaigns
+    ['./routes/quantumWhatsAppRoutes', '/api/quantum'],           // QUANTUM WhatsApp templates & campaigns
+    ['./routes/quantumConversationRoutes', '/api/conversations'], // QUANTUM conversation management  
     ['./routes/premiumRoutes', '/api/premium'],
     ['./routes/signatureRoutes', '/api/signatures'],
     ['./routes/schedulerRoutes', '/api/scheduler/v2'],
