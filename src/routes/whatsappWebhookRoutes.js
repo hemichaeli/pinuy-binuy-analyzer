@@ -1,6 +1,6 @@
 /**
- * Simple WhatsApp Webhook - Fixed for Production
- * Basic functionality without complex dependencies
+ * Simple WhatsApp Webhook - With QUANTUM Sender Name
+ * Basic functionality with proper branding
  */
 
 const express = require('express');
@@ -48,7 +48,7 @@ const SALES_SYSTEM_PROMPT = `אתה QUANTUM Sales AI - המתווך הדיגיט
 
 היה קצר, ישיר ומקצועי.`;
 
-// INFORU webhook receiver - SIMPLE VERSION
+// INFORU webhook receiver - WITH QUANTUM BRANDING
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
     const messageData = req.body;
@@ -64,12 +64,16 @@ router.post('/whatsapp/webhook', async (req, res) => {
     // Generate AI response
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
-    // Send response via INFORU
+    // Send response via INFORU with QUANTUM sender name
     const axios = require('axios');
     const auth = Buffer.from('hemichaeli:4e9d8256-b2da-4d95-9540-63e940aadc9a').toString('base64');
     
     await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
-      Data: { Message: aiResponse, Phone: phone }
+      Data: { 
+        Message: aiResponse, 
+        Phone: phone,
+        SenderName: "QUANTUM"  // 🎯 שליחה בשם QUANTUM!
+      }
     }, {
       headers: {
         'Content-Type': 'application/json',
@@ -77,7 +81,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
       }
     });
     
-    console.log('✅ WhatsApp response sent to', phone);
+    console.log('✅ WhatsApp response sent to', phone, 'from QUANTUM');
     res.json({ success: true, processed: true });
     
   } catch (error) {
@@ -86,7 +90,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
   }
 });
 
-// Manual trigger for testing
+// Manual trigger for testing - WITH QUANTUM BRANDING
 router.post('/whatsapp/trigger', async (req, res) => {
   try {
     const { phone, message } = req.body;
@@ -103,7 +107,11 @@ router.post('/whatsapp/trigger', async (req, res) => {
     const auth = Buffer.from('hemichaeli:4e9d8256-b2da-4d95-9540-63e940aadc9a').toString('base64');
     
     const result = await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
-      Data: { Message: aiResponse, Phone: phone }
+      Data: { 
+        Message: aiResponse, 
+        Phone: phone,
+        SenderName: "QUANTUM"  // 🎯 שליחה בשם QUANTUM!
+      }
     }, {
       headers: {
         'Content-Type': 'application/json',
@@ -114,7 +122,8 @@ router.post('/whatsapp/trigger', async (req, res) => {
     res.json({ 
       success: true, 
       aiResponse, 
-      inforuResult: result.data 
+      inforuResult: result.data,
+      senderName: "QUANTUM"  // מראה שנשלח בשם QUANTUM
     });
     
   } catch (error) {
@@ -136,7 +145,8 @@ router.get('/whatsapp/stats', async (req, res) => {
         buyers: 0,
         high_confidence: 0
       },
-      note: 'Basic stats - advanced analytics coming soon'
+      note: 'Basic stats - advanced analytics coming soon',
+      senderName: 'QUANTUM'
     });
   } catch (error) {
     console.error('Stats error:', error.message);
