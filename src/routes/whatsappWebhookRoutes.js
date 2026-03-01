@@ -65,9 +65,9 @@ router.post('/whatsapp/webhook', async (req, res) => {
     // Generate AI response
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
-    // Send response via INFORU - CORRECTED CREDENTIALS
+    // Send response via INFORU - WORKING CREDENTIALS
     const axios = require('axios');
-    const auth = Buffer.from('QUANTUM:c92f2967-9d91-45a6-8b10-5f6815557c31').toString('base64');
+    const auth = Buffer.from('hemichaeli:4e9d8256-b2da-4d95-9540-63e940aadc9a').toString('base64');
     
     await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
       Data: {
@@ -104,9 +104,9 @@ router.post('/whatsapp/trigger', async (req, res) => {
     
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
-    // Send via INFORU - CORRECTED CREDENTIALS
+    // Send via INFORU - WORKING CREDENTIALS  
     const axios = require('axios');
-    const auth = Buffer.from('QUANTUM:c92f2967-9d91-45a6-8b10-5f6815557c31').toString('base64');
+    const auth = Buffer.from('hemichaeli:4e9d8256-b2da-4d95-9540-63e940aadc9a').toString('base64');
     
     const result = await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
       Data: {
