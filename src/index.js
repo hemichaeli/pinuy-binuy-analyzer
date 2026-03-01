@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.32.0';
-const BUILD = '2026-03-01-v4.32.0-whatsapp-webhook';
+const VERSION = '4.33.0';
+const BUILD = '2026-03-01-v4.33.0-enhanced-whatsapp-bot-dashboard';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -260,8 +260,7 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_source ON leads(source)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status)`);
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_type ON leads(user_type)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at DESC)`);
-    } catch (e) { /* table exists */ }
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at DESC)`);\n    } catch (e) { /* table exists */ }
 
     // v4.29.0: Mavat building details table
     try {
@@ -303,7 +302,7 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_listing_messages_channel ON listing_messages(channel)`);
     } catch (e) { /* indexes exist */ }
     
-    logger.info('Auto-migrations completed (v4.32.0 - whatsapp-webhook)');
+    logger.info('Auto-migrations completed (v4.33.0 - enhanced-whatsapp-bot-dashboard)');
   } catch (error) {
     logger.error('Auto-migration error:', error.message);
   }
@@ -317,10 +316,10 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'] }));
 app.use(express.json({ limit: '50mb' }));
 
-// Rate limiting - exempt public UI routes + bot + fireflies + whatsapp webhook
+// Rate limiting - exempt public UI routes + bot + fireflies + whatsapp webhook + dashboard
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
 app.use('/api/', (req, res, next) => {
-  if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard') || req.path.startsWith('/intelligence') || req.path.startsWith('/bot') || req.path.startsWith('/fireflies') || req.path.startsWith('/whatsapp/')) {
+  if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard') || req.path.startsWith('/intelligence') || req.path.startsWith('/bot') || req.path.startsWith('/fireflies') || req.path.startsWith('/whatsapp/') || req.path.startsWith('/whatsapp-bot-dashboard')) {
     return next();
   }
   apiLimiter(req, res, next);
@@ -370,7 +369,7 @@ app.get('/health', async (req, res) => {
     let leadCount = 0;
     try { const lc = await pool.query('SELECT COUNT(*) FROM website_leads'); leadCount = parseInt(lc.rows[0].count); } catch (e) { /* table might not exist yet */ }
     let botLeadCount = 0;
-    try { const bl = await pool.query("SELECT COUNT(*) FROM leads WHERE source = 'whatsapp_bot'"); botLeadCount = parseInt(bl.rows[0].count); } catch (e) { /* table might not exist yet */ }
+    try { const bl = await pool.query("SELECT COUNT(*) FROM leads WHERE source IN ('whatsapp_bot', 'whatsapp_webhook')"); botLeadCount = parseInt(bl.rows[0].count); } catch (e) { /* table might not exist yet */ }
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -439,6 +438,7 @@ function loadAllRoutes() {
     ['./routes/leadRoutes', '/api/leads'],
     ['./routes/botRoutes', '/api/bot'],
     ['./routes/whatsappWebhookRoutes', '/api'],
+    ['./routes/whatsappDashboardRoutes', '/api'],
     ['./routes/firefliesWebhookRoutes', '/api/fireflies'],
     ['./routes/mavatBuildingRoutes', '/api/mavat'],
   ];
@@ -498,7 +498,7 @@ app.get('/debug', (req, res) => {
   res.json({
     timestamp: new Date().toISOString(), build: BUILD, version: VERSION, node_version: process.version,
     env: { DATABASE_URL: process.env.DATABASE_URL ? '(set)' : '(not set)', PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? '(set)' : '(not set)', ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ? '(set)' : '(not set)', RESEND_API_KEY: process.env.RESEND_API_KEY ? '(set)' : '(not set)', KONES_EMAIL: process.env.KONES_EMAIL ? '(set)' : '(not set)', KONES_PASSWORD: process.env.KONES_PASSWORD ? '(set)' : '(not set)', YAD2_EMAIL: process.env.YAD2_EMAIL ? '(set)' : '(not set)', YAD2_PASSWORD: process.env.YAD2_PASSWORD ? '(set)' : '(not set)', INFORU_API_TOKEN: process.env.INFORU_API_TOKEN ? '(set)' : '(not set)', TRELLO_API_KEY: process.env.TRELLO_API_KEY ? '(set)' : '(not set)', TRELLO_TOKEN: process.env.TRELLO_TOKEN ? '(set)' : '(not set)', TRELLO_BOARD_ID: process.env.TRELLO_BOARD_ID ? '(set)' : '(not set)' },
-    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled', trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured', leads: 'active', whatsapp_bot: 'active', fireflies_webhook: 'active', mavat_buildings: 'active', whatsapp_webhook: 'active' },
+    features: { discovery: discovery.available ? `active (${discovery.cities} cities)` : 'disabled', kones_israel: kones.available ? (kones.configured ? 'active' : 'not configured') : 'disabled', notifications: notificationService.isConfigured() ? 'active' : 'disabled', trello: process.env.TRELLO_BOARD_ID ? 'configured' : 'not configured', leads: 'active', whatsapp_bot: 'active', whatsapp_enhanced_bot: 'active', whatsapp_dashboard: 'active', fireflies_webhook: 'active', mavat_buildings: 'active', whatsapp_webhook: 'active' },
     routes: routeLoadResults, scheduler: schedulerStatus
   });
 });
@@ -529,6 +529,7 @@ app.get('/api/info', (req, res) => {
       leads: '/api/leads', bot_health: '/api/bot/health',
       bot_webservice: '/api/bot/webservice', bot_callback: '/api/bot/callback',
       whatsapp_webhook: '/api/whatsapp/webhook', whatsapp_trigger: '/api/whatsapp/trigger',
+      whatsapp_dashboard: '/api/whatsapp-bot-dashboard', whatsapp_stats: '/api/whatsapp/stats',
       fireflies_webhook: '/api/fireflies/webhook', fireflies_test: '/api/fireflies/test',
       mavat_stats: '/api/mavat/stats', mavat_buildings: '/api/mavat/buildings/:id'
     }
@@ -582,7 +583,8 @@ async function start() {
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`WhatsApp Bot: /api/bot/`);
-    logger.info(`WhatsApp Webhook: /api/whatsapp/webhook`);
+    logger.info(`WhatsApp Enhanced Webhook: /api/whatsapp/webhook`);
+    logger.info(`WhatsApp Dashboard: /api/whatsapp-bot-dashboard`);
     logger.info(`Fireflies Webhook: /api/fireflies/webhook`);
     logger.info(`Mavat Buildings: /api/mavat/`);
   });
