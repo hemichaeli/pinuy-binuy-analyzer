@@ -1,10 +1,13 @@
 /**
- * Simple WhatsApp Webhook - With QUANTUM Sender Name
- * Basic functionality with proper branding
+ * WhatsApp Webhook - Updated with Correct Business Number
+ * Messages sent from +972 3-757-2229 (037572229)
  */
 
 const express = require('express');
 const router = express.Router();
+
+// Business phone configuration
+const BUSINESS_PHONE = "972037572229"; // +972 3-757-2229
 
 // Simple AI call function
 async function callClaude(systemPrompt, userPrompt) {
@@ -48,7 +51,7 @@ const SALES_SYSTEM_PROMPT = `אתה QUANTUM Sales AI - המתווך הדיגיט
 
 היה קצר, ישיר ומקצועי.`;
 
-// INFORU webhook receiver - WITH QUANTUM BRANDING
+// INFORU webhook receiver - FROM BUSINESS NUMBER
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
     const messageData = req.body;
@@ -64,7 +67,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
     // Generate AI response
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
-    // Send response via INFORU with QUANTUM sender name
+    // Send response via INFORU FROM BUSINESS NUMBER
     const axios = require('axios');
     const auth = Buffer.from('hemichaeli:4e9d8256-b2da-4d95-9540-63e940aadc9a').toString('base64');
     
@@ -72,7 +75,8 @@ router.post('/whatsapp/webhook', async (req, res) => {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        SenderName: "QUANTUM"  // 🎯 שליחה בשם QUANTUM!
+        From: BUSINESS_PHONE,  // 🎯 שליחה מהמספר העסקי החדש!
+        SenderName: "QUANTUM"
       }
     }, {
       headers: {
@@ -81,7 +85,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
       }
     });
     
-    console.log('✅ WhatsApp response sent to', phone, 'from QUANTUM');
+    console.log('✅ WhatsApp response sent from', BUSINESS_PHONE, 'to', phone);
     res.json({ success: true, processed: true });
     
   } catch (error) {
@@ -90,7 +94,7 @@ router.post('/whatsapp/webhook', async (req, res) => {
   }
 });
 
-// Manual trigger for testing - WITH QUANTUM BRANDING
+// Manual trigger for testing - FROM BUSINESS NUMBER
 router.post('/whatsapp/trigger', async (req, res) => {
   try {
     const { phone, message } = req.body;
@@ -99,7 +103,7 @@ router.post('/whatsapp/trigger', async (req, res) => {
       return res.status(400).json({ error: 'Phone and message required' });
     }
     
-    console.log('🔧 Manual trigger:', { phone, message });
+    console.log('🔧 Manual trigger from', BUSINESS_PHONE);
     
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
@@ -110,7 +114,8 @@ router.post('/whatsapp/trigger', async (req, res) => {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        SenderName: "QUANTUM"  // 🎯 שליחה בשם QUANTUM!
+        From: BUSINESS_PHONE,  // 🎯 שליחה מהמספר העסקי החדש!
+        SenderName: "QUANTUM"
       }
     }, {
       headers: {
@@ -123,7 +128,8 @@ router.post('/whatsapp/trigger', async (req, res) => {
       success: true, 
       aiResponse, 
       inforuResult: result.data,
-      senderName: "QUANTUM"  // מראה שנשלח בשם QUANTUM
+      sentFrom: BUSINESS_PHONE,  // מראה מאיזה מספר נשלח
+      senderName: "QUANTUM"
     });
     
   } catch (error) {
@@ -138,6 +144,8 @@ router.get('/whatsapp/stats', async (req, res) => {
     res.json({
       success: true,
       timestamp: new Date().toISOString(),
+      businessPhone: BUSINESS_PHONE,
+      displayPhone: "+972 3-757-2229",
       stats: {
         total_leads: 0,
         leads_today: 0,
@@ -145,8 +153,7 @@ router.get('/whatsapp/stats', async (req, res) => {
         buyers: 0,
         high_confidence: 0
       },
-      note: 'Basic stats - advanced analytics coming soon',
-      senderName: 'QUANTUM'
+      note: 'Messages sent from business number +972 3-757-2229'
     });
   } catch (error) {
     console.error('Stats error:', error.message);
