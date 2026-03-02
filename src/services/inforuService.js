@@ -10,7 +10,7 @@ const { logger } = require('./logger');
 
 const INFORU_XML_URL = 'https://uapi.inforu.co.il/SendMessageXml.ashx';
 const INFORU_CAPI_BASE = 'https://capi.inforu.co.il/api/v2';
-const DEFAULT_SENDER = 'QUANTUM';
+const DEFAULT_SENDER = '037572229';
 
 // --- SMS Templates (free-text) ---
 const SMS_TEMPLATES = {
@@ -393,7 +393,7 @@ async function checkAccountStatus() {
   if (!username || !password) return { configured: false, error: 'INFORU credentials not set' };
   const result = { configured: true, credentialsValid: true, sms: null, whatsapp: null };
   try {
-    const xml = buildXmlPayload(username, password, '0000000000', 'QUANTUM test message', 'QUANTUM');
+    const xml = buildXmlPayload(username, password, '0000000000', 'QUANTUM test message', DEFAULT_SENDER);
     const resp = await axios.post(INFORU_XML_URL, null, { params: { InforuXML: xml }, headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }, timeout: 10000 });
     const status = parseInt((resp.data.match(/<Status>(.*?)<\/Status>/) || [])[1] || '-999');
     const description = (resp.data.match(/<Description>(.*?)<\/Description>/) || [])[1] || 'Unknown';
