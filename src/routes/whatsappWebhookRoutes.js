@@ -1,21 +1,21 @@
 /**
- * QUANTUM WhatsApp Bot - Webhook Working v4.0
- * Hybrid solution: receive via webhook, send via working credentials
+ * QUANTUM WhatsApp Bot - v5.0
+ * Unified: All WhatsApp via QUANTUM account (037572229)
+ * Credentials from env vars: INFORU_USERNAME + INFORU_PASSWORD
  */
 
 const express = require('express');
 const router = express.Router();
 
-// Working credentials for sending (until INFORU authorizes QUANTUM account)
-const WORKING_USERNAME = 'hemichaeli';
-const WORKING_TOKEN = '4e9d8256-b2da-4d95-9540-63e940aadc9a';
-
-// Target QUANTUM credentials (for future use when authorized)
-const QUANTUM_USERNAME = 'QUANTUM';
-const QUANTUM_TOKEN = '95452ace-07cf-48be-8671-a197c15d3c17';
-
-// Deployment tracking
+const INFORU_CAPI_BASE = 'https://capi.inforu.co.il/api/v2';
 const DEPLOYMENT_TIME = new Date().toISOString();
+
+function getBasicAuth() {
+  const username = process.env.INFORU_USERNAME;
+  const password = process.env.INFORU_PASSWORD;
+  if (!username || !password) throw new Error('INFORU credentials not configured');
+  return Buffer.from(`${username}:${password}`).toString('base64');
+}
 
 // Simple AI call function
 async function callClaude(systemPrompt, userPrompt) {
@@ -61,7 +61,7 @@ const SALES_SYSTEM_PROMPT = `אתה QUANTUM Sales AI - המתווך הדיגיט
 
 היה קצר, ישיר ומקצועי.`;
 
-// INFORU webhook receiver - WEBHOOK NOW WORKING!
+// INFORU webhook receiver
 router.post('/whatsapp/webhook', async (req, res) => {
   try {
     const messageData = req.body;
@@ -69,11 +69,11 @@ router.post('/whatsapp/webhook', async (req, res) => {
     const message = messageData.message || messageData.text || messageData.body;
     
     if (!phone || !message) {
-      console.log('❌ Webhook received incomplete data:', messageData);
+      console.log('Webhook received incomplete data:', messageData);
       return res.status(400).json({ error: 'Missing phone or message', received: messageData });
     }
     
-    console.log('📱 ✅ WEBHOOK WORKING! Message received:', { 
+    console.log('WEBHOOK: Message received:', { 
       phone, 
       message: message.substring(0, 50),
       timestamp: new Date().toISOString()
@@ -82,37 +82,45 @@ router.post('/whatsapp/webhook', async (req, res) => {
     // Generate AI response
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
-    // Send response via working credentials with QUANTUM branding
+    // Send response via QUANTUM credentials (037572229)
     const axios = require('axios');
-    const auth = Buffer.from(`${WORKING_USERNAME}:${WORKING_TOKEN}`).toString('base64');
+    const auth = getBasicAuth();
     
-    const result = await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
+    const result = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/SendWhatsAppChat`, {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        SenderName: "QUANTUM",
-        BusinessAccount: "QUANTUM"
+        Settings: {
+          CustomerMessageId: `bot_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          CustomerParameter: 'QUANTUM_BOT'
+        }
       }
     }, {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Basic ${auth}`
-      }
+      },
+      timeout: 15000,
+      validateStatus: () => true
     });
     
-    console.log('✅ Auto-reply sent successfully! Status:', result.data.StatusId);
+    const success = result.data.StatusId === 1;
+    console.log(`Bot reply ${success ? 'sent' : 'failed'}:`, { 
+      status: result.data.StatusId, 
+      description: result.data.StatusDescription,
+      phone 
+    });
     
     res.json({ 
-      success: true, 
+      success,
       processed: true,
-      webhookWorking: true,
       autoReplyStatus: result.data.StatusId,
-      deploymentTime: DEPLOYMENT_TIME,
-      note: "Webhook active! Auto-replies working!"
+      autoReplyDescription: result.data.StatusDescription,
+      deploymentTime: DEPLOYMENT_TIME
     });
     
   } catch (error) {
-    console.error('❌ Webhook processing error:', error.message);
+    console.error('Webhook processing error:', error.message);
     res.status(500).json({ 
       error: 'Processing failed', 
       details: error.message,
@@ -131,43 +139,43 @@ router.post('/whatsapp/trigger', async (req, res) => {
       return res.status(400).json({ error: 'Phone and message required' });
     }
     
-    console.log('🔧 Manual trigger (webhook working version):', { phone, message });
+    console.log('Manual trigger:', { phone, message });
     
     const aiResponse = await callClaude(SALES_SYSTEM_PROMPT, message);
     
     const axios = require('axios');
-    const auth = Buffer.from(`${WORKING_USERNAME}:${WORKING_TOKEN}`).toString('base64');
+    const auth = getBasicAuth();
     
-    const result = await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
+    const result = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/SendWhatsAppChat`, {
       Data: { 
         Message: aiResponse, 
         Phone: phone,
-        SenderName: "QUANTUM",
-        BusinessAccount: "QUANTUM"
+        Settings: {
+          CustomerMessageId: `trigger_${Date.now()}`,
+          CustomerParameter: 'QUANTUM_TRIGGER'
+        }
       }
     }, {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Basic ${auth}`
-      }
+      },
+      timeout: 15000,
+      validateStatus: () => true
     });
     
     res.json({ 
-      success: true, 
+      success: result.data.StatusId === 1, 
       aiResponse, 
       inforuResult: result.data,
-      credentials: "working (hemichaeli) with QUANTUM branding",
-      webhookStatus: "ACTIVE for 037572229",
-      deploymentTime: DEPLOYMENT_TIME,
-      note: "Webhook configured! Ready for incoming messages!"
+      credentials: 'QUANTUM (env vars)',
+      whatsappNumber: '037572229',
+      deploymentTime: DEPLOYMENT_TIME
     });
     
   } catch (error) {
     console.error('Manual trigger error:', error.message);
-    res.status(500).json({ 
-      error: error.message,
-      deploymentTime: DEPLOYMENT_TIME
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -178,13 +186,12 @@ router.get('/whatsapp/stats', async (req, res) => {
       success: true,
       timestamp: new Date().toISOString(),
       deploymentTime: DEPLOYMENT_TIME,
-      webhookStatus: "ACTIVE for 037572229",
+      whatsappNumber: '037572229',
       credentials: {
-        sending: `${WORKING_USERNAME} (working)`,
-        receiving: "webhook configured by INFORU",
-        target: `${QUANTUM_USERNAME} (future use)`
+        source: 'env vars (INFORU_USERNAME/INFORU_PASSWORD)',
+        account: process.env.INFORU_USERNAME || 'NOT SET'
       },
-      status: "READY FOR TESTING! Send message to 037572229"
+      status: 'ACTIVE - Send message to 037572229 to test'
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
