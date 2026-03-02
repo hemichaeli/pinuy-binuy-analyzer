@@ -72,7 +72,6 @@ router.post('/send', async (req, res) => {
 router.get('/whatsapp/templates', async (req, res) => {
   if (!inforuService) return res.status(503).json({ error: 'INFORU not available' });
   try {
-    // Return both QUANTUM templates and all INFORU templates
     const inforuTemplates = await inforuService.getWhatsAppTemplates();
     res.json({
       quantumTemplates: Object.entries(inforuService.WA_TEMPLATES).map(([key, tmpl]) => ({
@@ -115,15 +114,38 @@ router.post('/whatsapp/send', async (req, res) => {
 router.post('/whatsapp/chat', async (req, res) => {
   if (!inforuService) return res.status(503).json({ error: 'INFORU not available' });
   try {
-    const { phone, message, mediaUrl } = req.body;
+    const { phone, message, mediaUrl, customerMessageId, customerParameter } = req.body;
     if (!phone) return res.status(400).json({ error: 'Phone number required' });
     if (!message) return res.status(400).json({ error: 'Message required' });
 
-    const result = await inforuService.sendWhatsAppChat(phone, message, { mediaUrl });
+    const result = await inforuService.sendWhatsAppChat(phone, message, { mediaUrl, customerMessageId, customerParameter });
     res.json(result);
   } catch (err) {
-    logger.error('WhatsApp chat send failed', { error: err.message });
-    res.status(500).json({ error: err.message });
+    // Return detailed error info including INFORU response body
+    const errorResponse = {
+      error: err.message,
+      inforuStatus: err.response?.status || null,
+      inforuResponse: err.response?.data || null,
+      sentPayload: err.sentPayload || null
+    };
+    logger.error('WhatsApp chat send failed', errorResponse);
+    res.status(err.response?.status || 500).json(errorResponse);
+  }
+});
+
+// Debug endpoint - test raw INFORU request
+router.post('/whatsapp/chat-debug', async (req, res) => {
+  if (!inforuService) return res.status(503).json({ error: 'INFORU not available' });
+  try {
+    const result = await inforuService.sendWhatsAppChatDebug(req.body.phone, req.body.message, req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ 
+      error: err.message,
+      inforuStatus: err.response?.status,
+      inforuResponse: err.response?.data,
+      inforuHeaders: err.response?.headers
+    });
   }
 });
 
