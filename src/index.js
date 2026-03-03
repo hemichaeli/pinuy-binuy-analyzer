@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.39.0';
-const BUILD = '2026-03-03-v4.39.0-whatsapp-full-suite';
+const VERSION = '4.40.0';
+const BUILD = '2026-03-03-v4.40.0-whatsapp-auto-alerts';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -77,7 +77,7 @@ async function runAutoMigrations() {
       await pool.query(`CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone)`);
     } catch (e) { /* table exists */ }
 
-    // WhatsApp conversations table (v4.38.0 - WhatsApp v6.0)
+    // WhatsApp conversations table (v4.38.0)
     try {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS whatsapp_conversations (
@@ -100,10 +100,55 @@ async function runAutoMigrations() {
       }
     }
 
+    // WhatsApp subscriptions table (v4.40.0 - Auto-alerts)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS whatsapp_subscriptions (
+          id SERIAL PRIMARY KEY,
+          lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE,
+          criteria JSONB NOT NULL,
+          active BOOLEAN DEFAULT true,
+          alerts_sent INTEGER DEFAULT 0,
+          last_alert_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_whatsapp_subs_lead ON whatsapp_subscriptions(lead_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_whatsapp_subs_active ON whatsapp_subscriptions(active)`);
+      logger.info('[MIGRATION] whatsapp_subscriptions table ready');
+    } catch (e) {
+      if (e.message.includes('already exists')) {
+        logger.info('[MIGRATION] whatsapp_subscriptions table already exists');
+      } else {
+        logger.error('[MIGRATION] whatsapp_subscriptions error:', e.message);
+      }
+    }
+
+    // WhatsApp alert log table (v4.40.0)
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS whatsapp_alert_log (
+          id SERIAL PRIMARY KEY,
+          subscription_id INTEGER REFERENCES whatsapp_subscriptions(id) ON DELETE CASCADE,
+          listing_id INTEGER REFERENCES listings(id) ON DELETE CASCADE,
+          sent_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_whatsapp_alert_sub ON whatsapp_alert_log(subscription_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_whatsapp_alert_listing ON whatsapp_alert_log(listing_id)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_whatsapp_alert_sent ON whatsapp_alert_log(sent_at DESC)`);
+      logger.info('[MIGRATION] whatsapp_alert_log table ready');
+    } catch (e) {
+      if (e.message.includes('already exists')) {
+        logger.info('[MIGRATION] whatsapp_alert_log table already exists');
+      } else {
+        logger.error('[MIGRATION] whatsapp_alert_log error:', e.message);
+      }
+    }
+
     // v4.36.0: Widen columns that were VARCHAR(100/255) to TEXT
-    // Prevents "value too long" errors during enrichment and yad2 scans
     const widenStatements = [
-      // complexes
       'ALTER TABLE complexes ALTER COLUMN neighborhood TYPE TEXT',
       'ALTER TABLE complexes ALTER COLUMN region TYPE TEXT',
       'ALTER TABLE complexes ALTER COLUMN developer TYPE TEXT',
@@ -122,11 +167,9 @@ async function runAutoMigrations() {
       'ALTER TABLE complexes ALTER COLUMN plan_number TYPE TEXT',
       'ALTER TABLE complexes ALTER COLUMN status TYPE TEXT',
       'ALTER TABLE complexes ALTER COLUMN slug TYPE TEXT',
-      // buildings
       'ALTER TABLE buildings ALTER COLUMN address TYPE TEXT',
       'ALTER TABLE buildings ALTER COLUMN street TYPE TEXT',
       'ALTER TABLE buildings ALTER COLUMN city TYPE TEXT',
-      // listings
       'ALTER TABLE listings ALTER COLUMN address TYPE TEXT',
       'ALTER TABLE listings ALTER COLUMN city TYPE TEXT',
       'ALTER TABLE listings ALTER COLUMN source_listing_id TYPE TEXT',
@@ -134,12 +177,10 @@ async function runAutoMigrations() {
       'ALTER TABLE listings ALTER COLUMN deal_status TYPE TEXT',
       'ALTER TABLE listings ALTER COLUMN message_status TYPE TEXT',
       'ALTER TABLE listings ALTER COLUMN urgent_keywords_found TYPE TEXT',
-      // transactions
       'ALTER TABLE transactions ALTER COLUMN address TYPE TEXT',
       'ALTER TABLE transactions ALTER COLUMN city TYPE TEXT',
       'ALTER TABLE transactions ALTER COLUMN source_id TYPE TEXT',
       'ALTER TABLE transactions ALTER COLUMN source TYPE TEXT',
-      // alerts
       'ALTER TABLE alerts ALTER COLUMN alert_type TYPE TEXT',
       'ALTER TABLE alerts ALTER COLUMN severity TYPE TEXT',
       'ALTER TABLE alerts ALTER COLUMN title TYPE TEXT',
@@ -164,7 +205,7 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'] }));
 app.use(express.json({ limit: '50mb' }));
 
-// Rate limiting - exempt public UI routes + bot + fireflies + whatsapp webhook
+// Rate limiting
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, validate: { trustProxy: true } });
 app.use('/api/', (req, res, next) => {
   if (req.path.startsWith('/perplexity') || req.path.startsWith('/chat') || req.path.startsWith('/dashboard') || req.path.startsWith('/intelligence') || req.path.startsWith('/bot') || req.path.startsWith('/fireflies') || req.path.startsWith('/whatsapp/') || req.path.startsWith('/whatsapp-dashboard')) {
@@ -173,14 +214,10 @@ app.use('/api/', (req, res, next) => {
   apiLimiter(req, res, next);
 });
 
-// =============================================================
-// ROBOTS.TXT + CRAWLER SUPPORT
-// =============================================================
 app.get('/robots.txt', (req, res) => {
   res.type('text/plain').send(`# QUANTUM - Pinuy Binui Intelligence\nUser-agent: *\nAllow: /api/perplexity/\nAllow: /api/intelligence/\nAllow: /health\nDisallow: /api/admin/\nDisallow: /api/scan/\nDisallow: /diagnostics\n\nUser-agent: PerplexityBot\nAllow: /\n\nUser-agent: ChatGPT-User\nAllow: /api/perplexity/\nAllow: /api/intelligence/\n\nUser-agent: Claude-Web\nAllow: /api/perplexity/\nAllow: /api/intelligence/\n`);
 });
 
-// Request logging
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -192,25 +229,27 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check handler (shared between /health and /api/health)
 async function handleHealthCheck(req, res) {
   try {
     const result = await pool.query('SELECT COUNT(*) FROM complexes');
     const txCount = await pool.query('SELECT COUNT(*) FROM transactions');
     const listingCount = await pool.query('SELECT COUNT(*) FROM listings');
     const alertCount = await pool.query('SELECT COUNT(*) FROM alerts WHERE is_read = FALSE');
-    let botLeadCount = 0;
-    let conversationCount = 0;
+    let botLeadCount = 0, conversationCount = 0, subscriptionCount = 0;
+    
     try { 
       const bl = await pool.query("SELECT COUNT(*) FROM leads WHERE source IN ('whatsapp_bot', 'whatsapp_webhook')"); 
       botLeadCount = parseInt(bl.rows[0].count); 
-    } catch (e) { /* table might not exist yet */ }
+    } catch (e) { }
     try {
       const cc = await pool.query("SELECT COUNT(*) FROM whatsapp_conversations");
       conversationCount = parseInt(cc.rows[0].count);
-    } catch (e) { /* table might not exist yet */ }
+    } catch (e) { }
+    try {
+      const sc = await pool.query("SELECT COUNT(*) FROM whatsapp_subscriptions WHERE active = true");
+      subscriptionCount = parseInt(sc.rows[0].count);
+    } catch (e) { }
     
-    // Scheduler status
     let schedulerStatus = 'not_initialized';
     if (schedulerRef) {
       try {
@@ -219,7 +258,6 @@ async function handleHealthCheck(req, res) {
       } catch (e) { schedulerStatus = 'error'; }
     }
 
-    // Last scan info
     let lastScanInfo = null;
     try {
       const ls = await pool.query('SELECT id, scan_type, started_at, completed_at, status FROM scan_logs ORDER BY started_at DESC LIMIT 1');
@@ -228,7 +266,7 @@ async function handleHealthCheck(req, res) {
         const hoursAgo = ((Date.now() - new Date(scan.started_at).getTime()) / 3600000).toFixed(1);
         lastScanInfo = { id: scan.id, type: scan.scan_type, status: scan.status, hours_ago: parseFloat(hoursAgo) };
       }
-    } catch (e) { /* scan_logs might not exist */ }
+    } catch (e) { }
 
     res.json({
       status: 'ok',
@@ -241,6 +279,7 @@ async function handleHealthCheck(req, res) {
       listings: parseInt(listingCount.rows[0].count),
       whatsapp_bot_leads: botLeadCount,
       whatsapp_messages: conversationCount,
+      whatsapp_active_subscriptions: subscriptionCount,
       unread_alerts: parseInt(alertCount.rows[0].count),
       notifications: notificationService.isConfigured() ? 'active' : 'disabled',
       scheduler: schedulerStatus,
@@ -253,11 +292,9 @@ async function handleHealthCheck(req, res) {
   }
 }
 
-// Health check - both /health and /api/health
 app.get('/health', handleHealthCheck);
 app.get('/api/health', handleHealthCheck);
 
-// Route loading - SAFE VERSION
 function loadRoute(routePath, mountPath) {
   try {
     console.log(`[TRACE] Loading route ${mountPath}...`);
@@ -302,8 +339,9 @@ function loadAllRoutes() {
     ['./routes/leadRoutes', '/api/leads'],
     ['./routes/botRoutes', '/api/bot'],
     ['./routes/whatsappWebhookRoutes', '/api'],
-    ['./routes/whatsappAnalytics', '/api'], // WhatsApp analytics
-    ['./routes/whatsappDashboardRoutes', '/api'], // Simple dashboard
+    ['./routes/whatsappAnalyticsRoutes', '/api'], // Analytics
+    ['./routes/whatsappAlertRoutes', '/api'], // Auto-alerts + subscriptions
+    ['./routes/whatsappDashboardRoutes', '/api'],
     ['./routes/firefliesWebhookRoutes', '/api/fireflies'],
     ['./routes/mavatBuildingRoutes', '/api/mavat'],
     ['./routes/scan-fixes', '/api/scan-fixes'],
@@ -317,12 +355,10 @@ function loadAllRoutes() {
   logger.info(`Routes: ${loaded} loaded, ${failed} skipped`);
 }
 
-// Root - redirect to dashboard
 app.get('/', (req, res) => {
   res.redirect(302, '/api/dashboard/');
 });
 
-// API info endpoint
 app.get('/api/info', (req, res) => {
   res.json({
     name: 'QUANTUM - Pinuy Binuy Investment Analyzer',
@@ -330,16 +366,10 @@ app.get('/api/info', (req, res) => {
     scheduler: schedulerRef ? 'active' : 'not_initialized',
     endpoints: {
       health: '/health',
-      health_api: '/api/health',
-      scheduler_status: '/api/scheduler/v2',
-      whatsapp_webhook: '/api/whatsapp/webhook', 
-      whatsapp_trigger: '/api/whatsapp/trigger',
-      whatsapp_conversations: '/api/whatsapp/conversations',
+      whatsapp_webhook: '/api/whatsapp/webhook',
+      whatsapp_subscriptions: '/api/whatsapp/subscriptions',
       whatsapp_analytics: '/api/whatsapp/analytics',
-      whatsapp_lead_quality: '/api/whatsapp/lead-quality',
-      whatsapp_dashboard: '/api/whatsapp-dashboard', 
-      whatsapp_stats: '/api/whatsapp/stats',
-      bot_health: '/api/bot/health'
+      whatsapp_stats: '/api/whatsapp/stats'
     }
   });
 });
@@ -360,23 +390,17 @@ async function start() {
   loaded.forEach(r => logger.info(`  OK: ${r.path}`));
   failed.forEach(r => logger.error(`  FAILED: ${r.path} -> ${r.error}`));
 
-  // =====================================================
-  // CRITICAL FIX: Initialize Scheduler Cron Jobs
-  // This was MISSING - cron jobs were never started!
-  // =====================================================
   console.log('[TRACE] Initializing QUANTUM Scheduler...');
   try {
     const scheduler = require('./jobs/quantumScheduler');
     scheduler.initScheduler();
     schedulerRef = scheduler;
-    logger.info('[SCHEDULER] QUANTUM Scheduler v2.2 initialized successfully - cron jobs ACTIVE');
-    logger.info('[SCHEDULER] Schedule: Listings daily 07:00, SSI daily 09:00, Tier1 Sun 08:00, WhatsApp followup Mon-Fri 14:00');
+    logger.info('[SCHEDULER] QUANTUM Scheduler v2.2 initialized - WhatsApp auto-alerts ACTIVE');
   } catch (err) {
     logger.error(`[SCHEDULER] Failed to initialize: ${err.message}`);
     console.error('[TRACE] Scheduler init failed:', err.message);
   }
   
-  // 404 handler - AFTER all routes
   app.use((req, res) => { res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION }); });
   app.use((err, req, res, next) => { logger.error('Unhandled error:', err); res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION }); });
   
@@ -386,8 +410,8 @@ async function start() {
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Routes: ${loaded.length} loaded, ${failed.length} failed`);
     logger.info(`Scheduler: ${schedulerRef ? 'ACTIVE' : 'INACTIVE'}`);
-    logger.info(`WhatsApp Bot v6.1: Full suite active`);
-    logger.info(`WhatsApp Features: Auto-handoff, Follow-up, Analytics`);
+    logger.info(`WhatsApp Bot v6.2: Full suite + Auto-alerts`);
+    logger.info(`Features: Handoff, Follow-up, Analytics, Custom Alerts`);
   });
 }
 
