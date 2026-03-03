@@ -30,8 +30,8 @@ console.log('[TRACE] All requires done, setting up app...');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const VERSION = '4.36.0';
-const BUILD = '2026-03-02-v4.36.0-widen-cols-automigrate';
+const VERSION = '4.37.0';
+const BUILD = '2026-03-03-v4.37.0-scan-fixes-route';
 
 // Store route loading results for diagnostics
 const routeLoadResults = [];
@@ -272,6 +272,7 @@ function loadAllRoutes() {
     ['./routes/whatsappDashboardRoutes', '/api'], // Simple dashboard
     ['./routes/firefliesWebhookRoutes', '/api/fireflies'],
     ['./routes/mavatBuildingRoutes', '/api/mavat'],
+    ['./routes/scan-fixes', '/api/scan-fixes'],
   ];
   
   let loaded = 0, failed = 0;
