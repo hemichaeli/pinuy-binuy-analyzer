@@ -5,7 +5,7 @@ const { logger } = require('../services/logger');
 
 // ============================================================
 // SYSTEM RELIABILITY FIXES for QUANTUM v4.37.0
-// Generic stuck scan fixer + diagnostics
+// Table: scan_logs (NOT "scans")
 // ============================================================
 
 // POST /api/scan-fixes/fix-stuck - Fix ALL stuck scans (running > 2 hours)
@@ -14,7 +14,7 @@ router.post('/fix-stuck', async (req, res) => {
     logger.info('[ScanFix] Fixing all stuck scans (running > 2 hours)...');
     
     const result = await pool.query(`
-      UPDATE scans 
+      UPDATE scan_logs 
       SET status = 'failed', 
           completed_at = NOW(), 
           errors = 'Scan stuck - auto-fixed by system reliability monitor',
@@ -53,7 +53,7 @@ router.post('/fix-scan/:id', async (req, res) => {
     logger.info(`[ScanFix] Fixing scan #${scanId}...`);
     
     const result = await pool.query(`
-      UPDATE scans 
+      UPDATE scan_logs 
       SET status = 'failed', 
           completed_at = NOW(), 
           errors = 'Manually fixed via scan-fixes API',
@@ -65,7 +65,7 @@ router.post('/fix-scan/:id', async (req, res) => {
     if (result.rowCount > 0) {
       res.json({ success: true, message: `Scan #${scanId} fixed`, scan: result.rows[0] });
     } else {
-      const check = await pool.query('SELECT id, status FROM scans WHERE id = $1', [scanId]);
+      const check = await pool.query('SELECT id, status FROM scan_logs WHERE id = $1', [scanId]);
       res.json({ 
         success: true, 
         message: check.rows.length > 0 
@@ -83,16 +83,16 @@ router.get('/status', async (req, res) => {
   try {
     const stuck = await pool.query(`
       SELECT id, scan_type, started_at, complexes_scanned 
-      FROM scans 
+      FROM scan_logs 
       WHERE status = 'running' AND started_at < NOW() - INTERVAL '2 hours'
       ORDER BY started_at
     `);
     const recent = await pool.query(`
       SELECT id, scan_type, status, started_at, completed_at, complexes_scanned
-      FROM scans ORDER BY started_at DESC LIMIT 5
+      FROM scan_logs ORDER BY started_at DESC LIMIT 5
     `);
     const counts = await pool.query(`
-      SELECT status, COUNT(*) as cnt FROM scans GROUP BY status ORDER BY cnt DESC
+      SELECT status, COUNT(*) as cnt FROM scan_logs GROUP BY status ORDER BY cnt DESC
     `);
     
     res.json({
