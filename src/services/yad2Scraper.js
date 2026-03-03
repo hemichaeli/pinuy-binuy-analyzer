@@ -1,5 +1,5 @@
 /**
- * yad2 Direct Scraper (Phase 4.2)
+ * yad2 Direct Scraper (Phase 4.3) - WhatsApp Auto-Alerts
  * 
  * Enhanced scraper that queries yad2's API directly for:
  * - Real-time listing data
@@ -7,7 +7,7 @@
  * - Days on market
  * - Urgent/distress indicators
  * 
- * Falls back to Perplexity AI if direct API fails.
+ * NEW: Sends WhatsApp alerts to subscribed leads matching criteria
  */
 
 const axios = require('axios');
@@ -542,6 +542,7 @@ async function scanComplex(complexId) {
   let errors = 0;
   const priceDrops = [];
   const newListingIds = []; // Track new listings for alerts
+  let whatsappAlertsSent = 0;
 
   for (const listing of data.listings) {
     const result = await processListing(listing, complexId, complex.city);
@@ -549,7 +550,7 @@ async function scanComplex(complexId) {
       newListings++;
       if (result.id) { newListingIds.push({ id: result.id, listing }); }
     } else if (result.action === 'updated') {
-      updatedListings++;
+      updatedListings++; 
       if (result.priceChanged) {
         priceChanges++;
         if (result.priceDrop) {
@@ -583,6 +584,30 @@ async function scanComplex(complexId) {
   for (const { id, listing } of newListingIds) {
     await createNewListingAlert(id, complexId, listing, complex.iai_score);
   }
+  
+  // Send WhatsApp alerts for new listings
+  try {
+    const whatsappAlertService = require('./whatsappAlertService');
+    for (const { id } of newListingIds) {
+      // Get full listing details for WhatsApp alert
+      const listingDetails = await pool.query(
+        `SELECT l.*, c.name as complex_name 
+         FROM listings l 
+         LEFT JOIN complexes c ON l.complex_id = c.id 
+         WHERE l.id = $1`,
+        [id]
+      );
+      
+      if (listingDetails.rows.length > 0) {
+        const fullListing = listingDetails.rows[0];
+        const alertResult = await whatsappAlertService.processNewListing(fullListing);
+        whatsappAlertsSent += alertResult.sent || 0;
+        logger.debug(`[WHATSAPP-ALERT] Sent ${alertResult.sent} alerts for listing ${id}`);
+      }
+    }
+  } catch (whatsappErr) {
+    logger.warn('[WHATSAPP-ALERT] Failed to send WhatsApp alerts', { error: whatsappErr.message });
+  }
 
   // Mark old listings as inactive (only if we got results)
   if (data.listings.length > 0) {
@@ -610,6 +635,7 @@ async function scanComplex(complexId) {
     priceChanges,
     priceDropAlerts: priceDrops.length,
     newListingAlerts: newListingIds.length,
+    whatsappAlertsSent,
     errors
   };
 }
@@ -652,6 +678,7 @@ async function scanAll(options = {}) {
   let totalUpdated = 0;
   let totalPriceChanges = 0;
   let totalAlerts = 0;
+  let totalWhatsAppAlerts = 0;
   const details = [];
 
   for (const complex of complexes.rows) {
@@ -662,6 +689,7 @@ async function scanAll(options = {}) {
       totalUpdated += result.updatedListings;
       totalPriceChanges += result.priceChanges;
       totalAlerts += result.priceDropAlerts || 0;
+      totalWhatsAppAlerts += result.whatsappAlertsSent || 0;
       details.push({ status: 'ok', ...result });
 
       await new Promise(r => setTimeout(r, DELAY_BETWEEN_REQUESTS));
@@ -678,7 +706,7 @@ async function scanAll(options = {}) {
     }
   }
 
-  logger.info(`yad2 batch scan complete: ${succeeded}/${total} ok, ${totalNew} new, ${totalUpdated} updated, ${totalPriceChanges} price changes, ${totalAlerts} alerts`);
+  logger.info(`yad2 batch scan complete: ${succeeded}/${total} ok, ${totalNew} new, ${totalUpdated} updated, ${totalPriceChanges} price changes, ${totalAlerts} alerts, ${totalWhatsAppAlerts} WhatsApp sent`);
 
   return {
     total,
@@ -688,6 +716,7 @@ async function scanAll(options = {}) {
     totalUpdated,
     totalPriceChanges,
     totalAlerts,
+    totalWhatsAppAlerts,
     details
   };
 }
@@ -703,4 +732,3 @@ module.exports = {
   createNewListingAlert,
   createPriceDropAlert
 };
-
