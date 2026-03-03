@@ -6,16 +6,14 @@ const { shouldSkipToday } = require('../config/israeliHolidays');
 function getScanPriority() { try { return require('../services/scanPriorityService'); } catch(e) { return null; } }
 function getSmartBatch() { try { return require('../services/smartBatchService'); } catch(e) { return null; } }
 function getNotificationService() { try { return require('../services/notificationService'); } catch(e) { return null; } }
+function getWhatsAppFollowUp() { try { return require('./whatsappFollowUp'); } catch(e) { return null; } }
 
 /**
- * QUANTUM Intelligent Scan Scheduler v2.1 - Deploy-Safe
+ * QUANTUM Intelligent Scan Scheduler v2.2 - WhatsApp Automation
  * 
+ * v2.2: Added WhatsApp follow-up automation
  * v2.1: Fixed missing getNotificationService lazy-loader
  * v2.0: Job persistence across Railway deploys
- * - Jobs persist to PostgreSQL scan_jobs table
- * - On deploy/restart, interrupted jobs auto-resume from last completed complex
- * - Chain queue persists across restarts
- * - SIGTERM handler marks jobs as interrupted before shutdown
  * 
  * SCHEDULE:
  *   Tier 1 (HOT ~50):   STANDARD weekly Sun 08:00, FULL monthly 1st Sun
@@ -26,7 +24,7 @@ function getNotificationService() { try { return require('../services/notificati
  *   PSS:                 Wed 06:00
  *   IAI:                 After every enrichment batch
  *   Job Monitor:         Every 2 minutes
- *   Est. ~$260-290/month
+ *   WhatsApp Follow-up:  Daily 14:00 (business days)
  */
 
 // ============================================================
@@ -38,7 +36,7 @@ const schedulerState = {
   lastRuns: {},
   lastPSSRank: null,
   biweeklyToggle: false,
-  stats: { totalScans: 0, totalCost: 0 },
+  stats: { totalScans: 0, totalCost: 0, whatsappFollowups: 0 },
   scheduledTasks: [],
   resumedJobs: []
 };
@@ -261,7 +259,7 @@ async function resumeInterruptedJobs() {
 // CRON INIT
 // ============================================================
 function initScheduler() {
-  logger.info('[SCHEDULER] QUANTUM Scheduler v2.1 (deploy-safe + notification fix) initializing...');
+  logger.info('[SCHEDULER] QUANTUM Scheduler v2.2 (WhatsApp automation) initializing...');
 
   // Job Monitor: every 2 min
   schedulerState.scheduledTasks.push(
@@ -347,7 +345,6 @@ function initScheduler() {
     }, { timezone: 'Asia/Jerusalem' })
   );
 
-
   // Tier 1 Express Scan: Every 4h during business hours (checks for urgent new listings)
   schedulerState.scheduledTasks.push(
     cron.schedule('0 11,15,19 * * 0-4', async () => {
@@ -397,7 +394,26 @@ function initScheduler() {
     }, { timezone: 'Asia/Jerusalem' })
   );
 
-  logger.info('[SCHEDULER] Cron registered. Auto-resume check in 15s...');
+  // WhatsApp Follow-up: Daily 14:00 (business days only)
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 14 * * 1-5', async () => {
+      logger.info('[SCHEDULER] WhatsApp follow-up check starting...');
+      try {
+        const followUp = getWhatsAppFollowUp();
+        if (followUp?.runFollowUpJob) {
+          const result = await followUp.runFollowUpJob();
+          schedulerState.stats.whatsappFollowups += result.sent;
+          logger.info(`[SCHEDULER] WhatsApp follow-up: sent ${result.sent}, failed ${result.failed}, total ${result.total}`);
+        } else {
+          logger.warn('[SCHEDULER] WhatsApp follow-up service not available');
+        }
+      } catch (e) {
+        logger.error('[SCHEDULER] WhatsApp follow-up failed', { error: e.message });
+      }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  logger.info('[SCHEDULER] Cron registered (including WhatsApp follow-up). Auto-resume check in 15s...');
 
   // Auto-resume interrupted jobs after startup
   setTimeout(async () => {
@@ -411,7 +427,7 @@ function initScheduler() {
 // ============================================================
 function getSchedulerStatus() {
   return {
-    version: '2.1-deploy-safe',
+    version: '2.2-whatsapp-automation',
     activeJobs: Object.keys(schedulerState.activeJobs).length,
     activeJobDetails: schedulerState.activeJobs,
     chainQueue: schedulerState.chainQueue,
@@ -421,7 +437,8 @@ function getSchedulerStatus() {
     biweeklyToggle: schedulerState.biweeklyToggle,
     resumedJobs: schedulerState.resumedJobs,
     nextEnrichmentDay: isEnrichmentDay() ? 'today' : 'next business day',
-    persistence: 'PostgreSQL scan_jobs'
+    persistence: 'PostgreSQL scan_jobs',
+    whatsappFollowups: schedulerState.stats.whatsappFollowups
   };
 }
 
