@@ -12,9 +12,10 @@ const { logger } = require('./services/logger');
 const pool = require('./db/pool');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.42.0';
-const BUILD = '2026-03-04-v4.42.0-modern-dashboard';
+const VERSION = '4.43.0';
+const BUILD = '2026-03-04-v4.43.0-trust-proxy-fix';
 
 async function runAutoMigrations() {
   try {
