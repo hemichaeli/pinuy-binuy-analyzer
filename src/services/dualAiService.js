@@ -13,8 +13,8 @@ const { queryPerplexity, queryClaude } = require('./claudeOrchestrator');
 const { logger } = require('./logger');
 
 // Constants expected by scan.js
-const PERPLEXITY_MODEL_SCAN = 'sonar';
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
+const PERPLEXITY_MODEL_SCAN = 'sonar-pro';  // Upgraded from 'sonar' for better accuracy
+const CLAUDE_MODEL = 'claude-sonnet-4-20250514';  // Latest Sonnet 4.5
 
 function isClaudeConfigured() {
   return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
