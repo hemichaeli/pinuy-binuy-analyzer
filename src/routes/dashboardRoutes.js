@@ -1,1 +1,456 @@
-LyoqCiAqIFFVQU5UVU0gRGFzaGJvYXJkIHY0LjI2LjAgLSBMZWFkIE1hbmFnZW1lbnQgVGFiCiAqIAogKiBGSVg6IHNtYXJ0VXJsIG5vdyBnZW5lcmF0ZXMgYWRkcmVzcy1iYXNlZCBzZWFyY2ggVVJMcyBpbnN0ZWFkIG9mIGNpdHktb25seQogKiBGSVg6IE1lc3NhZ2UgdGVtcGxhdGUgbmV3bGluZSBlc2NhcGluZyAoZnJvbSB2NC4yNC4xKQogKiAKICogUHJldmlvdXMgKHY0LjI0LjApOiBDb21wbGV0ZSBNZXNzYWdpbmcgRmVhdHVyZQogKiBORVc6IENoZWNrYm94IHNlbGVjdGlvbiBmb3IgbGlzdGluZ3MgKGluZGl2aWR1YWwgKyBzZWxlY3QgYWxsIGZpbHRlcmVkKQogKiBORVc6IE1lc3NhZ2UgdGVtcGxhdGVzICgzIEhlYnJldyB0ZW1wbGF0ZXMgKyBjdXN0b20gZnJlZXRleHQpCiAqIE5FVzogVGVtcGxhdGUgbW9kYWwgd2l0aCBwcmV2aWV3IGFuZCBlZGl0CiAqIE5FVzogQnVsayBzZW5kOiBjb3B5IG1lc3NhZ2UgdG8gY2xpcGJvYXJkICsgb3BlbiBsaXN0aW5nIFVSTHMKICogTkVXOiBNZXNzYWdlIHN0YXR1cyB0cmFja2luZyAo16DXqdec15fXlC/XmNeo150pIHdpdGggREIgcGVyc2lzdGVuY2UKICogTkVXOiBQT1NUIC9hcGkvZGFzaGJvYXJkL2xpc3RpbmdzL21lc3NhZ2Utc2VudCBlbmRwb2ludAogKiBORVc6IFN0aWNreSBhY3Rpb24gYmFyIHdoZW4gbGlzdGluZ3Mgc2VsZWN0ZWQKICogTkVXOiBWaXN1YWwgaW5kaWNhdG9ycyBmb3Igc2VudC9wZW5kaW5nIG1lc3NhZ2VzCiAqIAogKiBQcmV2aW91cyAodjQuMjIuMSk6IFNTSSBwYW5lbCB0aXRsZSwgbGlzdGluZyBjbGljayBvcGVucyBVUkwgZGlyZWN0bHkKICovCgpjb25zdCBleHByZXNzID0gcmVxdWlyZSgnZXhwcmVzcycpOwpjb25zdCByb3V0ZXIgPSBleHByZXNzLlJvdXRlcigpOwoKLy8gLS0tIENvbXBsZXggRGV0YWlsIEFQSSAtLS0KCnJvdXRlci5nZXQoJy9jb21wbGV4LzppZCcsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIHRyeSB7CiAgICBjb25zdCBwb29sID0gcmVxdWlyZSgnLi4vZGIvcG9vbCcpOwogICAgY29uc3QgaWQgPSBwYXJzZUludChyZXEucGFyYW1zLmlkKTsKICAgIAogICAgY29uc3QgY29tcGxleCA9IGF3YWl0IHBvb2wucXVlcnkoYAogICAgICBTRUxFQ1QgKiBGUk9NIGNvbXBsZXhlcyBXSEVSRSBpZCA9ICQxCiAgICBgLCBbaWRdKTsKICAgIAogICAgaWYgKCFjb21wbGV4LnJvd3MubGVuZ3RoKSByZXR1cm4gcmVzLnN0YXR1cyg0MDQpLmpzb24oeyBlcnJvcjogJ05vdCBmb3VuZCcgfSk7CiAgICAKICAgIGNvbnN0IGxpc3RpbmdzID0gYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgIFNFTEVDVCAqIEZST00gbGlzdGluZ3MgV0hFUkUgY29tcGxleF9pZCA9ICQxIEFORCBpc19hY3RpdmUgPSB0cnVlCiAgICAgIE9SREVSIEJZIHByaWNlX2NoYW5nZXMgREVTQyBOVUxMUyBMQVNULCBkYXlzX29uX21hcmtldCBERVNDIE5VTExTIExBU1QKICAgIGAsIFtpZF0pOwogICAgCiAgICBjb25zdCBhbGVydHMgPSBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgU0VMRUNUICogRlJPTSBhbGVydHMgV0hFUkUgY29tcGxleF9pZCA9ICQxCiAgICAgIE9SREVSIEJZIGNyZWF0ZWRfYXQgREVTQyBMSU1JVCAxMAogICAgYCwgW2lkXSk7CiAgICAKICAgIHJlcy5qc29uKHsKICAgICAgY29tcGxleDogY29tcGxleC5yb3dzWzBdLAogICAgICBsaXN0aW5nczogbGlzdGluZ3Mucm93cywKICAgICAgYWxlcnRzOiBhbGVydHMucm93cwogICAgfSk7CiAgfSBjYXRjaCAoZXJyKSB7CiAgICByZXMuc3RhdHVzKDUwMCkuanNvbih7IGVycm9yOiBlcnIubWVzc2FnZSB9KTsKICB9Cn0pOwoKLy8gLS0tIExpc3RpbmdzIEFQSSAtLS0KCnJvdXRlci5nZXQoJy9saXN0aW5ncycsIGFzeW5jIChyZXEsIHJlcykgPT4gewogIHRyeSB7CiAgICBjb25zdCBwb29sID0gcmVxdWlyZSgnLi4vZGIvcG9vbCcpOwogICAgY29uc3QgeyBjaXR5LCBzb3VyY2UsIG1pbl9wcmljZSwgbWF4X3ByaWNlLCBtaW5fcm9vbXMsIG1heF9yb29tcywgbWluX2FyZWEsIG1heF9hcmVhLCBtaW5fZmxvb3IsIG1heF9mbG9vciwgc29ydCwgb3JkZXIsIGxpbWl0IH0gPSByZXEucXVlcnk7CiAgICAKICAgIGxldCBxdWVyeSA9IGBTRUxFQ1QgbC4qLCBjLm5hbWUgYXMgY29tcGxleF9uYW1lLCBjLmNpdHkgYXMgY29tcGxleF9jaXR5LCBjLnN0YXR1cyBhcyBjb21wbGV4X3N0YXR1cywgCiAgICAgICAgICAgICAgICAgYy5pYWlfc2NvcmUsIGMuZGV2ZWxvcGVyLCBjLnNsdWcgYXMgY29tcGxleF9zbHVnLCBjLmlkIGFzIGNpZAogICAgICAgICAgICAgICAgIEZST00gbGlzdGluZ3MgbAogICAgICAgICAgICAgICAgIExFRlQgSk9JTiBjb21wbGV4ZXMgYyBPTiBsLmNvbXBsZXhfaWQgPSBjLmlkCiAgICAgICAgICAgICAgICAgV0hFUkUgbC5pc19hY3RpdmUgPSB0cnVlYDsKICAgIGNvbnN0IHBhcmFtcyA9IFtdOwogICAgbGV0IHBhcmFtSWR4ID0gMTsKICAgIAogICAgaWYgKGNpdHkpIHsgcXVlcnkgKz0gYCBBTkQgbC5jaXR5ID0gJCR7cGFyYW1JZHgrK31gOyBwYXJhbXMucHVzaChjaXR5KTsgfQogICAgaWYgKHNvdXJjZSkgeyBxdWVyeSArPSBgIEFORCBsLnNvdXJjZSA9ICQke3BhcmFtSWR4Kyt9YDsgcGFyYW1zLnB1c2goc291cmNlKTsgfQogICAgaWYgKG1pbl9wcmljZSkgeyBxdWVyeSArPSBgIEFORCBsLmFza2luZ19wcmljZSA+PSAkJHtwYXJhbUlkeCsrfWA7IHBhcmFtcy5wdXNoKHBhcnNlRmxvYXQobWluX3ByaWNlKSk7IH0KICAgIGlmIChtYXhfcHJpY2UpIHsgcXVlcnkgKz0gYCBBTkQgbC5hc2tpbmdfcHJpY2UgPD0gJCR7cGFyYW1JZHgrK31gOyBwYXJhbXMucHVzaCgncGFyc2VGbG9hdChtYXhfcHJpY2UpJyk7IH0KICAgIGlmIChtaW5fcm9vbXMpIHsgcXVlcnkgKz0gYCBBTkQgbC5yb29tcyA+PSAkJHtwYXJhbUlkeCsrfWA7IHBhcmFtcy5wdXNoKHBhcnNlRmxvYXQobWluX3Jvb21zKSk7IH0KICAgIGlmIChtYXhfcm9vbXMpIHsgcXVlcnkgKz0gYCBBTkQgbC5yb29tcyA8PSAkJHtwYXJhbUlkeCsrfWA7IHBhcmFtcy5wdXNoKHBhcnNlRmxvYXQobWF4X3Jvb21zKSk7IH0KICAgIGlmIChtaW5fYXJlYSkgeyBxdWVyeSArPSBgIEFORCBsLmFyZWFfc3FtID49ICQke3BhcmFtSWR4Kyt9YDsgcGFyYW1zLnB1c2gocGFyc2VGbG9hdChtaW5fYXJlYSkpOyB9CiAgICBpZiAobWF4X2FyZWEpIHsgcXVlcnkgKz0gYCBBTkQgbC5hcmVhX3NxbSA8PSAkJHtwYXJhbUlkeCsrfWA7IHBhcmFtcy5wdXNoKHBhcnNlRmxvYXQobWF4X2FyZWEpKTsgfQogICAgaWYgKG1pbl9mbG9vcikgeyBxdWVyeSArPSBgIEFORCBsLmZsb29yID49ICQke3BhcmFtSWR4Kyt9YDsgcGFyYW1zLnB1c2gocGFyc2VJbnQobWluX2Zsb29yKSk7IH0KICAgIGlmIChtYXhfZmxvb3IpIHsgcXVlcnkgKz0gYCBBTkQgbC5mbG9vciA8PSAkJHtwYXJhbUlkeCsrfWA7IHBhcmFtcy5wdXNoKHBhcnNlSW50KG1heF9mbG9vcikpOyB9CiAgICAKICAgIGNvbnN0IHNvcnRDb2wgPSBbJ2Fza2luZ19wcmljZScsJ3Jvb21zJywnYXJlYV9zcW0nLCdmbG9vcicsJ2RheXNfb25fbWFya2V0JywncHJpY2VfY2hhbmdlcyddLmluY2x1ZGVzKHNvcnQpID8gc29ydCA6ICdkYXlzX29uX21hcmtldCc7CiAgICBjb25zdCBzb3J0RGlyID0gb3JkZXIgPT09ICdhc2MnID8gJ0FTQycgOiAnREVTQyc7CiAgICBxdWVyeSArPSBgIE9SREVSIEJZIGwuJHtzb3J0Q29sfSAke3NvcnREaXJ9IE5VTExTIExBU1RgOwogICAgCiAgICBjb25zdCBsaW1pdFZhbCA9IE1hdGgubWluKHBhcnNlSW50KGxpbWl0KSB8fCA1MCwgMjAwKTsKICAgIHF1ZXJ5ICs9IGAgTElNSVQgJHtwYXJhbUlkeCsrfWA7IHBhcmFtcy5wdXNoKGxpbWl0VmFsKTsKICAgIAogICAgY29uc3QgcmVzdWx0ID0gYXdhaXQgcG9vbC5xdWVyeShxdWVyeSwgcGFyYW1zKTsKICAgIGNvbnN0IGNpdGllc1JlcyA9IGF3YWl0IHBvb2wucXVlcnkoYFNFTEVDVCBESVNUSU5DVCBjLmNpdHkgRlJPTSBsaXN0aW5ncyBsIEpPSU4gY29tcGxleGVzIGMgT04gbC5jb21wbGV4X2lkID0gYy5pZCBXSEVSRSBsLmlzX2FjdGl2ZSA9IHRydWUgQU5EIGMuY2l0eSBJUyBOT1QgTlVMTCBPUkRFUiBCWSBjLmNpdHlgKTsKICAgIGNvbnN0IHNvdXJjZXNSZXMgPSBhd2FpdCBwb29sLnF1ZXJ5KGBTRU5FQ1QgRElTVElOQ1Qgc291cmNlIEZST00gbGlzdGluZ3MgV0hFUkUgaXNfYWN0aXZlID0gdHJ1ZSBBTkQgc291cmNlIElTIE5PVCBOVUxMIE9SREVSIEJZIG91cmNlYCk7CiAgICAKICAgIHJlcy5qc29uKHsKICAgICAgbGlzdGluZ3M6IHJlc3VsdC5yb3dzLAogICAgICB0b3RhbDogcmVzdWx0LnJvd3MubGVuZ3RoLAogICAgICBjaXRpZXM6IGNpdGllc1Jlcy5yb3dzLm1hcChyID0+IHIuY2l0eSksCiAgICAgIHNvdXJjZXM6IHNvdXJjZXNSZXMucm93cy5tYXAociA9PiByLnNvdXJjZSkKICAgIH0pOwogIH0gY2F0Y2ggKGVycikgewogICAgcmVzLnN0YXR1cyg1MDApLmpzb24oeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9KTsKCi8vIC0tLSBMb2dvIC0tLQoKY29uc3QgZnMgPSByZXF1aXJlKCdmcycpOwpjb25zdCBwYXRoID0gcmVxdWlyZSgncGF0aCcpOwoKcm91dGVyLmdldCgnL2xvZ28ucG5nJywgKHJlcSwgcmVzKSA9PiB7CiAgY29uc3QgbG9nb1BhdGggPSBwYXRoLmpvaW4oX19kaXJuYW1lLCAnLi4vLi4vcHVibGljL2xvZ28ucG5nJyk7CiAgaWYgKGZzLmV4aXN0c1N5bmMobG9nb1BhdGgpKSB7CiAgICByZXMuc2VuZEZpbGUobG9nb1BhdGgpOwogIH0gZWxzZSB7CiAgICByZXMuc3RhdHVzKDQwNCkuc2VuZCgnTG9nbyBub3QgZm91bmQnKTsKICB9Cn0pOwoKcm91dGVyLnBvc3QoJy9saXN0aW5ncy9tZXNzYWdlLXNlbnQnLCBhc3luYyAocmVxLCByZXMpID0+IHsKICAgIHRyeSB7CiAgICBjb25zdCBwb29sID0gcmVxdWlyZSgnLi4vZGIvcG9vbCcpOwogICAgY29uc3QgeyBsaXN0aW5nX2lkcywgc3RhdHVzLCBkZWFsX3N0YXR1cyB9ID0gcmVxLmJvZHk7CiAgICBpZiAoIWxpc3RpbmdfaWRzIHx8ICFsaXN0aW5nX2lkcy5sZW5ndGgpIHJldHVybiByZXMuc3RhdHVzKDQwMCkuanNvbih7IGVycm9yOiAnTm8gbGlzdGluZyBJRHMnIH0pOwogICAgCiAgICBmb3IgKGNvbnN0IGlkIG9mIGxpc3RpbmdfaWRzKSB7CiAgICAgIGF3YWl0IHBvb2wucXVlcnkoCiAgICAgICAgYFVQREFURSBsaXN0aW5ncyBTRVQgbWVzc2FnZV9zdGF0dXMgPSAkMSwgbGFzdF9tZXNzYWdlX3NlbnRfYXQgPSAkMiwgZGVhbF9zdGF0dXMgPSAkMywgdXBkYXRlZF9hdCA9ICQyIFdIRVJFIGlkID0gJDRgLAogICAgICAgIFtzdGF0dXMgfHwgJ3NlbnQnLCBuZXcgRGF0ZSgpLCBkZWFsX3N0YXR1cyB8fCAnY29udGFjdGVkJywgaWRdCiAgICAgICk7CiAgICB9CiAgICByZXMuanNvbih7IHN1Y2Nlc3M6IHRydWUsIHVwZGF0ZWQ6IGxpc3RpbmdfaWRzLmxlbmd0aCB9KTsKICB9IGNhdGNoIChlcnIpIHsKICAgIHJlcy5zdGF0dXMoNTAwKS5qc29uKHsgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogIH0KfSk7CgoKcm91dGVyLmdldCgnLycsIChyZXEsIHJlcykgPT4gewogIHJlcy50eXBlKCdodG1sJykuc2VuZChgPCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImhlIiBkaXI9InJ0bCI+CjxoZWFkPgo8bWV0YSBjaGFyc2V0PSJVVEYtOCI+CjxtZXRhIG5hbWU9InZpZXdwb3J0IiBjb250ZW50PSJ3aWR0aD1kZXZpY2Utd2lkdGgsIGluaXRpYWwtc2NhbGU9MS4wIj4KPHRpdGxlPlFVQU5UVU0gSW50ZWxsaWdlbmNlIERhc2hib2FyZDwvdGl0bGU+CjxsaW5rIHJlbD0icHJlY29ubmVjdCIgaHJlZj0iaHR0cHM6Ly9mb250cy5nb29nbGVhcGlzLmNvbSI+CjxsaW5rIGhyZWY9Imh0dHBzOi8vZm9udHMuZ29vZ2xlYXBpcy5jb20vY3NzMj9mYW1pbHk9QXNzaXN0YW50OndnaHRANDAwOzYwMDs3MDA7ODAwJmZhbWlseT1ETStTZXJpZitEaXNwbGF5JmRpc3BsYXk9c3dhcCIgcmVsPSJzdHlsZXNoZWV0Ij4KPHN0eWxlPgoqe2JveC1zaXppbmc6Ym9yZGVyLWJveDttYXJnaW46MDtwYWRkaW5nOjB9CmJvZHl7Zm9udC1mYW1pbHk6J0Fzc2lzdGFudCcsc2Fucy1zZXJpZjtiYWNrZ3JvdW5kOiMwODBjMTQ7Y29sb3I6I2UyZThkMDtkaXJlY3Rpb246cnRsfQo6Oi13ZWJraXQtc2Nyb2xsYmFye3dpZHRoOjVweH06Oi13ZWJraXQtc2Nyb2xsYmFyLXRyYWNre2JhY2tncm91bmQ6IzA4MGMxNH06Oi13ZWJraXQtc2Nyb2xsYmFyLXRodW1ie2JhY2tncm91bmQ6IzFhMjc0NDtib3JkZXItcmFkaXVzOjNweH0KQGtleWZyYW1lcyBwdWxzZXswJSwxMDAle29wYWNpdHk6MX01MCV7b3BhY2l0eTouM319CkBrZXlmcmFtZXMgZmFkZVVwe2Zyb217b3BhY2l0eTowO3RyYW5zZm9ybTp0cmFuc2xhdGVZKDEwcHgpfXRve29wYWNpdHk6MTt0cmFuc2Zvcm06dHJhbnNsYXRlWSgwKX19CkBrZXlmcmFtZXMgc2xpZGVJbntmcm9te3RyYW5zZm9ybTp0cmFuc2xhdGVYKC0xMDAlKTtvcGFjaXR5OjB9dG97dHJhbnNmb3JtOnRyYW5zbGF0ZVgoMCk7b3BhY2l0eToxfX0KCi5oZWFkZXJ7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgIzFhMjc0NDtwYWRkaW5nOjE0cHggMjBweDtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpzcGFjZS1iZXR3ZWVuO2JhY2tncm91bmQ6cmdiYSg4LDEyLDIwLC45Mik7YmFja2Ryb3AtZmlsdGVyOmJsdXIoMTZweCk7cG9zaXRpb246c3RpY2t5O3RvcDowO3otaW5kZXg6MTAwO2ZsZXgtd3JhcDp3cmFwO2dhcDoxMHB4fQouaGVhZGVyLWxvZ297ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6MTRweH0KLmxvZ28tcXt3aWR0aDozNnB4O2hlaWdodDozNnB4O2JhY2tncm91bmQ6bGluZWFyLWdyYWRpZW50KDEzNWRlZywjMDZkNmEwLCMzYjgyZjYpO2JvcmRlci1yYWRpdXM6OXB4O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7anVzdGlmeS1jb250ZW50OmNlbnRlcjtmb250LXdlaWdodDo5MDA7Zm9udC1zaXplOjE4cHg7Y29sb3I6IzAwMDtmb250LWZhbWlseTonRE0gU2VyaWYgRGlzcGxheScsZW50ZXJpZn0KLmhlYWRlci10aXRsZXtmb250LXNpemU6MTZweDtmb250LXdlaWdodDo4MDA7bGV0dGVyLXNwYWNpbmc6M3B4O2ZvbnQtZmFtaWx5OidETSBTZXJpZiBEaXNwbGF5JyxzZXJpZn0KLmhlYWRlci1zdWJ7Zm9udC1zaXplOjlweDtjb2xvcjojNGE1ZTgwO21hcmdpbi1yaWdodDoxMHB4O2xldHRlci1zcGFjaW5nOjFweH0KLmhlYWRlci1idG5ze2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjhweDtmbGV4LXdyYXA6d3JhcH0KLmJ0bntmb250LXNpemU6MTFweDtmb250LXdlaWdodDo2MDA7Y3Vyc29yOnBvaW50ZXI7Zm9udC1mYW1pbHk6aW5oZXJpdDt0ZXh0LWRlY29yYXRpb246bm9uZTt3aGl0ZS1zcGFjZTpub3dyYXA7cGFkZGluZzo2cHggMTRweDtiYWNrZ3JvdW5kOnRyYW5zcGFyZW50O2JvcmRlcjoxcHggc29saWQgIzI0MzM1MjtlcmRlci1yYWRpdXM6N3B4O2NvbG9yOiNlMmU4ZjB9Ci5idG4tY2hhdHtjb2xvcjojOWY3YWVhO2ZvbnQtd2VpZ2h0OjcwMH0KLmJ0bi1zc2l7Y29sb3I6IzA2ZDZhMDtmb250LXdlaWdodDo3MDB9Ci5idG4tc3NpLmxvYWRpbmd7Y29sb3I6IzRhNWU4MDtjdXJzb3I6ZGVmYXVsdH0KLnRpbWUtbGFiZWx7Zm9udC1zaXplOjEwcHg7Y29sb3I6IzRhNWU4MH0KCi5uYXZ7cGFkZGluZzowIDIwcHg7Ym9yZGVyLWJvdHRvbToxcHggc29saWQgIzFhMjc0NDtkaXNwbGF5OmZsZXg7Z2FwOjJweDtvdmVyZmxvdy14OmF1dG87LXdlYmtpdC1vdmVyZmxvdy1zY3JvbGxpbmc6dG91Y2h9Ci5uYXYtYnRue3BhZGRpbmc6MTFweCAxNnB4O2JhY2tncm91bmQ6bm9uZTtib3JkZXI6bm9uZTtib3JkZXItYm90dG9tOjJweCBzb2xpZCB0cmFuc3BhcmVudDtjb2xvcjojNGE1ZTgwO2ZvbnQtc2l6ZToxMnB4O2ZvbnQtd2VpZ2h0OjUwMDtjdXJzb3I6cG9pbnRlcjtmb250LWZhbWlseTppbmhlcml0O3RyYW5zaXRpb246YWxsIC4xNXM7d2hpdGUtc3BhY2U6bm93cmFwfQoubmF2LWJ0bi5hY3RpdmV7Ym9yZGVyLWJvdHRvbS1jb2xvcjojMDZkNmEwO2NvbG9yOiMwNmQ2YTA7Zm9udC13ZWlnaHQ6NzAwfQoKLm1haW57cGFkZGluZzoyMHB4O21heC13aWR0aDoxMzYwcHg7bWFyZ2luOjAgYXV0b30KLmdyaWR7ZGlzcGxheTpncmlkO2dhcDoxNHB4O21hcmdpbi1ib3R0b206MjRweH0KLmdyaWQtNntncmlkLXRlbXBsYXRlLWNvbHVtbnM6cmVwZWF0KGF1dG8tZml0LG1pbm1heCgxNDBweCwxZnIpKX0KLmdyaWQtNHtncmlkLXRlbXBsYXRlLWNvbHVtbnM6cmVwZWF0KGF1dG8tZml0LG1pbm1heCgxNDBweCwxZnIpKX0KLmdyaWQtM3tncmlkLXRlbXBsYXRlLWNvbHVtbnM6cmVwZWF0KGF1dG8tZml0LG1pbm1heCgxNjBweCwxZnIpKX0KLmdyaWQtMntncmlkLXRlbXBsYXRlLWNvbHVtbnM6MWZyIDFmcjtnYXA6MjBweDttYXJnaW4tYm90dG9tOjIwcHh9CkBtZWRpYShtYXgtd2lkdGg6NzY4cHgpewogIC5ncmlkLTJ7Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOjFmcn0uZ3JpZC02e2dyaWQtdGVtcGxhdGUtY29sdW1uczpyZXBlYXQoYXV0by1maXQsbWlubWF4KDEyMHB4LDFmcikpfQogIC5oZWFkZXJ7cGFkZGluZzoxMHB4IDE0cHh9Lm5hdntwYWRkaW5nOjAgMTRweH0ubWFpbntwYWRkaW5nOjE0cHh9CiAgLnN0YXR7cGFkZGluZzoxNHB4IDE2cHh9LnN0YXQtdmFse2ZvbnQtc2l6ZToyNnB4fQogIC5tb2RhbC1ib2R5e3dpZHRoOjk1dnchaW1wb3J0YW50O21heC13aWR0aDo5NXZ3IWltcG9ydGFudH0KfQoKLnN0YXR7YmFja2dyb3VuZDojMGYxNjIzO2JvcmRlcjoxcHggc29saWQgIzFhMjc0NDtib3JkZXItcmFkaXVzOjE0cHg7cGFkZGluZzoxOHB4IDIycHg7cG9zaXRpb246cmVsYXRpdmU7b3ZlcmZsb3c6aGlkZGVuO3RyYW5zaXRpb246Ym9yZGVyLWNvbG9yIC4ycyxiYWNrZ3JvdW5kIC4yc30KLnN0YXRbZGF0YS10YWJdOmhvdmVye2JvcmRlci1jb2xvcjojMDZkNmEwIWltcG9ydGFudDtiYWNrZ3JvdW5kOiMwYTExMTh9Ci5zdGF0LWljb257cG9zaXRpb246YWJzb2x1dGU7dG9wOi04cHg7bGVmdDotNHB4O2ZvbnQtc2l6ZTo1NnB4O29wYWNpdHk6LjAzO2ZvbnQtd2VpZ2h0OjkwMH0KLnN0YXQtbGFiZWx7Zm9udC1zaXplOjExcHg7Y29sb3I6Izg4OTliNDtsZXR0ZXItc3BhY2luZzoxLjVweDt0ZXh0LXRyYW5zZm9ybTp1cHBlcmNhc2U7bWFyZ2luLWJvdHRvbTo2cHg7Zm9udC13ZWlnaHQ6NjAwfQouc3RhdC12YWx7Zm9udC1zaXplOjMycHg7Zm9udC13ZWlnaHQ6ODAwO2xpbmUtaGVpZ2h0OjEuMTtmb250LWZhbWlseTonRE0gU2VyaWYgRGlzcGxheScsZW50ZXJpZn0KLnN0YXQtc3Vie2ZvbnQtc2l6ZToxMXB4O2NvbG9yOiM0YTVlODA7bWFyZ2luLXRvcDo1cHh9CgoubmV3LXBhbmVse2JhY2tncm91bmQ6IzBmMTYyMztib3JkZXI6MXB4IHNvbGlkICMxYTI3NDQ7Ym9yZGVyLXJhZGl1czoxNHB4O3BhZGRpbmc6MThweDttYXJnaW4tYm90dG9tOjIwcHh9CgoudW5kZXJzY29yZXtwYWRkaW5nOjIwcHg7Zm9udC1zaXplOjMycHg7Zm9udC13ZWlnaHQ6ODAwO3BhZGRpbmc6MHB4O2xpbmUtaGVpZ2h0OjEuMTtmb250LWZhbWlseTonRE0gU2VyaWYgRGlzcGxheScsZW50ZXJpZn0KCi5wYW5lbHtiYWNrZ3JvdW5kOiMwZjE2MjM7Ym9yZGVyOjFweCBzb2xpZCAjMWEyNzQ0O2JvcmRlci1yYWRpdXM6MTRweDtwYWRkaW5nOjE4cHg7bWFyZ2luLWJvdHRvbToyMHB4fQoucGFuZWwtZ29sZHtib3JkZXItY29sb3I6cmdiYSgyNTUsMTk0LDUxLC4xMyk7YmFja2dyb3VuZDpsaW5lYXItZ3JhZGllbnQoMTM1ZGVnLCMwZjE2MjMgMCUsaW5lYXItZ3JhZGllbnQoMTM1ZGVnLCMwZjE2MjMgMCUsaW5lYXItZ3JhZGllbnQoMTM1ZGVnLCMwZjE2MjMgMCUsaW5lYXItZ3JhZGllbnQoMTM1ZGVnLCMwZjE2MjMgMCUscmdiYSgyNTUsMTk0LDUxLC4wMykgMTAwJSl9fX19CgoKLnBhbmVsLWhlYWR7bWFyZ2luLWJvdHRvbToxNHB4O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpiYXNlbGluZTtnYXA6OHB4fQoucGFuZWwtaGVhZC1pY29ue2ZvbnQtc2l6ZToxNnB4O29wYWNpdHk6LjZ9CgoucGFuZWwtdGl0bGV7Zm9udC1zaXplOjE3cHg7Zm9udC13ZWlnaHQ6NzAwO2NvbG9yOiNlMmU4ZjA7bWFyZ2luOjA7Zm9udC1mYW1pbHk6J0RNIFNlcmlmIERpc3BsYXknLGVudGVyaWZ9CgoucGFuZWwtc3Vie2ZvbnQtc2l6ZToxMXB4O2NvbG9yOiM0YTVlODA7bWFyZ2luOjJweCAwIDB9Ci5zZWN0aW9uLW5vdGV7YmFja2dyb3VuZDpyZ2JhKDYsMjE0LDE2MCwuMDQpO2JvcmRlcjoxcHggc29saWQgcmdiYSg2LDIxNCwxNjAsLjEyKTtib3JkZXItcmFkaXVzOjhweDtwYWRkaW5nOjEwcHggMTRweDttYXJnaW4tYm90dG9tOjE2cHg7Zm9udC1zaXplOjEycHg7Y29sb3I6Izg4OTliNDtsaW5lLWhlaWdodDoxLjZ9Ci5zZWN0aW9uLW5vdGUgc3Ryb25ne2NvbG9yOiMwNmQ2YTB9Cgp0YWJsZXt3aWR0aDoxMDAlO2JvcmRlci1jb2xsYXBzZTpjb2xsYXBzZTtmb250LXNpemU6MTJweH0KdGh7cGFkZGluZzo4cHggMTBweDtjb2xvcjojNGE1ZTgwO2ZvbnQtd2VpZ2h0OjYwMDtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjMWEyNzQ0O2ZvbnQtc2l6ZToxMHB4O2xldHRlci1zcGFjaW5nOi41cHg7dGV4dC10cmFuc2Zvcm06dXBwZXJjYXNlO3doaXRlLXNwYWNlOm5vd3JhcDt0ZXh0LWFsaWduOnJpZ2h0O2N1cnNvcjpwb2ludGVyO3VzZXItc2VsZWN0Om5vbmU7dHJhbnNpdGlvbjpjb2xvciAuMTVzfQp0aDpob3Zlcntjb2xvcjojMDZkNmEwfQp0aC5zb3J0ZWR7Y29sb3I6IzA2ZDZhMH0KdGggLnNvcnQtYXJyb3d7Zm9udC1zaXplOjhweDttYXJnaW4tcmlnaHQ6M3B4O29wYWNpdHk6LjZ9CnRke3BhZGRpbmc6OXB4IDEwcHg7Y29sb3I6I2UyZThkMDt0ZXh0LWFsaWduOnJpZ2h0fQp0aC5jLHRkLmN7dGV4dC1hbGlnbjpjZW50ZXJ9CnRyLmNsaWNrYWJsZXtjdXJzb3I6cG9pbnRlcjt0cmFuc2l0aW9uOmJhY2tncm91bmQgLjFzfQp0ci5jbGlja2FibGU6aG92ZXIgdGR7YmFja2dyb3VuZDojMTQxZDJlfQp0cjpob3ZlciB0ZHtiYWNrZ3JvdW5kOnJnYmEoMjAsMjksNDYsLjUpfQoubnc7d2hpdGUtc3BhY2U6bm93cmFwfS5md3tmb250LXdlaWdodDo3MDB9LmY2e2ZvbnQtd2VpZ2h0OjYwMH0uZGlte2NvbG9yOiM0YTVlODB9Lm11dGVke2NvbG9yOiM4ODk5YjR9LnNte2ZvbnQtc2l6ZToxMXB4fS54c3tmb250LXNpemU6MTBweH0KLmVtcHR5LW1zZ3tjb2xvcjojNGE1ZTgwO3BhZGRpbmc6MjBweDt0ZXh0LWFsaWduOmNlbnRlcjtmb250LXNpemU6MTNweH0KCi5iYWRnZS1zc2l7cGFkZGluZzoycHggOHB4O2JvcmRlci1yYWRpdXM6NXB4O2ZvbnQtc2l6ZToxMXB4O2ZvbnQtd2VpZ2h0OjcwMDt3aGl0ZS1zcGFjZTpub3dyYXB9Ci5iYWRnZS1jcml0aWNhbHtiYWNrZ3JvdW5kOnJnYmEoMjU1LDc3LDEwNiwuMTIpO2NvbG9yOiNmZjRkNmF9Ci5iYWRnZS1oaWdle2JhY2tncm91bmQ6cmdiYSgyNTUsMTQwLDY2LC4xMik7Y29sb3I6I2ZmOGM0Mn0KLmJhZGdlLW1lZHtiYWNrZ3JvdW5kOnJnYmEoMjU1LDE5NCw1MSwuMTIpO2NvbG9yOiNmZmMyMzN9Ci5iYWRnZS1sb3d7YmFja2dyb3VuZDpyZ2JhKDM0LDE5Nyw5NCwuMDgpO2NvbG9yOiMyMmM1NmV9CgouYmFkZ2Utc3Jje3BhZGRpbmc6MnB4IDhweDtib3JkZXItcmFkaXVzOjRweDtmb250LXNpemU6MTBweDtmb250LXdlaWdodDo3MDc7d2hpdGUtc3BhY2U6bm93cmFwO2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo0cHh9Ci5zcmMteWFkMntiYWNrZ3JvdW5kOnJnYmEoMjU1LDEwNywwLC4xMik7Y29sb3I6I2ZmNmIwMH0KLnNyYy1mYWNlYm9va3tiYWNrZ3JvdW5kOnJnYmEoMjQsMTE5LDI0MiwuMTIpO2NvbG9yOiMxODc3ZjJ9Ci5zcmMtbWFkbGFue2JhY2tncm91bmQ6cmdiYSgwLDE2NiwxNTMsLjEyKTtjb2xvcjojMDBhNjk5fQouc3JjLWhvbWVsZXNze2JhY2tncm91bmQ6cmdiYSg5OSwxMDIsMjQxLC4xMik7Y29sb3I6IzYzNjZmMX0KLnNyYy1rb25lc3tiYWNrZ3JvdW5kOnJnYmEoMjIwLDM4LDEyNywuMTIpO2NvbG9yOiNkYzI2N2Z9Ci5zcmMtYWl7YmFja2dyb3VuZDpyZ2JhKDEzOSw5MiwyNDYsLjEyKTtjb2xvcjojOGI1Y2Y2fQouc3JjLW90aGVye2JhY2tncm91bmQ6cmdiYSgxNDgsMTYzLDE4NCwuMTIpO2NvbG9yOiM5NGEzYjh9CgouYnRuLWxpbmt7cGFkZGluZzozcHggMTBweDtib3JkZXItcmFkaXVzOjVweDtmb250LXNpemU6MTBweDtmb250LXdlaWdodDo2MDA7Y3Vyc29yOnBvaW50ZXI7Ym9yZGVyOjFweCBzb2xpZCByZ2JhKDk2LDE2NSwyNTAsLjI1KTtiYWNrZ3JvdW5kOnJnYmEoOTYsMTY1LDI1MCwuMDYpO2NvbG9yOiM2MGE1ZmE7dGV4dC1kZWNvcmF0aW9uOm5vbmU7d2hpdGUtc3BhY2U6bm93cmFwO2Rpc3BsYXk6aW5saW5lLWZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDozcHh9Ci5idG4tbGluazpob3ZlcntiYWNrZ3JvdW5kOnJnYmEoOTYsMTY1LDI1MCwuMTUpfQouYnRuLWxpbmstc2VhcmNoe2JvcmRlci1jb2xvcjpyZ2JhKDEzOSw5MiwyNDYsLjI1KTtiYWNrZ3JvdW5kOnJnYmEoMTM5LDkyLDI0NiwuMDYpO2NvbG9yOiM4YjVjZjZ9Ci5idG4tbGluay1zZWFyY2g6aG92ZXJ7YmFja2dyb3VuZDpyZ2JhKDEzOSw5MiwyNDYsLjE1KX0KCi5kb3R7d2lkdGg6N3B4O2hlaWdodDozcHg7Ym9yZGVyLXJhZGl1czo1MCU7ZGlzcGxheTppbmxpbmUtYmxvY2t9Ci5kb3QtcmVke2JhY2tncm91bmQ6I2ZmNGQ2YX0uZG90LW9yYW5nZXtiYWNrZ3JvdW5kOiNmZjhjNDJ9LmRvdC1ncmVlbntiYWNrZ3JvdW5kOiMyMmM1NmV9CgouZmlsdGVyLXJvd3tkaXNwbGF5OmZsZXg7Z2FwOjhweDtmbGV4LXdyYXA6d3JhcDttYXJnaW4tYm90dG9tOjE0cHg7YWxpZ24taXRlbXM6Y2VudGVyfQouZmlsdGVyLXJvdyBzZWxlY3QsLmZpbHRlci1yb3cgaW5wdXR7cGFkZGluZzo1cHggMTBweDtiYWNrZ3JvdW5kOiMxNDFkMmU7Ym9yZGVyOjFweCBzb2xpZCAjMjQzMzUyO2JvcmRlci1yYWRpdXM6NnB4O2NvbG9yOiNlMmU4ZjA7Zm9udC1zaXplOjExcHg7Zm9udC1mYW1pbHk6aW5oZXJpdDttaW4td2lkdGg6OTBweH0KCi5tb2RhbC1vdmVybGF5e2Rpc3BsYXk6bm9uZTtwb3NpdGlvbjpmaXhlZDtpbnNldDowO2JhY2tncm91bmQ6cmdiYSgwLDAsMCwuNzUpO3otaW5kZXg6MjAwMDtqdXN0aWZ5LWNvbnRlbnQ6Y2VudGVyO2FsaWduLWl0ZW1zOmNlbnRlcn0KLm1vZGFsLW92ZXJsYXkuYWN0aXZle2Rpc3BsYXk6ZmxleH0KLm1vZGFsLWJvZHl7YmFja2dyb3VuZDojMGYxNjIzO2JvcmRlcjoxcHggc29saWQgIzFhMjc0NDtib3JkZXItcmFkaXVzOjE2cHg7cGFkZGluZzoyNHB4O3dpZHRoOjc1MHB4O21heC13aWR0aDo5MHZ3O21heC1oZWlnaHQ6ODV2aDtvdmVyZmxvdy15OmF1dG99Ci5tb2RhbC1oZWFke2Rpc3BsYXk6ZmxleDtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2Vlbjtib3JkZXItYm90dG9tOjFweCBzb2xpZCAjMWEyNzQ0O3BhZGRpbmctYm90dG9tOjE0cHg7bWFyZ2luLWJvdHRvbToxNnB4fQoubW9kYWwtdGl0bGV7Zm9udC1mYW1pbHk6J0RNIFNlcmlmIERpc3BsYXknLHNlcmlmO2ZvbnQtc2l6ZToxOHB4O2ZvbnQtd2VpZ2h0OjcwMH0KLm1vZGFsLWNsb3Nle2JhY2tncm91bmQ6bm9uZTtib3JkZXI6bm9uZTtjb2xvcjojNGE1ZTgwO2ZvbnQtc2l6ZToyMHB4O2N1cnNvcjpwb2ludGVyO2xpbmUtaGVpZ2h0OjF9CgoubGVhZC1mb3Jte2JhY2tncm91bmQ6IzA4MGMxNDtib3JkZXItcmFkaXVzOjEycHg7cGFkZGluZzoyMHB4fQoubGVhZC1mb3JtIGxhYmVse2Rpc3BsYXk6YmxvY2s7Zm9udC1zaXplOjExcHg7Y29sb3I6Izg4OTliNDtsZXR0ZXItc3BhY2luZzoxcHg7bWFyZ2luLWJvdHRvbTo2cHg7Zm9udC13ZWlnaHQ6NjAwO3RleHQtdHJhbnNmb3JtOnVwcGVyY2FzZX0KLmxlYWQtZm9ybSBpbnB1dCwubGVhZC1mb3JtIHNlbGVjdCwubGVhZC1mb3JtIHRleHRhcmVhe2Rpc3BsYXk6YmxvY2s7d2lkdGg6MTAwJTtiYWNrZ3JvdW5kOiMxNDFkMmU7Ym9yZGVyOjFweCBzb2xpZCAjMjQzMzUyO2JvcmRlci1yYWRpdXM6OHB4O3BhZGRpbmc6OXB4IDEycHg7Y29sb3I6I2UyZThkMDtmb250LXNpemU6MTNweDtmb250LWZhbWlseTppbmhlcml0O291dGxpbmU6bm9uZTttYXJnaW4tYm90dG9tOjE0cHh9Ci5sZWFkLWZvcm0gaW5wdXQ6Zm9jdXMsLmxlYWQtZm9ybSBzZWxlY3Q6Zm9jdXMsLmxlYWQtZm9ybSB0ZXh0YXJlYTpmb2N1c3tib3JkZXItY29sb3I6IzA2ZDZhMH0KLmxlYWQtZm9ybSBzZWxlY3Qgb3B0aW9ue2JhY2tncm91bmQ6IzE0MWQyZX0KLmJ0bi1zdWJtaXR7YmFja2dyb3VuZDpsaW5lYXItZ3JhZGllbnQoMTM1ZGVnLCMwNmQ2YTAsMCUsMDYlM2I4MmY2KTtjb2xvcjojMDAwO2JvcmRlcjpub25lO3BhZGRpbmc6MTBweCAxOHB4O2JvcmRlci1yYWRpdXM6OHB4O2ZvbnQtc2l6ZToxM3B4O2ZvbnQtd2VpZ2h0OjcwMDtjdXJzb3I6cG9pbnRlcjtmb250LWZhbWlseTppbmhlcml0O3RyYW5zaXRpb246b3BhY2l0eSAuMnN9Ci5idG4tc3VibWl0OmhvdmVye29wYWNpdHk6Ljl9CgouY2hlY2tib3gtcm93e2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjZweH0KLmNoZWNrYm94LXJvdyBpbnB1dFt0eXBlPWNoZWNrYm94XXt3aWR0aDoxNXB4O2hlaWdodDoxNXB4O2FjY2VudC1jb2xvcjojMDZkNmEwO2N1cnNvcjpwb2ludGVyfQoKLmFjdGlvbi1iYXJ7cG9zaXRpb246c3RpY2t5O2JvdHRvbTowO2JhY2tncm91bmQ6IzBmMTYyMztib3JkZXItdG9wOjFweCBzb2xpZCAjMWEyNzQ0O3BhZGRpbmc6MTJweCAxNHB4O2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpjZW50ZXI7Z2FwOjEycHg7ei1pbmRleDo1MDt0cmFuc2l0aW9uOmFsbCAuMjVzO3RyYW5zZm9ybTp0cmFuc2xhdGVZKDEwMCUpfQouYWN0aW9uLWJhci52aXNpYmxle3RyYW5zZm9ybTp0cmFuc2xhdGVZKDApfQouYWN0aW9uLWJhci1sYWJlbHtmb250LXNpemU6MTNweDtjb2xvcjojODg5OWI0O2ZsZXg6MX0KLmFjdGlvbi1idG57cGFkZGluZzo3cHggMTZweDtiYWNrZ3JvdW5kOiMxNDFkMmU7Ym9yZGVyOjFweCBzb2xpZCAjMjQzMzUyO2JvcmRlci1yYWRpdXM6OHB4O2NvbG9yOiNlMmU4ZjA7Zm9udC1zaXplOjEycHg7Zm9udC13ZWlnaHQ6NjAwO2N1cnNvcjpwb2ludGVyO2ZvbnQtZmFtaWx5OmluaGVyaXQ7dHJhbnNpdGlvbjphbGwgLjE1c30KLmFjdGlvbi1idG46aG92ZXJ7Ym9yZGVyLWNvbG9yOiMwNmQ2YTA7Y29sb3I6IzA2ZDZhMH0KLmFjdGlvbi1idG4tcHJpbWFyeXtiYWNrZ3JvdW5kOmxpbmVhci1ncmFkaWVudCgxMzVkZWcsIzA2ZDZhMCwjM2I4MmY2KTtjb2xvcjojMDAwO2JvcmRlci1jb2xvcjp0cmFuc3BhcmVudDtmb250LXdlaWdodDo3MDB9CgoudGVtcGxhdGUtY2FyZHtiYWNrZ3JvdW5kOiMwODBjMTQ7Ym9yZGVyOjFweCBzb2xpZCAjMjQzMzUyO2JvcmRlci1yYWRpdXM6MTBweDtwYWRkaW5nOjE0cHg7bWFyZ2luLWJvdHRvbToxMHB4O2N1cnNvcjpwb2ludGVyO3RyYW5zaXRpb246Ym9yZGVyLWNvbG9yIC4xNXN9Ci50ZW1wbGF0ZS1jYXJkOmhvdmVye2JvcmRlci1jb2xvcjojMDZkNmEwfQoudGVtcGxhdGUtY2FyZC5zZWxlY3RlZHtib3JkZXItY29sb3I6IzA2ZDZhMDtiYWNrZ3JvdW5kOnJnYmEoNiwyMTQsMTYwLC4wNSl9Ci50ZW1wbGF0ZS1uYW1le2ZvbnQtc2l6ZToxM3B4O2ZvbnQtd2VpZ2h0OjcwMDtjb2xvcjojZTJlOGYwO21hcmdpbi1ib3R0b206NnB4fQoudGVtcGxhdGUtcHJldmlld3tmb250LXNpemU6MTFweDtjb2xvcjojODg5OWI0O2xpbmUtaGVpZ2h0OjEuNDt3aGl0ZS1zcGFjZTpwcmUtbGluZX0KLnRlbXBsYXRlLXByZXZpZXctaGVicmV3e2ZvbnQtc2l6ZToxMnB4O2ZvbnQtZmFtaWx5OiJBc3Npc3RhbnQiLHNhbnMtc2VyaWZ9CgoubXNnLWluZGljYXRvcnttYXJnaW4tbGVmdDo2cHh9Ci5tc2ctc2VudHtjb2xvcjojMDZkNmEwfQoubXNnLXBlbmRpbmd7Y29sb3I6IzRhNWU4MH0KCi5sZWFkLXN0YXR1cy1idG57cGFkZGluZzo0cHggMTBweDtmb250LXNpemU6MTBweDtmb250LXdlaWdodDo3MDA7Ym9yZGVyLXJhZGl1czo1cHg7Ym9yZGVyOjFweCBzb2xpZCAjMjQzMzUyO2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Y29sb3I6Izg4OTliNDtjdXJzb3I6cG9pbnRlcjtmb250LWZhbWlseTppbmhlcml0O3RyYW5zaXRpb246YWxsIC4xNXN9Ci5sZWFkLXN0YXR1cy1idG46aG92ZXJ7Ym9yZGVyLWNvbG9yOiM0YTVlODA7Y29sb3I6I2UyZThkMH0KLmxlYWQtc3RhdHVzLWJ0bi5hY3RpdmUtbmV3e2JhY2tncm91bmQ6cmdiYSg2LDIxNCwxNjAsLjEyKTtjb2xvcjojMDZkNmEwO2JvcmRlci1jb2xvcjpyZ2JhKDYsMjE0LDE2MCwuMyl9Ci5sZWFkLXN0YXR1cy1idG4uYWN0aXZlLWNvbnRhY3RlZHtiYWNrZ3JvdW5kOnJnYmEoNTksMTMwLDI0NiwuMTIpO2NvbG9yOiMzYjgyZjY7Ym9yZGVyLWNvbG9yOnJnYmEoNTksMTMwLDI0NiwuMyl9Ci5sZWFkLXN0YXR1cy1idG4uYWN0aXZlLXF1YWxpZmllZHtiYWNrZ3JvdW5kOnJnYmEoMjU1LDE5NCw1MSwuMTIpO2NvbG9yOiNmZmMyMzM7Ym9yZGVyLWNvbG9yOnJnYmEoMjU1LDE5NCw1MSwuMyl9Ci5sZWFkLXN0YXR1cy1idG4uYWN0aXZlLW5lZ290aWF0aW9ue2JhY2tncm91bmQ6cmdiYSgxNTksMTIyLDIzNCwuMTIpO2NvbG9yOiM5ZjdhZWE7Ym9yZGVyLWNvbG9yOnJnYmEoMTU5LDEyMiwyMzQsLjMpfQoubGVhZC1zdGF0dXMtYnRuLmFjdGl2ZS1jbG9zZWR7YmFja2dyb3VuZDpyZ2JhKDYsMjE0LDE2MCwuMik7Y29sb3I6IzA2ZDZhMDtib3JkZXItY29sb3I6cmdiYSg2LDIxNCwxNjAsLjQpfQoubGVhZC1zdGF0dXMtYnRuLmFjdGl2ZS1sb3N0e2JhY2tncm91bmQ6cmdiYSgyNTUsNzcsMTA2LC4xKTtjb2xvcjojZmY0ZDZhO2JvcmRlci1jb2xvcjpyZ2JhKDI1NSw3NywxMDYsLjIpfQoKPC9zdHlsZT4KPC9oZWFkPgo8Ym9keT4KPGhlYWRlciBjbGFzcz0iaGVhZGVyIj4KICA8ZGl2IGNsYXNzPSJoZWFkZXItbG9nbyI+CiAgICA8ZGl2IGNsYXNzPSJsb2dvLXEiPlE8L2Rpdj4KICAgIDxkaXY+CiAgICAgIDxkaXYgY2xhc3M9ImhlYWRlci10aXRsZSI+UVVBTVRVTSA8c3BhbiBzdHlsZT0iY29sb3I6IzA2ZDZhMDtmb250LXdlaWdodDozMDAiPklOVEVMTElHRU5DRTwvc3Bhbj48L2Rpdj4KICAgICAgPGRpdiBjbGFzcz0iaGVhZGVyLXN1YiI+UkVBTCBFU1RBVEUgSU5URUxMSUdFTkNFIFNZU1RFTTwvZGl2PgogICAgPC9kaXY+CiAgPC9kaXY+CiAgPGRpdiBjbGFzcz0iaGVhZGVyLWJ0bnMiPgogICAgPHNwYW4gY2xhc3M9InRpbWUtbGFiZWwiIGlkPSJ0aW1lLWRpc3BsYXkiPjwvc3Bhbj4KICAgIDxhIGhyZWY9Ii9hcGkvY2hhdCIgY2xhc3M9ImJ0biBidG4tY2hhdCI+4qCA6K+V6K+VPC9hPgogICAgPGJ1dHRvbiBvbmNsaWNrPSJyZWxvYWRTU0koKSIgY2xhc3M9ImJ0biBidG4tc3NpIj7irIAgU1NJPC9idXR0b24+CiAgPC9kaXY+CjwvaGVhZGVyPgoKPG5hdiBjbGFzcz0ibmF2Ij4KICA8YnV0dG9uIGNsYXNzPSJuYXYtYnRuIGFjdGl2ZSIgZGF0YS10YWI9Im92ZXJ2aWV3IiBvbmNsaWNrPSJuYXZpZ2F0ZSgnb3ZlcnZpZXcnKSI+4pKLIFNVTU1BUlk8L2J1dHRvbj4KICA8YnV0dG9uIGNsYXNzPSJuYXYtYnRuIiBkYXRhLXRhYj0icHJvcGVydGllcyIgb25jbGljaz0ibmF2aWdhdGUoJ3Byb3BlcnRpZXMnKSI+4peHIFBST1BFUlRJRVM8L2J1dHRvbj4KICA8YnV0dG9uIGNsYXNzPSJuYXYtYnRuIiBkYXRhLXRhYj0ibGVhZHMiIG9uY2xpY2s9Im5hdmlnYXRlKCdsZWFkcycpIj7wn5qAIExFQURTPC9idXR0b24+CiAgPGJ1dHRvbiBjbGFzcz0ibmF2LWJ0biIgZGF0YS10YWI9Im1vcm5pbmciIG9uY2xpY2s9Im5hdmlnYXRlKCdtb3JuaW5nJykiPuKYmiBNT1JOSU5HPC9idXR0b24+CjwvbmF2PgoKPG1haW4gY2xhc3M9Im1haW4iPgoKPCEtLSBPVkVSVklFVyBUQUIgLS0+CjxkaXYgaWQ9InRhYi1vdmVydmlldyI+CjxkaXYgY2xhc3M9ImdyaWQgZ3JpZC02Ij4KICA8ZGl2IGNsYXNzPSJzdGF0IiBkYXRhLWdvPSJwcm9wZXJ0aWVzIj4KICAgIDxkaXYgY2xhc3M9InN0YXQtbGFiZWwiPk1BVENITUlNPC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LXZhbCIgaWQ9InN0YXQtY29tcGxleGVzIj48c3BhbiBzdHlsZT0iZm9udC1zaXplOjE4cHg7Y29sb3I6IzRhNWU4MCI+Li4uPC9zcGFuPjwvZGl2PgogICAgPGRpdiBjbGFzcz0ic3RhdC1zdWIiPlBJTlVZLUJJTllVIENPTVBMRVhFUzwvZGl2PgogIDwvZGl2PgogIDxkaXYgY2xhc3M9InN0YXQiIGRhdGEtZ28+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LWxhYmVsIj5QRVJQTEVYSVRZPC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LXZhbCIgaWQ9InN0YXQtcGVycGxleGl0eSI+PHNwYW4gc3R5bGU9ImZvbnQtc2l6ZToxOHB4O2NvbG9yOiM0YTVlODAiPi4uLjwvc3Bhbj48L2Rpdj4KICAgIDxkaXYgY2xhc3M9InN0YXQtc3ViIiBpZD0ic3RhdC1wZXJwbGV4aXR5LXN1YiI+RU5SSUNIT0Q8L2Rpdj4KICA8L2Rpdj4KICA8ZGl2IGNsYXNzPSJzdGF0IiBkYXRhLWdvPSJwcm9wZXJ0aWVzIj4KICAgIDxkaXYgY2xhc3M9InN0YXQtbGFiZWwiPklBSTwvZGl2PgogICAgPGRpdiBjbGFzcz0ic3RhdC12YWwiIGlkPSJzdGF0LWlhaSI+PHNwYW4gc3R5bGU9ImZvbnQtc2l6ZToxOHB4O2NvbG9yOiM0YTVlODAiPi4uLjwvc3Bhbj48L2Rpdj4KICAgIDxkaXYgY2xhc3M9InN0YXQtc3ViIj5TQ09SRUQgQ09NUExFWEVTPC9kaXY+CiAgPC9kaXY+CiAgPGRpdiBjbGFzcz0ic3RhdCIgZGF0YS1nbz0icHJvcGVydGllcyI+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LWxhYmVsIj5BVVRKT1JFRDwvZGl2PgogICAgPGRpdiBjbGFzcz0ic3RhdC12YWwiIGlkPSJzdGF0LWFwcHJvdmVkIj48c3BhbiBzdHlsZT0iZm9udC1zaXplOjE4cHg7Y29sb3I6IzRhNWU4MCI+Li4uPC9zcGFuPjwvZGl2PgogICAgPGRpdiBjbGFzcz0ic3RhdC1zdWIiPkFQUFJPVkVEPC9kaXY+CiAgPC9kaXY+CiAgPGRpdiBjbGFzcz0ic3RhdCIgZGF0YS1nbz0icHJvcGVydGllcyI+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LWxhYmVsIj5ZQUQyPC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LXZhbCIgaWQ9InN0YXQteWFkMiI+PHNwYW4gc3R5bGU9ImZvbnQtc2l6ZToxOHB4O2NvbG9yOiM0YTVlODAiPi4uLjwvc3Bhbj48L2Rpdj4KICAgIDxkaXYgY2xhc3M9InN0YXQtc3ViIj5MSVNUSU5HUzwvZGl2PgogIDwvZGl2PgogIDxkaXYgY2xhc3M9InN0YXQiIGRhdGEtZ28+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LWxhYmVsIj5BTEVSVFM8L2Rpdj4KICAgIDxkaXYgY2xhc3M9InN0YXQtdmFsIiBpZD0ic3RhdC1hbGVydHMiPjxzcGFuIHN0eWxlPSJmb250LXNpemU6MThweDtjb2xvcjojNGE1ZTgwIj4uLi48L3NwYW4+PC9kaXY+CiAgICA8ZGl2IGNsYXNzPSJzdGF0LXN1YiI+VU5SRUFEID8gRVhQUkVTUzwvZGl2PgogIDwvZGl2Pgo8L2Rpdj4K
+/**
+ * QUANTUM Dashboard - Bloomberg Terminal Dark Design
+ * Restored: dark #080c14 design with DM Serif Display fonts
+ * API routes from v4.46.1 (PostgreSQL)
+ */
+
+const express = require('express');
+const router = express.Router();
+const pool = require('../db/pool');
+
+// --- API Routes ---
+
+router.get('/complex/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const complex = await pool.query('SELECT * FROM complexes WHERE id = $1', [id]);
+    if (!complex.rows.length) return res.status(404).json({ error: 'Not found' });
+    const listings = await pool.query('SELECT * FROM listings WHERE complex_id = $1 AND is_active = true ORDER BY price_changes DESC NULLS LAST', [id]);
+    const alerts = await pool.query('SELECT * FROM alerts WHERE complex_id = $1 ORDER BY created_at DESC LIMIT 10', [id]);
+    res.json({ complex: complex.rows[0], listings: listings.rows, alerts: alerts.rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/listings', async (req, res) => {
+  try {
+    const { city, source, min_price, max_price, min_rooms, max_rooms, min_area, max_area, sort, order, limit } = req.query;
+    let query = `SELECT l.*, c.name as complex_name, c.city as complex_city, c.status as complex_status, c.iai_score, c.developer, c.slug as complex_slug, c.id as cid FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id WHERE l.is_active = true`;
+    const params = []; let idx = 1;
+    if (city) { query += ` AND l.city = $${idx++}`; params.push(city); }
+    if (source) { query += ` AND l.source = $${idx++}`; params.push(source); }
+    if (min_price) { query += ` AND l.asking_price >= $${idx++}`; params.push(parseFloat(min_price)); }
+    if (max_price) { query += ` AND l.asking_price <= $${idx++}`; params.push(parseFloat(max_price)); }
+    if (min_rooms) { query += ` AND l.rooms >= $${idx++}`; params.push(parseFloat(min_rooms)); }
+    if (max_rooms) { query += ` AND l.rooms <= $${idx++}`; params.push(parseFloat(max_rooms)); }
+    if (min_area) { query += ` AND l.area_sqm >= $${idx++}`; params.push(parseFloat(min_area)); }
+    if (max_area) { query += ` AND l.area_sqm <= $${idx++}`; params.push(parseFloat(max_area)); }
+    const sortCol = ['asking_price','rooms','area_sqm','floor','days_on_market','price_changes'].includes(sort) ? sort : 'days_on_market';
+    const sortDir = order === 'asc' ? 'ASC' : 'DESC';
+    query += ` ORDER BY l.${sortCol} ${sortDir} NULLS LAST LIMIT $${idx++}`;
+    params.push(Math.min(parseInt(limit) || 50, 200));
+    const result = await pool.query(query, params);
+    const citiesRes = await pool.query(`SELECT DISTINCT c.city FROM listings l JOIN complexes c ON l.complex_id = c.id WHERE l.is_active = true AND c.city IS NOT NULL ORDER BY c.city`);
+    const sourcesRes = await pool.query(`SELECT DISTINCT source FROM listings WHERE is_active = true AND source IS NOT NULL ORDER BY source`);
+    res.json({ listings: result.rows, total: result.rows.length, cities: citiesRes.rows.map(r => r.city), sources: sourcesRes.rows.map(r => r.source) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/listings/message-sent', async (req, res) => {
+  try {
+    const { listing_ids, status, deal_status } = req.body;
+    if (!listing_ids || !listing_ids.length) return res.status(400).json({ error: 'No listing IDs' });
+    for (const id of listing_ids) {
+      await pool.query(`UPDATE listings SET message_status = $1, last_message_sent_at = $2, deal_status = $3, updated_at = $2 WHERE id = $4`, [status || 'sent', new Date(), deal_status || 'contacted', id]);
+    }
+    res.json({ success: true, updated: listing_ids.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/committees', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT id, name as complex_name, city, status, approval_date as date, deposit_date, plan_number FROM complexes ORDER BY approval_date DESC NULLS LAST, updated_at DESC LIMIT 200`);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/complexes', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id, name, city, iai_score, signature_percent FROM complexes ORDER BY name');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/complexes/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM complexes WHERE id = $1', [req.params.id]);
+    res.json(rows[0] || null);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/yad2/listings', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT l.*, c.name as complex_name FROM listings l LEFT JOIN complexes c ON c.id = l.complex_id WHERE l.source = 'yad2' ORDER BY l.last_seen DESC NULLS LAST LIMIT 100`);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/kones/listings', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT l.*, c.name as complex_name FROM listings l LEFT JOIN complexes c ON c.id = l.complex_id WHERE l.source = 'kones' ORDER BY l.last_seen DESC NULLS LAST LIMIT 100`);
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/whatsapp/subscriptions/stats', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT COUNT(*) as "totalSubscriptions", SUM(CASE WHEN active = true THEN 1 ELSE 0 END) as "activeSubscriptions", COUNT(DISTINCT lead_id) as "uniqueLeads", COALESCE(SUM(alerts_sent), 0) as "totalAlertsSent", COALESCE(SUM(CASE WHEN last_alert > NOW() - INTERVAL '1 day' THEN alerts_sent ELSE 0 END), 0) as "alerts24h", COALESCE(SUM(CASE WHEN last_alert > NOW() - INTERVAL '7 days' THEN alerts_sent ELSE 0 END), 0) as "alerts7d" FROM whatsapp_subscriptions`);
+    res.json(rows[0] || { totalSubscriptions: 0, activeSubscriptions: 0, uniqueLeads: 0, totalAlertsSent: 0, alerts24h: 0, alerts7d: 0 });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.get('/whatsapp/subscriptions/:leadId', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM whatsapp_subscriptions WHERE lead_id = $1 ORDER BY created_at DESC', [req.params.leadId]);
+    res.json(rows.map(row => ({ ...row, criteria: row.criteria ? JSON.parse(row.criteria) : {} })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/whatsapp/subscriptions/test', express.json(), async (req, res) => {
+  try {
+    const { criteria } = req.body;
+    if (!criteria || !Object.keys(criteria).length) return res.status(400).json({ error: 'Criteria required' });
+    let query = "SELECT l.*, c.name as complex_name FROM listings l LEFT JOIN complexes c ON c.id = l.complex_id WHERE l.source = 'yad2'";
+    const params = []; let idx = 1;
+    if (criteria.cities && criteria.cities.length > 0) { query += ` AND l.city = ANY($${idx++})`; params.push(criteria.cities); }
+    if (criteria.rooms) {
+      if (criteria.rooms.min !== undefined) { query += ` AND l.rooms >= $${idx++}`; params.push(criteria.rooms.min); }
+      if (criteria.rooms.max !== undefined) { query += ` AND l.rooms <= $${idx++}`; params.push(criteria.rooms.max); }
+    }
+    if (criteria.price) {
+      if (criteria.price.min !== undefined) { query += ` AND l.asking_price >= $${idx++}`; params.push(criteria.price.min); }
+      if (criteria.price.max !== undefined) { query += ` AND l.asking_price <= $${idx++}`; params.push(criteria.price.max); }
+    }
+    query += ' LIMIT 10';
+    const { rows } = await pool.query(query, params);
+    res.json({ count: rows.length, listings: rows });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/whatsapp/subscriptions', express.json(), async (req, res) => {
+  try {
+    const { leadId, criteria } = req.body;
+    if (!leadId || !criteria) return res.status(400).json({ error: 'Lead ID and criteria required' });
+    const id = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    await pool.query(`INSERT INTO whatsapp_subscriptions (id, lead_id, criteria, active, created_at) VALUES ($1, $2, $3, true, NOW())`, [id, leadId, JSON.stringify(criteria)]);
+    res.json({ success: true, id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.patch('/whatsapp/subscriptions/:id/toggle', express.json(), async (req, res) => {
+  try {
+    await pool.query('UPDATE whatsapp_subscriptions SET active = $1 WHERE id = $2', [req.body.active, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/whatsapp/subscriptions/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM whatsapp_subscriptions WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- Main Dashboard UI (Bloomberg Terminal Dark) ---
+
+router.get('/', async (req, res) => {
+  try {
+    const [enrichR, statusR, listR] = await Promise.all([
+      pool.query(`SELECT COUNT(*) as total, SUM(CASE WHEN perplexity_summary IS NOT NULL THEN 1 ELSE 0 END) as perplexity, SUM(CASE WHEN iai_score IS NOT NULL AND iai_score > 0 THEN 1 ELSE 0 END) as iai FROM complexes`),
+      pool.query(`SELECT SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) as approved, SUM(CASE WHEN status IN ('deposited','pre_deposit','planning','declared') THEN 1 ELSE 0 END) as inprocess, SUM(CASE WHEN status='construction' THEN 1 ELSE 0 END) as construction FROM complexes`),
+      pool.query(`SELECT COUNT(*) as yad2 FROM listings WHERE source='yad2' AND is_active=true`)
+    ]);
+    const e = enrichR.rows[0]; const s = statusR.rows[0]; const l = listR.rows[0];
+    const pct = Math.round((e.perplexity / Math.max(e.total, 1)) * 100);
+    const inPct = Math.round((s.inprocess / Math.max(e.total, 1)) * 100);
+    const conPct = Math.round((s.construction / Math.max(e.total, 1)) * 100);
+
+    res.type('html').send(`<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>QUANTUM Intelligence Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Assistant',sans-serif;background:#080c14;color:#e2e8f0;direction:rtl}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:#080c14}::-webkit-scrollbar-thumb{background:#1a2744;border-radius:3px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.header{border-bottom:1px solid #1a2744;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,12,20,.95);backdrop-filter:blur(16px);position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:10px}
+.header-logo{display:flex;align-items:center;gap:14px}
+.logo-q{width:36px;height:36px;background:linear-gradient(135deg,#06d6a0,#3b82f6);border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#000;font-family:'DM Serif Display',serif}
+.header-title{font-size:16px;font-weight:800;letter-spacing:3px;font-family:'DM Serif Display',serif}
+.header-sub{font-size:9px;color:#4a5e80;letter-spacing:1px}
+.header-btns{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{padding:6px 14px;background:transparent;border:1px solid #243352;border-radius:7px;color:#e2e8f0;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;text-decoration:none;white-space:nowrap}
+.btn-chat{color:#9f7aea;font-weight:700}.btn-ssi{color:#06d6a0;font-weight:700}
+.time-label{font-size:10px;color:#4a5e80}
+.nav{padding:0 20px;border-bottom:1px solid #1a2744;display:flex;gap:2px;overflow-x:auto}
+.nav-btn{padding:11px 16px;background:none;border:none;border-bottom:2px solid transparent;color:#4a5e80;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.nav-btn.active{border-bottom-color:#06d6a0;color:#06d6a0;font-weight:700}
+.main{padding:20px;max-width:1360px;margin:0 auto}
+.grid{display:grid;gap:14px;margin-bottom:24px}
+.grid-6{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.grid-4{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+@media(max-width:768px){.header{padding:10px 14px}.nav{padding:0 14px}.main{padding:14px}.stat-val{font-size:26px!important}}
+.stat{background:#0f1623;border:1px solid #1a2744;border-radius:14px;padding:18px 22px;position:relative;overflow:hidden;transition:border-color .2s,background .2s;cursor:pointer}
+.stat:hover{border-color:#06d6a0;background:#0a1118}
+.stat-label{font-size:11px;color:#8899b4;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;font-weight:600}
+.stat-val{font-size:32px;font-weight:800;line-height:1.1;font-family:'DM Serif Display',serif}
+.stat-sub{font-size:11px;color:#4a5e80;margin-top:5px}
+.panel{background:#0f1623;border:1px solid #1a2744;border-radius:14px;padding:18px;margin-bottom:20px}
+.panel-gold{border-color:rgba(255,194,51,.15);background:linear-gradient(135deg,#0f1623,rgba(255,194,51,.02))}
+.panel-head{margin-bottom:14px;display:flex;align-items:baseline;gap:8px}
+.panel-title{font-size:17px;font-weight:700;color:#e2e8f0;font-family:'DM Serif Display',serif}
+.panel-sub{font-size:11px;color:#4a5e80}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{padding:8px 10px;color:#4a5e80;font-weight:600;border-bottom:1px solid #1a2744;font-size:10px;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;text-align:right;cursor:pointer;transition:color .15s}
+th:hover{color:#06d6a0}
+td{padding:9px 10px;color:#e2e8f0;text-align:right}
+th.c,td.c{text-align:center}
+tr:hover td{background:rgba(20,29,46,.5)}
+.nw{white-space:nowrap}.fw{font-weight:700}.dim{color:#4a5e80}.sm{font-size:11px}.xs{font-size:10px}
+.empty-msg{color:#4a5e80;padding:20px;text-align:center;font-size:13px}
+.badge{padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;white-space:nowrap}
+.badge-critical{background:rgba(255,77,106,.12);color:#ff4d6a}
+.badge-high{background:rgba(255,140,66,.12);color:#ff8c42}
+.badge-med{background:rgba(255,194,51,.12);color:#ffc233}
+.badge-low{background:rgba(34,197,94,.08);color:#22c55e}
+.badge-src{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center}
+.src-yad2{background:rgba(255,107,0,.12);color:#ff6b00}
+.src-kones{background:rgba(220,38,127,.12);color:#dc267f}
+.src-ai{background:rgba(139,92,246,.12);color:#8b5cf6}
+.badge-status{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.status-approved{background:rgba(6,214,160,.12);color:#06d6a0}
+.status-deposited,.status-pre_deposit,.status-planning,.status-declared{background:rgba(255,194,51,.12);color:#ffc233}
+.status-construction{background:rgba(59,130,246,.12);color:#3b82f6}
+.status-unknown{background:rgba(148,163,184,.12);color:#94a3b8}
+.btn-link{padding:3px 10px;border-radius:5px;font-size:10px;font-weight:600;border:1px solid rgba(96,165,250,.25);background:rgba(96,165,250,.06);color:#60a5fa;text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center}
+.btn-link:hover{background:rgba(96,165,250,.15)}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.filter-row select,.filter-row input{padding:5px 10px;background:#141d2e;border:1px solid #243352;border-radius:6px;color:#e2e8f0;font-size:11px;font-family:inherit;min-width:90px}
+.tab-content{display:none}.tab-content.active{display:block;animation:fadeUp .2s ease}
+.prog-bar{height:4px;background:#1a2744;border-radius:2px;margin-top:8px;overflow:hidden}
+.prog-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#06d6a0,#3b82f6)}
+.morning-hero{background:linear-gradient(135deg,rgba(6,214,160,.08),rgba(59,130,246,.05));border:1px solid rgba(6,214,160,.15);border-radius:14px;padding:24px;margin-bottom:20px}
+.morning-title{font-size:24px;font-weight:800;font-family:'DM Serif Display',serif;margin-bottom:4px}
+.morning-sub{font-size:13px;color:#8899b4}
+.morning-date{font-size:11px;color:#4a5e80;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="header-logo">
+    <div class="logo-q">Q</div>
+    <div>
+      <div class="header-title">QUANTUM <span style="color:#06d6a0;font-weight:300">INTELLIGENCE</span></div>
+      <div class="header-sub">REAL ESTATE INTELLIGENCE SYSTEM</div>
+    </div>
+  </div>
+  <div class="header-btns">
+    <span class="time-label" id="time-display"></span>
+    <a href="/api/chat" class="btn btn-chat">⌘ צ'אט</a>
+    <button onclick="reloadSSI()" class="btn btn-ssi" id="ssi-btn">⌬ SSI</button>
+  </div>
+</header>
+<nav class="nav">
+  <button class="nav-btn active" data-tab="overview" onclick="navigate('overview')">⬡ SUMMARY</button>
+  <button class="nav-btn" data-tab="properties" onclick="navigate('properties')">⬢ PROPERTIES</button>
+  <button class="nav-btn" data-tab="leads" onclick="navigate('leads')">⚡ LEADS</button>
+  <button class="nav-btn" data-tab="morning" onclick="navigate('morning')">☀ MORNING</button>
+</nav>
+<main class="main">
+
+<div id="tab-overview" class="tab-content active">
+<div class="grid grid-6">
+  <div class="stat" onclick="navigate('properties')">
+    <div class="stat-label">MATAHAMIM</div>
+    <div class="stat-val" id="stat-complexes"><span style="font-size:18px;color:#4a5e80">...</span></div>
+    <div class="stat-sub">PINUY-BINUY COMPLEXES</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">PERPLEXITY</div>
+    <div class="stat-val">${e.perplexity}</div>
+    <div class="stat-sub">ENRICHED (${pct}%)</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">IAI SCORED</div>
+    <div class="stat-val">${e.iai}</div>
+    <div class="stat-sub">COMPLEXES</div>
+  </div>
+  <div class="stat" onclick="navigate('properties')">
+    <div class="stat-label">APPROVED</div>
+    <div class="stat-val" style="color:#06d6a0">${s.approved}</div>
+    <div class="stat-sub">AUTHORIZED</div>
+  </div>
+  <div class="stat" onclick="navigate('leads')">
+    <div class="stat-label">YAD2</div>
+    <div class="stat-val">${l.yad2}</div>
+    <div class="stat-sub">LISTINGS</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">ALERTS</div>
+    <div class="stat-val" id="stat-alerts"><span style="font-size:18px;color:#4a5e80">...</span></div>
+    <div class="stat-sub">UNREAD</div>
+  </div>
+</div>
+<div class="grid grid-4">
+  <div class="stat" style="border-color:rgba(255,194,51,.15)">
+    <div class="stat-label" style="color:#ffc233">IN PROCESS</div>
+    <div class="stat-val" style="color:#ffc233">${s.inprocess}</div>
+    <div class="stat-sub">DEPOSITED / PLANNING</div>
+    <div class="prog-bar"><div class="prog-fill" style="width:${inPct}%;background:linear-gradient(90deg,#ffc233,#ff8c42)"></div></div>
+  </div>
+  <div class="stat" style="border-color:rgba(59,130,246,.15)">
+    <div class="stat-label" style="color:#3b82f6">CONSTRUCTION</div>
+    <div class="stat-val" style="color:#3b82f6">${s.construction}</div>
+    <div class="stat-sub">UNDER BUILD</div>
+    <div class="prog-bar"><div class="prog-fill" style="width:${conPct}%;background:linear-gradient(90deg,#3b82f6,#9f7aea)"></div></div>
+  </div>
+  <div class="stat" style="border-color:rgba(6,214,160,.15)">
+    <div class="stat-label" style="color:#06d6a0">ENRICHMENT</div>
+    <div class="stat-val" style="color:#06d6a0">${pct}%</div>
+    <div class="stat-sub">${e.perplexity} / ${e.total}</div>
+    <div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div>
+  </div>
+  <div class="stat" style="border-color:rgba(139,92,246,.15)">
+    <div class="stat-label" style="color:#8b5cf6">SCANS</div>
+    <div class="stat-val" id="stat-scans" style="color:#8b5cf6"><span style="font-size:18px;color:#4a5e80">...</span></div>
+    <div class="stat-sub" id="stat-scans-sub">LOADING...</div>
+  </div>
+</div>
+<div class="panel panel-gold">
+  <div class="panel-head">
+    <div class="panel-title">Morning Intelligence</div>
+    <span class="panel-sub">Top opportunities by IAI score</span>
+  </div>
+  <div id="top-opps-list"><div class="empty-msg">Loading...</div></div>
+</div>
+</div>
+
+<div id="tab-properties" class="tab-content">
+<div class="panel">
+  <div class="panel-head"><div class="panel-title">Property Database</div><span class="panel-sub" id="prop-count"></span></div>
+  <div class="filter-row">
+    <input type="text" id="prop-search" placeholder="חיפוש מתחם / עיר..." oninput="filterProps()" style="min-width:200px">
+    <select id="prop-status" onchange="filterProps()">
+      <option value="">כל הסטטוסים</option><option value="approved">מאושר</option><option value="deposited">הופקדה</option>
+      <option value="pre_deposit">להפקדה</option><option value="planning">בתכנון</option>
+      <option value="construction">בביצוע</option><option value="declared">הוכרז</option>
+    </select>
+    <select id="prop-sort" onchange="filterProps()">
+      <option value="date">מיין: תאריך</option><option value="name">מיין: שם</option><option value="city">מיין: עיר</option>
+    </select>
+  </div>
+  <div id="props-table"><div class="empty-msg">Loading...</div></div>
+</div>
+</div>
+
+<div id="tab-leads" class="tab-content">
+<div class="panel">
+  <div class="panel-head"><div class="panel-title">Lead Management</div><span class="panel-sub">Yad2 listings + stress indicators</span></div>
+  <div class="filter-row">
+    <select id="leads-city" onchange="loadLeads()"><option value="">כל הערים</option></select>
+    <select id="leads-source" onchange="loadLeads()"><option value="">כל המקורות</option></select>
+    <select id="leads-sort" onchange="loadLeads()">
+      <option value="days_on_market">ימים בשוק</option><option value="price_changes">שינויי מחיר</option><option value="asking_price">מחיר</option>
+    </select>
+    <button class="btn" onclick="loadLeads()">רענן</button>
+  </div>
+  <div id="leads-table"><div class="empty-msg">Loading...</div></div>
+</div>
+</div>
+
+<div id="tab-morning" class="tab-content">
+<div class="morning-hero">
+  <div class="morning-date" id="morning-date"></div>
+  <div class="morning-title">☀ QUANTUM Morning Brief</div>
+  <div class="morning-sub">Daily intelligence report</div>
+</div>
+<div id="morning-content"><div class="empty-msg">Loading...</div></div>
+</div>
+
+</main>
+<script>
+let allProps=[];
+function setTime(){const n=new Date();document.getElementById('time-display').textContent=n.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});}
+setTime();setInterval(setTime,30000);
+document.getElementById('morning-date').textContent=new Date().toLocaleDateString('he-IL',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+function navigate(tab){
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.toggle('active',t.id==='tab-'+tab));
+  if(tab==='properties'&&!allProps.length)loadProps();
+  if(tab==='leads')loadLeads();
+  if(tab==='morning')loadMorning();
+}
+async function reloadSSI(){
+  const btn=document.getElementById('ssi-btn');btn.textContent='⌬ ...';
+  try{await fetch('/api/scan/ai/trigger',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'quick'})});btn.textContent='⌬ OK!';}catch(e){}
+  setTimeout(()=>{btn.textContent='⌬ SSI';},3000);
+}
+(async()=>{
+  try{
+    const[health,alerts,scans]=await Promise.all([fetch('/api/health').then(r=>r.json()),fetch('/api/alerts?limit=1').then(r=>r.json()),fetch('/api/scan/ai/status').then(r=>r.json())]);
+    if(health.complexes)document.getElementById('stat-complexes').textContent=health.complexes.toLocaleString();
+    document.getElementById('stat-alerts').textContent=alerts.alerts?alerts.alerts.filter(a=>!a.read).length:0;
+    if(scans){const run=scans.running||0;document.getElementById('stat-scans').textContent=run>0?('⚡'+run):(scans.completed||0);document.getElementById('stat-scans-sub').textContent=run>0?'RUNNING':'COMPLETED';}
+  }catch(e){}
+  try{
+    const data=await fetch('/api/opportunities').then(r=>r.json());
+    const opps=(data.opportunities||[]).slice(0,5);
+    if(!opps.length){document.getElementById('top-opps-list').innerHTML='<div class="empty-msg">No data</div>';return;}
+    let h='<table><thead><tr><th>מתחם</th><th>עיר</th><th>IAI</th><th>סטטוס</th><th class="c">פעולה</th></tr></thead><tbody>';
+    opps.forEach(o=>{const sc=parseFloat(o.iai_score)||0;const cl=sc>=80?'badge-critical':sc>=60?'badge-high':sc>=40?'badge-med':'badge-low';h+=\`<tr><td class="fw nw">\${o.name||''}</td><td class="dim">\${o.city||''}</td><td><span class="badge \${cl}">\${sc.toFixed(1)}</span></td><td class="xs dim">\${o.status||''}</td><td class="c"><a href="/api/dashboard/complex/\${o.id}" target="_blank" class="btn-link">פרטים</a></td></tr>\`;});
+    h+='</tbody></table>';document.getElementById('top-opps-list').innerHTML=h;
+  }catch(e){document.getElementById('top-opps-list').innerHTML='<div class="empty-msg">Error</div>';}
+})();
+async function loadProps(){
+  try{const data=await fetch('/api/dashboard/committees').then(r=>r.json());allProps=data;filterProps();}
+  catch(e){document.getElementById('props-table').innerHTML='<div class="empty-msg">Error</div>';}
+}
+function filterProps(){
+  const search=(document.getElementById('prop-search').value||'').toLowerCase();
+  const status=document.getElementById('prop-status').value;
+  const sort=document.getElementById('prop-sort').value;
+  let f=allProps.filter(p=>(!status||p.status===status)&&(!search|||(p.complex_name||'').toLowerCase().includes(search)||(p.city||'').toLowerCase().includes(search)));
+  if(sort==='name')f.sort((a,b)=>(a.complex_name||'').localeCompare(b.complex_name||''));
+  else if(sort==='city')f.sort((a,b)=>(a.city||'').localeCompare(b.city||''));
+  document.getElementById('prop-count').textContent=f.length+' מתחמים';
+  if(!f.length){document.getElementById('props-table').innerHTML='<div class="empty-msg">לא נמצאו</div>';return;}
+  const stMap={approved:'מאושר',deposited:'הופקדה',pre_deposit:'להפקדה',planning:'בתכנון',construction:'בביצוע',declared:'הוכרז',unknown:'לא ידוע'};
+  let h='<table><thead><tr><th>מתחם</th><th>עיר</th><th>תאריך</th><th>סטטוס</th></tr></thead><tbody>';
+  f.forEach(p=>{h+=\`<tr><td class="fw">\${p.complex_name||''}</td><td class="dim">\${p.city||''}</td><td class="xs dim">\${p.date?new Date(p.date).toLocaleDateString('he-IL'):'-'}</td><td><span class="badge-status status-\${p.status||'unknown'}">\${stMap[p.status]||p.status||''}</span></td></tr>\`;});
+  h+='</tbody></table>';document.getElementById('props-table').innerHTML=h;
+}
+async function loadLeads(){
+  const city=document.getElementById('leads-city').value;const source=document.getElementById('leads-source').value;const sort=document.getElementById('leads-sort').value;
+  document.getElementById('leads-table').innerHTML='<div class="empty-msg">Loading...</div>';
+  try{
+    const url=\`/api/dashboard/listings?sort=\${sort}&limit=100\${city?'&city='+city:''}\${source?'&source='+source:''}\`;
+    const data=await fetch(url).then(r=>r.json());const listings=data.listings||[];
+    if(document.getElementById('leads-city').options.length===1&&data.cities)data.cities.forEach(c=>{document.getElementById('leads-city').add(new Option(c,c));});
+    if(document.getElementById('leads-source').options.length===1&&data.sources)data.sources.forEach(s=>{document.getElementById('leads-source').add(new Option(s,s));});
+    if(!listings.length){document.getElementById('leads-table').innerHTML='<div class="empty-msg">לא נמצאו רישומים</div>';return;}
+    let h='<table><thead><tr><th>מתחם</th><th>עיר</th><th>מחיר</th><th>חד\'</th><th>מ"ר</th><th>ימים</th><th>מקור</th><th class="c">קישור</th></tr></thead><tbody>';
+    listings.forEach(l=>{const dom=l.days_on_market||0;const dc=dom>60?'style="color:#ff4d6a"':dom>30?'style="color:#ffc233"':'';h+=\`<tr><td class="fw sm">\${l.complex_name||''}</td><td class="dim xs">\${l.city||''}</td><td class="nw fw">\${l.asking_price?'₪'+Math.round(l.asking_price/1000)+'K':'-'}</td><td class="c">\${l.rooms||'-'}</td><td class="c">\${l.area_sqm||'-'}</td><td class="c" \${dc}>\${dom||'-'}</td><td><span class="badge-src src-\${l.source||'other'}">\${l.source||''}</span></td><td class="c">\${l.url?'<a href="'+l.url+'" target="_blank" class="btn-link">פתח</a>':'-'}</td></tr>\`;});
+    h+='</tbody></table>';document.getElementById('leads-table').innerHTML=h;
+  }catch(e){document.getElementById('leads-table').innerHTML='<div class="empty-msg">Error</div>';}
+}
+async function loadMorning(){
+  try{
+    const[op,al]=await Promise.all([fetch('/api/opportunities').then(r=>r.json()),fetch('/api/alerts?limit=10').then(r=>r.json())]);
+    const opps=(op.opportunities||[]).slice(0,8);const alerts=(al.alerts||[]).slice(0,8);
+    let h='';
+    if(opps.length){h+='<div class="panel"><div class="panel-head"><div class="panel-title">Top Opportunities</div></div><table><thead><tr><th>מתחם</th><th>עיר</th><th>IAI</th><th>סטטוס</th></tr></thead><tbody>';opps.forEach(o=>{const sc=parseFloat(o.iai_score)||0;const cl=sc>=80?'badge-critical':sc>=60?'badge-high':sc>=40?'badge-med':'badge-low';h+=\`<tr><td class="fw">\${o.name||''}</td><td class="dim">\${o.city||''}</td><td><span class="badge \${cl}">\${sc.toFixed(1)}</span></td><td class="xs dim">\${o.status||''}</td></tr>\`;});h+='</tbody></table></div>';}
+    if(alerts.length){h+='<div class="panel"><div class="panel-head"><div class="panel-title">Recent Alerts</div></div><table><thead><tr><th>תיאור</th><th>סוג</th><th>תאריך</th></tr></thead><tbody>';alerts.forEach(a=>{h+=\`<tr><td>\${a.description||a.message||''}</td><td class="xs dim">\${a.type||''}</td><td class="xs dim">\${a.created_at?new Date(a.created_at).toLocaleDateString('he-IL'):''}</td></tr>\`;});h+='</tbody></table></div>';}
+    if(!h)h='<div class="panel"><div class="empty-msg">No morning data yet</div></div>';
+    document.getElementById('morning-content').innerHTML=h;
+  }catch(e){document.getElementById('morning-content').innerHTML='<div class="panel"><div class="empty-msg">Error</div></div>';}
+}
+</script>
+</body></html>`);
+  } catch (err) {
+    res.status(500).send('Dashboard error: ' + err.message);
+  }
+});
+
+module.exports = router;
