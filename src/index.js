@@ -14,8 +14,19 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.43.0';
-const BUILD = '2026-03-04-v4.43.0-trust-proxy-fix';
+const VERSION = '4.47.0';
+const BUILD = '2026-03-04-v4.47.0-full-day-sync';
+
+// What's in this version (today's work):
+// - Modern QUANTUM Command Center dashboard (/dashboard)
+// - Tab-based dashboard with Morning Brief (/api/dashboard) - PostgreSQL
+// - WhatsApp webhook route with INFORU support
+// - Stuck Scan Watcher (auto-fix + email alerts)
+// - Weekly Discovery Scheduler (Sundays 03:00)
+// - morningReportService single-encoding fix
+// - Dashboard stats using correct DB tables (complexes/listings)
+// - trust proxy fix for rate limiter
+// - src/jobs included in base64 fixer
 
 async function runAutoMigrations() {
   try {
