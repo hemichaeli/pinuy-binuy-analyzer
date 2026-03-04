@@ -1,20 +1,17 @@
 /**
- * Dual AI Service v2.0
- * 
- * Fast enrichment mode that uses Perplexity for web search 
+ * Dual AI Service v2.1
+ *
+ * Fast enrichment mode that uses Perplexity for web search
  * and Claude for validation/reasoning.
- * 
- * Exports all functions expected by scan.js (line 15):
- * dualScanComplex, dualScanAll, isClaudeConfigured, 
- * isPerplexityConfigured, getAvailableModels, PERPLEXITY_MODEL_SCAN, CLAUDE_MODEL
+ *
+ * FIXED v2.1: dualScanAll now saves enriched data to DB + logging
  */
 
 const { queryPerplexity, queryClaude } = require('./claudeOrchestrator');
 const { logger } = require('./logger');
 
-// Constants expected by scan.js
-const PERPLEXITY_MODEL_SCAN = 'sonar-pro';  // Upgraded from 'sonar' for better accuracy
-const CLAUDE_MODEL = 'claude-sonnet-4-20250514';  // Latest Sonnet 4.5
+const PERPLEXITY_MODEL_SCAN = 'sonar-pro';
+const CLAUDE_MODEL = 'claude-sonnet-4-20250514';
 
 function isClaudeConfigured() {
   return !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY);
@@ -39,6 +36,46 @@ function parseJson(content) {
     if (match) return JSON.parse(match[0]);
     return JSON.parse(cleaned);
   } catch (e) { return null; }
+}
+
+/**
+ * Save enriched fields to complexes table
+ */
+async function saveEnrichedFields(complexId, fields) {
+  const pool = require('../db/pool');
+  const updates = [];
+  const values = [];
+  let idx = 1;
+
+  const fieldMap = {
+    developer: 'developer',
+    accurate_price_sqm: 'accurate_price_sqm',
+    perplexity_summary: 'perplexity_summary',
+    news_sentiment: 'news_sentiment',
+    plan_stage: 'plan_stage',
+    developer_risk_level: 'developer_risk_level',
+    price_trend: 'price_trend',
+    news_summary: 'news_summary'
+  };
+
+  for (const [key, col] of Object.entries(fieldMap)) {
+    if (fields[key] !== undefined && fields[key] !== null) {
+      updates.push(`${col} = $${idx}`);
+      values.push(fields[key]);
+      idx++;
+    }
+  }
+
+  if (updates.length === 0) return false;
+
+  updates.push(`last_perplexity_update = NOW()`);
+  values.push(complexId);
+
+  await pool.query(
+    `UPDATE complexes SET ${updates.join(', ')} WHERE id = $${idx}`,
+    values
+  );
+  return true;
 }
 
 /**
@@ -101,7 +138,7 @@ ${JSON.stringify(results.fields, null, 2)}
  */
 async function standardEnrich(complex) {
   const fast = await fastEnrich(complex);
-  
+
   try {
     const analysisPrompt = `נתח את פרויקט הפינוי-בינוי "${complex.name}" ב${complex.city}:
 - יזם: ${complex.developer || fast.fields.developer || 'לא ידוע'}
@@ -139,47 +176,66 @@ async function dualScanComplex(complexId, options = {}) {
     [complexId]
   );
   if (rows.length === 0) throw new Error(`Complex ${complexId} not found`);
-  
+
   const complex = rows[0];
   const mode = options.mode || 'standard';
-  
-  if (mode === 'fast') return await fastEnrich(complex);
-  return await standardEnrich(complex);
+
+  const result = (mode === 'fast') ? await fastEnrich(complex) : await standardEnrich(complex);
+
+  if (Object.keys(result.fields).length > 0) {
+    await saveEnrichedFields(complexId, result.fields);
+  }
+
+  return result;
 }
 
 /**
- * Dual scan for multiple complexes (used by scan routes)
+ * Dual scan for multiple complexes - FIXED v2.1: saves data to DB
  */
 async function dualScanAll(options = {}) {
   const pool = require('../db/pool');
   const { limit = 20, city, staleOnly = true } = options;
-  
+
   let query = `SELECT id, name, city, addresses, plan_number, status, developer, accurate_price_sqm FROM complexes WHERE 1=1`;
   const params = [];
   let idx = 1;
-  
+
   if (city) { query += ` AND city = $${idx}`; params.push(city); idx++; }
   if (staleOnly) {
     query += ` AND (last_perplexity_update IS NULL OR last_perplexity_update < NOW() - INTERVAL '5 days')`;
   }
   query += ` ORDER BY iai_score DESC NULLS LAST LIMIT $${idx}`;
   params.push(limit);
-  
+
   const { rows: complexes } = await pool.query(query, params);
-  const results = { total: complexes.length, scanned: 0, succeeded: 0, details: [] };
-  
+  const results = { total: complexes.length, scanned: 0, succeeded: 0, totalNewTx: 0, totalNewListings: 0, details: [] };
+
+  logger.info(`[DUAL-AI] Starting scan of ${complexes.length} complexes`);
+
   for (const complex of complexes) {
     try {
+      logger.info(`[DUAL-AI] Enriching: ${complex.name} (${complex.city}) [${results.scanned + 1}/${complexes.length}]`);
       const result = await standardEnrich(complex);
       results.scanned++;
-      if (Object.keys(result.fields).length > 0) results.succeeded++;
+
+      const fieldsFound = Object.keys(result.fields).length;
+      if (fieldsFound > 0) {
+        results.succeeded++;
+        await saveEnrichedFields(complex.id, result.fields);
+        logger.info(`[DUAL-AI] Saved ${fieldsFound} fields for ${complex.name}`);
+      } else {
+        logger.info(`[DUAL-AI] No fields found for ${complex.name}`);
+      }
+
       results.details.push({ id: complex.id, name: complex.name, ...result });
-      await new Promise(r => setTimeout(r, 4000));
+      await new Promise(r => setTimeout(r, 3500));
     } catch (err) {
+      logger.warn(`[DUAL-AI] Failed to enrich ${complex.name}: ${err.message}`);
       results.details.push({ id: complex.id, name: complex.name, error: err.message });
     }
   }
-  
+
+  logger.info(`[DUAL-AI] Scan complete: ${results.succeeded}/${results.total} enriched`);
   return results;
 }
 
