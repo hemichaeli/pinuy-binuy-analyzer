@@ -254,15 +254,20 @@ router.post('/ai', async (req, res) => {
   }
 });
 
-// GET /api/scan/ai/status
+// GET /api/scan/ai/status - Fixed: getAvailableModels returns { perplexity: string, claude: string }
 router.get('/ai/status', (req, res) => {
-  const models = getAvailableModels();
-  res.json({
-    perplexity: { configured: isPerplexityConfigured(), scan_model: PERPLEXITY_MODEL_SCAN, available_models: models.perplexity.models.filter(m => m.id !== 'council') },
-    claude: { configured: isClaudeConfigured(), model: CLAUDE_MODEL },
-    dual_mode: isClaudeConfigured() && isPerplexityConfigured(),
-    mode: (isClaudeConfigured() && isPerplexityConfigured()) ? 'dual-ai' : isClaudeConfigured() ? 'claude-only' : isPerplexityConfigured() ? 'perplexity-only' : 'none'
-  });
+  try {
+    const models = getAvailableModels();
+    const perplexityModel = models && models.perplexity ? models.perplexity : null;
+    res.json({
+      perplexity: { configured: isPerplexityConfigured(), scan_model: PERPLEXITY_MODEL_SCAN, active_model: perplexityModel },
+      claude: { configured: isClaudeConfigured(), model: CLAUDE_MODEL },
+      dual_mode: isClaudeConfigured() && isPerplexityConfigured(),
+      mode: (isClaudeConfigured() && isPerplexityConfigured()) ? 'dual-ai' : isClaudeConfigured() ? 'claude-only' : isPerplexityConfigured() ? 'perplexity-only' : 'none'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/scan/discovery
