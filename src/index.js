@@ -14,19 +14,12 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.47.0';
-const BUILD = '2026-03-04-v4.47.0-full-day-sync';
+const VERSION = '4.48.0';
+const BUILD = '2026-03-04-v4.48.0-morning-report-api';
 
-// What's in this version (today's work):
-// - Modern QUANTUM Command Center dashboard (/dashboard)
-// - Tab-based dashboard with Morning Brief (/api/dashboard) - PostgreSQL
-// - WhatsApp webhook route with INFORU support
-// - Stuck Scan Watcher (auto-fix + email alerts)
-// - Weekly Discovery Scheduler (Sundays 03:00)
-// - morningReportService single-encoding fix
-// - Dashboard stats using correct DB tables (complexes/listings)
-// - trust proxy fix for rate limiter
-// - src/jobs included in base64 fixer
+// What's in this version:
+// - Morning report routes: GET /api/morning/preview, POST /api/morning/send
+// - All previous: Bloomberg Terminal dashboard, PostgreSQL, schedulers
 
 async function runAutoMigrations() {
   try {
@@ -77,7 +70,8 @@ function loadAllRoutes() {
     { path: '/api/intelligence', file: 'routes/intelligenceRoutes.js' },
     { path: '/api/facebook', file: 'routes/facebookRoutes.js' },
     { path: '/api/messaging', file: 'routes/messagingRoutes.js' },
-    { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' }
+    { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
+    { path: '/api/morning', file: 'routes/morningReportRoutes.js' }
   ];
 
   for (const { path: routePath, file } of routeFiles) {
