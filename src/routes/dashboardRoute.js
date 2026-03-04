@@ -149,10 +149,12 @@ function getDashboardHTML() {
 <script>
 async function loadData() {
     try {
-        const [health, opportunities] = await Promise.all([
+        const [health, oppData] = await Promise.all([
             fetch('/health').then(r => r.json()),
             fetch('/api/opportunities').then(r => r.json())
         ]);
+        
+        const opportunities = oppData.opportunities || [];
 
         // Hero Stats
         document.getElementById('heroStats').innerHTML = [
