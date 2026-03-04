@@ -150,7 +150,7 @@ function getDashboardHTML() {
 async function loadData() {
     try {
         const [health, opportunities] = await Promise.all([
-            fetch('/api/health').then(r => r.json()),
+            fetch('/health').then(r => r.json()),
             fetch('/api/opportunities').then(r => r.json())
         ]);
 
