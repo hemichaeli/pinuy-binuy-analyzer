@@ -1,10 +1,13 @@
 /**
  * QUANTUM Reminder Job
  * Runs every minute, processes reminder_queue
+ * Updates Zoho CRM status on no-answer events
  */
 
 const pool = require('../db/pool');
 const inforuService = require('../services/inforuService');
+const zoho = require('../services/zohoSchedulingService');
+const { logger } = require('../services/logger');
 
 const STRINGS = {
   he: {
@@ -44,42 +47,66 @@ async function processReminderQueue() {
     try {
       await processOne(reminder);
     } catch (err) {
-      console.error(`[ReminderJob] Failed id=${reminder.id}:`, err.message);
+      logger.error(`[ReminderJob] Failed id=${reminder.id}:`, err.message);
       await pool.query(`UPDATE reminder_queue SET status='failed' WHERE id=$1`, [reminder.id]);
     }
   }
 }
 
 async function processOne(reminder) {
-  const { id, phone, reminder_type, payload, zoho_campaign_id } = reminder;
+  const { id, phone, reminder_type, payload, zoho_campaign_id, zoho_contact_id } = reminder;
   const data = (typeof payload === 'string' ? JSON.parse(payload) : payload) || {};
   const lang = data.language || 'he';
   const S = STRINGS[lang] || STRINGS.he;
+  const contactName = data.contactName || '';
+  const campaignName = data.campaignName || zoho_campaign_id;
+
   let message = null;
 
   switch (reminder_type) {
+
     case 'reminder_24h':
-      message = S.reminder_24h(data.contactName || '', data.campaignName || zoho_campaign_id);
+      message = S.reminder_24h(contactName, campaignName);
+      // Update Zoho: no answer after 24h
+      zoho.markNoAnswer(zoho_campaign_id, zoho_contact_id, 24).catch(() => {});
       break;
+
     case 'bot_followup_48h':
-      message = S.bot_followup_48h(data.contactName || '', data.campaignName || zoho_campaign_id);
-      // Reset session so flow restarts fresh
+      message = S.bot_followup_48h(contactName, campaignName);
+      // Update Zoho: no answer after 48h
+      zoho.markNoAnswer(zoho_campaign_id, zoho_contact_id, 48).catch(() => {});
+      // Reset session so bot flow restarts fresh
       await pool.query(
         `UPDATE bot_sessions SET state='confirm_identity', context='{}' WHERE phone=$1 AND zoho_campaign_id=$2`,
         [phone, zoho_campaign_id]
       );
       break;
+
     case 'pre_meeting_24h':
-      message = S.pre_meeting_24h(data.contactName || '', data.meetingType || '', data.meetingDate || '', data.meetingTime || '');
+      message = S.pre_meeting_24h(contactName, data.meetingType || '', data.meetingDate || '', data.meetingTime || '');
       break;
+
     case 'pre_meeting_2h':
-      message = S.pre_meeting_2h(data.contactName || '', data.meetingType || '', data.meetingTime || '');
+      message = S.pre_meeting_2h(contactName, data.meetingType || '', data.meetingTime || '');
       break;
+
     default:
-      console.warn(`[ReminderJob] Unknown type: ${reminder_type}`);
+      logger.warn(`[ReminderJob] Unknown type: ${reminder_type}`);
   }
 
-  if (message) await inforuService.sendWhatsApp(phone, message);
+  if (message) {
+    await inforuService.sendWhatsApp(phone, message);
+    // Log outgoing reminder in Zoho
+    zoho.logIncomingMessage({
+      campaignId: zoho_campaign_id,
+      contactId: zoho_contact_id,
+      phone,
+      messageContent: message,
+      direction: 'יוצאת',
+      subject: `תזכורת - ${reminder_type}`
+    }).catch(() => {});
+  }
+
   await pool.query(`UPDATE reminder_queue SET status='sent', sent_at=NOW() WHERE id=$1`, [id]);
 }
 
