@@ -14,17 +14,13 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.55.0';
-const BUILD = '2026-03-05-v4.55.0-scheduling-system';
+const VERSION = '4.56.0';
+const BUILD = '2026-03-05-v4.56.0-fix-csp-dashboard';
 
 // What's in this version:
-// - NEW: QUANTUM Scheduling System
-//   - WA bot engine (Hebrew/Russian) with state machine
-//   - Signing ceremony builder with multi-building/multi-station support
-//   - Campaign config with configurable timing constants
-//   - Reminder queue job (24h reminder + 48h bot followup + pre-meeting alerts)
-//   - Zoho CRM widget API endpoints
-// - All previous: dashboard redesign, phone column migration, Vapi, PostgreSQL, schedulers
+// - FIX: Helmet CSP now allows inline scripts + unpkg.com/fonts.googleapis.com (dashboard was broken)
+// - FIX: /api/complexes added as alias for /api/dashboard/complexes
+// - All previous: scheduling system, WhatsApp webhook, dashboard redesign, Vapi, PostgreSQL
 
 async function runAutoMigrations() {
   try {
@@ -55,7 +51,21 @@ async function runSchedulingMigrations() {
   }
 }
 
-app.use(helmet());
+// Helmet with custom CSP - allows dashboard inline scripts + external resources
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://unpkg.com", "https://cdnjs.cloudflare.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://*.basemaps.cartocdn.com"],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+    }
+  }
+}));
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], allowedHeaders: ['Content-Type', 'Authorization'] }));
 app.use(express.json({ limit: '10mb' }));
 
@@ -91,12 +101,9 @@ function loadAllRoutes() {
     { path: '/api/morning', file: 'routes/morningReportRoutes.js' },
     { path: '/api/vapi', file: 'routes/vapiRoutes.js' },
     { path: '/api/inforu', file: 'routes/inforuRoutes.js' },
-    // whatsappWebhookRoutes mounted at /api so its internal /whatsapp/webhook
-    // resolves to the correct /api/whatsapp/webhook (not doubled)
     { path: '/api', file: 'routes/whatsappWebhookRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappAlertRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
-    // Scheduling system - WA bot, ceremonies, campaign config, Zoho widget API
     { path: '/api/scheduling', file: 'routes/schedulingRoutes.js' },
   ];
 
@@ -122,6 +129,21 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// /api/complexes alias for dashboard (was 404 - dashboard called this directly)
+app.get('/api/complexes', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const { rows } = await pool.query(
+      `SELECT id, name, address, city, iai_score, ssi_score, status, units_count, property_type, enrichment_status, developer
+       FROM complexes ORDER BY iai_score DESC NULLS LAST LIMIT $1`,
+      [limit]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/debug', async (req, res) => {
   const loaded = routeLoadResults.filter(r => r.status === 'ok');
   const failed = routeLoadResults.filter(r => r.status === 'failed');
@@ -131,7 +153,6 @@ app.get('/api/debug', async (req, res) => {
     timestamp: new Date().toISOString(),
     whatsapp_mode: 'webhook_push',
     webhook_url: 'https://pinuy-binuy-analyzer-production.up.railway.app/api/whatsapp/webhook',
-    scheduling_webhook: 'https://pinuy-binuy-analyzer-production.up.railway.app/api/scheduling/webhook',
     routes: {
       loaded: loaded.map(r => r.path + ' (' + r.file + ')'),
       failed: failed.map(r => ({ path: r.path, file: r.file, error: r.error }))
@@ -164,7 +185,6 @@ async function start() {
   try { const { startWatcher } = require('./jobs/stuckScanWatcher'); startWatcher(); } catch (e) { logger.warn('Stuck scan watcher failed to start:', e.message); }
   try { const { startDiscoveryScheduler } = require('./jobs/discoveryScheduler'); startDiscoveryScheduler(); } catch (e) { logger.warn('Discovery scheduler failed to start:', e.message); }
 
-  // Reminder queue job - runs every minute
   try {
     const { processReminderQueue } = require('./jobs/reminderJob');
     const cron = require('node-cron');
@@ -174,11 +194,7 @@ async function start() {
     logger.info('Reminder queue job: ACTIVE (every minute)');
   } catch (e) { logger.warn('Reminder job failed to start:', e.message); }
 
-  // whatsappPollingService disabled - INFORU pull API times out.
-  // WhatsApp messages arrive via INFORU webhook push to /api/whatsapp/webhook
-  // Scheduling bot via /api/scheduling/webhook
   logger.info('WhatsApp: WEBHOOK mode active at /api/whatsapp/webhook');
-  logger.info('Scheduling bot: /api/scheduling/webhook');
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
