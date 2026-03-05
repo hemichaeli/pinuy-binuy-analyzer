@@ -14,15 +14,14 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.51.0';
-const BUILD = '2026-03-05-v4.51.0-whatsapp-polling-autostart';
+const VERSION = '4.52.0';
+const BUILD = '2026-03-05-v4.52.0-dashboard-redesign-whatsapp-fix';
 
 // What's in this version:
-// - Started whatsappPollingService (auto-response to incoming WhatsApp messages)
-// - Registered inforuRoutes.js at /api/inforu
-// - Registered whatsappAlertRoutes.js at /api/whatsapp/alerts
-// - Fixed morningReportService syntax bug (WhatsApp StatusId check)
-// - All previous: Vapi Voice AI, Bloomberg Terminal dashboard, PostgreSQL, schedulers
+// - NEW: Full QUANTUM Command Center dashboard (4 views: dashboard, complexes, map, alerts)
+// - FIX: whatsapp_conversations phone column migration (ALTER TABLE IF NOT EXISTS)
+// - FIX: whatsappWebhookRoutes registered (Claude-powered bot with conversation tracking)
+// - All previous: WhatsApp polling, Vapi Voice AI, PostgreSQL, schedulers
 
 async function runAutoMigrations() {
   try {
@@ -73,11 +72,12 @@ function loadAllRoutes() {
     { path: '/api/intelligence', file: 'routes/intelligenceRoutes.js' },
     { path: '/api/facebook', file: 'routes/facebookRoutes.js' },
     { path: '/api/messaging', file: 'routes/messagingRoutes.js' },
-    { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
     { path: '/api/morning', file: 'routes/morningReportRoutes.js' },
     { path: '/api/vapi', file: 'routes/vapiRoutes.js' },
     { path: '/api/inforu', file: 'routes/inforuRoutes.js' },
+    { path: '/api/whatsapp', file: 'routes/whatsappWebhookRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappAlertRoutes.js' },
+    { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
   ];
 
   for (const { path: routePath, file } of routeFiles) {
@@ -86,9 +86,9 @@ function loadAllRoutes() {
       delete require.cache[fullPath];
       const router = require(`./${file}`);
       app.use(routePath, router);
-      routeLoadResults.push({ path: routePath, status: 'ok' });
+      routeLoadResults.push({ path: routePath, status: 'ok', file });
     } catch (err) {
-      routeLoadResults.push({ path: routePath, status: 'failed', error: err.message });
+      routeLoadResults.push({ path: routePath, status: 'failed', error: err.message, file });
     }
   }
 }
@@ -105,7 +105,7 @@ app.get('/health', async (req, res) => {
 app.get('/api/debug', async (req, res) => {
   const loaded = routeLoadResults.filter(r => r.status === 'ok');
   const failed = routeLoadResults.filter(r => r.status === 'failed');
-  res.json({ version: VERSION, build: BUILD, timestamp: new Date().toISOString(), routes: { loaded: loaded.map(r => r.path), failed: failed.map(r => ({ path: r.path, error: r.error })) } });
+  res.json({ version: VERSION, build: BUILD, timestamp: new Date().toISOString(), routes: { loaded: loaded.map(r => r.path + ' (' + r.file + ')'), failed: failed.map(r => ({ path: r.path, file: r.file, error: r.error })) } });
 });
 
 app.get('/', (req, res) => {
@@ -123,7 +123,7 @@ async function start() {
   const failed = routeLoadResults.filter(r => r.status === 'failed');
   logger.info(`=== ROUTE LOADING SUMMARY ===`);
   loaded.forEach(r => logger.info(`  OK: ${r.path}`));
-  failed.forEach(r => logger.error(`  FAILED: ${r.path} -> ${r.error}`));
+  failed.forEach(r => logger.error(`  FAILED: ${r.path} (${r.file}) -> ${r.error}`));
 
   app.use((req, res) => { res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION }); });
   app.use((err, req, res, next) => { logger.error('Unhandled error:', err); res.status(500).json({ error: 'Internal Server Error', message: err.message, version: VERSION }); });
