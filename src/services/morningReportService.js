@@ -1,1 +1,137 @@
-LyoqCiAqIFFVQU5UVU0gTW9ybmluZyBJbnRlbGxpZ2VuY2UgUmVwb3J0IHYxLjAKICogCiAqIFNlbnQgZGFpbHkgYXQgMDc6MzAgSXNyYWVsIHRpbWUgKGFmdGVyIGxpc3RpbmdzIHNjYW4gYXQgMDc6MDApCiAqIAogKiBSZXBvcnQgY29udGVudHM6CiAqIDEuIFRvcCAzIGhvdHRlc3Qgb3Bwb3J0dW5pdGllcyAoYnkgSUFJKQogKiAyLiBUb3AgMyBzdHJlc3NlZCBzZWxsZXJzIChieSBTU0kpCiAqIDMuIFByaWNlIGRyb3BzIGluIGxhc3QgMjRoIChuZXcgbGlzdGluZ3Mgd2l0aCBwcmljZV9jaGFuZ2VzID4gMCkKICogNC4gQ29tbWl0dGVlIGFwcHJvdmFscyBpbiBsYXN0IDcgZGF5cwogKi8KCmNvbnN0IHBvb2wgPSByZXF1aXJlKCcuLi9kYi9wb29sJyk7CmNvbnN0IHsgbG9nZ2VyIH0gPSByZXF1aXJlKCcuL2xvZ2dlcicpOwpjb25zdCB7IHNlbmRFbWFpbCwgTk9USUZJQ0FUSU9OX0VNQUlMUyB9ID0gcmVxdWlyZSgnLi9ub3RpZmljYXRpb25TZXJ2aWNlJyk7CmNvbnN0IGF4aW9zID0gcmVxdWlyZSgnYXhpb3MnKTsKCmNvbnN0IERBU0hCT0FSRF9VUkwgPSAnaHR0cHM6Ly9waW51eS1iaW51eS1hbmFseXplci1wcm9kdWN0aW9uLnVwLnJhaWx3YXkuYXBwL2FwaS9kYXNoYm9hcmQnOwpjb25zdCBJTkZPUlVfQ0FQSV9CQVNFID0gJ2h0dHBzOi8vY2FwaS5pbmZvcnUuY28uaWwvYXBpL3YyJzsKCi8vIOKUgOKUgOKUgCBXSEFUU0FQUCBIRUxQRVJTIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAoKZnVuY3Rpb24gZ2V0SW5mb3J1QXV0aCgpIHsKICBjb25zdCB1c2VybmFtZSA9IHByb2Nlc3MuZW52LklORk9SVV9VU0VSTkFNRTsKICBjb25zdCBwYXNzd29yZCA9IHByb2Nlc3MuZW52LklORk9SVV9QQVNTV09SRDsKICBpZiAoIXVzZXJuYW1lIHx8ICFwYXNzd29yZCkgcmV0dXJuIG51bGw7CiAgcmV0dXJuIEJ1ZmZlci5mcm9tKGAke3VzZXJuYW1lfToke3Bhc3N3b3JkfWApLnRvU3RyaW5nKCdiYXNlNjQnKTsKfQoKZnVuY3Rpb24gYnVpbGRXaGF0c0FwcE1vcm5pbmdCcmllZihkYXRhKSB7CiAgY29uc3QgeyBvcHBvcnR1bml0aWVzLCBzZWxsZXJzLCBwcmljZURyb3BzLCBjb21taXR0ZWVzLCBzdGF0cyB9ID0gZGF0YTsKICBjb25zdCB0b2RheSA9IG5ldyBEYXRlKCkudG9Mb2NhbGVEYXRlU3RyaW5nKCdoZS1JTCcsIHsKICAgIHdlZWtkYXk6ICdsb25nJywgZGF5OiAnbnVtZXJpYycsIG1vbnRoOiAnbG9uZycsCiAgICB0aW1lWm9uZTogJ0FzaWEvSmVydXNhbGVtJwogIH0pOwoKICBsZXQgbXNnID0gYPCfjIUgKlFVQU5UVU0gTW9ybmluZyBJbnRlbCpcbiR7dG9kYXl9XG5gOwogIG1zZyArPSBgJHsn4pSAJy5yZXBlYXQoMjgpfVxuXG5gOwoKICAvLyBLUEkgc3RyaXAKICBtc2cgKz0gYPCfk4ogKteh15nXm9eV150g15nXldee15k6KlxuYDsKICBtc2cgKz0gYOKAoiAke3N0YXRzLm9wcG9ydHVuaXRpZXMgfHwgMH0g15TXlteT157XoNeV15nXldeqINeU16nXp9ei15RcbmA7CiAgbXNnICs9IGDigKIgJHtzdGF0cy5zdHJlc3NlZCB8fCAwfSDXnteV15vXqNeZ150g15zXl9eV16bXmdedINek16LXmdec15nXnVxuYDsKICBtc2cgKz0gYOKAoiAke3ByaWNlRHJvcHMubGVuZ3RofSDXmdeo15nXk9eV16og157Xl9eZ16gg15EtMjTXqVxuYDsKICBpZiAoY29tbWl0dGVlcy5sZW5ndGggPiAwKSBtc2cgKz0gYOKAoiAke2NvbW1pdHRlZXMubGVuZ3RofSDXkNeZ16nXldeo15kg15XXoteT15Qg15TXqdeR15XXolxuYDsKICBtc2cgKz0gYFxuYDsKCiAgLy8gVG9wIDMgb3Bwb3J0dW5pdGllcwogIGlmIChvcHBvcnR1bml0aWVzLmxlbmd0aCA+IDApIHsKICAgIG1zZyArPSBg8J+UpSAqVG9wINeU15bXk9ee16DXldeZ15XXqjoqXG5gOwogICAgb3Bwb3J0dW5pdGllcy5zbGljZSgwLCAzKS5mb3JFYWNoKChvLCBpKSA9PiB7CiAgICAgIGNvbnN0IHN0YWdlID0geyBkZWNsYXJlZDogJ9eU15vXqNeW15QnLCBhcHByb3ZlZDogJ9eQ15XXqdeoJywgZGVwb3NpdDogJ9ek15nXp9eT15XXnycsIGNvbnN0cnVjdGlvbjogJ9eR16DXmdeZ15QnLCBwbGFubmluZzogJ9eq15vXoNeV158nLCBpbml0aWFsOiAn16jXkNep15XXoNeZJyB9W28ucGxhbl9zdGFnZV0gfHwgby5wbGFuX3N0YWdlIHx8ICctJzsKICAgICAgbXNnICs9IGAke2kgKyAxfS4gKiR7by5uYW1lfSogLSAke28uY2l0eX0gfCBJQUk6ICR7by5pYWlfc2NvcmV9IHwgJHtzdGFnZX1cbmA7CiAgICB9KTsKICAgIG1zZyArPSBgXG5gOwogIH0KCiAgLy8gVG9wIHN0cmVzc2VkIHNlbGxlcnMKICBpZiAoc2VsbGVycy5sZW5ndGggPiAwKSB7CiAgICBtc2cgKz0gYOKaoSAq157Xldeb16jXmdedINec15fXldem15nXnToqXG5gOwogICAgc2VsbGVycy5zbGljZSgwLCAzKS5mb3JFYWNoKChzLCBpKSA9PiB7CiAgICAgIGNvbnN0IGRyb3AgPSBzLnRvdGFsX3ByaWNlX2Ryb3BfcGVyY2VudCA/IGAgfCDilrwke3BhcnNlRmxvYXQocy50b3RhbF9wcmljZV9kcm9wX3BlcmNlbnQpLnRvRml4ZWQoMCl9JWAgOiAnJzsKICAgICAgbXNnICs9IGAke2kgKyAxfS4gJHtzLmFkZHJlc3MgfHwgcy5jaXR5fSAoU1NJOiAke3Muc3NpX3Njb3JlfSR7ZHJvcH0pXG5gOwogICAgfSk7CiAgICBtc2cgKz0gYFxuYDsKICB9CgogIC8vIFByaWNlIGRyb3BzIGhpZ2hsaWdodAogIGlmIChwcmljZURyb3BzLmxlbmd0aCA+IDApIHsKICAgIGNvbnN0IHRvcCA9IHByaWNlRHJvcHNbMF07CiAgICBjb25zdCBwY3QgPSBwYXJzZUZsb2F0KHRvcC50b3RhbF9wcmljZV9kcm9wX3BlcmNlbnQgfHwgMCkudG9GaXhlZCgxKTsKICAgIG1zZyArPSBg8J+TiSAq15nXqNeZ15PXlCDXkdeV15zXmNeqOiogJHt0b3AuYWRkcmVzcyB8fCB0b3AuY2l0eX0g4pa8JHtwY3R9JVxuXG5gOwogIH0KCiAgbXNnICs9IGDwn5SXICrXnNeT16nXkdeV16jXkyDXlNee15zXkDoqXG4ke0RBU0hCT0FSRF9VUkx9YDsKICByZXR1cm4gbXNnOwp9Cgphc3luYyBmdW5jdGlvbiBzZW5kTW9ybmluZ1doYXRzQXBwKG1lc3NhZ2UpIHsKICBjb25zdCBhdXRoID0gZ2V0SW5mb3J1QXV0aCgpOwogIGlmICghYXV0aCkgewogICAgbG9nZ2VyLndhcm4oJ1tNb3JuaW5nUmVwb3J0XSBJTkZPUlUgY3JlZGVudGlhbHMgbm90IGNvbmZpZ3VyZWQgLSBza2lwcGluZyBXaGF0c0FwcCcpOwogICAgcmV0dXJuIHsgc2VudDogMCwgc2tpcHBlZDogMSwgcmVhc29uOiAnbm9fY3JlZGVudGlhbHMnIH07CiAgfQoKICAvLyBHZXQgcGhvbmUgbnVtYmVycyBmcm9tIGVudiAoUEVSU09OQUxfUEhPTkUgYW5kIE9GRklDRV9QSE9ORSkKICBjb25zdCBwaG9uZXMgPSBbCiAgICBwcm9jZXNzLmVudi5QRVJTT05BTF9QSE9ORSwKICAgIHByb2Nlc3MuZW52Lk9GRklDRV9QSE9ORQogIF0uZmlsdGVyKEJvb2xlYW4pLm1hcChwID0+IHAucmVwbGFjZSgvXEQvZywgJycpKTsgLy8gbm9ybWFsaXplIHRvIGRpZ2l0cyBvbmx5CgogIGlmIChwaG9uZXMubGVuZ3RoID09PSAwKSB7CiAgICBsb2dnZXIud2FybignW01vcm5pbmdSZXBvcnRdIE5vIFBFUlNPTkFMX1BIT05FIG9yIE9GRklDRV9QSE9ORSBjb25maWd1cmVkJyk7CiAgICByZXR1cm4geyBzZW50OiAwLCBza2lwcGVkOiAxLCByZWFzb246ICdub19waG9uZXMnIH07CiAgfQoKICBsZXQgc2VudCA9IDA7CiAgY29uc3QgcmVzdWx0cyA9IFtdOwoKICBmb3IgKGNvbnN0IHBob25lIG9mIHBob25lcykgewogICAgdHJ5IHsKICAgICAgY29uc3QgcmVzcCA9IGF3YWl0IGF4aW9zLnBvc3QoYCR7SU5GT1JVX0NBUElfQkFTRX0vV2hhdHNBcHAvU2VuZFdoYXRzQXBwQ2hhdGAsIHsKICAgICAgICBEYXRhOiB7CiAgICAgICAgICBNZXNzYWdlOiBtZXNzYWdlLAogICAgICAgICAgUGhvbmU6IHBob25lLAogICAgICAgICAgU2V0dGluZ3M6IHsKICAgICAgICAgICAgQ3VzdG9tZXJNZXNzYWdlSWQ6IGBtb3JuaW5nXyR7RGF0ZS5ub3coKX1fJHtwaG9uZX1gLAogICAgICAgICAgICBDdXN0b21lclBhcmFtZXRlcjogJ1FVQU5UVU1fTU9STklOR19JTlRFTCcKICAgICAgICAgIH0KICAgICAgICB9CiAgICAgIH0sIHsKICAgICAgICBoZWFkZXJzOiB7CiAgICAgICAgICAnQ29udGVudC1UeXBlJzogJ2FwcGxpY2F0aW9uL2pzb24nLAogICAgICAgICAgJ0F1dGhvcml6YXRpb24nOiBgQmFzaWMgJHthdXRofWAKICAgICAgICB9LAogICAgICAgIHRpbWVvdXQ6IDE1MDAwLAogICAgICAgIHZhbGlkYXRlU3RhdHVzOiAoKSA9PiB0cnVlCiAgICAgIH0pOwoKICAgICAgLy8gRklYOiBJTkZPUlUgQVBJIHJldHVybnMgU3RhdHVzSWQgKGludCksIG5vdCBTdGF0dXMgKHN0cmluZykKICAgICAgY29uc3Qgb2sgPSByZXNwLnN0YXR1cyA9PT0gMjAwICYmIChyZXNwLmRhdGE/LlN0YXR1c0lkID09PSAxIHx8IHJlc3AuZGF0YT8uU3RhdHVzID09PSAnU3VjY2Vzcyc7CiAgICAgIHJlc3VsdHMucHVzaCh7IHBob25lLCBzZW50OiBvaywgc3RhdHVzSWQ6IHJlc3AuZGF0YT8uU3RhdHVzSWQsIHN0YXR1czogcmVzcC5kYXRhPy5TdGF0dXMsIGNvZGU6IHJlc3Auc3RhdHVzIH0pOwogICAgICBpZiAob2spIHNlbnQrKzsKICAgICAgbG9nZ2VyLmluZm8oYFtNb3JuaW5nUmVwb3J0XSBXaGF0c0FwcCB0byAke3Bob25lfTogJHtvayA/ICdPSycgOiAnRkFJTEVEJ31gLCByZXNwLmRhdGEpOwogICAgfSBjYXRjaCAoZXJyKSB7CiAgICAgIGxvZ2dlci53YXJuKGBbTW9ybmluZ1JlcG9ydF0gV2hhdHNBcHAgc2VuZCBlcnJvciB0byAke3Bob25lfTpgLCBlcnIubWVzc2FnZSk7CiAgICAgIHJlc3VsdHMucHVzaCh7IHBob25lLCBzZW50OiBmYWxzZSwgZXJyb3I6IGVyci5tZXNzYWdlIH0pOwogICAgfQoKICAgIC8vIFNob3J0IGRlbGF5IGJldHdlZW4gbWVzc2FnZXMKICAgIGlmIChwaG9uZXMuaW5kZXhPZihwaG9uZSkgPCBwaG9uZXMubGVuZ3RoIC0gMSkgewogICAgICBhd2FpdCBuZXcgUHJvbWlzZShyID0+IHNldFRpbWVvdXQociwgMTUwMCkpOwogICAgfQogIH0KCiAgcmV0dXJuIHsgc2VudCwgdG90YWw6IHBob25lcy5sZW5ndGgsIHJlc3VsdHMgfTsKfQo=
+/**
+ * QUANTUM Morning Intelligence Report v1.0
+ * 
+ * Sent daily at 07:30 Israel time (after listings scan at 07:00)
+ * 
+ * Report contents:
+ * 1. Top 3 hottest opportunities (by IAI)
+ * 2. Top 3 stressed sellers (by SSI)
+ * 3. Price drops in last 24h (new listings with price_changes > 0)
+ * 4. Committee approvals in last 7 days
+ */
+
+const pool = require('../db/pool');
+const { logger } = require('./logger');
+const { sendEmail, NOTIFICATION_EMAILS } = require('./notificationService');
+const axios = require('axios');
+
+const DASHBOARD_URL = 'https://pinuy-binuy-analyzer-production.up.railway.app/api/dashboard';
+const INFORU_CAPI_BASE = 'https://capi.inforu.co.il/api/v2';
+
+// ─── WHATSAPP HELPERS ──────────────────────────────────────────────
+
+function getInforuAuth() {
+  const username = process.env.INFORU_USERNAME;
+  const password = process.env.INFORU_PASSWORD;
+  if (!username || !password) return null;
+  return Buffer.from(`${username}:${password}`).toString('base64');
+}
+
+function buildWhatsAppMorningBrief(data) {
+  const { opportunities, sellers, priceDrops, committees, stats } = data;
+  const today = new Date().toLocaleDateString('he-IL', {
+    weekday: 'long', day: 'numeric', month: 'long',
+    timeZone: 'Asia/Jerusalem'
+  });
+
+  let msg = `🌅 *QUANTUM Morning Intel*\n${today}\n`;
+  msg += `${'─'.repeat(28)}\n\n`;
+
+  // KPI strip
+  msg += `📊 *סיכום יומי:*\n`;
+  msg += `• ${stats.opportunities || 0} הזדמנויות השקעה\n`;
+  msg += `• ${stats.stressed || 0} מוכרים לחוצים\n`;
+  msg += `• ${priceDrops.length} ירידות מחיר ב-24ש\n`;
+  if (committees.length > 0) msg += `• ${committees.length} אישורי ועדה השבוע\n`;
+  msg += `\n`;
+
+  // Top 3 opportunities
+  if (opportunities.length > 0) {
+    msg += `🏆 *Top הזדמנויות:*\n`;
+    opportunities.slice(0, 3).forEach((o, i) => {
+      const stage = { declared: 'הכרזה', approved: 'אישור', deposit: 'פיקדון', construction: 'בנייה', planning: 'תכנון', initial: 'ראשוני' }[o.plan_stage] || o.plan_stage || '-';
+      msg += `${i + 1}. *${o.name}* - ${o.city} | IAI: ${o.iai_score} | ${stage}\n`;
+    });
+    msg += `\n`;
+  }
+
+  // Top stressed sellers
+  if (sellers.length > 0) {
+    msg += `⚡ *מוכרים לחוצים:*\n`;
+    sellers.slice(0, 3).forEach((s, i) => {
+      const drop = s.total_price_drop_percent ? ` | ▼${parseFloat(s.total_price_drop_percent).toFixed(0)}%` : '';
+      msg += `${i + 1}. ${s.address || s.city} (SSI: ${s.ssi_score}${drop})\n`;
+    });
+    msg += `\n`;
+  }
+
+  // Price drops highlight
+  if (priceDrops.length > 0) {
+    const top = priceDrops[0];
+    const pct = parseFloat(top.total_price_drop_percent || 0).toFixed(1);
+    msg += `📉 *ירידת מחיר בולטת:* ${top.address || top.city} ▼${pct}%\n\n`;
+  }
+
+  msg += `🔗 *לדשבורד המלא:*\n${DASHBOARD_URL}`;
+  return msg;
+}
+
+async function sendMorningWhatsApp(message) {
+  const auth = getInforuAuth();
+  if (!auth) {
+    logger.warn('[MorningReport] INFORU credentials not configured - skipping WhatsApp');
+    return { sent: 0, skipped: 1, reason: 'no_credentials' };
+  }
+
+  // Get phone numbers from env (PERSONAL_PHONE and OFFICE_PHONE)
+  const phones = [
+    process.env.PERSONAL_PHONE,
+    process.env.OFFICE_PHONE
+  ].filter(Boolean).map(p => p.replace(/\D/g, '')); // normalize to digits only
+
+  if (phones.length === 0) {
+    logger.warn('[MorningReport] No PERSONAL_PHONE or OFFICE_PHONE configured');
+    return { sent: 0, skipped: 1, reason: 'no_phones' };
+  }
+
+  let sent = 0;
+  const results = [];
+
+  for (const phone of phones) {
+    try {
+      const resp = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/SendWhatsAppChat`, {
+        Data: {
+          Message: message,
+          Phone: phone,
+          Settings: {
+            CustomerMessageId: `morning_${Date.now()}_${phone}`,
+            CustomerParameter: 'QUANTUM_MORNING_INTEL'
+          }
+        }
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Basic ${auth}`
+        },
+        timeout: 15000,
+        validateStatus: () => true
+      });
+
+      // FIX: INFORU API returns StatusId (int), not Status (string)
+      const ok = resp.status === 200 && (resp.data?.StatusId === 1 || resp.data?.Status === 'Success');
+      results.push({ phone, sent: ok, statusId: resp.data?.StatusId, status: resp.data?.Status, code: resp.status });
+      if (ok) sent++;
+      logger.info(`[MorningReport] WhatsApp to ${phone}: ${ok ? 'OK' : 'FAILED'}`, resp.data);
+    } catch (err) {
+      logger.warn(`[MorningReport] WhatsApp send error to ${phone}:`, err.message);
+      results.push({ phone, sent: false, error: err.message });
+    }
+
+    // Short delay between messages
+    if (phones.indexOf(phone) < phones.length - 1) {
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
+  return { sent, total: phones.length, results };
+}
