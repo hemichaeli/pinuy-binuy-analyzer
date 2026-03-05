@@ -2,10 +2,13 @@
  * QUANTUM Bot Engine
  * WhatsApp conversation flow: Hebrew + Russian
  * Handles: consultations, appraiser visits, signing ceremonies
+ * Writes every state change back to Zoho CRM in real-time
  */
 
 const pool = require('../db/pool');
 const inforuService = require('./inforuService');
+const zoho = require('./zohoSchedulingService');
+const { logger } = require('./logger');
 
 const STRINGS = {
   he: {
@@ -38,15 +41,7 @@ const STRINGS = {
       `✅ *${type} נקבעה!*\n\n📅 ${date}\n⏰ ${String(time).substring(0,5)}\n👤 ${rep}\n\nתקבל/י תזכורת יום לפני. להתראות! 👋`,
     noSlots: `כרגע אין חלונות זמן פנויים. נציג שלנו ייצור איתך קשר בהקדם.`,
     invalidChoice: `לא הבנתי את הבחירה. אנא הקלד/י את המספר המתאים.`,
-    error: `אירעה שגיאה טכנית. אנא נסה/י שוב מאוחר יותר.`,
-    reminder24h: (name, campaign) =>
-      `שלום ${name} 👋 QUANTUM כאן.\nעדיין לא קיבלנו ממך תשובה לגבי *${campaign}*.\nענה/י *1* ונתאם עכשיו.`,
-    botFollowup: (name, campaign) =>
-      `שלום ${name} 👋 QUANTUM שוב.\nזו ההזדמנות האחרונה לתאם את *${campaign}*.\nענה/י *1* ונסגור מיד.`,
-    preMeeting24h: (name, type, date, time) =>
-      `שלום ${name} 👋\nתזכורת: *${type}* מחר\n📅 ${date} ⏰ ${time}\n\nלביטול/שינוי - ענה/י 0.`,
-    preMeeting2h: (name, type, time) =>
-      `שלום ${name} 👋\nבעוד כ-2 שעות: *${type}* ב-⏰ ${time}\n\nנתראה! 🤝`
+    error: `אירעה שגיאה טכנית. אנא נסה/י שוב מאוחר יותר.`
   },
   ru: {
     confirmIdentity: (name) => `Здравствуйте, ${name} 👋\nЯ бот QUANTUM.\n\nДля подтверждения - вы ${name}?\n1️⃣ Да\n2️⃣ Нет, это ошибка`,
@@ -78,15 +73,7 @@ const STRINGS = {
       `✅ *${type} назначена!*\n\n📅 ${date}\n⏰ ${String(time).substring(0,5)}\n👤 ${rep}\n\nНапомним за сутки. До встречи! 👋`,
     noSlots: `Свободных слотов нет. Наш представитель свяжется с вами в ближайшее время.`,
     invalidChoice: `Не понял выбор. Пожалуйста, введите номер из предложенных.`,
-    error: `Произошла техническая ошибка. Попробуйте позже.`,
-    reminder24h: (name, campaign) =>
-      `Здравствуйте, ${name} 👋 QUANTUM на связи.\nМы ещё не получили ваш ответ по *${campaign}*.\nНажмите *1* для записи.`,
-    botFollowup: (name, campaign) =>
-      `Здравствуйте, ${name} 👋 QUANTUM снова.\nПоследний шанс записаться на *${campaign}*.\nНажмите *1* прямо сейчас.`,
-    preMeeting24h: (name, type, date, time) =>
-      `Здравствуйте, ${name} 👋\nНапоминание: *${type}* завтра\n📅 ${date} ⏰ ${time}\n\nДля отмены/переноса - ответьте 0.`,
-    preMeeting2h: (name, type, time) =>
-      `Здравствуйте, ${name} 👋\nЧерез ~2 часа: *${type}* в ⏰ ${time}\n\nДо встречи! 🤝`
+    error: `Произошла техническая ошибка. Попробуйте позже.`
   }
 };
 
@@ -96,18 +83,29 @@ const MEETING_TYPE_LABELS = {
 };
 
 class BotEngine {
+
+  // ── ENTRY POINT ──────────────────────────────────────────────
   async handleIncoming(phone, messageText, campaignId) {
     try {
       const session = await this.getOrCreateSession(phone, campaignId);
+
+      // Log every incoming message to Zoho
+      this._zohoLog(session, messageText, 'נכנסת').catch(() => {});
+
       const reply = await this.processState(session, messageText.trim());
       await this.saveSession(session);
+
+      // Log outgoing reply to Zoho
+      if (reply) this._zohoLog(session, reply, 'יוצאת').catch(() => {});
+
       return reply;
     } catch (err) {
-      console.error('[BotEngine] Error:', err);
+      logger.error('[BotEngine] Error:', err);
       return null;
     }
   }
 
+  // ── SESSION ───────────────────────────────────────────────────
   async getOrCreateSession(phone, campaignId) {
     const res = await pool.query(
       `SELECT * FROM bot_sessions WHERE phone=$1 AND zoho_campaign_id=$2`,
@@ -118,26 +116,49 @@ class BotEngine {
       s.context = typeof s.context === 'string' ? JSON.parse(s.context) : (s.context || {});
       return s;
     }
+
+    // New session - try to enrich from Zoho CRM
+    let contactId = null, contactName = '', lang = 'he';
+    try {
+      const contact = await zoho.findContactByPhone(phone);
+      if (contact) {
+        contactId = contact.id;
+        contactName = contact.Full_Name || '';
+        // Detect language from contact field if exists
+        if (contact.Language === 'Russian' || contact.Language === 'ru') lang = 'ru';
+      }
+    } catch (e) {
+      logger.warn('[BotEngine] Zoho contact lookup failed:', e.message);
+    }
+
     const ins = await pool.query(
-      `INSERT INTO bot_sessions (phone, zoho_campaign_id, language, state, context)
-       VALUES ($1,$2,'he','confirm_identity','{}') RETURNING *`,
-      [phone, campaignId]
+      `INSERT INTO bot_sessions (phone, zoho_contact_id, zoho_campaign_id, language, state, context)
+       VALUES ($1,$2,$3,$4,'confirm_identity',$5) RETURNING *`,
+      [phone, contactId, campaignId, lang, JSON.stringify({ contactName })]
     );
     const s = ins.rows[0];
-    s.context = {};
+    s.context = { contactName };
+
+    // Mark as bot_sent in Zoho campaign
+    this._zohoStatus(s, 'bot_sent').catch(() => {});
+
     return s;
   }
 
+  // ── STATE MACHINE ─────────────────────────────────────────────
   async processState(session, msg) {
     const lang = session.language || 'he';
     const S = STRINGS[lang];
     const ctx = session.context;
     const state = session.state;
 
+    // ── CONFIRM IDENTITY ────────────────────────────────────────
     if (state === 'confirm_identity') {
       if (msg === '1') {
+        this._zohoStatus(session, 'answered').catch(() => {});
         const config = await this.getCampaignConfig(session.zoho_campaign_id);
         ctx.config = config;
+
         if (config.meeting_type === 'signing_ceremony') {
           const ceremony = await this.getActiveCeremony(session.zoho_campaign_id);
           if (!ceremony) return S.noSlots;
@@ -154,13 +175,16 @@ class BotEngine {
         }
       } else if (msg === '2') {
         session.state = 'closed';
+        this._zohoStatus(session, 'answered', 'לא זוהה כבעל הדירה').catch(() => {});
         return S.wrongPerson;
       }
       return S.invalidChoice;
     }
 
+    // ── CEREMONY: CONFIRM ATTENDANCE ────────────────────────────
     if (state === 'ceremony_confirm_attendance') {
       if (msg === '1') {
+        this._zohoStatus(session, 'answered', 'אישר הגעה לכנס - בוחר שעה').catch(() => {});
         const slots = await this.getCeremonySlots(ctx.ceremony.id);
         if (!slots.length) return S.noSlots;
         ctx.availableSlots = slots;
@@ -168,18 +192,22 @@ class BotEngine {
         return S.ceremonySelectSlot(slots);
       } else if (msg === '2') {
         session.state = 'ceremony_declined';
+        this._zohoStatus(session, 'declined', 'סירב להגיע לכנס חתימות').catch(() => {});
         return S.ceremonyDeclined;
       } else if (msg === '3') {
         session.state = 'ceremony_maybe';
+        this._zohoStatus(session, 'maybe', 'לא בטוח אם יגיע').catch(() => {});
         return S.ceremonyMaybe;
       }
       return S.invalidChoice;
     }
 
+    // ── CEREMONY: SELECT SLOT ────────────────────────────────────
     if (state === 'ceremony_select_slot') {
       const idx = parseInt(msg) - 1;
       const slots = ctx.availableSlots || [];
       if (isNaN(idx) || idx < 0 || idx >= slots.length) return S.invalidChoice;
+
       const chosen = slots[idx];
       const locked = await this.lockSlot(chosen.slot_id, session);
       if (!locked) {
@@ -187,15 +215,26 @@ class BotEngine {
         ctx.availableSlots = fresh;
         return S.ceremonySlotTaken + '\n' + S.ceremonySelectSlot(fresh);
       }
-      await this.scheduleReminders(session, `${chosen.slot_date} ${chosen.time}`, ctx.ceremony);
+
+      ctx.confirmedSlot = chosen;
       session.state = 'confirmed';
+
+      // Update Zoho + create activity
+      const meetingDt = `${chosen.slot_date} ${chosen.time}`;
+      this._zohoStatus(session, 'confirmed',
+        `אישר כנס חתימות: ${chosen.dateStr} ${String(chosen.time).substring(0,5)}`).catch(() => {});
+      this._zohoActivity(session, 'signing_ceremony', meetingDt, chosen).catch(() => {});
+
+      await this.scheduleReminders(session, meetingDt);
       return S.ceremonyConfirm(chosen.dateStr, chosen.time, ctx.ceremony.location, chosen.repName || '');
     }
 
+    // ── MEETING: SELECT DATE ─────────────────────────────────────
     if (state === 'meeting_select_date') {
       const idx = parseInt(msg) - 1;
       const dates = ctx.availableDates || [];
       if (isNaN(idx) || idx < 0 || idx >= dates.length) return S.invalidChoice;
+
       ctx.selectedDate = dates[idx];
       const times = await this.getSlotsForDate(session.zoho_campaign_id, dates[idx].date);
       if (!times.length) return S.noSlots;
@@ -204,10 +243,12 @@ class BotEngine {
       return S.selectTime(times);
     }
 
+    // ── MEETING: SELECT TIME ─────────────────────────────────────
     if (state === 'meeting_select_time') {
       const idx = parseInt(msg) - 1;
       const times = ctx.availableTimes || [];
       if (isNaN(idx) || idx < 0 || idx >= times.length) return S.invalidChoice;
+
       const chosen = times[idx];
       const locked = await this.lockMeetingSlot(chosen.id, session);
       if (!locked) {
@@ -215,15 +256,69 @@ class BotEngine {
         ctx.availableTimes = fresh;
         return S.ceremonySlotTaken + '\n' + S.selectTime(fresh);
       }
-      await this.scheduleReminders(session, chosen.slot_datetime, null);
+
       session.state = 'confirmed';
       const typeLabel = (MEETING_TYPE_LABELS[lang] || MEETING_TYPE_LABELS.he)[ctx.config?.meeting_type] || '';
+
+      // Update Zoho + create activity
+      this._zohoStatus(session, 'confirmed',
+        `אישר ${typeLabel}: ${ctx.selectedDate.label} ${chosen.time}`).catch(() => {});
+      this._zohoActivity(session, ctx.config?.meeting_type, chosen.slot_datetime, chosen).catch(() => {});
+
+      await this.scheduleReminders(session, chosen.slot_datetime);
       return S.meetingConfirm(typeLabel, ctx.selectedDate.label, chosen.time, chosen.repName || '');
     }
 
     return S.error;
   }
 
+  // ── ZOHO HELPERS (fire-and-forget) ────────────────────────────
+  async _zohoStatus(session, status, notes = '') {
+    try {
+      await zoho.updateCampaignContactStatus(
+        session.zoho_campaign_id,
+        session.zoho_contact_id,
+        status,
+        notes
+      );
+    } catch (e) {
+      logger.warn('[BotEngine] Zoho status update failed:', e.message);
+    }
+  }
+
+  async _zohoLog(session, content, direction) {
+    try {
+      await zoho.logIncomingMessage({
+        campaignId: session.zoho_campaign_id,
+        contactId: session.zoho_contact_id,
+        contactName: session.context?.contactName || '',
+        phone: session.phone,
+        messageContent: content,
+        direction,
+        subject: `BOT - ${session.state}`
+      });
+    } catch (e) {
+      logger.warn('[BotEngine] Zoho message log failed:', e.message);
+    }
+  }
+
+  async _zohoActivity(session, meetingType, meetingDatetime, slotData) {
+    try {
+      const config = session.context?.config || {};
+      await zoho.createMeetingActivity({
+        contactId: session.zoho_contact_id,
+        campaignId: session.zoho_campaign_id,
+        meetingType,
+        meetingDatetime,
+        representativeName: slotData?.repName || '',
+        location: session.context?.ceremony?.location || ''
+      });
+    } catch (e) {
+      logger.warn('[BotEngine] Zoho activity creation failed:', e.message);
+    }
+  }
+
+  // ── DB HELPERS ────────────────────────────────────────────────
   async lockSlot(slotId, session) {
     const res = await pool.query(
       `UPDATE ceremony_slots SET status='confirmed', reserved_at=NOW(),
@@ -302,23 +397,24 @@ class BotEngine {
     return res.rows[0] || {};
   }
 
-  async scheduleReminders(session, meetingDatetime, ceremony) {
+  async scheduleReminders(session, meetingDatetime) {
     const config = await this.getCampaignConfig(session.zoho_campaign_id);
     const pre24h = config.pre_meeting_reminder_hours || 24;
     const pre2h = config.morning_reminder_hours || 2;
     const meetingDate = new Date(meetingDatetime);
     const now = new Date();
-    const reminders = [
+
+    for (const r of [
       { type: 'pre_meeting_24h', at: new Date(meetingDate.getTime() - pre24h * 3600000) },
       { type: 'pre_meeting_2h',  at: new Date(meetingDate.getTime() - pre2h * 3600000) }
-    ];
-    for (const r of reminders) {
+    ]) {
       if (r.at > now) {
         await pool.query(
           `INSERT INTO reminder_queue (phone, zoho_contact_id, zoho_campaign_id, reminder_type, scheduled_at, payload)
            VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
           [session.phone, session.zoho_contact_id, session.zoho_campaign_id, r.type, r.at,
-           JSON.stringify({ meetingDatetime, language: session.language })]
+           JSON.stringify({ meetingDatetime, language: session.language,
+             contactName: session.context?.contactName || '' })]
         );
       }
     }
