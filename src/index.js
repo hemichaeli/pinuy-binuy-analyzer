@@ -14,10 +14,11 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.50.0';
-const BUILD = '2026-03-05-v4.50.0-inforu-whatsapp-routes';
+const VERSION = '4.51.0';
+const BUILD = '2026-03-05-v4.51.0-whatsapp-polling-autostart';
 
 // What's in this version:
+// - Started whatsappPollingService (auto-response to incoming WhatsApp messages)
 // - Registered inforuRoutes.js at /api/inforu
 // - Registered whatsappAlertRoutes.js at /api/whatsapp/alerts
 // - Fixed morningReportService syntax bug (WhatsApp StatusId check)
@@ -130,6 +131,7 @@ async function start() {
   try { const { startScheduler } = require('./jobs/weeklyScanner'); startScheduler(); } catch (e) { logger.warn('Scheduler failed to start:', e.message); }
   try { const { startWatcher } = require('./jobs/stuckScanWatcher'); startWatcher(); } catch (e) { logger.warn('Stuck scan watcher failed to start:', e.message); }
   try { const { startDiscoveryScheduler } = require('./jobs/discoveryScheduler'); startDiscoveryScheduler(); } catch (e) { logger.warn('Discovery scheduler failed to start:', e.message); }
+  try { require('./services/whatsappPollingService'); logger.info('WhatsApp polling service loaded'); } catch (e) { logger.warn('WhatsApp polling service failed to start:', e.message); }
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
