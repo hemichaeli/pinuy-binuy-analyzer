@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
         try {
             const [complexes, listings, opportunities] = await Promise.all([
                 pool.query('SELECT COUNT(*) as total FROM complexes'),
-                pool.query('SELECT COUNT(*) as total FROM yad2_listings WHERE created_at > NOW() - INTERVAL 7 DAY'),
+                pool.query('SELECT COUNT(*) as total FROM yad2_listings'),
                 pool.query('SELECT COUNT(*) as total FROM complexes WHERE ssi_score > 75')
             ]);
             
@@ -30,110 +30,76 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Get real ads data with filtering and sorting
+// SIMPLE ads endpoint - returns ALL data without complex filtering
 router.get('/api/ads', async (req, res) => {
     try {
-        const { city, minPrice, maxPrice, minPremium, search, sortBy, sortOrder } = req.query;
+        console.log('[ADS API] Called with params:', req.query);
         
         let query = `
             SELECT 
+                id,
                 title,
                 city,
                 price_current,
                 price_potential,
-                ROUND(((price_potential - price_current) / NULLIF(price_current, 0) * 100), 1) as premium_percent,
-                (price_potential - price_current) as premium_amount,
                 phone,
-                created_at
+                created_at,
+                url
             FROM yad2_listings 
             WHERE price_current > 0
+            ORDER BY created_at DESC 
+            LIMIT 50
         `;
         
-        const params = [];
-        let paramCount = 1;
+        const result = await pool.query(query);
+        console.log('[ADS API] Returning', result.rows.length, 'ads');
         
-        if (city && city.trim()) {
-            query += ` AND city ILIKE $${paramCount}`;
-            params.push(`%${city.trim()}%`);
-            paramCount++;
-        }
-        
-        if (minPrice && !isNaN(minPrice)) {
-            query += ` AND price_current >= $${paramCount}`;
-            params.push(parseInt(minPrice));
-            paramCount++;
-        }
-        
-        if (maxPrice && !isNaN(maxPrice)) {
-            query += ` AND price_current <= $${paramCount}`;
-            params.push(parseInt(maxPrice));
-            paramCount++;
-        }
-        
-        if (search && search.trim()) {
-            query += ` AND title ILIKE $${paramCount}`;
-            params.push(`%${search.trim()}%`);
-            paramCount++;
-        }
-        
-        if (minPremium && !isNaN(minPremium)) {
-            query += ` AND ((price_potential - price_current) / NULLIF(price_current, 0) * 100) >= $${paramCount}`;
-            params.push(parseFloat(minPremium));
-            paramCount++;
-        }
-        
-        // Add sorting
-        const validSortFields = ['title', 'city', 'price_current', 'premium_percent', 'created_at'];
-        const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
-        const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
-        query += ` ORDER BY ${sortField} ${order} LIMIT 100`;
-        
-        console.log('[ADS API] Query:', query, 'Params:', params);
-        const result = await pool.query(query, params);
-        console.log('[ADS API] Results:', result.rows.length, 'rows');
-        
-        res.json(result.rows);
+        res.json({
+            success: true,
+            count: result.rows.length,
+            ads: result.rows
+        });
     } catch (error) {
-        console.error('Ads data error:', error);
-        res.status(500).json({ error: 'Failed to fetch ads data', details: error.message });
+        console.error('[ADS API] Error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch ads data', 
+            details: error.message 
+        });
     }
 });
 
-// Get complexes data
+// SIMPLE complexes endpoint
 router.get('/api/complexes', async (req, res) => {
     try {
+        console.log('[COMPLEXES API] Called');
+        
         const query = `
             SELECT 
                 id, name, city, address, 
                 units_count, planned_units,
                 iai_score, ssi_score,
-                status, developer
+                status
             FROM complexes 
             ORDER BY iai_score DESC NULLS LAST 
-            LIMIT 50
+            LIMIT 30
         `;
         
         const result = await pool.query(query);
-        console.log('[COMPLEXES API] Results:', result.rows.length, 'rows');
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Complexes data error:', error);
-        res.status(500).json({ error: 'Failed to fetch complexes data', details: error.message });
-    }
-});
-
-// Test endpoint for debugging
-router.get('/api/test', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT COUNT(*) as total FROM yad2_listings');
-        const total = result.rows[0]?.total || 0;
-        res.json({ 
-            status: 'ok', 
-            totalListings: parseInt(total),
-            timestamp: new Date().toISOString()
+        console.log('[COMPLEXES API] Returning', result.rows.length, 'complexes');
+        
+        res.json({
+            success: true,
+            count: result.rows.length,
+            complexes: result.rows
         });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('[COMPLEXES API] Error:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to fetch complexes data', 
+            details: error.message 
+        });
     }
 });
 
@@ -143,59 +109,57 @@ function generateDashboardHTML(stats) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>QUANTUM DASHBOARD V3 - Mobile Fixed</title>
+    <title>QUANTUM DASHBOARD - MOBILE WORKING</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
         * { 
             font-family: 'Segoe UI', sans-serif; 
-            -webkit-tap-highlight-color: rgba(212, 175, 55, 0.3);
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
+            -webkit-tap-highlight-color: rgba(212, 175, 55, 0.4);
+            box-sizing: border-box;
         }
         
         body { 
             background: #0a0a0b; 
             color: #fff; 
             font-size: 16px;
-            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
         }
         
         .quantum-gold { color: #d4af37; }
         .bg-quantum { background: #d4af37; }
         
+        .clickable {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            user-select: none;
+        }
+        
+        .clickable:active {
+            transform: scale(0.95);
+            background: rgba(212, 175, 55, 0.2) !important;
+        }
+        
         .stat-card { 
             background: linear-gradient(135deg, #1a1b1e, #2d2e32);
-            border: 2px solid rgba(255,255,255,0.1);
+            border: 3px solid rgba(255,255,255,0.1);
             border-radius: 1rem;
             padding: 1.5rem;
             text-align: center;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            min-height: 120px;
+            min-height: 140px;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            position: relative;
-            touch-action: manipulation;
         }
         
-        .stat-card:hover, .stat-card:active {
-            border-color: rgba(212, 175, 55, 0.6);
-            transform: translateY(-2px) scale(1.02);
-            box-shadow: 0 8px 25px rgba(212, 175, 55, 0.3);
-        }
-        
-        .stat-card.touched {
-            border-color: #d4af37;
-            background: linear-gradient(135deg, #2a2b2e, #3d3e42);
-            box-shadow: 0 0 20px rgba(212, 175, 55, 0.5);
+        .stat-card:active {
+            border-color: #d4af37 !important;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.5) !important;
         }
         
         .stat-value {
-            font-size: 2.2rem;
+            font-size: 2.5rem;
             font-weight: 900;
             color: #d4af37;
             margin: 0.5rem 0;
@@ -203,49 +167,35 @@ function generateDashboardHTML(stats) {
         }
         
         .stat-label {
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             color: #9ca3af;
             margin-bottom: 0.5rem;
-            text-transform: uppercase;
             font-weight: 600;
         }
         
         .stat-description {
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: #6b7280;
             margin-top: 0.5rem;
         }
         
         .btn {
-            padding: 0.8rem 1.2rem;
+            padding: 1rem 1.5rem;
             border-radius: 0.8rem;
             font-weight: 700;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            font-size: 1rem;
             border: none;
-            display: inline-flex;
+            display: flex;
             align-items: center;
+            justify-content: center;
             gap: 0.5rem;
-            touch-action: manipulation;
-            position: relative;
-        }
-        
-        .btn:hover, .btn:active {
-            transform: translateY(-1px);
-        }
-        
-        .btn.touched {
-            transform: scale(0.95);
+            width: 100%;
+            margin: 0.5rem 0;
         }
         
         .btn-primary {
             background: linear-gradient(135deg, #d4af37, #e6c659);
             color: #0a0a0b;
-        }
-        
-        .btn-primary:hover, .btn-primary:active {
-            box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
         }
         
         .card {
@@ -256,106 +206,19 @@ function generateDashboardHTML(stats) {
             margin: 1rem 0;
         }
         
-        .nav-btn {
-            display: flex;
-            align-items: center;
-            gap: 0.8rem;
-            padding: 0.8rem 1.5rem;
-            margin: 0.3rem 0;
-            border-radius: 0.8rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            color: #e2e8f0;
-            border: 2px solid transparent;
-            font-weight: 600;
-            font-size: 1rem;
-            touch-action: manipulation;
-        }
-        
-        .nav-btn:hover, .nav-btn:active {
-            background: rgba(212, 175, 55, 0.2);
-            color: #d4af37;
-            border-color: rgba(212, 175, 55, 0.3);
-            transform: translateX(-3px);
-        }
-        
-        .nav-btn.active {
-            background: rgba(212, 175, 55, 0.3);
-            color: #d4af37;
-            border-color: #d4af37;
-        }
-        
-        .nav-btn.touched {
-            background: rgba(212, 175, 55, 0.4);
-            transform: translateX(-5px);
-        }
-        
-        .view { 
-            display: none; 
-            animation: fadeIn 0.3s ease;
-        }
-        .view.active { 
-            display: block; 
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .filter-input {
-            background: rgba(255,255,255,0.1);
-            border: 2px solid rgba(255,255,255,0.2);
-            color: white;
-            padding: 0.8rem;
-            border-radius: 0.5rem;
-            font-size: 0.85rem;
-            width: 100%;
-        }
-        .filter-input:focus {
-            outline: none;
-            border-color: #d4af37;
-            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.2);
-        }
-        
-        .data-container {
-            background: rgba(255,255,255,0.05);
-            border-radius: 0.5rem;
-            overflow: hidden;
-            margin-top: 1rem;
-        }
-        
-        .data-row {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            transition: background 0.2s;
-        }
-        .data-row:hover {
-            background: rgba(212, 175, 55, 0.1);
-        }
-        
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-left: 0.5rem;
-        }
-        .status-active { background: #22c55e; }
-        .status-warning { background: #f59e0b; }
-        .status-error { background: #ef4444; }
+        .view { display: none; }
+        .view.active { display: block; }
         
         .notification {
             position: fixed;
             top: 1rem;
             left: 50%;
             transform: translateX(-50%);
-            padding: 1rem 1.5rem;
+            padding: 1rem 2rem;
             border-radius: 0.5rem;
             color: white;
             font-weight: bold;
             z-index: 1000;
-            animation: slideInTop 0.3s ease;
             max-width: 90%;
             text-align: center;
         }
@@ -363,752 +226,357 @@ function generateDashboardHTML(stats) {
         .notification.warning { background: #f59e0b; }
         .notification.error { background: #ef4444; }
         
-        @keyframes slideInTop {
-            from { transform: translateX(-50%) translateY(-100%); }
-            to { transform: translateX(-50%) translateY(0); }
+        .data-row {
+            background: rgba(255,255,255,0.05);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-left: 3px solid #d4af37;
         }
         
-        .loading-indicator {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #d4af37;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #9ca3af;
         }
         
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .nav-tab {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 0.5rem;
+            padding: 0.8rem 1.5rem;
+            margin: 0.3rem;
+            color: #e2e8f0;
+            font-weight: 600;
         }
         
-        /* Mobile specific styles */
+        .nav-tab.active {
+            background: rgba(212, 175, 55, 0.3);
+            border-color: #d4af37;
+            color: #d4af37;
+        }
+        
+        /* Mobile optimizations */
         @media (max-width: 768px) {
-            .main-container {
-                flex-direction: column;
-            }
-            
-            .sidebar {
-                width: 100%;
-                order: 2;
-            }
-            
-            .main-content {
-                order: 1;
-            }
-            
-            .stats-grid {
-                grid-template-columns: 1fr;
-                gap: 1rem;
-            }
-            
-            .filter-grid {
-                grid-template-columns: 1fr;
-                gap: 0.5rem;
-            }
-            
             .stat-value {
                 font-size: 2rem;
             }
             
+            .card {
+                padding: 1rem;
+                margin: 0.5rem 0;
+            }
+            
             .btn {
-                width: 100%;
-                justify-content: center;
+                padding: 0.8rem 1rem;
+                font-size: 0.9rem;
             }
         }
     </style>
 </head>
-<body class="min-h-screen">
+<body>
 
-<div class="flex min-h-screen main-container">
-    <!-- Sidebar -->
-    <aside class="w-80 bg-gray-900 flex flex-col sidebar">
-        <div class="p-4 border-b border-gray-700">
-            <h1 class="quantum-gold text-2xl font-bold mb-2">QUANTUM</h1>
-            <p class="text-xs text-gray-400 mb-3">מודיעין התחדשות עירונית</p>
-            <div class="flex items-center gap-2 text-xs">
-                <div class="status-indicator status-active"></div>
-                <span>מחובר ופעיל</span>
-            </div>
-        </div>
+<div class="min-h-screen p-4">
+    
+    <!-- Header -->
+    <header class="mb-6">
+        <h1 class="quantum-gold text-3xl font-bold mb-2">QUANTUM</h1>
+        <p class="text-lg text-gray-300">מודיעין התחדשות עירונית</p>
+        <p class="text-sm text-gray-400">Mobile Working Version • <span id="timestamp"></span></p>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="grid grid-cols-2 gap-2 mb-6">
+        <button class="nav-tab active clickable" onclick="showView('dashboard')">📊 דשבורד</button>
+        <button class="nav-tab clickable" onclick="showView('ads')">🏠 מודעות</button>
+        <button class="nav-tab clickable" onclick="showView('complexes')">🏢 מתחמים</button>
+        <button class="nav-tab clickable" onclick="showView('status')">⚡ סטטוס</button>
+    </nav>
+
+    <!-- Dashboard View -->
+    <div id="view-dashboard" class="view active">
         
-        <nav class="flex-1 p-3">
-            <div class="nav-btn active" data-view="dashboard" data-action="nav-dashboard">
-                <span class="material-icons text-lg">dashboard</span>
-                <span>דשבורד ראשי</span>
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="stat-card clickable" onclick="clickStat('complexes', ${stats.totalComplexes})">
+                <div class="stat-label">מתחמים במערכת</div>
+                <div class="stat-value">${stats.totalComplexes}</div>
+                <div class="stat-description">👆 לחץ לצפייה</div>
             </div>
-            <div class="nav-btn" data-view="ads" data-action="nav-ads">
-                <span class="material-icons text-lg">home_work</span>
-                <span>כל המודעות</span>
-                <span class="mr-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full" id="adsCount">0</span>
+            <div class="stat-card clickable" onclick="clickStat('ads', ${stats.newListings})">
+                <div class="stat-label">מודעות במערכת</div>
+                <div class="stat-value text-green-400">${stats.newListings}</div>
+                <div class="stat-description">👆 לחץ לצפייה</div>
             </div>
-            <div class="nav-btn" data-view="complexes" data-action="nav-complexes">
-                <span class="material-icons text-lg">domain</span>
-                <span>מתחמים</span>
-                <span class="mr-auto bg-blue-500 text-white text-xs px-2 py-1 rounded-full" id="complexesCount">${stats.totalComplexes}</span>
-            </div>
-            <div class="nav-btn" data-view="messages" data-action="nav-messages">
-                <span class="material-icons text-lg">forum</span>
-                <span>הודעות</span>
-                <span class="mr-auto bg-green-500 text-white text-xs px-2 py-1 rounded-full">0</span>
-            </div>
-        </nav>
-        
-        <div class="p-3 border-t border-gray-700">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-quantum flex items-center justify-center text-black font-bold text-sm">HM</div>
-                <div>
-                    <p class="font-bold text-sm">Hemi Michaeli</p>
-                    <p class="text-xs text-gray-400">מנכ"ל QUANTUM</p>
-                </div>
-            </div>
-        </div>
-    </aside>
-
-    <!-- Main Content -->
-    <main class="flex-1 p-4 overflow-y-auto main-content">
-
-        <!-- Dashboard View -->
-        <div id="view-dashboard" class="view active">
-            <div class="mb-6">
-                <h2 class="text-3xl font-bold quantum-gold mb-3">מרכז הפיקוד QUANTUM</h2>
-                <p class="text-lg text-gray-300">ניתוח שוק בזמן אמת ומעקב הזדמנויות השקעה</p>
-                <div class="mt-3 text-sm text-gray-400">
-                    <span class="quantum-gold font-bold">V3.0 Mobile Fixed</span>
-                    <span class="mx-2">•</span>
-                    <span>עודכן: <span id="lastUpdate">טוען...</span></span>
-                </div>
-            </div>
-            
-            <!-- Main Stats Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 stats-grid">
-                <div class="stat-card" data-action="goto-complexes" data-target="complexes">
-                    <div class="stat-label">מתחמים במערכת</div>
-                    <div class="stat-value">${stats.totalComplexes}</div>
-                    <div class="stat-description">👆 לחץ לצפייה במתחמים</div>
-                </div>
-                <div class="stat-card" data-action="goto-ads" data-target="ads">
-                    <div class="stat-label">מודעות פעילות</div>
-                    <div class="stat-value text-green-400" id="totalListings">${stats.newListings}</div>
-                    <div class="stat-description">👆 לחץ לצפייה במודעות</div>
-                </div>
-                <div class="stat-card" data-action="goto-complexes" data-target="complexes">
-                    <div class="stat-label">הזדמנויות חמות</div>
-                    <div class="stat-value text-red-400">${stats.hotOpportunities}</div>
-                    <div class="stat-description">👆 לחץ לסינון הזדמנויות</div>
-                </div>
-            </div>
-
-            <!-- Quick Actions -->
-            <div class="card">
-                <h3 class="text-lg font-bold mb-4">פעולות מהירות</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <button class="btn btn-primary" data-action="run-enrichment">
-                        <span class="material-icons text-sm">auto_awesome</span>
-                        הרץ העשרה
-                    </button>
-                    <button class="btn btn-primary" data-action="scan-yad2">
-                        <span class="material-icons text-sm">search</span>
-                        סרוק יד2
-                    </button>
-                    <button class="btn btn-primary" data-action="scan-kones">
-                        <span class="material-icons text-sm">gavel</span>
-                        סרוק כינוסים
-                    </button>
-                    <button class="btn btn-primary" data-action="test-data">
-                        <span class="material-icons text-sm">bug_report</span>
-                        בדוק נתונים
-                    </button>
-                </div>
-            </div>
-
-            <!-- Status Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="card">
-                    <h3 class="text-lg font-bold mb-3 flex items-center">
-                        <span class="material-icons ml-2 text-lg">analytics</span>
-                        סטטוס מערכת
-                    </h3>
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between text-sm">
-                            <span>WhatsApp Webhook</span>
-                            <span class="flex items-center">
-                                <div class="status-indicator status-active"></div>
-                                פעיל
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between text-sm">
-                            <span>דטאבייס PostgreSQL</span>
-                            <span class="flex items-center">
-                                <div class="status-indicator status-active"></div>
-                                מחובר
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between text-sm">
-                            <span>גיבויים אוטומטיים</span>
-                            <span class="flex items-center">
-                                <div class="status-indicator status-active"></div>
-                                פעיל
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <h3 class="text-lg font-bold mb-3 flex items-center">
-                        <span class="material-icons ml-2 text-lg">trending_up</span>
-                        ביצועי היום
-                    </h3>
-                    <div class="space-y-2 text-sm">
-                        <div class="flex items-center justify-between">
-                            <span>מודעות חדשות</span>
-                            <span class="quantum-gold font-bold">+${Math.floor(Math.random() * 15) + 5}</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span>העשרות בוצעו</span>
-                            <span class="text-green-400 font-bold">+${Math.floor(Math.random() * 25) + 10}</span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span>הודעות WhatsApp</span>
-                            <span class="text-blue-400 font-bold">+${Math.floor(Math.random() * 8) + 2}</span>
-                        </div>
-                    </div>
-                </div>
+            <div class="stat-card clickable" onclick="clickStat('opportunities', ${stats.hotOpportunities})">
+                <div class="stat-label">הזדמנויות חמות</div>
+                <div class="stat-value text-red-400">${stats.hotOpportunities}</div>
+                <div class="stat-description">👆 לחץ לצפייה</div>
             </div>
         </div>
 
-        <!-- Ads View -->
-        <div id="view-ads" class="view">
-            <div class="mb-6">
-                <h2 class="text-3xl font-bold quantum-gold mb-3">כל המודעות</h2>
-                <p class="text-lg text-gray-300">מודעות עם מחירים, פוטנציאל רווח, פרמיות וטלפונים</p>
+        <!-- Quick Actions -->
+        <div class="card">
+            <h3 class="text-xl font-bold mb-4">פעולות מהירות</h3>
+            <div class="grid grid-cols-2 gap-3">
+                <button class="btn btn-primary clickable" onclick="loadData('ads')">
+                    📋 טען מודעות
+                </button>
+                <button class="btn btn-primary clickable" onclick="loadData('complexes')">
+                    🏢 טען מתחמים
+                </button>
+                <button class="btn btn-primary clickable" onclick="testConnection()">
+                    🧪 בדוק חיבור
+                </button>
+                <button class="btn btn-primary clickable" onclick="refreshStats()">
+                    🔄 רענן סטטיסטיקות
+                </button>
             </div>
-            
-            <div class="card">
-                <h3 class="text-lg font-bold mb-3">סינון מתקדם</h3>
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 filter-grid">
-                    <input type="text" placeholder="עיר (למשל: תל אביב)" class="filter-input" id="cityFilter">
-                    <input type="number" placeholder="מחיר מינימום" class="filter-input" id="minPrice">
-                    <input type="number" placeholder="מחיר מקסימום" class="filter-input" id="maxPrice">
-                    <button class="btn btn-primary" data-action="load-ads">
-                        <span class="material-icons text-sm">search</span>
-                        חפש מודעות
-                    </button>
-                </div>
-            </div>
+        </div>
+    </div>
 
-            <div class="card">
-                <h3 class="text-lg font-bold mb-3">רשימת מודעות</h3>
-                <div id="adsContainer" class="data-container min-h-[200px]">
-                    <div class="text-center text-gray-400 py-8">
-                        <span class="material-icons text-3xl mb-2">search</span>
-                        <p class="text-sm">👆 לחץ "חפש מודעות" למעלה לטעינת נתונים</p>
-                    </div>
+    <!-- Ads View -->
+    <div id="view-ads" class="view">
+        <div class="card">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">מודעות יד2</h3>
+                <button class="btn btn-primary clickable" onclick="loadData('ads')" style="width: auto; padding: 0.5rem 1rem;">
+                    🔄 טען
+                </button>
+            </div>
+            <div id="adsContent" class="loading">
+                <p>👆 לחץ "טען" כדי לראות מודעות</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Complexes View -->
+    <div id="view-complexes" class="view">
+        <div class="card">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">מתחמי פינוי-בינוי</h3>
+                <button class="btn btn-primary clickable" onclick="loadData('complexes')" style="width: auto; padding: 0.5rem 1rem;">
+                    🔄 טען
+                </button>
+            </div>
+            <div id="complexesContent" class="loading">
+                <p>👆 לחץ "טען" כדי לראות מתחמים</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status View -->
+    <div id="view-status" class="view">
+        <div class="card">
+            <h3 class="text-xl font-bold mb-4">סטטוס מערכת</h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between p-3 bg-green-900/20 rounded-lg">
+                    <span>🔗 דטאבייס</span>
+                    <span class="text-green-400 font-bold">מחובר</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-green-900/20 rounded-lg">
+                    <span>📱 WhatsApp</span>
+                    <span class="text-green-400 font-bold">פעיל</span>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-blue-900/20 rounded-lg">
+                    <span>💾 גיבויים</span>
+                    <span class="text-blue-400 font-bold">אוטומטי</span>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Complexes View -->
-        <div id="view-complexes" class="view">
-            <div class="mb-6">
-                <h2 class="text-3xl font-bold quantum-gold mb-3">מתחמי פינוי-בינוי</h2>
-                <p class="text-lg text-gray-300">ניתוח מתחמים עם סיווג השקעי וסטטוס פרויקט</p>
-            </div>
-            
-            <div class="card">
-                <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-lg font-bold">רשימת מתחמים</h3>
-                    <button class="btn btn-primary" data-action="load-complexes">
-                        <span class="material-icons text-sm">refresh</span>
-                        רענן
-                    </button>
-                </div>
-                <div id="complexesContainer" class="data-container min-h-[300px]">
-                    <div class="text-center text-gray-400 py-8">
-                        <span class="material-icons text-3xl mb-2">domain</span>
-                        <p class="text-sm">👆 לחץ "רענן" לטעינת נתוני מתחמים</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Messages View -->
-        <div id="view-messages" class="view">
-            <div class="mb-6">
-                <h2 class="text-3xl font-bold quantum-gold mb-3">מערכת הודעות</h2>
-                <p class="text-lg text-gray-300">WhatsApp, SMS והודעות אחרות במקום אחד</p>
-            </div>
-            
-            <div class="card">
-                <h3 class="text-lg font-bold mb-3">סטטוס WhatsApp</h3>
-                <div class="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
-                    <div class="flex items-center gap-3">
-                        <div class="status-indicator status-active"></div>
-                        <div>
-                            <p class="font-bold text-green-400 text-sm">מערכת פעילה ומוכנה לקבלת הודעות</p>
-                            <p class="text-xs text-gray-400">מספר עסקי: 037572229</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </main>
 </div>
 
 <!-- Notification Container -->
 <div id="notificationContainer"></div>
 
 <script>
-// Global state
-let currentView = 'dashboard';
-let isLoading = false;
+console.log('🚀 QUANTUM Dashboard - Mobile Working Version loaded');
 
-// Initialize dashboard with mobile support
+let currentView = 'dashboard';
+
+// Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 QUANTUM Dashboard V3 - Mobile Fixed - loaded');
-    updateTime();
-    initializeEventListeners();
-    
-    // Update time every 30 seconds
-    setInterval(updateTime, 30000);
-    
-    showNotification('📱 Dashboard loaded - Mobile Touch Fixed!', 'success');
+    updateTimestamp();
+    setInterval(updateTimestamp, 30000);
+    showNotification('📱 Dashboard loaded - Touch Ready!', 'success');
 });
 
-// Event listeners setup with mobile support
-function initializeEventListeners() {
-    console.log('🔧 Setting up event listeners for mobile + desktop');
-    
-    // Universal event handler for both touch and click
-    function addUniversalEvent(element, handler) {
-        // Touch events for mobile
-        element.addEventListener('touchstart', function(e) {
-            e.preventDefault();
-            element.classList.add('touched');
-            handler(e);
-        });
-        
-        element.addEventListener('touchend', function(e) {
-            element.classList.remove('touched');
-        });
-        
-        // Click events for desktop
-        element.addEventListener('click', function(e) {
-            e.preventDefault();
-            handler(e);
-        });
-    }
-
-    // Navigation buttons
-    document.querySelectorAll('[data-view]').forEach(btn => {
-        addUniversalEvent(btn, function() {
-            const viewName = this.getAttribute('data-view');
-            if (viewName) {
-                console.log('📱 Nav clicked:', viewName);
-                showView(viewName);
-            }
-        });
-    });
-
-    // Action buttons (using event delegation)
-    document.querySelectorAll('[data-action]').forEach(element => {
-        addUniversalEvent(element, function() {
-            const action = this.getAttribute('data-action');
-            if (action) {
-                console.log('📱 Action triggered:', action);
-                handleAction(action);
-            }
-        });
-    });
-    
-    // Input filters - trigger search on Enter
-    document.querySelectorAll('.filter-input').forEach(input => {
-        input.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                handleAction('load-ads');
-            }
-        });
-    });
-    
-    console.log('✅ All event listeners set up');
+function updateTimestamp() {
+    const now = new Date().toLocaleTimeString('he-IL');
+    const el = document.getElementById('timestamp');
+    if (el) el.textContent = now;
 }
 
-// Handle all actions
-async function handleAction(action) {
-    if (isLoading) {
-        console.log('⏳ Action blocked - already loading');
+function showView(viewName) {
+    console.log('📱 Switching to view:', viewName);
+    
+    // Hide all views
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(n => n.classList.remove('active'));
+    
+    // Show selected view
+    document.getElementById('view-' + viewName).classList.add('active');
+    
+    // Update nav
+    event.target.classList.add('active');
+    
+    currentView = viewName;
+    showNotification('📱 עברת לעמוד: ' + getViewTitle(viewName), 'success');
+}
+
+function getViewTitle(viewName) {
+    const titles = {
+        'dashboard': 'דשבורד ראשי',
+        'ads': 'מודעות',
+        'complexes': 'מתחמים',
+        'status': 'סטטוס מערכת'
+    };
+    return titles[viewName] || viewName;
+}
+
+function clickStat(type, count) {
+    console.log('📊 Stat clicked:', type, count);
+    showNotification(\`📊 \${count} \${type} - עובר לצפייה...\`, 'warning');
+    
+    setTimeout(() => {
+        if (type === 'ads') {
+            showView('ads');
+            loadData('ads');
+        } else if (type === 'complexes') {
+            showView('complexes');
+            loadData('complexes');
+        }
+    }, 500);
+}
+
+async function loadData(type) {
+    console.log('📊 Loading data:', type);
+    showNotification(\`🔄 טוען \${type}...\`, 'warning');
+    
+    const container = document.getElementById(type + 'Content');
+    if (!container) {
+        console.error('Container not found:', type + 'Content');
         return;
     }
     
-    console.log('🎯 Action triggered:', action);
+    container.innerHTML = '<div class="loading">🔄 טוען...</div>';
     
-    switch(action) {
-        case 'goto-complexes':
-            showNotification('📊 עובר למתחמים...', 'warning');
-            showView('complexes');
-            setTimeout(() => handleAction('load-complexes'), 100);
-            break;
-            
-        case 'goto-ads':
-            showNotification('🏠 עובר למודעות...', 'warning');
-            showView('ads');
-            break;
-            
-        case 'nav-dashboard':
-            showView('dashboard');
-            break;
-            
-        case 'nav-ads':
-            showView('ads');
-            break;
-            
-        case 'nav-complexes':
-            showView('complexes');
-            setTimeout(() => handleAction('load-complexes'), 100);
-            break;
-            
-        case 'nav-messages':
-            showView('messages');
-            break;
-            
-        case 'test-data':
-            await testDataConnection();
-            break;
-            
-        case 'run-enrichment':
-            await runAPIAction('/api/scan/dual', 'הרץ העשרה', 'מתחיל תהליך העשרה...');
-            break;
-            
-        case 'scan-yad2':
-            await runAPIAction('/api/scan/yad2', 'סרוק יד2', 'מתחיל סריקת יד2...');
-            break;
-            
-        case 'scan-kones':
-            await runAPIAction('/api/scan/kones', 'סרוק כינוסים', 'מתחיל סריקת כינוסי נכסים...');
-            break;
-            
-        case 'load-ads':
-            await loadAds();
-            break;
-            
-        case 'load-complexes':
-            await loadComplexes();
-            break;
-            
-        default:
-            console.log('❓ Unknown action:', action);
-            showNotification('פעולה לא מוכרת: ' + action, 'error');
+    try {
+        const response = await fetch('/dashboard/api/' + type);
+        const data = await response.json();
+        
+        console.log(\`📊 \${type} data:\`, data);
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Unknown error');
+        }
+        
+        if (type === 'ads') {
+            displayAds(data.ads);
+        } else if (type === 'complexes') {
+            displayComplexes(data.complexes);
+        }
+        
+        showNotification(\`✅ נטענו \${data.count} \${type}\`, 'success');
+        
+    } catch (error) {
+        console.error(\`❌ Failed to load \${type}:\`, error);
+        container.innerHTML = \`
+            <div class="text-red-400 text-center p-4">
+                <p>❌ שגיאה בטעינת \${type}</p>
+                <p class="text-sm text-gray-400">\${error.message}</p>
+                <button class="btn btn-primary clickable mt-3" onclick="loadData('\${type}')">נסה שוב</button>
+            </div>
+        \`;
+        showNotification(\`❌ שגיאה בטעינת \${type}\`, 'error');
     }
 }
 
-// Test data connection
-async function testDataConnection() {
-    console.log('🧪 Testing data connection...');
-    showNotification('🧪 בודק חיבור לנתונים...', 'warning');
+function displayAds(ads) {
+    const container = document.getElementById('adsContent');
+    
+    if (!ads || ads.length === 0) {
+        container.innerHTML = '<div class="loading">📭 לא נמצאו מודעות</div>';
+        return;
+    }
+    
+    container.innerHTML = ads.map((ad, index) => \`
+        <div class="data-row">
+            <h4 class="font-bold text-quantum-gold mb-2">
+                \${ad.title || 'מודעה #' + (index + 1)}
+            </h4>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <div><span class="text-gray-400">עיר:</span> \${ad.city || 'לא צוין'}</div>
+                <div><span class="text-gray-400">מחיר:</span> ₪\${(ad.price_current || 0).toLocaleString()}</div>
+                \${ad.phone ? \`<div><span class="text-gray-400">📞</span> \${ad.phone}</div>\` : ''}
+                <div><span class="text-gray-400">תאריך:</span> \${new Date(ad.created_at).toLocaleDateString('he-IL')}</div>
+            </div>
+        </div>
+    \`).join('');
+}
+
+function displayComplexes(complexes) {
+    const container = document.getElementById('complexesContent');
+    
+    if (!complexes || complexes.length === 0) {
+        container.innerHTML = '<div class="loading">🏢 לא נמצאו מתחמים</div>';
+        return;
+    }
+    
+    container.innerHTML = complexes.map((complex, index) => \`
+        <div class="data-row">
+            <h4 class="font-bold text-quantum-gold mb-2">
+                \${complex.name || 'מתחם #' + (index + 1)}
+            </h4>
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <div><span class="text-gray-400">עיר:</span> \${complex.city || 'לא צוין'}</div>
+                <div><span class="text-gray-400">יח"ד:</span> \${complex.units_count || 0}</div>
+                \${complex.iai_score ? \`<div><span class="text-gray-400">ציון IAI:</span> <span class="text-green-400 font-bold">\${complex.iai_score}</span></div>\` : ''}
+                <div><span class="text-gray-400">סטטוס:</span> \${complex.status || 'לא ידוע'}</div>
+            </div>
+        </div>
+    \`).join('');
+}
+
+async function testConnection() {
+    console.log('🧪 Testing connection...');
+    showNotification('🧪 בודק חיבור...', 'warning');
     
     try {
-        const response = await fetch('/dashboard/api/test');
+        const response = await fetch('/dashboard/api/ads');
         const data = await response.json();
         
-        if (data.status === 'ok') {
-            showNotification(\`✅ חיבור תקין! סה"כ מודעות: \${data.totalListings}\`, 'success');
-            console.log('✅ Data connection OK:', data);
+        if (data.success) {
+            showNotification(\`✅ חיבור תקין! \${data.count} מודעות זמינות\`, 'success');
         } else {
             throw new Error('Invalid response');
         }
     } catch (error) {
-        console.error('❌ Data connection failed:', error);
-        showNotification('❌ שגיאה בחיבור לנתונים', 'error');
+        console.error('❌ Connection test failed:', error);
+        showNotification('❌ בעיה בחיבור לשרת', 'error');
     }
 }
 
-// View switching
-function showView(viewName) {
-    console.log('🔄 Switching to view:', viewName);
-    
-    // Update navigation
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(n => n.classList.remove('active'));
-    
-    // Show selected view
-    const targetView = document.getElementById('view-' + viewName);
-    if (targetView) {
-        targetView.classList.add('active');
-    }
-    
-    const targetNav = document.querySelector(\`[data-view="\${viewName}"]\`);
-    if (targetNav) {
-        targetNav.classList.add('active');
-    }
-    
-    currentView = viewName;
-    updateTime();
-    
-    const titles = {
-        'dashboard': 'דשבורד ראשי',
-        'ads': 'כל המודעות',
-        'complexes': 'מתחמים',
-        'messages': 'הודעות'
-    };
-    
-    showNotification(\`📱 עברת לעמוד: \${titles[viewName]}\`, 'success');
-}
-
-// Load ads with filtering
-async function loadAds() {
-    if (isLoading) return;
-    
-    isLoading = true;
-    const container = document.getElementById('adsContainer');
-    
-    console.log('🏠 Loading ads...');
-    showNotification('🔍 טוען מודעות...', 'warning');
-    
-    try {
-        container.innerHTML = \`
-            <div class="text-center py-8">
-                <div class="loading-indicator mx-auto mb-4"></div>
-                <p class="text-gray-400">טוען מודעות מהדטאבייס...</p>
-            </div>
-        \`;
-        
-        const params = new URLSearchParams();
-        const city = document.getElementById('cityFilter').value;
-        const minPrice = document.getElementById('minPrice').value;
-        const maxPrice = document.getElementById('maxPrice').value;
-        
-        if (city) params.append('city', city);
-        if (minPrice) params.append('minPrice', minPrice);
-        if (maxPrice) params.append('maxPrice', maxPrice);
-        
-        console.log('🔍 Search params:', params.toString());
-        
-        const response = await fetch('/dashboard/api/ads?' + params.toString());
-        const ads = await response.json();
-        
-        console.log('📊 Loaded', ads.length, 'ads');
-        
-        // Update counter
-        document.getElementById('adsCount').textContent = ads.length;
-        
-        if (ads.length === 0) {
-            container.innerHTML = \`
-                <div class="text-center text-gray-400 py-8">
-                    <span class="material-icons text-4xl mb-2">search_off</span>
-                    <p>לא נמצאו מודעות התואמות לחיפוש</p>
-                    <p class="text-xs text-gray-500 mt-2">נסה לשנות את הפילטרים או לחפש ללא סינון</p>
-                </div>
-            \`;
-        } else {
-            container.innerHTML = \`
-                <div class="space-y-3">
-                    \${ads.map((ad, index) => \`
-                        <div class="data-row rounded-lg">
-                            <div class="flex justify-between items-start">
-                                <div class="flex-1">
-                                    <h4 class="font-bold text-quantum-gold mb-2">\${ad.title || 'מודעה #' + (index + 1)}</h4>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                                        <div>
-                                            <span class="text-gray-400">עיר:</span>
-                                            <span class="mr-2">\${ad.city || 'לא צוין'}</span>
-                                        </div>
-                                        <div>
-                                            <span class="text-gray-400">מחיר:</span>
-                                            <span class="mr-2 font-bold text-green-400">₪\${(ad.price_current || 0).toLocaleString()}</span>
-                                        </div>
-                                        \${ad.premium_percent ? \`
-                                            <div>
-                                                <span class="text-gray-400">פרמיה:</span>
-                                                <span class="mr-2 text-yellow-400 font-bold">\${ad.premium_percent}%</span>
-                                            </div>
-                                        \` : ''}
-                                        \${ad.phone ? \`
-                                            <div>
-                                                <span class="text-gray-400">📞</span>
-                                                <a href="tel:\${ad.phone}" class="mr-2 text-blue-400 hover:underline">\${ad.phone}</a>
-                                            </div>
-                                        \` : ''}
-                                    </div>
-                                </div>
-                                \${ad.phone ? \`
-                                    <button class="btn btn-primary text-xs" onclick="callPhone('\${ad.phone}')">
-                                        <span class="material-icons text-xs">phone</span>
-                                    </button>
-                                \` : ''}
-                            </div>
-                        </div>
-                    \`).join('')}
-                </div>
-            \`;
-        }
-        
-        showNotification(\`✅ נטענו \${ads.length} מודעות\`, 'success');
-        
-    } catch (error) {
-        console.error('❌ Failed to load ads:', error);
-        container.innerHTML = \`
-            <div class="text-center text-red-400 py-8">
-                <span class="material-icons text-4xl mb-2">error</span>
-                <p>שגיאה בטעינת מודעות</p>
-                <p class="text-xs text-gray-400 mt-2">שגיאה: \${error.message}</p>
-            </div>
-        \`;
-        showNotification('❌ שגיאה בטעינת מודעות', 'error');
-    } finally {
-        isLoading = false;
-    }
-}
-
-// Load complexes
-async function loadComplexes() {
-    if (isLoading) return;
-    
-    isLoading = true;
-    const container = document.getElementById('complexesContainer');
-    
-    console.log('🏢 Loading complexes...');
-    showNotification('🏢 טוען מתחמים...', 'warning');
-    
-    try {
-        container.innerHTML = \`
-            <div class="text-center py-8">
-                <div class="loading-indicator mx-auto mb-4"></div>
-                <p class="text-gray-400">טוען מתחמים מהדטאבייס...</p>
-            </div>
-        \`;
-        
-        const response = await fetch('/dashboard/api/complexes');
-        const complexes = await response.json();
-        
-        console.log('🏢 Loaded', complexes.length, 'complexes');
-        
-        if (complexes.length === 0) {
-            container.innerHTML = \`
-                <div class="text-center text-gray-400 py-8">
-                    <span class="material-icons text-4xl mb-2">domain</span>
-                    <p>לא נמצאו מתחמים</p>
-                </div>
-            \`;
-        } else {
-            container.innerHTML = \`
-                <div class="space-y-3">
-                    \${complexes.map((complex, index) => \`
-                        <div class="data-row rounded-lg">
-                            <div class="flex justify-between items-start">
-                                <div class="flex-1">
-                                    <h4 class="font-bold text-quantum-gold mb-2">\${complex.name || 'מתחם #' + (index + 1)}</h4>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                                        <div>
-                                            <span class="text-gray-400">עיר:</span>
-                                            <span class="mr-2">\${complex.city || 'לא צוין'}</span>
-                                        </div>
-                                        <div>
-                                            <span class="text-gray-400">יח"ד קיימות:</span>
-                                            <span class="mr-2 text-blue-400">\${complex.units_count || 0}</span>
-                                        </div>
-                                        \${complex.planned_units ? \`
-                                            <div>
-                                                <span class="text-gray-400">יח"ד מתוכננות:</span>
-                                                <span class="mr-2 text-green-400">\${complex.planned_units}</span>
-                                            </div>
-                                        \` : ''}
-                                        \${complex.iai_score ? \`
-                                            <div>
-                                                <span class="text-gray-400">ציון IAI:</span>
-                                                <span class="mr-2 \${complex.iai_score > 80 ? 'text-green-400' : complex.iai_score > 60 ? 'text-yellow-400' : 'text-red-400'} font-bold">
-                                                    \${complex.iai_score}
-                                                </span>
-                                            </div>
-                                        \` : ''}
-                                    </div>
-                                </div>
-                                <div class="text-xs">
-                                    <span class="px-2 py-1 rounded text-xs \${complex.status === 'active' ? 'bg-green-600' : 'bg-gray-600'} text-white">
-                                        \${complex.status || 'לא ידוע'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    \`).join('')}
-                </div>
-            \`;
-        }
-        
-        showNotification(\`✅ נטענו \${complexes.length} מתחמים\`, 'success');
-        
-    } catch (error) {
-        console.error('❌ Failed to load complexes:', error);
-        container.innerHTML = \`
-            <div class="text-center text-red-400 py-8">
-                <span class="material-icons text-4xl mb-2">error</span>
-                <p>שגיאה בטעינת מתחמים</p>
-                <p class="text-xs text-gray-400 mt-2">שגיאה: \${error.message}</p>
-            </div>
-        \`;
-        showNotification('❌ שגיאה בטעינת מתחמים', 'error');
-    } finally {
-        isLoading = false;
-    }
-}
-
-// API actions
-async function runAPIAction(endpoint, actionName, startMessage) {
-    if (isLoading) return;
-    
-    isLoading = true;
-    
-    try {
-        showNotification(startMessage, 'warning');
-        console.log('🚀 Running API action:', endpoint);
-        
-        const response = await fetch(endpoint, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (response.ok) {
-            showNotification(\`✅ \${actionName} הושלם בהצלחה!\`, 'success');
-            console.log('✅ API action succeeded:', endpoint);
-        } else {
-            throw new Error(\`HTTP \${response.status}\`);
-        }
-    } catch (error) {
-        console.error(\`❌ \${actionName} failed:\`, error);
-        showNotification(\`❌ \${actionName} נכשל\`, 'error');
-    } finally {
-        isLoading = false;
-    }
-}
-
-// Utility functions
-function updateTime() {
-    const now = new Date().toLocaleTimeString('he-IL');
-    const el = document.getElementById('lastUpdate');
-    if (el) el.textContent = now;
-}
-
-function callPhone(phone) {
-    console.log('📞 Calling:', phone);
-    if (confirm(\`האם לבצע שיחה ל-\${phone}?\`)) {
-        window.open(\`tel:\${phone}\`);
-        showNotification(\`📞 מתחיל שיחה ל-\${phone}\`, 'success');
-    }
+function refreshStats() {
+    console.log('🔄 Refreshing stats...');
+    showNotification('🔄 מרענן סטטיסטיקות...', 'warning');
+    setTimeout(() => {
+        window.location.reload();
+    }, 1000);
 }
 
 function showNotification(message, type = 'success') {
     console.log(\`[\${type.toUpperCase()}] \${message}\`);
     
-    const container = document.getElementById('notificationContainer') || document.body;
-    
+    const container = document.getElementById('notificationContainer');
     const notification = document.createElement('div');
     notification.className = \`notification \${type}\`;
     notification.textContent = message;
     
     container.appendChild(notification);
     
-    // Auto remove after 3 seconds
     setTimeout(() => {
         if (notification.parentNode) {
             notification.parentNode.removeChild(notification);
@@ -1116,19 +584,7 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
-// Expose functions to global scope for debugging
-window.quantumDashboard = {
-    showView,
-    handleAction,
-    loadAds,
-    loadComplexes,
-    testDataConnection,
-    showNotification
-};
-
-console.log('🎯 QUANTUM Dashboard V3 - Mobile Fixed - All functions loaded and ready!');
-console.log('📱 Touch events enabled for mobile devices');
-console.log('🚀 Ready to rock!');
+console.log('🎯 QUANTUM Dashboard - All functions loaded and ready!');
 </script>
 
 </body>
