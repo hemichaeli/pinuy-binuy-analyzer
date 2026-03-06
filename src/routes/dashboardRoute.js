@@ -695,7 +695,7 @@ async function loadComplexes() {
         const complexes = await res.json();
         const select = document.getElementById('complexSelect');
         select.innerHTML = '<option value="">-- בחר מתחם --</option>' + 
-            complexes.map(c => `<option value="${c.id}">${c.name} - ${c.city}</option>`).join('');
+            complexes.map(c => '<option value="' + c.id + '">' + c.name + ' - ' + c.city + '</option>').join('');
     } catch (err) {
         console.error('Error loading complexes:', err);
     }
