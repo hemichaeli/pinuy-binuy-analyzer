@@ -36,13 +36,38 @@ router.get('/', async (req, res) => {
     }
 });
 
+// Add API endpoints
+router.get('/api/test', (req, res) => {
+    res.json({ success: true, message: 'API is working!', timestamp: new Date() });
+});
+
+router.get('/api/stats', async (req, res) => {
+    try {
+        const [complexes, listings] = await Promise.all([
+            pool.query('SELECT COUNT(*) as total FROM complexes'),
+            pool.query('SELECT COUNT(*) as total FROM yad2_listings')
+        ]);
+        
+        res.json({
+            success: true,
+            data: {
+                complexes: parseInt(complexes.rows[0]?.total) || 0,
+                listings: parseInt(listings.rows[0]?.total) || 0,
+                timestamp: new Date()
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 function generateHTML(stats) {
     return `<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>QUANTUM Test Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>QUANTUM Mobile Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -55,324 +80,299 @@ function generateHTML(stats) {
             background: #000;
             color: #fff;
             padding: 10px;
-            font-size: 16px;
+            font-size: 18px;
+            line-height: 1.4;
+            overflow-x: hidden;
         }
         
-        .test-btn {
-            background: #d4af37;
-            color: #000;
-            border: none;
+        .header {
+            text-align: center;
+            margin: 20px 0;
             padding: 15px;
-            margin: 10px 0;
+            background: #222;
+            border-radius: 10px;
+            border: 2px solid #d4af37;
+        }
+        
+        .header h1 {
+            color: #d4af37;
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        
+        .status {
+            color: #0f0;
+            font-size: 14px;
+        }
+        
+        .nav-section {
+            background: #111;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 10px;
+            border: 1px solid #333;
+        }
+        
+        .nav-section h2 {
+            color: #d4af37;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .nav-btn {
+            display: block;
             width: 100%;
+            background: linear-gradient(135deg, #d4af37, #e6c659);
+            color: #000;
+            padding: 20px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 10px;
             font-size: 18px;
             font-weight: bold;
-            border-radius: 8px;
-            cursor: pointer;
-            -webkit-tap-highlight-color: rgba(212, 175, 55, 0.3);
+            text-align: center;
+            text-decoration: none;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
         }
         
-        .test-btn:active {
-            background: #b8941f;
-            transform: scale(0.98);
+        .nav-btn:hover, .nav-btn:focus {
+            background: linear-gradient(135deg, #e6c659, #d4af37);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+        
+        .nav-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         
         .stat-card {
             background: #333;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 8px;
+            padding: 25px;
+            margin: 15px 0;
+            border-radius: 10px;
             text-align: center;
             border: 2px solid #555;
             cursor: pointer;
+            transition: all 0.3s ease;
         }
         
-        .stat-card:active {
-            background: #d4af37;
-            color: #000;
+        .stat-card:hover, .stat-card:focus {
+            background: #444;
             border-color: #d4af37;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+            transform: translateY(-2px);
         }
         
         .stat-number {
-            font-size: 32px;
-            font-weight: bold;
+            font-size: 36px;
+            font-weight: 900;
             color: #d4af37;
+            margin-bottom: 8px;
         }
         
         .stat-label {
-            font-size: 14px;
-            margin-top: 5px;
-            opacity: 0.8;
+            font-size: 16px;
+            color: #ccc;
+            font-weight: 600;
         }
         
-        .section {
-            background: #222;
-            margin: 15px 0;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #555;
-        }
-        
-        .section h2 {
-            color: #d4af37;
-            margin-bottom: 15px;
-            font-size: 20px;
-        }
-        
-        .debug-info {
-            background: #111;
-            color: #0f0;
-            padding: 10px;
-            font-family: monospace;
-            font-size: 12px;
-            border-radius: 5px;
-            margin: 10px 0;
-            border: 1px solid #333;
-        }
-        
-        .success {
+        .info {
             background: #004400;
             color: #0f0;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
         }
         
         .error {
             background: #440000;
             color: #f00;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .nav-btn {
+                font-size: 16px;
+                padding: 18px;
+            }
+            
+            .stat-number {
+                font-size: 32px;
+            }
+            
+            .stat-label {
+                font-size: 14px;
+            }
+        }
+        
+        /* Dark mode for mobile */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background: #000;
+                color: #fff;
+            }
         }
     </style>
 </head>
 <body>
 
-<h1 style="color: #d4af37; text-align: center; margin: 20px 0;">🧪 QUANTUM TEST DASHBOARD</h1>
-
-<div class="debug-info">
-📱 User Agent: <span id="userAgent"></span><br>
-🌐 Screen: <span id="screenInfo"></span><br>
-👆 Touch Support: <span id="touchSupport"></span><br>
-⏰ Loaded: <span id="loadTime"></span>
-</div>
-
-<!-- Test Buttons Section -->
-<div class="section">
-    <h2>🧪 Button Click Tests</h2>
-    
-    <button class="test-btn" onclick="testAlert('Alert Test 1')">
-        ✅ Test Alert Button
-    </button>
-    
-    <button class="test-btn" onclick="testConsole('Console Test 1')">
-        📝 Test Console Log
-    </button>
-    
-    <button class="test-btn" onclick="testAPI()">
-        🌐 Test API Call
-    </button>
-    
-    <button class="test-btn" onclick="testData()">
-        📊 Test Data Loading
-    </button>
-</div>
-
-<!-- Stats Cards Section -->
-<div class="section">
-    <h2>📊 Stats Cards (Click to Test)</h2>
-    
-    <div class="stat-card" onclick="testStatCard('complexes', ${stats.totalComplexes})">
-        <div class="stat-number">${stats.totalComplexes}</div>
-        <div class="stat-label">מתחמים במערכת</div>
+    <div class="header">
+        <h1>🔥 QUANTUM DASHBOARD</h1>
+        <div class="status">🟢 מערכת פעילה • <span id="time"></span></div>
     </div>
-    
-    <div class="stat-card" onclick="testStatCard('listings', ${stats.newListings})">
-        <div class="stat-number">${stats.newListings}</div>
-        <div class="stat-label">מודעות פעילות</div>
-    </div>
-    
-    <div class="stat-card" onclick="testStatCard('opportunities', ${stats.hotOpportunities})">
-        <div class="stat-number">${stats.hotOpportunities}</div>
-        <div class="stat-label">הזדמנויות חמות</div>
-    </div>
-    
-    <div class="stat-card" onclick="testStatCard('messages', ${stats.activeMessages})">
-        <div class="stat-number">${stats.activeMessages}</div>
-        <div class="stat-label">הודעות חדשות</div>
-    </div>
-</div>
 
-<!-- Results Section -->
-<div class="section">
-    <h2>📋 Test Results</h2>
-    <div id="results">
-        <div style="color: #888;">Test results will appear here...</div>
-    </div>
-</div>
-
-<!-- Debug Section -->
-<div class="section">
-    <h2>🐛 Debug Console</h2>
-    <div id="debugConsole" class="debug-info" style="max-height: 200px; overflow-y: scroll;">
-        Console output will appear here...
-    </div>
-</div>
-
-<script>
-console.log('🚀 QUANTUM Test Dashboard loaded');
-
-let testCount = 0;
-let successCount = 0;
-
-// Initialize debug info
-document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('userAgent').textContent = navigator.userAgent;
-    document.getElementById('screenInfo').textContent = screen.width + 'x' + screen.height;
-    document.getElementById('touchSupport').textContent = 'ontouchstart' in window ? 'YES' : 'NO';
-    document.getElementById('loadTime').textContent = new Date().toLocaleTimeString();
-    
-    addResult('✅ DOM Loaded Successfully', 'success');
-    logDebug('Dashboard initialized at ' + new Date().toISOString());
-});
-
-function addResult(message, type = 'success') {
-    const results = document.getElementById('results');
-    const div = document.createElement('div');
-    div.className = type;
-    div.textContent = \`[\${new Date().toLocaleTimeString()}] \${message}\`;
-    results.appendChild(div);
-    results.scrollTop = results.scrollHeight;
-}
-
-function logDebug(message) {
-    console.log(message);
-    const debugConsole = document.getElementById('debugConsole');
-    const div = document.createElement('div');
-    div.textContent = \`[\${new Date().toLocaleTimeString()}] \${message}\`;
-    debugConsole.appendChild(div);
-    debugConsole.scrollTop = debugConsole.scrollHeight;
-}
-
-function testAlert(message) {
-    testCount++;
-    logDebug(\`Test #\${testCount}: Alert test triggered\`);
-    
-    try {
-        alert('✅ ' + message + ' - Success!');
-        successCount++;
-        addResult(\`Alert Test #\${testCount} - SUCCESS\`, 'success');
-        logDebug(\`Alert test #\${testCount} completed successfully\`);
-    } catch (error) {
-        addResult(\`Alert Test #\${testCount} - FAILED: \${error.message}\`, 'error');
-        logDebug(\`Alert test #\${testCount} failed: \${error.message}\`);
-    }
-}
-
-function testConsole(message) {
-    testCount++;
-    logDebug(\`Test #\${testCount}: Console test - \${message}\`);
-    
-    try {
-        console.log('🧪 Test Console Output:', message);
-        successCount++;
-        addResult(\`Console Test #\${testCount} - SUCCESS\`, 'success');
-        logDebug(\`Console test #\${testCount} completed successfully\`);
-    } catch (error) {
-        addResult(\`Console Test #\${testCount} - FAILED: \${error.message}\`, 'error');
-        logDebug(\`Console test #\${testCount} failed: \${error.message}\`);
-    }
-}
-
-async function testAPI() {
-    testCount++;
-    logDebug(\`Test #\${testCount}: API test starting\`);
-    addResult(\`API Test #\${testCount} - Starting...\`, 'success');
-    
-    try {
-        const response = await fetch(window.location.href);
+    <!-- Stats Section -->
+    <div class="nav-section">
+        <h2>📊 נתוני המערכת</h2>
         
-        if (response.ok) {
-            successCount++;
-            addResult(\`API Test #\${testCount} - SUCCESS (Status: \${response.status})\`, 'success');
-            logDebug(\`API test #\${testCount} completed successfully - Status: \${response.status}\`);
-        } else {
-            throw new Error(\`HTTP \${response.status}\`);
+        <a href="/dashboard/complexes" class="stat-card">
+            <div class="stat-number">${stats.totalComplexes}</div>
+            <div class="stat-label">מתחמי פינוי-בינוי</div>
+        </a>
+        
+        <a href="/dashboard/ads" class="stat-card">
+            <div class="stat-number">${stats.newListings}</div>
+            <div class="stat-label">מודעות פעילות</div>
+        </a>
+        
+        <a href="/dashboard/opportunities" class="stat-card">
+            <div class="stat-number">${stats.hotOpportunities}</div>
+            <div class="stat-label">הזדמנויות חמות</div>
+        </a>
+        
+        <a href="/dashboard/messages" class="stat-card">
+            <div class="stat-number">${stats.activeMessages}</div>
+            <div class="stat-label">הודעות חדשות</div>
+        </a>
+    </div>
+
+    <!-- Navigation Section -->
+    <div class="nav-section">
+        <h2>🧭 ניווט מהיר</h2>
+        
+        <a href="/dashboard/full" class="nav-btn">
+            📱 דשבורד מלא
+        </a>
+        
+        <a href="/dashboard/api/test" class="nav-btn">
+            🧪 בדיקת API
+        </a>
+        
+        <a href="/dashboard/api/stats" class="nav-btn">
+            📊 נתונים בזמן אמת
+        </a>
+        
+        <a href="/api/debug" class="nav-btn">
+            🔧 סטטוס מערכת
+        </a>
+    </div>
+
+    <!-- Actions Section -->
+    <div class="nav-section">
+        <h2>⚡ פעולות מהירות</h2>
+        
+        <button class="nav-btn" onclick="window.location.href='/api/scan/yad2'">
+            🔍 סרוק יד2
+        </button>
+        
+        <button class="nav-btn" onclick="testAPI()">
+            🧪 בדוק חיבור
+        </button>
+        
+        <button class="nav-btn" onclick="showAlert()">
+            ✅ בדיקת לחיצה
+        </button>
+        
+        <button class="nav-btn" onclick="reloadPage()">
+            🔄 רענן עמוד
+        </button>
+    </div>
+
+    <!-- Debug Info -->
+    <div class="nav-section">
+        <h2>🐛 מידע טכני</h2>
+        <div class="info">
+            📱 מכשיר: <span id="device-info"></span><br>
+            🌐 רזולוציה: <span id="resolution"></span><br>
+            👆 מגע: <span id="touch-support"></span><br>
+            ⏰ טעינה: <span id="load-time"></span>
+        </div>
+    </div>
+
+    <script>
+        console.log('🚀 QUANTUM Dashboard loaded');
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTime();
+            setInterval(updateTime, 1000);
+            
+            // Update device info
+            document.getElementById('device-info').textContent = navigator.userAgent.split(' ')[1] || 'Unknown';
+            document.getElementById('resolution').textContent = window.screen.width + 'x' + window.screen.height;
+            document.getElementById('touch-support').textContent = 'ontouchstart' in window ? '✅ נתמך' : '❌ לא נתמך';
+            document.getElementById('load-time').textContent = new Date().toLocaleTimeString('he-IL');
+            
+            console.log('✅ Dashboard initialized');
+        });
+
+        function updateTime() {
+            const now = new Date().toLocaleTimeString('he-IL');
+            const timeEl = document.getElementById('time');
+            if (timeEl) timeEl.textContent = now;
         }
-    } catch (error) {
-        addResult(\`API Test #\${testCount} - FAILED: \${error.message}\`, 'error');
-        logDebug(\`API test #\${testCount} failed: \${error.message}\`);
-    }
-}
 
-async function testData() {
-    testCount++;
-    logDebug(\`Test #\${testCount}: Data test starting\`);
-    addResult(\`Data Test #\${testCount} - Loading...\`, 'success');
-    
-    try {
-        // Simple data test - just show current stats
-        const statsData = {
-            complexes: ${stats.totalComplexes},
-            listings: ${stats.newListings},
-            opportunities: ${stats.hotOpportunities},
-            messages: ${stats.activeMessages}
-        };
-        
-        logDebug(\`Data loaded: \${JSON.stringify(statsData)}\`);
-        successCount++;
-        addResult(\`Data Test #\${testCount} - SUCCESS - Data: \${Object.keys(statsData).length} items\`, 'success');
-        
-    } catch (error) {
-        addResult(\`Data Test #\${testCount} - FAILED: \${error.message}\`, 'error');
-        logDebug(\`Data test #\${testCount} failed: \${error.message}\`);
-    }
-}
+        function showAlert() {
+            alert('✅ הלחיצה עובדת! הדשבורד תקין!');
+            console.log('✅ Alert test passed');
+        }
 
-function testStatCard(type, value) {
-    testCount++;
-    logDebug(\`Test #\${testCount}: Stat card clicked - Type: \${type}, Value: \${value}\`);
-    
-    try {
-        const message = \`Stat Card: \${type} = \${value}\`;
-        alert('📊 ' + message);
-        successCount++;
-        addResult(\`Stat Card Test #\${testCount} - SUCCESS (\${type}: \${value})\`, 'success');
-        logDebug(\`Stat card test #\${testCount} completed successfully\`);
-        
-        // Update success rate
-        updateSuccessRate();
-        
-    } catch (error) {
-        addResult(\`Stat Card Test #\${testCount} - FAILED: \${error.message}\`, 'error');
-        logDebug(\`Stat card test #\${testCount} failed: \${error.message}\`);
-    }
-}
+        function testAPI() {
+            console.log('🧪 Testing API...');
+            
+            fetch('/dashboard/api/test')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('✅ API עובד! המערכת תקינה!');
+                        console.log('✅ API test passed:', data);
+                    } else {
+                        throw new Error('API returned error');
+                    }
+                })
+                .catch(error => {
+                    alert('❌ בעיה ב-API: ' + error.message);
+                    console.error('❌ API test failed:', error);
+                });
+        }
 
-function updateSuccessRate() {
-    const rate = testCount > 0 ? Math.round((successCount / testCount) * 100) : 0;
-    logDebug(\`Success Rate: \${successCount}/\${testCount} = \${rate}%\`);
-    
-    if (rate === 100 && testCount >= 3) {
-        addResult('🎉 ALL TESTS PASSING! Dashboard is working correctly!', 'success');
-    }
-}
+        function reloadPage() {
+            console.log('🔄 Reloading page...');
+            window.location.reload();
+        }
 
-// Global error handler
-window.addEventListener('error', function(event) {
-    logDebug(\`Global error: \${event.error.message}\`);
-    addResult(\`Global Error: \${event.error.message}\`, 'error');
-});
+        // Touch event handlers
+        document.addEventListener('touchstart', function(e) {
+            console.log('👆 Touch detected on:', e.target.tagName);
+        });
 
-// Touch event logging
-document.addEventListener('touchstart', function(event) {
-    logDebug(\`Touch detected on: \${event.target.tagName}\`);
-});
+        // Error handler
+        window.addEventListener('error', function(e) {
+            console.error('❌ Error:', e.error);
+            document.body.insertAdjacentHTML('beforeend', 
+                '<div class="error">❌ שגיאת JavaScript: ' + e.error.message + '</div>'
+            );
+        });
 
-logDebug('🎯 Test Dashboard fully loaded and ready');
-addResult('🎯 Test Dashboard Ready - Click buttons to test functionality!', 'success');
-</script>
+        console.log('🎯 Dashboard script ready');
+    </script>
 
 </body>
 </html>`;
