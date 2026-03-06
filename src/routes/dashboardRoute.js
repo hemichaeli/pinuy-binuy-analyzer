@@ -10,7 +10,7 @@ const fs = require('fs');
  * - Kones/Receivership management
  * - WhatsApp subscription management  
  * - Modern responsive design with multi-view navigation
- * v4.48.0 - Restored missing sections from old dashboard
+ * v4.48.1 - Fixed syntax errors (template literal escaping)
  */
 router.get('/', (req, res) => {
   try {
@@ -557,15 +557,15 @@ async function loadKones() {
                     </tr>
                 </thead>
                 <tbody>
-                    \${filtered.slice(0, 50).map(l => \`
+                    \$\{filtered.slice(0, 50).map(l => \`
                         <tr>
-                            <td>\${l.complex_name || 'N/A'}</td>
-                            <td>\${l.city || 'N/A'}</td>
-                            <td>\${l.address || 'N/A'}</td>
-                            <td><span class="status-badge status-\${l.status || 'pending'}">\${l.status || 'N/A'}</span></td>
-                            <td>\${l.date ? new Date(l.date).toLocaleDateString('he-IL') : 'N/A'}</td>
+                            <td>\$\{l.complex_name || 'N/A'\}</td>
+                            <td>\$\{l.city || 'N/A'\}</td>
+                            <td>\$\{l.address || 'N/A'\}</td>
+                            <td><span class="status-badge status-\$\{l.status || 'pending'\}">\$\{l.status || 'N/A'\}</span></td>
+                            <td>\$\{l.date ? new Date(l.date).toLocaleDateString('he-IL') : 'N/A'\}</td>
                         </tr>
-                    \`).join('')}
+                    \`\).join('')\}
                 </tbody>
             </table>
         \`;
@@ -597,12 +597,12 @@ function renderWSCityChips() {
     const container = document.getElementById('wsCityChips');
     container.innerHTML = selectedWSCities.map(city => \`
         <span class="ws-city-chip">
-            \${city}
-            <button onclick="removeWSCity('\${city}')" class="mr-1 text-primary hover:text-red-400">
+            \$\{city\}
+            <button onclick="removeWSCity('\$\{city\}')" class="mr-1 text-primary hover:text-red-400">
                 <span class="material-icons-round text-xs">close</span>
             </button>
         </span>
-    \`).join('');
+    \`\).join('');
 }
 
 function removeWSCity(city) {
@@ -674,7 +674,7 @@ async function loadWSSubscriptions() {
     const search = document.getElementById('wsLeadSearch')?.value.toLowerCase() || '';
     
     try {
-        const res = await fetch('/api/dashboard/whatsapp/subscriptions' + (search ? \`?search=\${encodeURIComponent(search)}\` : ''));
+        const res = await fetch('/api/dashboard/whatsapp/subscriptions' + (search ? \`?search=\$\{encodeURIComponent(search)\}\` : ''));
         if (!res.ok) throw new Error('Subscriptions not available');
         
         const subscriptions = await res.json();
@@ -685,22 +685,22 @@ async function loadWSSubscriptions() {
         document.getElementById('wsSubscriptionsList').innerHTML = filtered.map(s => \`
             <div class="p-4 border border-white/10 rounded-lg mb-3 hover:border-primary/30 transition-colors">
                 <div class="flex justify-between items-start mb-2">
-                    <div class="font-medium">\${s.lead_id}</div>
+                    <div class="font-medium">\$\{s.lead_id\}</div>
                     <div class="flex space-x-2 space-x-reverse">
-                        <span class="status-badge \${s.active ? 'status-active' : 'status-inactive'}">\${s.active ? 'פעיל' : 'לא פעיל'}</span>
-                        <button onclick="deleteWSSubscription(\${s.id})" class="text-red-400 hover:text-red-300">
+                        <span class="status-badge \$\{s.active ? 'status-active' : 'status-inactive'\}">\$\{s.active ? 'פעיל' : 'לא פעיל'\}</span>
+                        <button onclick="deleteWSSubscription(\$\{s.id\})" class="text-red-400 hover:text-red-300">
                             <span class="material-icons-round text-sm">delete</span>
                         </button>
                     </div>
                 </div>
                 <div class="text-xs text-slate-400">
-                    <div>ערים: \${(s.cities || '').split(',').filter(Boolean).join(', ') || 'כל הערים'}</div>
-                    \${s.rooms_min || s.rooms_max ? \`<div>חדרים: \${s.rooms_min || '∞'} - \${s.rooms_max || '∞'}</div>\` : ''}
-                    \${s.price_min || s.price_max ? \`<div>מחיר: \${s.price_min ? s.price_min.toLocaleString() : '∞'} - \${s.price_max ? s.price_max.toLocaleString() : '∞'} ₪</div>\` : ''}
-                    <div>התראות: \${s.alerts_sent || 0}</div>
+                    <div>ערים: \$\{(s.cities || '').split(',').filter(Boolean).join(', ') || 'כל הערים'\}</div>
+                    \$\{s.rooms_min || s.rooms_max ? \`<div>חדרים: \$\{s.rooms_min || '∞'\} - \$\{s.rooms_max || '∞'\}</div>\` : ''\}
+                    \$\{s.price_min || s.price_max ? \`<div>מחיר: \$\{s.price_min ? s.price_min.toLocaleString() : '∞'\} - \$\{s.price_max ? s.price_max.toLocaleString() : '∞'\} ₪</div>\` : ''\}
+                    <div>התראות: \$\{s.alerts_sent || 0\}</div>
                 </div>
             </div>
-        \`).join('') || '<p class="text-slate-400 text-center py-8">אין מנויים</p>';
+        \`\).join('') || '<p class="text-slate-400 text-center py-8">אין מנויים</p>';
         
     } catch (err) {
         console.error('Error loading subscriptions:', err);
@@ -712,7 +712,7 @@ async function deleteWSSubscription(id) {
     if (!confirm('האם למחוק מנוי זה?')) return;
     
     try {
-        const res = await fetch(\`/api/dashboard/whatsapp/subscriptions/\${id}\`, { method: 'DELETE' });
+        const res = await fetch(\`/api/dashboard/whatsapp/subscriptions/\$\{id\}\`, { method: 'DELETE' });
         if (res.ok) {
             loadWSSubscriptions();
         } else {
