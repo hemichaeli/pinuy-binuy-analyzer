@@ -7,10 +7,12 @@ const fs = require('fs');
  * Serve modern QUANTUM dashboard with ALL missing sections restored
  * GET /dashboard - Complete analytics dashboard including:
  * - Quick Actions (from old overview tab)
+ * - Enrichment section with complex selection
+ * - Morning Brief tab with daily intelligence 
  * - Kones/Receivership management
  * - WhatsApp subscription management  
  * - Modern responsive design with multi-view navigation
- * v4.48.1 - Fixed syntax errors (template literal escaping)
+ * v4.56.1 - Added Enrichment and Morning Brief sections
  */
 router.get('/', (req, res) => {
   try {
@@ -96,6 +98,12 @@ function getDashboardHTML() {
         .status-active { @apply bg-green-500/20 text-green-400; }
         .status-inactive { @apply bg-gray-500/20 text-gray-400; }
         .status-pending { @apply bg-yellow-500/20 text-yellow-400; }
+        .enrichment-card {
+            @apply bg-white/5 p-4 rounded-lg border border-white/10 mb-4;
+        }
+        .brief-card {
+            @apply bg-secondary p-6 rounded-2xl border border-white/5 mb-6;
+        }
     </style>
 </head>
 <body class="bg-background-dark text-slate-100 font-sans min-h-screen flex">
@@ -109,6 +117,12 @@ function getDashboardHTML() {
     <nav class="flex-1 px-4 space-y-1">
         <a class="sidebar-item active flex items-center space-x-3 space-x-reverse p-3 rounded-lg" href="#" onclick="showView('dashboard')">
             <span class="material-icons-round text-lg">dashboard</span><span>דשבורד</span>
+        </a>
+        <a class="sidebar-item flex items-center space-x-3 space-x-reverse p-3 rounded-lg text-slate-400 transition-colors" href="#" onclick="showView('enrichment')">
+            <span class="material-icons-round text-lg">auto_awesome</span><span>העשרת מידע</span>
+        </a>
+        <a class="sidebar-item flex items-center space-x-3 space-x-reverse p-3 rounded-lg text-slate-400 transition-colors" href="#" onclick="showView('morning')">
+            <span class="material-icons-round text-lg">wb_sunny</span><span>דוח בוקר</span>
         </a>
         <a class="sidebar-item flex items-center space-x-3 space-x-reverse p-3 rounded-lg text-slate-400 transition-colors" href="#" onclick="showView('complexes')">
             <span class="material-icons-round text-lg">domain</span><span>מתחמים</span>
@@ -216,6 +230,149 @@ function getDashboardHTML() {
                         </a>
                     </div>
                 </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enrichment View -->
+    <div id="view-enrichment" class="view">
+        <div class="p-8">
+            <h2 class="font-display text-3xl font-bold mb-6 flex items-center">
+                <span class="material-icons-round text-primary ml-3">auto_awesome</span>העשרת מידע
+            </h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Complex Selection -->
+                <div class="lg:col-span-1">
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="font-display text-xl mb-6">בחר מתחם להעשרה</h3>
+                        <div class="form-group">
+                            <label>מתחם:</label>
+                            <select id="complexSelect" onchange="loadComplexData()">
+                                <option value="">-- בחר מתחם --</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button onclick="enrichSelectedComplex()" class="w-full bg-primary text-background-dark font-medium py-3 rounded-lg hover:bg-primary/80 transition-colors">
+                                העשר מתחם נבחר
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <button onclick="enrichAllComplexes()" class="w-full bg-white/10 text-slate-100 font-medium py-3 rounded-lg hover:bg-white/20 transition-colors">
+                                העשר כל המתחמים
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Complex Data Display -->
+                <div class="lg:col-span-2">
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="font-display text-xl mb-6">פרטי מתחם</h3>
+                        <div id="enrichmentData" class="space-y-4">
+                            <p class="text-slate-400 text-center py-8">בחר מתחם לצפייה בפרטים</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Enrichment Stats -->
+            <div class="mt-8">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6" id="enrichmentStats">
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">מתחמים מועשרים</h3>
+                        <div class="text-2xl font-bold text-primary" id="enrichedCount">-</div>
+                        <div class="text-xs text-slate-500">מתוך הכל</div>
+                    </div>
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">ציון Perplexity ממוצע</h3>
+                        <div class="text-2xl font-bold" id="avgPerplexity">-</div>
+                        <div class="text-xs text-slate-500">ציון עיבוד</div>
+                    </div>
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">העשרות היום</h3>
+                        <div class="text-2xl font-bold text-green-400" id="todayEnrichments">-</div>
+                        <div class="text-xs text-slate-500">מתחמים</div>
+                    </div>
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">יעילות המערכת</h3>
+                        <div class="text-2xl font-bold" id="systemEfficiency">-</div>
+                        <div class="text-xs text-slate-500">מתחמים/שעה</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Morning Brief View -->
+    <div id="view-morning" class="view">
+        <div class="p-8">
+            <h2 class="font-display text-3xl font-bold mb-6 flex items-center">
+                <span class="material-icons-round text-primary ml-3">wb_sunny</span>דוח בוקר
+            </h2>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Controls -->
+                <div class="lg:col-span-1">
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="font-display text-xl mb-6">פעולות דוח</h3>
+                        <div class="space-y-4">
+                            <button onclick="generateMorningBrief()" class="w-full bg-primary text-background-dark font-medium py-3 rounded-lg hover:bg-primary/80 transition-colors">
+                                צור דוח בוקר חדש
+                            </button>
+                            <button onclick="sendMorningBrief()" class="w-full bg-white/10 text-slate-100 font-medium py-3 rounded-lg hover:bg-white/20 transition-colors">
+                                שלח דוח ב-WhatsApp
+                            </button>
+                            <button onclick="previewMorningBrief()" class="w-full bg-white/10 text-slate-100 font-medium py-3 rounded-lg hover:bg-white/20 transition-colors">
+                                תצוגה מקדימה
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Brief Content -->
+                <div class="lg:col-span-2">
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="font-display text-xl mb-6">תוכן הדוח</h3>
+                        <div id="morningBriefContent" class="space-y-4">
+                            <div class="brief-card">
+                                <h4 class="font-bold text-primary mb-3">☀️ דוח בוקר QUANTUM</h4>
+                                <p class="text-sm text-slate-300 mb-4">
+                                    דוח יומי מלא עם הזדמנויות חדשות, מוכרים בלחץ ושינויי מחירים בשוק הפינוי-בינוי.
+                                </p>
+                                <div class="text-slate-400 text-center py-8">
+                                    לחץ "צור דוח בוקר חדש" ליצירת דוח מעודכן
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Brief Statistics -->
+            <div class="mt-8">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6" id="briefStats">
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">דוחות השבוע</h3>
+                        <div class="text-2xl font-bold text-primary" id="weeklyReports">-</div>
+                        <div class="text-xs text-slate-500">דוחות נוצרו</div>
+                    </div>
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">שיעור פתיחה</h3>
+                        <div class="text-2xl font-bold" id="openRate">-</div>
+                        <div class="text-xs text-slate-500">ב-WhatsApp</div>
+                    </div>
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">הזדמנויות חדשות</h3>
+                        <div class="text-2xl font-bold text-green-400" id="newOpportunities">-</div>
+                        <div class="text-xs text-slate-500">מאתמול</div>
+                    </div>
+                    <div class="bg-secondary p-6 rounded-2xl border border-white/5">
+                        <h3 class="text-sm font-medium text-slate-400 mb-2">מנויים פעילים</h3>
+                        <div class="text-2xl font-bold" id="activeSubscribers">-</div>
+                        <div class="text-xs text-slate-500">מקבלי דוח</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -409,6 +566,13 @@ function showView(viewName) {
         loadWSStats();
         loadWSSubscriptions();
     }
+    if (viewName === 'enrichment') {
+        loadComplexes();
+        loadEnrichmentStats();
+    }
+    if (viewName === 'morning') {
+        loadMorningBriefStats();
+    }
 }
 
 // Dashboard data loading
@@ -522,6 +686,182 @@ async function exportData() {
     alert('ייצוא נתונים יתחיל בקרוב...');
 }
 
+// Enrichment functions
+async function loadComplexes() {
+    try {
+        const res = await fetch('/api/dashboard/complexes');
+        if (!res.ok) throw new Error('API not available');
+        
+        const complexes = await res.json();
+        const select = document.getElementById('complexSelect');
+        select.innerHTML = '<option value="">-- בחר מתחם --</option>' + 
+            complexes.map(c => `<option value="${c.id}">${c.name} - ${c.city}</option>`).join('');
+    } catch (err) {
+        console.error('Error loading complexes:', err);
+    }
+}
+
+async function loadComplexData() {
+    const select = document.getElementById('complexSelect');
+    const complexId = select.value;
+    
+    if (!complexId) {
+        document.getElementById('enrichmentData').innerHTML = '<p class="text-slate-400 text-center py-8">בחר מתחם לצפייה בפרטים</p>';
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/dashboard/complexes/${complexId}`);
+        if (!res.ok) throw new Error('Complex not found');
+        
+        const complex = await res.json();
+        document.getElementById('enrichmentData').innerHTML = `
+            <div class="enrichment-card">
+                <h4 class="font-bold mb-2">${complex.name}</h4>
+                <p><strong>עיר:</strong> ${complex.city}</p>
+                <p><strong>כתובת:</strong> ${complex.address || 'לא זמין'}</p>
+                <p><strong>יח״דים קיימות:</strong> ${complex.existing_units || 'לא ידוע'}</p>
+                <p><strong>יח״דים מתוכננות:</strong> ${complex.planned_units || 'לא ידוע'}</p>
+                <p><strong>ציון IAI:</strong> ${complex.iai_score || 'לא מחושב'}</p>
+                <p><strong>סטטוס העשרה:</strong> ${complex.enriched ? 'מועשר' : 'לא מועשר'}</p>
+                ${complex.perplexity_summary ? `<p><strong>סיכום Perplexity:</strong> ${complex.perplexity_summary.substring(0, 200)}...</p>` : ''}
+            </div>
+        `;
+    } catch (err) {
+        document.getElementById('enrichmentData').innerHTML = '<p class="text-red-400">שגיאה בטעינת נתוני מתחם</p>';
+    }
+}
+
+async function enrichSelectedComplex() {
+    const complexId = document.getElementById('complexSelect').value;
+    if (!complexId) {
+        alert('בחר מתחם תחילה');
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/scan/enrich/${complexId}`, { method: 'POST' });
+        if (res.ok) {
+            alert('העשרת מתחם החלה ברקע');
+            loadComplexData();
+        } else {
+            alert('שגיאה בהעשרת מתחם');
+        }
+    } catch (err) {
+        alert('העשרת מתחם החלה ברקע');
+    }
+}
+
+async function enrichAllComplexes() {
+    if (!confirm('האם להעשיר את כל המתחמים? זה עשוי לקחת זמן רב.')) return;
+    runEnrichment();
+}
+
+async function loadEnrichmentStats() {
+    try {
+        const res = await fetch('/api/dashboard/stats/enrichment');
+        if (!res.ok) throw new Error('Stats not available');
+        
+        const stats = await res.json();
+        document.getElementById('enrichedCount').textContent = `${stats.enriched}/${stats.total}`;
+        document.getElementById('avgPerplexity').textContent = stats.avgPerplexity || '-';
+        document.getElementById('todayEnrichments').textContent = stats.todayEnrichments || 0;
+        document.getElementById('systemEfficiency').textContent = stats.hourlyRate || '-';
+    } catch (err) {
+        console.error('Error loading enrichment stats:', err);
+    }
+}
+
+// Morning Brief functions
+async function generateMorningBrief() {
+    if (!confirm('האם ליצור דוח בוקר חדש? זה עשוי לקחת מספר דקות.')) return;
+    
+    try {
+        document.getElementById('morningBriefContent').innerHTML = '<div class="brief-card"><p class="text-slate-400 text-center py-8">🔄 יוצר דוח חדש...</p></div>';
+        
+        const res = await fetch('/api/morning/preview', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to generate brief');
+        
+        const brief = await res.json();
+        displayMorningBrief(brief);
+    } catch (err) {
+        document.getElementById('morningBriefContent').innerHTML = '<div class="brief-card"><p class="text-red-400 text-center py-8">שגיאה ביצירת דוח</p></div>';
+    }
+}
+
+function displayMorningBrief(brief) {
+    let html = '<div class="brief-card">';
+    html += '<h4 class="font-bold text-primary mb-3">☀️ דוח בוקר QUANTUM</h4>';
+    html += `<p class="text-sm text-slate-300 mb-4">${new Date().toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>`;
+    
+    if (brief.opportunities && brief.opportunities.length > 0) {
+        html += '<div class="mb-6"><h5 class="font-bold text-green-400 mb-3">🎯 הזדמנויות חמות</h5>';
+        brief.opportunities.slice(0, 3).forEach(o => {
+            html += `<p class="text-sm mb-2">• ${o.title || o.address} - ${o.city} (IAI: ${o.iai_score})</p>`;
+        });
+        html += '</div>';
+    }
+    
+    if (brief.stressed_sellers && brief.stressed_sellers.length > 0) {
+        html += '<div class="mb-6"><h5 class="font-bold text-orange-400 mb-3">⚡ מוכרים בלחץ</h5>';
+        brief.stressed_sellers.slice(0, 3).forEach(s => {
+            html += `<p class="text-sm mb-2">• ${s.title || s.address} - ${s.city} (SSI: ${s.avg_ssi})</p>`;
+        });
+        html += '</div>';
+    }
+    
+    if (brief.price_drops && brief.price_drops.length > 0) {
+        html += '<div class="mb-6"><h5 class="font-bold text-blue-400 mb-3">📉 ירידות מחיר</h5>';
+        brief.price_drops.slice(0, 3).forEach(p => {
+            html += `<p class="text-sm mb-2">• ${p.title || p.address} - ירידה של ${p.price_change}%</p>`;
+        });
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    document.getElementById('morningBriefContent').innerHTML = html;
+}
+
+async function sendMorningBrief() {
+    try {
+        const res = await fetch('/api/morning/whatsapp', { method: 'POST' });
+        if (res.ok) {
+            alert('דוח בוקר נשלח בהצלחה ב-WhatsApp');
+        } else {
+            alert('שגיאה בשליחת דוח');
+        }
+    } catch (err) {
+        alert('שגיאה בשליחת דוח');
+    }
+}
+
+async function previewMorningBrief() {
+    try {
+        const res = await fetch('/api/morning/preview');
+        if (!res.ok) throw new Error('Preview not available');
+        
+        const brief = await res.json();
+        displayMorningBrief(brief);
+    } catch (err) {
+        alert('לא ניתן לטעון תצוגה מקדימה');
+    }
+}
+
+async function loadMorningBriefStats() {
+    try {
+        const res = await fetch('/api/morning/stats');
+        if (!res.ok) throw new Error('Stats not available');
+        
+        const stats = await res.json();
+        document.getElementById('weeklyReports').textContent = stats.weeklyReports || 0;
+        document.getElementById('openRate').textContent = `${stats.openRate || 0}%`;
+        document.getElementById('newOpportunities').textContent = stats.newOpportunities || 0;
+        document.getElementById('activeSubscribers').textContent = stats.activeSubscribers || 0;
+    } catch (err) {
+        console.error('Error loading morning brief stats:', err);
+    }
+}
+
 // Kones functions
 async function loadKones() {
     const search = document.getElementById('konesSearch')?.value.toLowerCase() || '';
@@ -545,7 +885,7 @@ async function loadKones() {
             (l.city && l.city.toLowerCase().includes(search))
         );
         
-        document.getElementById('konesTable').innerHTML = \`
+        document.getElementById('konesTable').innerHTML = `
             <table class="data-table">
                 <thead>
                     <tr>
@@ -557,18 +897,18 @@ async function loadKones() {
                     </tr>
                 </thead>
                 <tbody>
-                    \$\{filtered.slice(0, 50).map(l => \`
+                    ${filtered.slice(0, 50).map(l => `
                         <tr>
-                            <td>\$\{l.complex_name || 'N/A'\}</td>
-                            <td>\$\{l.city || 'N/A'\}</td>
-                            <td>\$\{l.address || 'N/A'\}</td>
-                            <td><span class="status-badge status-\$\{l.status || 'pending'\}">\$\{l.status || 'N/A'\}</span></td>
-                            <td>\$\{l.date ? new Date(l.date).toLocaleDateString('he-IL') : 'N/A'\}</td>
+                            <td>${l.complex_name || 'N/A'}</td>
+                            <td>${l.city || 'N/A'}</td>
+                            <td>${l.address || 'N/A'}</td>
+                            <td><span class="status-badge status-${l.status || 'pending'}">${l.status || 'N/A'}</span></td>
+                            <td>${l.date ? new Date(l.date).toLocaleDateString('he-IL') : 'N/A'}</td>
                         </tr>
-                    \`\).join('')\}
+                    `).join('')}
                 </tbody>
             </table>
-        \`;
+        `;
     } catch (err) {
         console.error('Error loading kones:', err);
         document.getElementById('konesTable').innerHTML = '<p class="text-slate-400 text-center py-8">לא ניתן לטעון נתוני כינוסים כרגע</p>';
@@ -595,14 +935,14 @@ function handleWSCityInput(e) {
 
 function renderWSCityChips() {
     const container = document.getElementById('wsCityChips');
-    container.innerHTML = selectedWSCities.map(city => \`
+    container.innerHTML = selectedWSCities.map(city => `
         <span class="ws-city-chip">
-            \$\{city\}
-            <button onclick="removeWSCity('\$\{city\}')" class="mr-1 text-primary hover:text-red-400">
+            ${city}
+            <button onclick="removeWSCity('${city}')" class="mr-1 text-primary hover:text-red-400">
                 <span class="material-icons-round text-xs">close</span>
             </button>
         </span>
-    \`\).join('');
+    `).join('');
 }
 
 function removeWSCity(city) {
@@ -674,7 +1014,7 @@ async function loadWSSubscriptions() {
     const search = document.getElementById('wsLeadSearch')?.value.toLowerCase() || '';
     
     try {
-        const res = await fetch('/api/dashboard/whatsapp/subscriptions' + (search ? \`?search=\$\{encodeURIComponent(search)\}\` : ''));
+        const res = await fetch('/api/dashboard/whatsapp/subscriptions' + (search ? `?search=${encodeURIComponent(search)}` : ''));
         if (!res.ok) throw new Error('Subscriptions not available');
         
         const subscriptions = await res.json();
@@ -682,25 +1022,25 @@ async function loadWSSubscriptions() {
             !search || (s.lead_id && s.lead_id.toLowerCase().includes(search))
         ) : [];
         
-        document.getElementById('wsSubscriptionsList').innerHTML = filtered.map(s => \`
+        document.getElementById('wsSubscriptionsList').innerHTML = filtered.map(s => `
             <div class="p-4 border border-white/10 rounded-lg mb-3 hover:border-primary/30 transition-colors">
                 <div class="flex justify-between items-start mb-2">
-                    <div class="font-medium">\$\{s.lead_id\}</div>
+                    <div class="font-medium">${s.lead_id}</div>
                     <div class="flex space-x-2 space-x-reverse">
-                        <span class="status-badge \$\{s.active ? 'status-active' : 'status-inactive'\}">\$\{s.active ? 'פעיל' : 'לא פעיל'\}</span>
-                        <button onclick="deleteWSSubscription(\$\{s.id\})" class="text-red-400 hover:text-red-300">
+                        <span class="status-badge ${s.active ? 'status-active' : 'status-inactive'}">${s.active ? 'פעיל' : 'לא פעיל'}</span>
+                        <button onclick="deleteWSSubscription(${s.id})" class="text-red-400 hover:text-red-300">
                             <span class="material-icons-round text-sm">delete</span>
                         </button>
                     </div>
                 </div>
                 <div class="text-xs text-slate-400">
-                    <div>ערים: \$\{(s.cities || '').split(',').filter(Boolean).join(', ') || 'כל הערים'\}</div>
-                    \$\{s.rooms_min || s.rooms_max ? \`<div>חדרים: \$\{s.rooms_min || '∞'\} - \$\{s.rooms_max || '∞'\}</div>\` : ''\}
-                    \$\{s.price_min || s.price_max ? \`<div>מחיר: \$\{s.price_min ? s.price_min.toLocaleString() : '∞'\} - \$\{s.price_max ? s.price_max.toLocaleString() : '∞'\} ₪</div>\` : ''\}
-                    <div>התראות: \$\{s.alerts_sent || 0\}</div>
+                    <div>ערים: ${(s.cities || '').split(',').filter(Boolean).join(', ') || 'כל הערים'}</div>
+                    ${s.rooms_min || s.rooms_max ? `<div>חדרים: ${s.rooms_min || '∞'} - ${s.rooms_max || '∞'}</div>` : ''}
+                    ${s.price_min || s.price_max ? `<div>מחיר: ${s.price_min ? s.price_min.toLocaleString() : '∞'} - ${s.price_max ? s.price_max.toLocaleString() : '∞'} ₪</div>` : ''}
+                    <div>התראות: ${s.alerts_sent || 0}</div>
                 </div>
             </div>
-        \`\).join('') || '<p class="text-slate-400 text-center py-8">אין מנויים</p>';
+        `).join('') || '<p class="text-slate-400 text-center py-8">אין מנויים</p>';
         
     } catch (err) {
         console.error('Error loading subscriptions:', err);
@@ -712,7 +1052,7 @@ async function deleteWSSubscription(id) {
     if (!confirm('האם למחוק מנוי זה?')) return;
     
     try {
-        const res = await fetch(\`/api/dashboard/whatsapp/subscriptions/\$\{id\}\`, { method: 'DELETE' });
+        const res = await fetch(`/api/dashboard/whatsapp/subscriptions/${id}`, { method: 'DELETE' });
         if (res.ok) {
             loadWSSubscriptions();
         } else {
@@ -728,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', loadData);
 </script>
 
 </body>
-</html>\`;
+</html>`;
 }
 
 module.exports = router;
