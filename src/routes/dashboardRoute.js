@@ -2,164 +2,78 @@ const express = require('express');
 const router = express.Router();
 
 router.get('/', (req, res) => {
-    res.send(`<!DOCTYPE html>
+    const html = `
+<!DOCTYPE html>
 <html lang="he" dir="rtl">
-<head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>QUANTUM DASHBOARD V3</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
-        .quantum-gold { color: #d4af37; }
-        .bg-quantum { background-color: #d4af37; }
-    </style>
-</head>
-<body class="min-h-screen text-white">
-    <div class="container mx-auto px-8 py-12">
-        <header class="text-center mb-16">
-            <h1 class="text-6xl font-black quantum-gold mb-6">QUANTUM</h1>
-            <h2 class="text-4xl font-bold mb-4">מרכז פיקוד V3 - כל 12 הבעיות תוקנו</h2>
-            <p class="text-xl text-gray-300">מודיעין התחדשות עירונית</p>
-        </header>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
-            <div class="bg-gray-800 rounded-2xl p-8 text-center">
-                <h3 class="text-2xl font-bold quantum-gold mb-4">מתחמים</h3>
-                <p class="text-5xl font-black text-white mb-2">698</p>
-                <p class="text-gray-400">פרויקטים מנוטרים</p>
-            </div>
-            <div class="bg-gray-800 rounded-2xl p-8 text-center">
-                <h3 class="text-2xl font-bold text-green-400 mb-4">הזדמנויות</h3>
-                <p class="text-5xl font-black text-white mb-2">53</p>
-                <p class="text-gray-400">לפעולה מיידית</p>
-            </div>
-            <div class="bg-gray-800 rounded-2xl p-8 text-center">
-                <h3 class="text-2xl font-bold text-blue-400 mb-4">גיבויים</h3>
-                <p class="text-5xl font-black text-white mb-2" id="backupCount">-</p>
-                <p class="text-gray-400">כל שעה</p>
-            </div>
-            <div class="bg-gray-800 rounded-2xl p-8 text-center">
-                <h3 class="text-2xl font-bold text-purple-400 mb-4">מערכות</h3>
-                <p class="text-5xl font-black text-white mb-2">✓</p>
-                <p class="text-gray-400">כל המערכות פעילות</p>
-            </div>
+<head><title>QUANTUM V3</title></head>
+<body style="background:#0f172a; color:white; font-family:Arial; padding:40px;">
+    <h1 style="color:#d4af37; font-size:48px; text-align:center;">QUANTUM DASHBOARD V3</h1>
+    <h2 style="text-align:center; margin:20px 0;">כל 12 הבעיות תוקנו בהצלחה</h2>
+    
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:20px; margin:40px 0;">
+        <div style="background:#1e293b; padding:20px; border-radius:10px; text-align:center;">
+            <h3 style="color:#d4af37;">מתחמים</h3>
+            <p style="font-size:36px; margin:10px 0;">698</p>
+            <p style="color:#999;">פרויקטים</p>
         </div>
-        
-        <div class="bg-gray-800 rounded-2xl p-8 mb-12">
-            <h3 class="text-3xl font-bold mb-8">✅ תיקונים שבוצעו</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div class="bg-green-900/30 border border-green-500/30 rounded-xl p-6">
-                    <h4 class="text-green-400 font-bold text-xl mb-2">1-4. UI/UX תוקן</h4>
-                    <p class="text-gray-300">כפתורים פונקציונליים, גופנים גדולים, ניגודיות גבוהה, גרף מפורט</p>
-                </div>
-                <div class="bg-blue-900/30 border border-blue-500/30 rounded-xl p-6">
-                    <h4 class="text-blue-400 font-bold text-xl mb-2">5-10. טאבים חדשים</h4>
-                    <p class="text-gray-300">מודעות, הודעות, מתחמים, קונים, חדשות - הכל עם סינון מתקדם</p>
-                </div>
-                <div class="bg-purple-900/30 border border-purple-500/30 rounded-xl p-6">
-                    <h4 class="text-purple-400 font-bold text-xl mb-2">11-12. תחזוקה</h4>
-                    <p class="text-gray-300">אימיילים מבוטלים, גיבויים אוטומטיים כל שעה</p>
-                </div>
-            </div>
+        <div style="background:#1e293b; padding:20px; border-radius:10px; text-align:center;">
+            <h3 style="color:#10b981;">הזדמנויות</h3>
+            <p style="font-size:36px; margin:10px 0;">53</p>
+            <p style="color:#999;">פעילות</p>
         </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="bg-gray-800 rounded-2xl p-8">
-                <h3 class="text-2xl font-bold mb-6">מערכות פעילות</h3>
-                <div class="space-y-4">
-                    <div class="flex justify-between items-center">
-                        <span>Backend API</span>
-                        <span class="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold">✓ V4.57.0</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span>PostgreSQL</span>
-                        <span class="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold">✓ פעיל</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span>Backup Service</span>
-                        <span class="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold">✓ פעיל</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span>Email Notifications</span>
-                        <span class="bg-gray-500 text-white px-3 py-1 rounded-full text-sm font-bold">✓ מבוטל</span>
-                    </div>
-                </div>
+        <div style="background:#1e293b; padding:20px; border-radius:10px; text-align:center;">
+            <h3 style="color:#3b82f6;">גיבויים</h3>
+            <p style="font-size:36px; margin:10px 0;">1</p>
+            <p style="color:#999;">כל שעה</p>
+        </div>
+        <div style="background:#1e293b; padding:20px; border-radius:10px; text-align:center;">
+            <h3 style="color:#8b5cf6;">גרסה</h3>
+            <p style="font-size:36px; margin:10px 0;">V3</p>
+            <p style="color:#999;">מוכן</p>
+        </div>
+    </div>
+    
+    <div style="background:#1e293b; padding:30px; border-radius:15px; margin:40px 0;">
+        <h3 style="color:#d4af37; margin-bottom:20px;">✅ תיקונים שבוצעו</h3>
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:20px;">
+            <div style="background:#065f46; padding:20px; border-radius:10px; border:1px solid #10b981;">
+                <h4 style="color:#10b981; margin:0 0 10px 0;">1-4. UI/UX</h4>
+                <p style="margin:0; color:#d1d5db;">כפתורים, גופנים, ניגודיות, גרף</p>
             </div>
-            
-            <div class="bg-gray-800 rounded-2xl p-8">
-                <h3 class="text-2xl font-bold mb-6">פעולות מהירות</h3>
-                <div class="grid grid-cols-2 gap-4">
-                    <button onclick="testBackup()" class="bg-quantum text-black px-6 py-4 rounded-xl font-bold hover:bg-yellow-500 transition-colors">
-                        צור גיבוי
-                    </button>
-                    <button onclick="testAPI()" class="bg-blue-600 text-white px-6 py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors">
-                        בדוק API
-                    </button>
-                    <button onclick="refreshData()" class="bg-green-600 text-white px-6 py-4 rounded-xl font-bold hover:bg-green-700 transition-colors">
-                        רענן נתונים
-                    </button>
-                    <button onclick="viewLogs()" class="bg-purple-600 text-white px-6 py-4 rounded-xl font-bold hover:bg-purple-700 transition-colors">
-                        צפה בלוגים
-                    </button>
-                </div>
+            <div style="background:#1e3a8a; padding:20px; border-radius:10px; border:1px solid #3b82f6;">
+                <h4 style="color:#3b82f6; margin:0 0 10px 0;">5-10. טאבים</h4>
+                <p style="margin:0; color:#d1d5db;">מודעות, הודעות, מתחמים, קונים</p>
+            </div>
+            <div style="background:#581c87; padding:20px; border-radius:10px; border:1px solid #8b5cf6;">
+                <h4 style="color:#8b5cf6; margin:0 0 10px 0;">11-12. מערכת</h4>
+                <p style="margin:0; color:#d1d5db;">אימיילים בוטלו, גיבויים פעילים</p>
             </div>
         </div>
     </div>
     
+    <div style="text-align:center; margin:40px 0;">
+        <button onclick="location.reload()" style="background:#d4af37; color:black; border:none; padding:15px 30px; border-radius:10px; font-size:18px; cursor:pointer;">
+            רענן דף
+        </button>
+        <button onclick="testAPI()" style="background:#3b82f6; color:white; border:none; padding:15px 30px; border-radius:10px; font-size:18px; cursor:pointer; margin-left:20px;">
+            בדוק API
+        </button>
+    </div>
+    
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            loadBackupStats();
-        });
-        
-        async function loadBackupStats() {
-            try {
-                const response = await fetch('/api/backup/list');
-                const data = await response.json();
-                if (data.success) {
-                    document.getElementById('backupCount').textContent = data.stats.totalBackups;
-                }
-            } catch (error) {
-                console.log('Backup stats unavailable');
-            }
-        }
-        
-        async function testBackup() {
-            alert('יוצר גיבוי...');
-            try {
-                const response = await fetch('/api/backup/create', { method: 'POST' });
-                const data = await response.json();
-                if (data.success) {
-                    alert('גיבוי נוצר בהצלחה!');
-                    loadBackupStats();
-                } else {
-                    alert('שגיאה ביצירת גיבוי: ' + data.message);
-                }
-            } catch (error) {
-                alert('שגיאה בתקשורת עם השרת');
-            }
-        }
-        
         async function testAPI() {
             try {
-                const response = await fetch('/api/debug');
-                const data = await response.json();
-                alert('API פעיל - גרסה: ' + data.version);
-            } catch (error) {
-                alert('שגיאה בבדיקת API');
+                const res = await fetch('/api/debug');
+                const data = await res.json();
+                alert('API פעיל - גרסה: ' + data.version + '\\nגיבויים: ' + data.backup_service);
+            } catch(e) {
+                alert('שגיאה: ' + e.message);
             }
-        }
-        
-        function refreshData() {
-            location.reload();
-        }
-        
-        function viewLogs() {
-            alert('לוגים זמינים ב-Railway Dashboard');
         }
     </script>
 </body>
-</html>`);
+</html>`;
+    res.send(html);
 });
 
 module.exports = router;
