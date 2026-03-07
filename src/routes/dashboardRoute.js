@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
                 pool.query("SELECT COUNT(*) as total FROM listing_messages WHERE direction = 'received'"),
                 pool.query("SELECT COUNT(*) as total FROM website_leads WHERE status IN ('contacted','qualified')"),
                 pool.query("SELECT COUNT(*) as total FROM listings WHERE deal_status IN ('תיווך','סגור')"),
-                pool.query("SELECT COUNT(*) as total FROM kones_listings WHERE contact_status = 'pending' OR contact_status IS NULL").catch(() => ({ rows: [{ total: 0 }] }))
+                pool.query("SELECT COUNT(*) as total FROM kones_listings WHERE is_active = TRUE").catch(() => ({ rows: [{ total: 0 }] }))
             ]);
             stats = {
                 totalComplexes: parseInt(complexes.rows[0]?.total) || 698,
@@ -59,15 +59,17 @@ router.get('/api/stats', async (req, res) => {
 router.get('/api/kones', async (req, res) => {
     try {
         const { city, status, search } = req.query;
-        let query = `SELECT id, case_number, property_address as address, city, price, phone,
-                            contact_status, contact_attempts, last_contact_at, source_site,
-                            created_at, url
-                     FROM kones_listings WHERE 1=1`;
+        // Use correct column names matching the actual kones_listings table schema
+        let query = `SELECT id, address, city, price, phone,
+                            contact_status, contact_attempts, last_contact_at,
+                            source, contact_person, email, url, gush_helka,
+                            created_at
+                     FROM kones_listings WHERE is_active = TRUE`;
         const params = [];
         let n = 1;
         if (city?.trim()) { query += ` AND city ILIKE $${n}`; params.push('%' + city.trim() + '%'); n++; }
         if (status) { query += ` AND contact_status = $${n}`; params.push(status); n++; }
-        if (search?.trim()) { query += ` AND (property_address ILIKE $${n} OR city ILIKE $${n} OR case_number ILIKE $${n})`; params.push('%' + search.trim() + '%'); n++; }
+        if (search?.trim()) { query += ` AND (address ILIKE $${n} OR city ILIKE $${n} OR COALESCE(contact_person,'') ILIKE $${n})`; params.push('%' + search.trim() + '%'); n++; }
         query += ` ORDER BY created_at DESC LIMIT 100`;
         const result = await pool.query(query, params);
         res.json({ success: true, data: result.rows });
@@ -158,7 +160,14 @@ router.get('/api/ads', async (req, res) => {
         query += ` ORDER BY ${sortField} ${order} LIMIT $${n} OFFSET $${n + 1}`;
         params.push(parseInt(limit), offset);
         const result = await pool.query(query, params);
-        const countResult = await pool.query('SELECT COUNT(*) as total FROM listings WHERE is_active = TRUE AND asking_price > 0');
+        // Count with same filters applied
+        let countQuery = `SELECT COUNT(*) as total FROM listings l WHERE l.is_active = TRUE AND l.asking_price > 0`;
+        const countParams = [];
+        let cn = 1;
+        if (city?.trim()) { countQuery += ` AND l.city ILIKE $${cn}`; countParams.push('%' + city.trim() + '%'); cn++; }
+        if (phoneFilter === 'yes') countQuery += ` AND l.phone IS NOT NULL AND l.phone != ''`;
+        else if (phoneFilter === 'no') countQuery += ` AND (l.phone IS NULL OR l.phone = '')`;
+        const countResult = await pool.query(countQuery, countParams);
         res.json({ success: true, data: result.rows, pagination: { page: parseInt(page), limit: parseInt(limit), total: parseInt(countResult.rows[0]?.total) || 0 } });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -314,7 +323,7 @@ function generateDashboardHTML(stats) {
                 <div class="stat-number">${stats.konesCount}</div>
                 <div class="stat-label">כינוסי נכסים</div>
                 <div class="stat-hint">→ לחץ לפתיחת רשימת כינוסים</div>
-                <div class="stat-change" style="background:#f59e0b;">ממתינים לטיפול</div>
+                <div class="stat-change" style="background:#f59e0b;">נכסים בכינוס</div>
             </div>
         </div>
 
@@ -621,9 +630,10 @@ function generateDashboardHTML(stats) {
             const st = k.contact_status || 'pending';
             return '<div class="data-item"><h3>🏗️ ' + (k.address || 'כינוס #' + (i+1)) + '</h3><div class="data-meta">' +
                 '<div class="data-meta-item"><span class="data-meta-label">עיר:</span><span class="data-meta-value">' + (k.city||'לא ידוע') + '</span></div>' +
-                (k.case_number ? '<div class="data-meta-item"><span class="data-meta-label">מספר תיק:</span><span class="data-meta-value">' + k.case_number + '</span></div>' : '') +
+                (k.gush_helka ? '<div class="data-meta-item"><span class="data-meta-label">גוש/חלקה:</span><span class="data-meta-value">' + k.gush_helka + '</span></div>' : '') +
                 (k.price ? '<div class="data-meta-item"><span class="data-meta-label">מחיר:</span><span class="data-meta-value">₪' + parseInt(k.price).toLocaleString() + '</span></div>' : '') +
                 '<div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge ' + (statusClass[st]||'status-pending') + '">' + (statusLabel[st]||st) + '</span></span></div>' +
+                (k.contact_person ? '<div class="data-meta-item"><span class="data-meta-label">כונס:</span><span class="data-meta-value">' + k.contact_person + '</span></div>' : '') +
                 (k.contact_attempts ? '<div class="data-meta-item"><span class="data-meta-label">ניסיונות פנייה:</span><span class="data-meta-value">' + k.contact_attempts + '</span></div>' : '') +
                 (k.phone ? '<div class="data-meta-item"><span class="data-meta-label">טלפון:</span><span class="data-meta-value"><a href="tel:' + k.phone + '" style="color:#3b82f6;">' + k.phone + '</a> <a href="https://wa.me/' + k.phone.replace(/[^0-9]/g,'') + '" style="background:#22c55e;color:white;padding:2px 8px;border-radius:4px;text-decoration:none;font-size:12px;">WhatsApp</a></span></div>' : '') +
                 (k.url ? '<div class="data-meta-item"><span class="data-meta-label">קישור:</span><span class="data-meta-value"><a href="' + k.url + '" target="_blank" style="color:#3b82f6;">פתח כינוס</a></span></div>' : '') +
