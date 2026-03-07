@@ -14,14 +14,18 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.63.0';
-const BUILD = '2026-03-07-v4.63.0-auto-first-contact-P0-issue3';
+const VERSION = '4.64.0';
+const BUILD = '2026-03-07-v4.64.0-visual-booking-calendar-sequential-fill';
 
 // What's in this version:
-// - NEW: autoFirstContactService - P0 auto WhatsApp first contact for new Yad2+Facebook ads (Issue #3)
-// - NEW: /api/auto-contact endpoints - manual trigger + stats
-// - NEW: DB migration for listings.phone, contact_status, contact_attempts columns
-// - All previous: Search, CRM, Analytics, Users, Docs, Export, Notifications, Dashboard V5
+// - NEW: Visual booking calendar at /booking/:token (mobile-first, RTL/LTR)
+// - NEW: Sequential fill algorithm - prevents scheduling gaps in time blocks
+// - NEW: show_rep_name / show_station_number configurable per campaign
+// - NEW: Google Calendar link in WhatsApp confirmation
+// - FIX: NULL campaignId SQL bug (IS NOT DISTINCT FROM)
+// - FIX: Combined date+time slot selection (1 step)
+// - NEW: Campaign report endpoint /api/scheduling/campaign/:id/report
+// All previous: Search, CRM, Analytics, Users, Docs, Export, Notifications, Dashboard V5
 
 async function runAutoMigrations() {
   try {
@@ -69,7 +73,17 @@ app.use(helmet({
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], allowedHeaders: ['Content-Type', 'Authorization', 'X-Auth-Token'] }));
 app.use(express.json({ limit: '10mb' }));
 
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false, skip: (req) => req.path.startsWith('/api/intelligence') || req.path === '/health' || req.path === '/api/debug' || req.path.startsWith('/api/whatsapp/') || req.path.startsWith('/api/vapi/webhook') || req.path.startsWith('/api/scheduling/') || req.path.startsWith('/api/backup/') || req.path.startsWith('/api/notifications/') || req.path.startsWith('/api/search/') || req.path.startsWith('/api/docs') || req.path.startsWith('/api/auto-contact'), message: { error: 'Too many requests, please try again later' } });
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false,
+  skip: (req) =>
+    req.path.startsWith('/api/intelligence') || req.path === '/health' || req.path === '/api/debug' ||
+    req.path.startsWith('/api/whatsapp/') || req.path.startsWith('/api/vapi/webhook') ||
+    req.path.startsWith('/api/scheduling/') || req.path.startsWith('/api/backup/') ||
+    req.path.startsWith('/api/notifications/') || req.path.startsWith('/api/search/') ||
+    req.path.startsWith('/api/docs') || req.path.startsWith('/api/auto-contact') ||
+    req.path.startsWith('/booking/'),
+  message: { error: 'Too many requests, please try again later' }
+});
 app.use('/api/', limiter);
 
 app.use((req, res, next) => {
@@ -89,6 +103,7 @@ function loadAllRoutes() {
   const routeFiles = [
     { path: '/dashboard', file: 'routes/dashboardRoute.js' },
     { path: '/sandbox', file: 'routes/sandboxRoute.js' },
+    { path: '/booking', file: 'routes/bookingRoute.js' },
     { path: '/api/projects', file: 'routes/projects.js' },
     { path: '/api', file: 'routes/opportunities.js' },
     { path: '/api/scan', file: 'routes/scan.js' },
@@ -174,7 +189,6 @@ function loadAutoContactRoutes() {
   try {
     const { runAutoFirstContact, getContactStats } = require('./services/autoFirstContactService');
 
-    // GET /api/auto-contact/stats - contact activity stats
     app.get('/api/auto-contact/stats', async (req, res) => {
       try {
         const stats = await getContactStats();
@@ -184,7 +198,6 @@ function loadAutoContactRoutes() {
       }
     });
 
-    // POST /api/auto-contact/run - manual trigger
     app.post('/api/auto-contact/run', async (req, res) => {
       try {
         logger.info('[AutoContact] Manual trigger via API');
@@ -256,6 +269,7 @@ app.get('/api/debug', async (req, res) => {
     facebook_integration: 'active',
     dashboard_v5: 'complete_6_tabs',
     sandbox: 'active at /sandbox',
+    visual_booking: 'active at /booking/:token',
     auto_first_contact: 'active (cron every 30min)',
     notifications_sse: `active (${notificationStats.connected_clients || 0} clients connected)`,
     export_api: 'active - leads/complexes/messages/ads/full-report',
@@ -291,20 +305,14 @@ async function start() {
   loaded.forEach(r => logger.info(`  OK: ${r.path} (${r.file})`));
   failed.forEach(r => logger.error(`  FAILED: ${r.path} (${r.file}) -> ${r.error}`));
 
-  // Initialize Auto First Contact Service (P0 - Issue #3)
   try {
     const { initialize: initAutoContact, runAutoFirstContact } = require('./services/autoFirstContactService');
     await initAutoContact();
     const cron = require('node-cron');
-    // Run every 30 minutes
     cron.schedule('*/30 * * * *', async () => {
-      try {
-        await runAutoFirstContact();
-      } catch (e) {
-        logger.warn('[AutoContact] Cron error:', e.message);
-      }
+      try { await runAutoFirstContact(); } catch (e) { logger.warn('[AutoContact] Cron error:', e.message); }
     });
-    logger.info('[AutoContact] ACTIVE - cron every 30 minutes, /api/auto-contact/run for manual trigger');
+    logger.info('[AutoContact] ACTIVE - cron every 30 minutes');
   } catch (e) {
     logger.warn('[AutoContact] Failed to start:', e.message);
   }
@@ -333,16 +341,9 @@ async function start() {
     logger.info('Reminder queue job: ACTIVE (every minute)');
   } catch (e) { logger.warn('Reminder job failed to start:', e.message); }
 
-  logger.info('WhatsApp: WEBHOOK mode active at /api/whatsapp/webhook');
-  logger.info('Facebook: Marketing API integration active');
-  logger.info('Email notifications: DISABLED as requested');
-  logger.info('Auto First Contact: ACTIVE (P0, Issue #3) - cron every 30min');
-  logger.info('Export API: ACTIVE at /api/export/{leads,complexes,messages,ads,full-report}');
-  logger.info('Search API: ACTIVE at /api/search/{global,suggestions,saved,history}');
-  logger.info('CRM API: ACTIVE at /api/crm/{calls,reminders,deals,pipeline,stats}');
-  logger.info('Analytics API: ACTIVE at /api/analytics/{overview,leads,market,performance,revenue}');
-  logger.info('Users API: ACTIVE at /api/users');
-  logger.info('API Docs: ACTIVE at /api/docs (Swagger UI)');
+  logger.info('WhatsApp: WEBHOOK mode active');
+  logger.info('Visual Booking: ACTIVE at /booking/:token');
+  logger.info('Auto First Contact: ACTIVE (P0) - cron every 30min');
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
