@@ -228,7 +228,6 @@ router.post('/ai', async (req, res) => {
 
     (async () => {
       try {
-        // Pass scanId for live progress tracking
         const results = await dualScanAll({
           city: city || null, limit: limit ? parseInt(limit) : 20,
           staleOnly: staleOnly !== false, perplexityModel, scanId
@@ -255,7 +254,7 @@ router.post('/ai', async (req, res) => {
   }
 });
 
-// GET /api/scan/ai/status - Fixed: getAvailableModels returns { perplexity: string, claude: string }
+// GET /api/scan/ai/status
 router.get('/ai/status', (req, res) => {
   try {
     const models = getAvailableModels();
@@ -460,6 +459,78 @@ router.post('/yad2', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to trigger yad2 scan' }); }
 });
 
+// ============================================================
+// POST /api/scan/winwin - WinWin.co.il listings scraper (Issue #4 P1)
+// ============================================================
+router.post('/winwin', async (req, res) => {
+  try {
+    const { city, cities, limit } = req.body;
+    const scanLog = await pool.query(`INSERT INTO scan_logs (scan_type, status) VALUES ('winwin', 'running') RETURNING *`);
+    const scanId = scanLog.rows[0].id;
+    res.json({ message: 'WinWin scan triggered', scan_id: scanId, issue: '#4' });
+    (async () => {
+      try {
+        const winwinScraper = require('../services/winwinScraper');
+        const opts = city ? { cities: [city] } : cities ? { cities } : { limit: limit ? parseInt(limit) : 15 };
+        const results = await winwinScraper.scanAll(opts);
+        await pool.query(`UPDATE scan_logs SET status = 'completed', completed_at = NOW(), new_listings = $1, summary = $2 WHERE id = $3`,
+          [results.total_inserted, `WinWin: ${results.total_cities} cities, ${results.total_inserted} new, ${results.total_updated} updated`, scanId]);
+        logger.info(`[WinWin] Scan ${scanId} complete: ${results.total_inserted} inserted`);
+      } catch (err) {
+        logger.error(`[WinWin] Scan ${scanId} failed: ${err.message}`);
+        await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]);
+      }
+    })();
+  } catch (err) { res.status(500).json({ error: 'Failed to trigger WinWin scan: ' + err.message }); }
+});
+
+// POST /api/scan/winwin/city - scan single city
+router.post('/winwin/city', async (req, res) => {
+  try {
+    const { city } = req.body;
+    if (!city) return res.status(400).json({ error: 'city is required' });
+    const winwinScraper = require('../services/winwinScraper');
+    const result = await winwinScraper.scanCity(city);
+    res.json({ success: true, result });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ============================================================
+// POST /api/scan/homeless - HomeLess.co.il listings scraper (Issue #4 P1)
+// ============================================================
+router.post('/homeless', async (req, res) => {
+  try {
+    const { city, cities, limit } = req.body;
+    const scanLog = await pool.query(`INSERT INTO scan_logs (scan_type, status) VALUES ('homeless', 'running') RETURNING *`);
+    const scanId = scanLog.rows[0].id;
+    res.json({ message: 'HomeLess scan triggered', scan_id: scanId, issue: '#4' });
+    (async () => {
+      try {
+        const homelessScraper = require('../services/homelessScraper');
+        const opts = city ? { cities: [city] } : cities ? { cities } : { limit: limit ? parseInt(limit) : 15 };
+        const results = await homelessScraper.scanAll(opts);
+        await pool.query(`UPDATE scan_logs SET status = 'completed', completed_at = NOW(), new_listings = $1, summary = $2 WHERE id = $3`,
+          [results.total_inserted, `HomeLess: ${results.total_cities} cities, ${results.total_inserted} new, ${results.total_updated} updated`, scanId]);
+        logger.info(`[HomeLess] Scan ${scanId} complete: ${results.total_inserted} inserted`);
+      } catch (err) {
+        logger.error(`[HomeLess] Scan ${scanId} failed: ${err.message}`);
+        await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]);
+      }
+    })();
+  } catch (err) { res.status(500).json({ error: 'Failed to trigger HomeLess scan: ' + err.message }); }
+});
+
+// POST /api/scan/homeless/city - scan single city
+router.post('/homeless/city', async (req, res) => {
+  try {
+    const { city } = req.body;
+    if (!city) return res.status(400).json({ error: 'city is required' });
+    const homelessScraper = require('../services/homelessScraper');
+    const result = await homelessScraper.scanCity(city);
+    res.json({ success: true, result });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // POST /api/scan/mavat
 router.post('/mavat', async (req, res) => {
   try {
@@ -640,7 +711,6 @@ router.get('/morning-report', async (req, res) => {
     const newListings = await pool.query("SELECT COUNT(*) as count FROM listings WHERE created_at > NOW() - INTERVAL '24 hours'");
     const newAlerts = await pool.query("SELECT COUNT(*) as count FROM alerts WHERE created_at > NOW() - INTERVAL '24 hours'");
 
-    // Auto-fix stuck scans
     const fixResult = await pool.query(`
       UPDATE scan_logs SET status = 'failed', completed_at = NOW(),
         errors = 'Auto-failed by morning report - scan stuck > 2 hours'
