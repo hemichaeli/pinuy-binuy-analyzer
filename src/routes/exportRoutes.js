@@ -1,5 +1,5 @@
 /**
- * QUANTUM Export Routes - v4.61.0
+ * QUANTUM Export Routes - v4.69.0
  * CSV + Excel export for Leads, Complexes, Ads, Messages
  * Uses ExcelJS for Excel and built-in stream for CSV
  */
@@ -96,7 +96,7 @@ async function sendExport(res, format, sheetName, columns, rows, filename) {
 router.get('/leads', async (req, res) => {
   try {
     const { format = 'xlsx', status, source, limit = 5000 } = req.query;
-    let query = `SELECT id, name, phone, email, status, source, budget_min, budget_max,
+    let query = `SELECT id, name, phone, status, source, budget_min, budget_max,
                         preferred_city, notes, created_at, updated_at
                  FROM leads`;
     const params = [];
@@ -113,7 +113,6 @@ router.get('/leads', async (req, res) => {
       { key: 'id', label: 'מזהה', width: 8 },
       { key: 'name', label: 'שם', width: 20 },
       { key: 'phone', label: 'טלפון', width: 15 },
-      { key: 'email', label: 'אימייל', width: 25 },
       { key: 'status', label: 'סטטוס', width: 14 },
       { key: 'source', label: 'מקור', width: 14 },
       { key: 'budget_min', label: 'תקציב מינימום', width: 16 },
@@ -143,9 +142,8 @@ router.get('/complexes', async (req, res) => {
   try {
     const { format = 'xlsx', city, min_iai, status, limit = 5000 } = req.query;
     let query = `SELECT id, name, city, address, status,
-                        existing_units, planned_units, floors_existing, floors_planned,
-                        iai_score, ssi_score, developer, committee_stage,
-                        price_per_sqm, premium_percent, notes, created_at
+                        units_count, iai_score, ssi_score, developer,
+                        enrichment_status, property_type, created_at
                  FROM complexes`;
     const params = [];
     const conditions = [];
@@ -164,17 +162,12 @@ router.get('/complexes', async (req, res) => {
       { key: 'city', label: 'עיר', width: 15 },
       { key: 'address', label: 'כתובת', width: 25 },
       { key: 'status', label: 'סטטוס', width: 15 },
-      { key: 'existing_units', label: 'יחידות קיימות', width: 14 },
-      { key: 'planned_units', label: 'יחידות מתוכננות', width: 16 },
-      { key: 'floors_existing', label: 'קומות קיים', width: 12 },
-      { key: 'floors_planned', label: 'קומות מתוכנן', width: 14 },
+      { key: 'units_count', label: 'יחידות', width: 12 },
       { key: 'iai_score', label: 'IAI', width: 10 },
       { key: 'ssi_score', label: 'SSI', width: 10 },
       { key: 'developer', label: 'יזם', width: 20 },
-      { key: 'committee_stage', label: 'שלב ועדה', width: 16 },
-      { key: 'price_per_sqm', label: 'מחיר למ"ר', width: 14 },
-      { key: 'premium_percent', label: 'פרמיה %', width: 12 },
-      { key: 'notes', label: 'הערות', width: 30 },
+      { key: 'property_type', label: 'סוג נכס', width: 14 },
+      { key: 'enrichment_status', label: 'סטטוס העשרה', width: 16 },
       { key: 'created_at', label: 'תאריך', width: 14 },
     ];
 
@@ -182,8 +175,6 @@ router.get('/complexes', async (req, res) => {
       ...r,
       iai_score: r.iai_score ? parseFloat(r.iai_score).toFixed(1) : '',
       ssi_score: r.ssi_score ? parseFloat(r.ssi_score).toFixed(1) : '',
-      price_per_sqm: r.price_per_sqm ? parseInt(r.price_per_sqm).toLocaleString('he-IL') : '',
-      premium_percent: r.premium_percent ? parseFloat(r.premium_percent).toFixed(1) + '%' : '',
       created_at: r.created_at ? new Date(r.created_at).toLocaleDateString('he-IL') : '',
     }));
 
@@ -331,13 +322,13 @@ router.get('/full-report', async (req, res) => {
         { key: 'name', label: 'שם מתחם', width: 24 },
         { key: 'city', label: 'עיר', width: 14 },
         { key: 'iai_score', label: 'IAI', width: 10 },
-        { key: 'planned_units', label: 'יחידות מתוכנן', width: 15 },
+        { key: 'units_count', label: 'יחידות', width: 12 },
         { key: 'status', label: 'סטטוס', width: 15 },
         { key: 'developer', label: 'יזם', width: 20 },
       ];
       applyHeader(ws, cols);
       const { rows } = await pool.query(
-        `SELECT name, city, iai_score, planned_units, status, developer
+        `SELECT name, city, iai_score, units_count, status, developer
          FROM complexes WHERE iai_score IS NOT NULL
          ORDER BY iai_score DESC LIMIT 100`
       );
