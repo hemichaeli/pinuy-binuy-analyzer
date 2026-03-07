@@ -39,14 +39,11 @@ async function buildExcel(sheetName, columns, rows) {
     width: c.width || 18,
   }));
 
-  // Header style
   ws.getRow(1).eachCell((cell) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } };
     cell.font = { bold: true, color: { argb: 'FFFFD700' }, size: 12 };
     cell.alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rightToLeft' };
-    cell.border = {
-      bottom: { style: 'medium', color: { argb: 'FFFFD700' } },
-    };
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FFFFD700' } } };
   });
   ws.getRow(1).height = 28;
 
@@ -54,18 +51,12 @@ async function buildExcel(sheetName, columns, rows) {
     const r = ws.addRow(row);
     r.eachCell((cell) => {
       cell.alignment = { readingOrder: 'rightToLeft', vertical: 'middle' };
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: i % 2 === 0 ? 'FFF8F8FF' : 'FFEFEFFF' },
-      };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i % 2 === 0 ? 'FFF8F8FF' : 'FFEFEFFF' } };
     });
     r.height = 22;
   });
 
-  // Auto-filter
   ws.autoFilter = { from: 'A1', to: { row: 1, column: columns.length } };
-
   return wb;
 }
 
@@ -82,7 +73,6 @@ async function sendExport(res, format, sheetName, columns, rows, filename) {
     return res.send(csv);
   }
 
-  // Excel
   const wb = await buildExcel(sheetName, columns, rows);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.xlsx"`);
@@ -91,13 +81,13 @@ async function sendExport(res, format, sheetName, columns, rows, filename) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/leads?format=xlsx|csv&status=...&source=...
+// GET /api/export/leads
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/leads', async (req, res) => {
   try {
     const { format = 'xlsx', status, source, limit = 5000 } = req.query;
-    let query = `SELECT id, name, phone, status, source, budget_min, budget_max,
-                        preferred_city, notes, created_at, updated_at
+    let query = `SELECT id, name, email, phone, status, source,
+                        user_type, notes, is_urgent, created_at, updated_at
                  FROM leads`;
     const params = [];
     const conditions = [];
@@ -112,20 +102,20 @@ router.get('/leads', async (req, res) => {
     const columns = [
       { key: 'id', label: 'מזהה', width: 8 },
       { key: 'name', label: 'שם', width: 20 },
+      { key: 'email', label: 'אימייל', width: 25 },
       { key: 'phone', label: 'טלפון', width: 15 },
       { key: 'status', label: 'סטטוס', width: 14 },
       { key: 'source', label: 'מקור', width: 14 },
-      { key: 'budget_min', label: 'תקציב מינימום', width: 16 },
-      { key: 'budget_max', label: 'תקציב מקסימום', width: 16 },
-      { key: 'preferred_city', label: 'עיר מועדפת', width: 18 },
+      { key: 'user_type', label: 'סוג משתמש', width: 14 },
       { key: 'notes', label: 'הערות', width: 30 },
+      { key: 'is_urgent', label: 'דחוף?', width: 8 },
       { key: 'created_at', label: 'תאריך יצירה', width: 18 },
     ];
 
     const mapped = rows.map((r) => ({
       ...r,
+      is_urgent: r.is_urgent ? 'כן' : 'לא',
       created_at: r.created_at ? new Date(r.created_at).toLocaleDateString('he-IL') : '',
-      updated_at: r.updated_at ? new Date(r.updated_at).toLocaleDateString('he-IL') : '',
     }));
 
     await sendExport(res, format, 'לידים', columns, mapped, 'Leads');
@@ -136,7 +126,7 @@ router.get('/leads', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/complexes?format=xlsx|csv&city=...&min_iai=...
+// GET /api/export/complexes
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/complexes', async (req, res) => {
   try {
@@ -186,7 +176,7 @@ router.get('/complexes', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/messages?format=xlsx|csv&channel=...&limit=...
+// GET /api/export/messages
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/messages', async (req, res) => {
   try {
@@ -231,13 +221,12 @@ router.get('/messages', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/ads?format=xlsx|csv
+// GET /api/export/ads
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/ads', async (req, res) => {
   try {
     const { format = 'xlsx', city, limit = 2000 } = req.query;
 
-    // Try facebook_ads table first, fallback to yad2_listings
     let rows = [];
     try {
       let q = `SELECT id, title, description, price, city, neighborhood,
@@ -249,7 +238,6 @@ router.get('/ads', async (req, res) => {
       const result = await pool.query(q, params);
       rows = result.rows;
     } catch {
-      // fallback
       const q = `SELECT id, title, price, city, neighborhood, rooms, size_sqm,
                         phone, source, created_at
                  FROM yad2_listings
@@ -286,7 +274,7 @@ router.get('/ads', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/full-report?format=xlsx  (multi-sheet summary)
+// GET /api/export/full-report
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/full-report', async (req, res) => {
   try {
@@ -342,22 +330,21 @@ router.get('/full-report', async (req, res) => {
       });
     }
 
-    // Sheet 2: Leads Summary
+    // Sheet 2: Leads
     {
       const ws = wb.addWorksheet('👥 לידים');
       const cols = [
         { key: 'name', label: 'שם', width: 20 },
+        { key: 'email', label: 'אימייל', width: 24 },
         { key: 'phone', label: 'טלפון', width: 15 },
         { key: 'status', label: 'סטטוס', width: 14 },
         { key: 'source', label: 'מקור', width: 14 },
-        { key: 'budget_min', label: 'תקציב מינימום', width: 16 },
-        { key: 'budget_max', label: 'תקציב מקסימום', width: 16 },
-        { key: 'preferred_city', label: 'עיר מועדפת', width: 18 },
+        { key: 'notes', label: 'הערות', width: 28 },
         { key: 'created_at', label: 'תאריך', width: 14 },
       ];
       applyHeader(ws, cols);
       const { rows } = await pool.query(
-        `SELECT name, phone, status, source, budget_min, budget_max, preferred_city, created_at
+        `SELECT name, email, phone, status, source, notes, is_urgent, created_at
          FROM leads ORDER BY created_at DESC LIMIT 500`
       );
       rows.forEach((r, i) => {
@@ -425,7 +412,7 @@ router.get('/full-report', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/info - list available exports
+// GET /api/export/info
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/info', (req, res) => {
   res.json({
