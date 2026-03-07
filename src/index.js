@@ -14,13 +14,14 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.69.0';
-const BUILD = '2026-03-07-v4.69.0-whatsapp-conversations-fix-issue6';
+const VERSION = '4.71.0';
+const BUILD = '2026-03-08-v4.71.0-kones-mobile-only-landline-detection';
 
 // What's in this version:
-// - FIX: WhatsApp conversations endpoint now returns 'conversations' key (Issue #6)
-// - FIX: /conversations/:phone/messages now queries by phone fallback (catches outgoing msgs from autoFirstContact)
-// - NEW: POST /api/whatsapp/conversations/:phone/reply — send reply directly from dashboard
+// - FIX: Kones auto-contact now skips landlines (036...), only sends WhatsApp to mobile (05x)
+// - FIX: Landlines marked as contact_status='landline' for phone-call follow-up
+// - NEW: /api/auto-contact/kones-stats - breakdown by contact_status for kones listings
+// - FIX: WhatsApp conversations dashboard compat (Issue #6, v4.70.0)
 // - Previous: kones auto-contact, auto first contact, export, search, CRM, analytics
 
 async function runAutoMigrations() {
@@ -184,12 +185,21 @@ function loadBackupRoutes() {
 
 function loadAutoContactRoutes() {
   try {
-    const { runAutoFirstContact, runKonesAutoContact, getContactStats } = require('./services/autoFirstContactService');
+    const { runAutoFirstContact, runKonesAutoContact, getContactStats, getKonesContactStats } = require('./services/autoFirstContactService');
 
     app.get('/api/auto-contact/stats', async (req, res) => {
       try {
         const stats = await getContactStats();
         res.json({ success: true, ...stats });
+      } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
+    app.get('/api/auto-contact/kones-stats', async (req, res) => {
+      try {
+        const stats = await getKonesContactStats();
+        res.json({ success: true, kones: stats });
       } catch (err) {
         res.status(500).json({ success: false, error: err.message });
       }
@@ -278,7 +288,7 @@ app.get('/api/debug', async (req, res) => {
     sandbox: 'active at /sandbox',
     visual_booking: 'active at /booking/:token',
     auto_first_contact: 'active (cron every 30min)',
-    kones_auto_contact: 'active (cron daily 07:45)',
+    kones_auto_contact: 'active (cron daily 07:45) - mobile-only, landline detection',
     kones_api: 'active at /api/kones (Issue #5)',
     notifications_sse: `active (${notificationStats.connected_clients || 0} clients connected)`,
     export_api: 'active - leads/complexes/messages/ads/full-report',
@@ -288,6 +298,7 @@ app.get('/api/debug', async (req, res) => {
     users_api: 'active - users/login/logout/roles/activity',
     api_docs: 'active at /api/docs (Swagger UI)',
     whatsapp_conversations: 'fixed - Issue #6 (conversations key + phone fallback for messages)',
+    kones_mobile_filter: 'active - only 05x numbers get WhatsApp, landlines flagged for phone call',
     routes: {
       loaded: loaded.map(r => r.path + ' (' + r.file + ')'),
       failed: failed.map(r => ({ path: r.path, file: r.file, error: r.error }))
@@ -331,7 +342,7 @@ async function start() {
     });
 
     logger.info('[AutoContact] ACTIVE - cron every 30 minutes');
-    logger.info('[KonesContact] ACTIVE - cron daily at 07:45');
+    logger.info('[KonesContact] ACTIVE - cron daily at 07:45 (mobile-only)');
   } catch (e) {
     logger.warn('[AutoContact] Failed to start:', e.message);
   }
@@ -363,7 +374,7 @@ async function start() {
   logger.info('WhatsApp: WEBHOOK mode active');
   logger.info('Visual Booking: ACTIVE at /booking/:token');
   logger.info('Auto First Contact: ACTIVE (P0) - cron every 30min');
-  logger.info('Kones Auto Contact: ACTIVE (Issue #5) - cron daily 07:45');
+  logger.info('Kones Auto Contact: ACTIVE (Issue #5) - mobile-only, daily 07:45');
   logger.info('Kones API: ACTIVE at /api/kones');
   logger.info('WhatsApp Conversations: FIXED (Issue #6)');
 
