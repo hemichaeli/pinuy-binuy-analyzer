@@ -553,7 +553,7 @@ async function createGoogleCalendarEvent({ leadName, leadAddress, scheduledTime,
   const endTime = new Date(startTime.getTime() + 30 * 60 * 1000); // 30 min call
 
   const event = {
-    summary: `\u{1F3E0} [${leadSource || 'לא ידוע'}] \u05e9\u05d9\u05d7\u05d4 \u05e2\u05dd ${leadName} - QUANTUM \u05e0\u05d3\u05dc"\u05df`,
+    summary: `\u{1F3E0} \u05e9\u05d9\u05d7\u05d4 \u05e2\u05dd ${leadName}`,
     description: [
       `\u05dc\u05d9\u05d3: ${leadName}`,
       leadSource ? `\u05de\u05e7\u05d5\u05e8: ${leadSource}` : '',
