@@ -1,19 +1,19 @@
 /**
- * QUANTUM Export Routes - v4.72.0
+ * QUANTUM Export Routes - v4.73.0
  * CSV + Excel export for Leads, Complexes, Ads, Messages
  * Uses ExcelJS for Excel and built-in stream for CSV
- * Schema facts (verified from schema.sql):
- *   - leads: table "website_leads" (id, name, email, phone, status, source, user_type, notes, is_urgent)
- *   - complexes: planned_units, existing_units, developer_strength, addresses (NOT address)
- *   - whatsapp_messages: id, conversation_id, direction, message, status, created_at (phone from conversations join)
- *   - ads: listings table (asking_price, address, city, source) or facebook_ads
+ * Schema facts (verified from schema.sql + whatsappRoutes.js):
+ *   - leads: table "website_leads"
+ *   - complexes: planned_units, existing_units, developer_strength, addresses
+ *   - whatsapp_messages: id, conversation_id, direction, message, created_at (NO status/phone cols)
+ *   - whatsapp_conversations: id, phone, status, source
+ *   - ads: listings table (asking_price, address, city) or facebook_ads
  */
 
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 
-// ─── Helper: Build CSV string from rows ───────────────────────────────────────
 function toCSV(headers, rows) {
   const escape = (val) => {
     if (val === null || val === undefined) return '';
@@ -27,23 +27,16 @@ function toCSV(headers, rows) {
   for (const row of rows) {
     lines.push(headers.map((h) => escape(row[h] ?? row[h.toLowerCase()])).join(','));
   }
-  return '\uFEFF' + lines.join('\r\n'); // BOM for Hebrew Excel
+  return '\uFEFF' + lines.join('\r\n');
 }
 
-// ─── Helper: Build XLSX using ExcelJS ────────────────────────────────────────
 async function buildExcel(sheetName, columns, rows) {
   const ExcelJS = require('exceljs');
   const wb = new ExcelJS.Workbook();
   wb.creator = 'QUANTUM';
   wb.created = new Date();
   const ws = wb.addWorksheet(sheetName, { views: [{ rightToLeft: true }] });
-
-  ws.columns = columns.map((c) => ({
-    header: c.label,
-    key: c.key,
-    width: c.width || 18,
-  }));
-
+  ws.columns = columns.map((c) => ({ header: c.label, key: c.key, width: c.width || 18 }));
   ws.getRow(1).eachCell((cell) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } };
     cell.font = { bold: true, color: { argb: 'FFFFD700' }, size: 12 };
@@ -51,7 +44,6 @@ async function buildExcel(sheetName, columns, rows) {
     cell.border = { bottom: { style: 'medium', color: { argb: 'FFFFD700' } } };
   });
   ws.getRow(1).height = 28;
-
   rows.forEach((row, i) => {
     const r = ws.addRow(row);
     r.eachCell((cell) => {
@@ -60,24 +52,19 @@ async function buildExcel(sheetName, columns, rows) {
     });
     r.height = 22;
   });
-
   ws.autoFilter = { from: 'A1', to: { row: 1, column: columns.length } };
   return wb;
 }
 
-// ─── Respond helper ──────────────────────────────────────────────────────────
 async function sendExport(res, format, sheetName, columns, rows, filename) {
   const now = new Date().toISOString().slice(0, 10);
   const safeFilename = `QUANTUM_${filename}_${now}`;
-
   if (format === 'csv') {
-    const headers = columns.map((c) => c.key);
-    const csv = toCSV(headers, rows);
+    const csv = toCSV(columns.map((c) => c.key), rows);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.csv"`);
     return res.send(csv);
   }
-
   const wb = await buildExcel(sheetName, columns, rows);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}.xlsx"`);
@@ -86,15 +73,12 @@ async function sendExport(res, format, sheetName, columns, rows, filename) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/leads
-// Table: website_leads
+// GET /api/export/leads  (table: website_leads)
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/leads', async (req, res) => {
   try {
     const { format = 'xlsx', status, source, limit = 5000 } = req.query;
-    let query = `SELECT id, name, email, phone, status, source,
-                        user_type, notes, is_urgent, created_at, updated_at
-                 FROM website_leads`;
+    let query = `SELECT id, name, email, phone, status, source, user_type, notes, is_urgent, created_at FROM website_leads`;
     const params = [];
     const conditions = [];
     if (status) { params.push(status); conditions.push(`status = $${params.length}`); }
@@ -102,9 +86,7 @@ router.get('/leads', async (req, res) => {
     if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
     query += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
     params.push(parseInt(limit));
-
     const { rows } = await pool.query(query, params);
-
     const columns = [
       { key: 'id', label: 'מזהה', width: 8 },
       { key: 'name', label: 'שם', width: 20 },
@@ -117,13 +99,11 @@ router.get('/leads', async (req, res) => {
       { key: 'is_urgent', label: 'דחוף?', width: 8 },
       { key: 'created_at', label: 'תאריך יצירה', width: 18 },
     ];
-
     const mapped = rows.map((r) => ({
       ...r,
       is_urgent: r.is_urgent ? 'כן' : 'לא',
       created_at: r.created_at ? new Date(r.created_at).toLocaleDateString('he-IL') : '',
     }));
-
     await sendExport(res, format, 'לידים', columns, mapped, 'Leads');
   } catch (err) {
     console.error('Export leads error:', err);
@@ -132,16 +112,14 @@ router.get('/leads', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// GET /api/export/complexes
-// Table: complexes — schema columns only (no enrichment_score, uses addresses)
+// GET /api/export/complexes  (table: complexes)
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/complexes', async (req, res) => {
   try {
     const { format = 'xlsx', city, min_iai, status, limit = 5000 } = req.query;
-    let query = `SELECT id, name, city, neighborhood, addresses,
-                        status, planned_units, existing_units,
-                        iai_score, developer, developer_strength,
-                        plan_number, created_at
+    let query = `SELECT id, name, city, neighborhood, addresses, status,
+                        planned_units, existing_units, iai_score,
+                        developer, developer_strength, plan_number, created_at
                  FROM complexes`;
     const params = [];
     const conditions = [];
@@ -151,9 +129,7 @@ router.get('/complexes', async (req, res) => {
     if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
     query += ` ORDER BY COALESCE(iai_score, 0) DESC LIMIT $${params.length + 1}`;
     params.push(parseInt(limit));
-
     const { rows } = await pool.query(query, params);
-
     const columns = [
       { key: 'id', label: 'מזהה', width: 8 },
       { key: 'name', label: 'שם מתחם', width: 25 },
@@ -169,13 +145,11 @@ router.get('/complexes', async (req, res) => {
       { key: 'plan_number', label: 'מספר תכנית', width: 14 },
       { key: 'created_at', label: 'תאריך', width: 14 },
     ];
-
     const mapped = rows.map((r) => ({
       ...r,
       iai_score: r.iai_score ? parseFloat(r.iai_score).toFixed(1) : '',
       created_at: r.created_at ? new Date(r.created_at).toLocaleDateString('he-IL') : '',
     }));
-
     await sendExport(res, format, 'מתחמים', columns, mapped, 'Complexes');
   } catch (err) {
     console.error('Export complexes error:', err);
@@ -185,42 +159,35 @@ router.get('/complexes', async (req, res) => {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // GET /api/export/messages
-// Tables: whatsapp_messages JOIN whatsapp_conversations
-// whatsapp_messages schema: id, conversation_id, direction, message, status, created_at
-// Phone is in whatsapp_conversations
+// whatsapp_messages: id, conversation_id, direction, message, created_at
+// whatsapp_conversations: id, phone, source, status
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/messages', async (req, res) => {
   try {
     const { format = 'xlsx', direction, limit = 2000 } = req.query;
-    let query = `SELECT wm.id, wc.phone, wm.direction, wm.message, wm.status,
-                        wc.source, wm.created_at
+    let query = `SELECT wm.id, wc.phone, wm.direction, wm.message,
+                        wc.source, wc.status as conv_status, wm.created_at
                  FROM whatsapp_messages wm
                  LEFT JOIN whatsapp_conversations wc ON wc.id = wm.conversation_id`;
     const params = [];
-    const conditions = [];
-    if (direction) { params.push(direction); conditions.push(`wm.direction = $${params.length}`); }
-    if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
+    if (direction) { params.push(direction); query += ` WHERE wm.direction = $1`; }
     query += ` ORDER BY wm.created_at DESC LIMIT $${params.length + 1}`;
     params.push(parseInt(limit));
-
     const { rows } = await pool.query(query, params);
-
     const columns = [
       { key: 'id', label: 'מזהה', width: 8 },
       { key: 'phone', label: 'טלפון', width: 16 },
       { key: 'direction', label: 'כיוון', width: 10 },
       { key: 'message', label: 'הודעה', width: 40 },
-      { key: 'status', label: 'סטטוס', width: 12 },
       { key: 'source', label: 'מקור', width: 14 },
+      { key: 'conv_status', label: 'סטטוס שיחה', width: 12 },
       { key: 'created_at', label: 'תאריך', width: 18 },
     ];
-
     const mapped = rows.map((r) => ({
       ...r,
       direction: r.direction === 'incoming' ? 'נכנס' : 'יוצא',
       created_at: r.created_at ? new Date(r.created_at).toLocaleString('he-IL') : '',
     }));
-
     await sendExport(res, format, 'הודעות', columns, mapped, 'Messages');
   } catch (err) {
     console.error('Export messages error:', err);
@@ -235,35 +202,26 @@ router.get('/messages', async (req, res) => {
 router.get('/ads', async (req, res) => {
   try {
     const { format = 'xlsx', city, limit = 2000 } = req.query;
-
     let rows = [];
-
-    // Try facebook_ads
     try {
-      let q = `SELECT id, title, price, city, neighborhood, rooms, size_sqm,
-                      phone, source, status, created_at
-               FROM facebook_ads`;
-      const params = [];
-      if (city) { params.push(`%${city}%`); q += ` WHERE city ILIKE $1`; }
+      let q = `SELECT id, title, price, city, neighborhood as address, source, status, created_at FROM facebook_ads`;
+      const p = [];
+      if (city) { p.push(`%${city}%`); q += ` WHERE city ILIKE $1`; }
       q += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)}`;
-      const result = await pool.query(q, params);
-      rows = result.rows.map(r => ({ ...r, address: r.neighborhood || '' }));
+      const result = await pool.query(q, p);
+      rows = result.rows;
     } catch {
-      // Fall back to listings table (schema: id, asking_price, address, city, source, is_active, created_at)
       try {
-        let q = `SELECT id, asking_price as price, address, city, source,
-                        is_active as status, created_at
-                 FROM listings`;
-        const params = [];
-        if (city) { params.push(`%${city}%`); q += ` WHERE city ILIKE $1`; }
+        let q = `SELECT id, asking_price as price, address, city, source, is_active as status, created_at FROM listings`;
+        const p = [];
+        if (city) { p.push(`%${city}%`); q += ` WHERE city ILIKE $1`; }
         q += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)}`;
-        const result = await pool.query(q, params);
+        const result = await pool.query(q, p);
         rows = result.rows.map(r => ({ ...r, title: r.address || 'מודעה' }));
       } catch {
         rows = [];
       }
     }
-
     const columns = [
       { key: 'id', label: 'מזהה', width: 8 },
       { key: 'title', label: 'כותרת', width: 30 },
@@ -274,13 +232,11 @@ router.get('/ads', async (req, res) => {
       { key: 'status', label: 'סטטוס', width: 12 },
       { key: 'created_at', label: 'תאריך', width: 16 },
     ];
-
     const mapped = rows.map((r) => ({
       ...r,
       price: r.price ? parseInt(r.price).toLocaleString('he-IL') + ' \u20aa' : '',
       created_at: r.created_at ? new Date(r.created_at).toLocaleDateString('he-IL') : '',
     }));
-
     await sendExport(res, format, 'מודעות', columns, mapped, 'Ads');
   } catch (err) {
     console.error('Export ads error:', err);
@@ -294,32 +250,28 @@ router.get('/ads', async (req, res) => {
 router.get('/full-report', async (req, res) => {
   try {
     const { format = 'xlsx' } = req.query;
-    if (format === 'csv') {
-      return res.status(400).json({ error: 'Full report requires Excel format' });
-    }
+    if (format === 'csv') return res.status(400).json({ error: 'Full report requires Excel format' });
 
     const ExcelJS = require('exceljs');
     const wb = new ExcelJS.Workbook();
     wb.creator = 'QUANTUM';
     wb.created = new Date();
-
-    const headerStyle = {
+    const hStyle = {
       fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1a2e' } },
       font: { bold: true, color: { argb: 'FFFFD700' }, size: 11 },
       alignment: { horizontal: 'center', readingOrder: 'rightToLeft', vertical: 'middle' },
     };
-
     const applyHeader = (ws, cols) => {
       ws.columns = cols.map((c) => ({ header: c.label, key: c.key, width: c.width || 16 }));
-      ws.getRow(1).eachCell((cell) => Object.assign(cell, headerStyle));
+      ws.getRow(1).eachCell((cell) => Object.assign(cell, hStyle));
       ws.getRow(1).height = 26;
       ws.autoFilter = { from: 'A1', to: { row: 1, column: cols.length } };
       ws.views = [{ rightToLeft: true }];
     };
 
-    // Sheet 1: Top Complexes by IAI
+    // Sheet 1: Top Complexes
     {
-      const ws = wb.addWorksheet('\ud83c\udfc6 \u05de\u05ea\u05d7\u05de\u05d9\u05dd \u05de\u05d5\u05d1\u05d9\u05dc\u05d9\u05dd');
+      const ws = wb.addWorksheet('\u{1F3C6} \u05de\u05ea\u05d7\u05de\u05d9\u05dd \u05de\u05d5\u05d1\u05d9\u05dc\u05d9\u05dd');
       const cols = [
         { key: 'rank', label: '#', width: 5 },
         { key: 'name', label: '\u05e9\u05dd \u05de\u05ea\u05d7\u05dd', width: 24 },
@@ -330,11 +282,7 @@ router.get('/full-report', async (req, res) => {
         { key: 'developer', label: '\u05d9\u05d6\u05dd', width: 20 },
       ];
       applyHeader(ws, cols);
-      const { rows } = await pool.query(
-        `SELECT name, city, iai_score, planned_units, status, developer
-         FROM complexes WHERE iai_score IS NOT NULL
-         ORDER BY iai_score DESC LIMIT 100`
-      );
+      const { rows } = await pool.query(`SELECT name, city, iai_score, planned_units, status, developer FROM complexes WHERE iai_score IS NOT NULL ORDER BY iai_score DESC LIMIT 100`);
       rows.forEach((r, i) => {
         const row = ws.addRow({ rank: i + 1, ...r, iai_score: r.iai_score ? parseFloat(r.iai_score).toFixed(1) : '' });
         row.eachCell((cell) => {
@@ -345,9 +293,9 @@ router.get('/full-report', async (req, res) => {
       });
     }
 
-    // Sheet 2: Leads (website_leads)
+    // Sheet 2: Leads
     {
-      const ws = wb.addWorksheet('\ud83d\udc65 \u05dc\u05d9\u05d3\u05d9\u05dd');
+      const ws = wb.addWorksheet('\u{1F465} \u05dc\u05d9\u05d3\u05d9\u05dd');
       const cols = [
         { key: 'name', label: '\u05e9\u05dd', width: 20 },
         { key: 'email', label: '\u05d0\u05d9\u05de\u05d9\u05d9\u05dc', width: 24 },
@@ -358,10 +306,7 @@ router.get('/full-report', async (req, res) => {
         { key: 'created_at', label: '\u05ea\u05d0\u05e8\u05d9\u05da', width: 14 },
       ];
       applyHeader(ws, cols);
-      const { rows } = await pool.query(
-        `SELECT name, email, phone, status, source, notes, created_at
-         FROM website_leads ORDER BY created_at DESC LIMIT 500`
-      );
+      const { rows } = await pool.query(`SELECT name, email, phone, status, source, notes, created_at FROM website_leads ORDER BY created_at DESC LIMIT 500`);
       rows.forEach((r, i) => {
         const row = ws.addRow({ ...r, created_at: r.created_at ? new Date(r.created_at).toLocaleDateString('he-IL') : '' });
         row.eachCell((cell) => {
@@ -372,37 +317,26 @@ router.get('/full-report', async (req, res) => {
       });
     }
 
-    // Sheet 3: Stats Summary
+    // Sheet 3: Summary
     {
-      const ws = wb.addWorksheet('\ud83d\udcca \u05e1\u05d9\u05db\u05d5\u05dd');
+      const ws = wb.addWorksheet('\u{1F4CA} \u05e1\u05d9\u05db\u05d5\u05dd');
       ws.views = [{ rightToLeft: true }];
       ws.getColumn('A').width = 30;
       ws.getColumn('B').width = 20;
-
       const titleRow = ws.addRow(['QUANTUM - \u05d3\u05d5\u05d7 \u05de\u05dc\u05d0', new Date().toLocaleDateString('he-IL')]);
       titleRow.getCell(1).font = { bold: true, size: 16, color: { argb: 'FF1a1a2e' } };
       titleRow.height = 32;
       ws.addRow([]);
-
-      const stats = await pool.query(`
-        SELECT
-          (SELECT COUNT(*) FROM complexes) as total_complexes,
-          (SELECT COUNT(*) FROM complexes WHERE iai_score >= 70) as hot_complexes,
-          (SELECT COUNT(*) FROM website_leads) as total_leads,
-          (SELECT COUNT(*) FROM website_leads WHERE status = 'qualified') as qualified_leads,
-          (SELECT COUNT(*) FROM whatsapp_messages WHERE created_at > NOW() - INTERVAL '30 days') as messages_30d
-      `);
+      const stats = await pool.query(`SELECT (SELECT COUNT(*) FROM complexes) as tc, (SELECT COUNT(*) FROM complexes WHERE iai_score >= 70) as hc, (SELECT COUNT(*) FROM website_leads) as tl, (SELECT COUNT(*) FROM website_leads WHERE status = 'qualified') as ql, (SELECT COUNT(*) FROM whatsapp_messages WHERE created_at > NOW() - INTERVAL '30 days') as m30`);
       const s = stats.rows[0];
-
       const statRows = [
-        ['\u05e1\u05d4"\u05db \u05de\u05ea\u05d7\u05de\u05d9\u05dd', s.total_complexes],
-        ['\u05de\u05ea\u05d7\u05de\u05d9\u05dd \u05d7\u05de\u05d9\u05dd (IAI 70+)', s.hot_complexes],
-        ['\u05e1\u05d4"\u05db \u05dc\u05d9\u05d3\u05d9\u05dd', s.total_leads],
-        ['\u05dc\u05d9\u05d3\u05d9\u05dd \u05de\u05d5\u05e1\u05de\u05db\u05d9\u05dd', s.qualified_leads],
-        ['\u05d4\u05d5\u05d3\u05e2\u05d5\u05ea \u05d1-30 \u05d9\u05d5\u05dd', s.messages_30d],
+        ['\u05e1\u05d4"\u05db \u05de\u05ea\u05d7\u05de\u05d9\u05dd', s.tc],
+        ['\u05de\u05ea\u05d7\u05de\u05d9\u05dd \u05d7\u05de\u05d9\u05dd (IAI 70+)', s.hc],
+        ['\u05e1\u05d4"\u05db \u05dc\u05d9\u05d3\u05d9\u05dd', s.tl],
+        ['\u05dc\u05d9\u05d3\u05d9\u05dd \u05de\u05d5\u05e1\u05de\u05db\u05d9\u05dd', s.ql],
+        ['\u05d4\u05d5\u05d3\u05e2\u05d5\u05ea \u05d1-30 \u05d9\u05d5\u05dd', s.m30],
         ['\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05e4\u05e7\u05d4', new Date().toLocaleDateString('he-IL')],
       ];
-
       statRows.forEach(([label, value], i) => {
         const row = ws.addRow([label, value]);
         row.getCell(1).font = { bold: true };
@@ -422,7 +356,7 @@ router.get('/full-report', async (req, res) => {
     res.end();
   } catch (err) {
     console.error('Export full report error:', err);
-    res.status(500).json({ error: '\u05e9\u05d2\u05d9\u05d0\u05d4 \u05d1\u05d4\u05e4\u05e7\u05ea \u05d3\u05d5\u05d7 \u05de\u05dc\u05d0', details: err.message });
+    res.status(500).json({ error: 'שגיאה בהפקת דוח מלא', details: err.message });
   }
 });
 
@@ -431,14 +365,15 @@ router.get('/full-report', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 router.get('/info', (req, res) => {
   res.json({
+    version: '4.73.0',
     exports: [
-      { endpoint: '/api/export/leads', formats: ['xlsx', 'csv'], filters: ['status', 'source', 'limit'], description: '\u05d9\u05d9\u05e6\u05d5\u05d0 \u05dc\u05d9\u05d3\u05d9\u05dd' },
-      { endpoint: '/api/export/complexes', formats: ['xlsx', 'csv'], filters: ['city', 'min_iai', 'status', 'limit'], description: '\u05d9\u05d9\u05e6\u05d5\u05d0 \u05de\u05ea\u05d7\u05de\u05d9\u05dd' },
-      { endpoint: '/api/export/messages', formats: ['xlsx', 'csv'], filters: ['direction', 'limit'], description: '\u05d9\u05d9\u05e6\u05d5\u05d0 \u05d4\u05d5\u05d3\u05e2\u05d5\u05ea WhatsApp' },
-      { endpoint: '/api/export/ads', formats: ['xlsx', 'csv'], filters: ['city', 'limit'], description: '\u05d9\u05d9\u05e6\u05d5\u05d0 \u05de\u05d5\u05d3\u05e2\u05d5\u05ea' },
-      { endpoint: '/api/export/full-report', formats: ['xlsx'], filters: [], description: '\u05d3\u05d5\u05d7 \u05de\u05dc\u05d0 \u05e8\u05d1-\u05d2\u05d9\u05dc\u05d9\u05d5\u05e0\u05d9' },
+      { endpoint: '/api/export/leads', formats: ['xlsx', 'csv'], filters: ['status', 'source', 'limit'] },
+      { endpoint: '/api/export/complexes', formats: ['xlsx', 'csv'], filters: ['city', 'min_iai', 'status', 'limit'] },
+      { endpoint: '/api/export/messages', formats: ['xlsx', 'csv'], filters: ['direction', 'limit'] },
+      { endpoint: '/api/export/ads', formats: ['xlsx', 'csv'], filters: ['city', 'limit'] },
+      { endpoint: '/api/export/full-report', formats: ['xlsx'], filters: [] },
     ],
-    usage: '\u05d4\u05d5\u05e1\u05e3 ?format=csv \u05dc\u05e7\u05d1\u05dc\u05ea CSV, \u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc Excel'
+    usage: 'Add ?format=csv for CSV output, default is Excel'
   });
 });
 
