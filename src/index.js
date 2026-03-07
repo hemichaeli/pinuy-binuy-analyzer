@@ -14,15 +14,15 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.71.0';
-const BUILD = '2026-03-08-v4.71.0-kones-mobile-only-landline-detection';
+const VERSION = '4.72.0';
+const BUILD = '2026-03-08-v4.72.0-morning-intelligence-kones-ux';
 
 // What's in this version:
-// - FIX: Kones auto-contact now skips landlines (036...), only sends WhatsApp to mobile (05x)
-// - FIX: Landlines marked as contact_status='landline' for phone-call follow-up
-// - NEW: /api/auto-contact/kones-stats - breakdown by contact_status for kones listings
-// - FIX: WhatsApp conversations dashboard compat (Issue #6, v4.70.0)
-// - Previous: kones auto-contact, auto first contact, export, search, CRM, analytics
+// - NEW: Morning Intelligence panel in dashboard (Daily intel button -> shows opportunities + stressed sellers)
+// - NEW: Kones landline/no_phone UX - color-coded cards, stats bar, filter by landline
+// - FIX: runKonesAutoContact result displayed in alert with breakdown
+// - PREV: Kones auto-contact mobile-only filter (v4.71.0)
+// - PREV: WhatsApp conversations dashboard compat (Issue #6, v4.70.0)
 
 async function runAutoMigrations() {
   try {
@@ -290,6 +290,8 @@ app.get('/api/debug', async (req, res) => {
     auto_first_contact: 'active (cron every 30min)',
     kones_auto_contact: 'active (cron daily 07:45) - mobile-only, landline detection',
     kones_api: 'active at /api/kones (Issue #5)',
+    morning_intelligence: 'active at /api/morning/preview - shown in dashboard',
+    kones_ux: 'landline/no_phone color-coded + stats bar + filter (v4.72.0)',
     notifications_sse: `active (${notificationStats.connected_clients || 0} clients connected)`,
     export_api: 'active - leads/complexes/messages/ads/full-report',
     search_api: 'active - global/suggestions/saved/history',
@@ -376,6 +378,7 @@ async function start() {
   logger.info('Auto First Contact: ACTIVE (P0) - cron every 30min');
   logger.info('Kones Auto Contact: ACTIVE (Issue #5) - mobile-only, daily 07:45');
   logger.info('Kones API: ACTIVE at /api/kones');
+  logger.info('Morning Intelligence: ACTIVE - /api/morning/preview');
   logger.info('WhatsApp Conversations: FIXED (Issue #6)');
 
   app.listen(PORT, '0.0.0.0', () => {
