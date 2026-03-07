@@ -1,13 +1,21 @@
 /**
- * QUANTUM Visual Booking Route v2
+ * QUANTUM Visual Booking Route v3
  *
- * Gap-prevention strategy: show ALL open slots, but mark the "recommended"
- * slot (the next consecutive one after the last confirmed) with a visual badge.
- * Users are free to choose any slot - but the recommended one is highlighted.
+ * Handles TWO types of bookings:
  *
- * GET  /booking/:token          - Visual calendar page (mobile-first HTML)
- * GET  /booking/:token/slots    - JSON: available slots
- * POST /booking/:token/confirm  - Confirm a slot, send WA confirmation
+ * 1. Regular meeting slots (meeting_slots table)
+ *    - One slot = one person
+ *    - Recommended slot highlighted in amber
+ *
+ * 2. Signing ceremony slots (ceremony_slots table)
+ *    - Multiple stations run in PARALLEL
+ *    - Same time slot can be booked by N people (N = number of active stations)
+ *    - UI shows times with capacity indicator: "3 מקומות פנויים"
+ *    - Confirming: atomically claims ANY open station slot at that time
+ *
+ * GET  /booking/:token          - Visual calendar HTML (detects type from session)
+ * GET  /booking/:token/slots    - JSON slot data
+ * POST /booking/:token/confirm  - Confirm booking (handles both types)
  */
 
 const express = require('express');
@@ -24,9 +32,7 @@ const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
 const DAY_NAMES_HE = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 const DAY_NAMES_RU = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
 
-function generateToken() {
-  return crypto.randomBytes(16).toString('hex');
-}
+function generateToken() { return crypto.randomBytes(16).toString('hex'); }
 
 async function ensureBookingToken(phone, campaignId) {
   const res = await pool.query(
@@ -41,25 +47,23 @@ async function ensureBookingToken(phone, campaignId) {
   );
   return token;
 }
-
 module.exports.ensureBookingToken = ensureBookingToken;
 module.exports.BASE_URL = BASE_URL;
 
-// ── Slot fetcher: ALL open slots + recommended flag ────────────
-// recommended = the first open slot that is chronologically right after
-// the last confirmed slot (i.e., the "ideal" next booking to avoid gaps).
-// Every other slot is still visible and selectable.
-async function getAvailableSlots(campaignId) {
-  // Find the last confirmed slot's datetime for this campaign
-  const lastConfirmedRes = await pool.query(
-    `SELECT MAX(slot_datetime) AS last_dt
-     FROM meeting_slots
-     WHERE campaign_id=$1 AND status='confirmed'`,
+// ══════════════════════════════════════════════════════════════
+// SLOT FETCHERS
+// ══════════════════════════════════════════════════════════════
+
+// ── Regular meeting slots ─────────────────────────────────────
+// Returns all open future slots. Marks one as "recommended"
+// (the first slot after the last confirmed one) to nudge sequential fill.
+async function getMeetingSlots(campaignId) {
+  const lastRes = await pool.query(
+    `SELECT MAX(slot_datetime) AS last_dt FROM meeting_slots WHERE campaign_id=$1 AND status='confirmed'`,
     [campaignId]
   );
-  const lastConfirmedDt = lastConfirmedRes.rows[0]?.last_dt || null;
+  const lastDt = lastRes.rows[0]?.last_dt || null;
 
-  // Fetch ALL open future slots
   const res = await pool.query(
     `SELECT id, slot_datetime,
             TO_CHAR(slot_datetime AT TIME ZONE 'Asia/Jerusalem','YYYY-MM-DD') AS slot_date,
@@ -68,53 +72,103 @@ async function getAvailableSlots(campaignId) {
             representative_name
      FROM meeting_slots
      WHERE campaign_id=$1 AND status='open' AND slot_datetime > NOW()
-     ORDER BY slot_datetime
-     LIMIT 40`,
+     ORDER BY slot_datetime LIMIT 40`,
     [campaignId]
   );
 
-  const slots = res.rows;
-  if (!slots.length) return [];
-
-  // Mark the recommended slot:
-  // - If no confirmed slots yet: first slot is recommended (natural start)
-  // - If confirmed slots exist: first open slot AFTER last confirmed = recommended
   let recommendedId = null;
-  if (!lastConfirmedDt) {
-    recommendedId = slots[0].id;
+  if (!res.rows.length) return [];
+  if (!lastDt) {
+    recommendedId = res.rows[0].id;
   } else {
-    const next = slots.find(s => new Date(s.slot_datetime) > new Date(lastConfirmedDt));
+    const next = res.rows.find(s => new Date(s.slot_datetime) > new Date(lastDt));
     if (next) recommendedId = next.id;
   }
 
-  return slots.map(s => ({ ...s, is_recommended: s.id === recommendedId }));
+  return res.rows.map(s => ({
+    ...s,
+    booking_type: 'meeting',
+    capacity: 1,
+    open_count: 1,
+    is_recommended: s.id === recommendedId
+  }));
 }
 
-// ── Group slots by date ────────────────────────────────────────
+// ── Ceremony slots (parallel stations) ───────────────────────
+// Groups ceremony_slots by time, counting open station slots per time.
+// A time slot is available if open_count > 0.
+// Returns one "virtual slot" per time, with open_count = available capacity.
+async function getCeremonySlots(ceremonyId) {
+  // Get ceremony info for date
+  const ceremonyRes = await pool.query(
+    `SELECT ceremony_date FROM signing_ceremonies WHERE id=$1`,
+    [ceremonyId]
+  );
+  if (!ceremonyRes.rows.length) return [];
+  const ceremonyDate = ceremonyRes.rows[0].ceremony_date;
+  const dow = new Date(ceremonyDate).getDay();
+
+  // Group by slot_time, count open slots across all stations
+  const res = await pool.query(
+    `SELECT
+       cs.slot_time AS time_str,
+       cs.slot_date,
+       COUNT(*) FILTER (WHERE cs.status = 'open') AS open_count,
+       COUNT(*) AS total_count,
+       EXTRACT(DOW FROM cs.slot_date)::int AS dow
+     FROM ceremony_slots cs
+     JOIN ceremony_stations cst ON cs.station_id = cst.id
+     WHERE cs.ceremony_id=$1
+       AND cst.is_active = true
+       AND cs.status = 'open'
+     GROUP BY cs.slot_time, cs.slot_date
+     HAVING COUNT(*) FILTER (WHERE cs.status = 'open') > 0
+     ORDER BY cs.slot_time`,
+    [ceremonyId]
+  );
+
+  return res.rows.map(row => ({
+    id: `ceremony:${ceremonyId}:${row.time_str}`, // virtual composite id
+    booking_type: 'ceremony',
+    ceremony_id: ceremonyId,
+    slot_date: row.slot_date,
+    time_str: row.time_str.substring(0, 5),
+    dow: parseInt(row.dow),
+    open_count: parseInt(row.open_count),
+    total_count: parseInt(row.total_count),
+    capacity: parseInt(row.total_count),
+    is_recommended: false, // ceremony: no recommendation needed
+    representative_name: null // not shown per station
+  }));
+}
+
+// ── Group slots by date (works for both types) ────────────────
 function groupByDate(slots, lang = 'he') {
   const groups = {};
   const dayNames = lang === 'ru' ? DAY_NAMES_RU : DAY_NAMES_HE;
   for (const slot of slots) {
     const key = slot.slot_date;
     if (!groups[key]) {
+      const d = new Date(typeof slot.slot_datetime === 'string' ? slot.slot_datetime : `${slot.slot_date}T${slot.time_str}`);
       const dow = slot.dow;
-      const d = new Date(slot.slot_datetime);
-      const dayNum = d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: 'Asia/Jerusalem' });
-      groups[key] = { date: key, label: dayNames[dow], dayNum, slots: [] };
+      const dayNum = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+      groups[key] = { date: key, label: dayNames[dow] || '', dayNum, slots: [] };
     }
     groups[key].slots.push(slot);
   }
   return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-// ── GET /booking/:token ────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// ROUTES
+// ══════════════════════════════════════════════════════════════
+
 router.get('/:token', async (req, res) => {
   try {
     const { token } = req.params;
 
     const sessionRes = await pool.query(
-      `SELECT bs.*, csc.meeting_type, csc.show_rep_name, csc.show_station_number,
-              csc.booking_link_expires_hours
+      `SELECT bs.*, csc.meeting_type, csc.show_rep_name, csc.booking_link_expires_hours
        FROM bot_sessions bs
        LEFT JOIN campaign_schedule_config csc ON csc.zoho_campaign_id = bs.zoho_campaign_id
        WHERE bs.booking_token=$1`,
@@ -139,38 +193,47 @@ router.get('/:token', async (req, res) => {
     }
 
     const ctx = typeof session.context === 'string' ? JSON.parse(session.context) : (session.context || {});
-    const config = {
-      show_rep_name: session.show_rep_name !== false,
-      show_station_number: session.show_station_number === true,
-    };
+    const isCeremony = session.meeting_type === 'signing_ceremony';
+    const config = { show_rep_name: session.show_rep_name !== false };
 
-    const slots = await getAvailableSlots(session.zoho_campaign_id);
+    let slots = [];
+    if (isCeremony && ctx.ceremony?.id) {
+      slots = await getCeremonySlots(ctx.ceremony.id);
+    } else {
+      slots = await getMeetingSlots(session.zoho_campaign_id);
+    }
+
     const grouped = groupByDate(slots, lang);
-
-    res.type('html').send(calendarPage(token, ctx.contactName || '', lang, config, grouped));
+    res.type('html').send(calendarPage(token, ctx.contactName || '', lang, config, grouped, isCeremony));
   } catch (err) {
     logger.error('[BookingRoute] GET error:', err);
     res.status(500).type('html').send(errorPage('שגיאה טכנית', 'Technical error. Please try again.'));
   }
 });
 
-// ── GET /booking/:token/slots (JSON) ───────────────────────────
 router.get('/:token/slots', async (req, res) => {
   try {
     const sessionRes = await pool.query(
-      `SELECT bs.zoho_campaign_id, bs.language FROM bot_sessions bs WHERE bs.booking_token=$1`,
+      `SELECT bs.zoho_campaign_id, bs.language, bs.context, csc.meeting_type
+       FROM bot_sessions bs
+       LEFT JOIN campaign_schedule_config csc ON csc.zoho_campaign_id = bs.zoho_campaign_id
+       WHERE bs.booking_token=$1`,
       [req.params.token]
     );
     if (!sessionRes.rows.length) return res.status(404).json({ error: 'Invalid token' });
-    const { zoho_campaign_id, language } = sessionRes.rows[0];
-    const slots = await getAvailableSlots(zoho_campaign_id);
-    res.json({ slots, lang: language });
+    const { zoho_campaign_id, language, context, meeting_type } = sessionRes.rows[0];
+    const ctx = typeof context === 'string' ? JSON.parse(context) : (context || {});
+    const isCeremony = meeting_type === 'signing_ceremony';
+    const slots = isCeremony && ctx.ceremony?.id
+      ? await getCeremonySlots(ctx.ceremony.id)
+      : await getMeetingSlots(zoho_campaign_id);
+    res.json({ slots, lang: language, isCeremony });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── POST /booking/:token/confirm ───────────────────────────────
+// ── POST /confirm ─────────────────────────────────────────────
 router.post('/:token/confirm', async (req, res) => {
   try {
     const { token } = req.params;
@@ -190,52 +253,97 @@ router.post('/:token/confirm', async (req, res) => {
     const ctx = typeof session.context === 'string' ? JSON.parse(session.context) : (session.context || {});
     const lang = session.language || 'he';
 
-    // Atomic lock - only succeeds if slot is still open
-    const lockRes = await pool.query(
-      `UPDATE meeting_slots SET status='confirmed', reserved_at=NOW(),
-       contact_phone=$1, zoho_contact_id=$2, contact_name=$3
-       WHERE id=$4 AND status='open' RETURNING *`,
-      [session.phone, session.zoho_contact_id, ctx.contactName || '', slotId]
-    );
+    let dateStr, timeStr, repName, slotDatetime;
 
-    if (!lockRes.rows.length) {
-      return res.status(409).json({ error: 'slot_taken' });
+    // ── CEREMONY: claim any open station slot at that time ────
+    if (slotId.startsWith('ceremony:')) {
+      const parts = slotId.split(':'); // ceremony:ceremonyId:HH:MM
+      const ceremonyId = parts[1];
+      const timeStr_ = parts.slice(2).join(':'); // HH:MM
+
+      // Atomic: grab the first open station slot at this time
+      const lockRes = await pool.query(
+        `UPDATE ceremony_slots SET
+           status='confirmed', confirmed_at=NOW(), reserved_at=NOW(),
+           contact_phone=$1, zoho_contact_id=$2, contact_name=$3
+         WHERE id = (
+           SELECT cs.id FROM ceremony_slots cs
+           JOIN ceremony_stations cst ON cs.station_id = cst.id
+           WHERE cs.ceremony_id=$4
+             AND cs.status='open'
+             AND cst.is_active=true
+             AND TO_CHAR(cs.slot_time,'HH24:MI') = $5
+           ORDER BY cs.id
+           LIMIT 1
+           FOR UPDATE SKIP LOCKED
+         )
+         RETURNING *, TO_CHAR(slot_date,'DD/MM/YYYY') AS date_str_fmt`,
+        [session.phone, session.zoho_contact_id, ctx.contactName || '', ceremonyId, timeStr_]
+      );
+
+      if (!lockRes.rows.length) {
+        return res.status(409).json({ error: 'slot_taken' });
+      }
+
+      const slot = lockRes.rows[0];
+      const d = new Date(`${slot.slot_date}T${timeStr_}`);
+      dateStr = d.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jerusalem' });
+      timeStr = timeStr_;
+      repName = null;
+      slotDatetime = `${slot.slot_date}T${timeStr_}:00`;
+
+    } else {
+      // ── REGULAR MEETING: atomic lock by slot id ──────────
+      const lockRes = await pool.query(
+        `UPDATE meeting_slots SET status='confirmed', reserved_at=NOW(),
+         contact_phone=$1, zoho_contact_id=$2, contact_name=$3
+         WHERE id=$4 AND status='open' RETURNING *`,
+        [session.phone, session.zoho_contact_id, ctx.contactName || '', slotId]
+      );
+
+      if (!lockRes.rows.length) {
+        return res.status(409).json({ error: 'slot_taken' });
+      }
+
+      const slot = lockRes.rows[0];
+      const slotDt = new Date(slot.slot_datetime);
+      dateStr = slotDt.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jerusalem' });
+      timeStr = slotDt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+      repName = slot.representative_name;
+      slotDatetime = slot.slot_datetime;
     }
 
-    const slot = lockRes.rows[0];
-    const slotDt = new Date(slot.slot_datetime);
-    const dateStr = slotDt.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jerusalem' });
-    const timeStr = slotDt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
-
-    ctx.confirmedSlot = { id: slot.id, slot_datetime: slot.slot_datetime, dateStr, timeStr, time: timeStr, rep_name: slot.representative_name || '', date_str: dateStr };
-
+    // Update session
+    ctx.confirmedSlot = { dateStr, timeStr, time: timeStr, date_str: dateStr, rep_name: repName || '' };
     await pool.query(
       `UPDATE bot_sessions SET state='confirmed', context=$1, booking_completed_at=NOW() WHERE booking_token=$2`,
       [JSON.stringify(ctx), token]
     );
 
     // Google Calendar link
-    const gcalEnd = new Date(slotDt.getTime() + 45 * 60000);
+    const gcalEnd = new Date(new Date(slotDatetime).getTime() + 45 * 60000);
     const fmt = (d) => d.toISOString().replace(/[-:.]/g, '').substring(0, 15) + 'Z';
-    const meetingTypeLabel = { appraiser: 'ביקור שמאי QUANTUM', consultation: 'פגישת ייעוץ QUANTUM', physical: 'פגישה פיזית QUANTUM', surveyor: 'ביקור מודד QUANTUM' }[session.meeting_type] || 'פגישת QUANTUM';
-    const gcalLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(meetingTypeLabel)}&dates=${fmt(slotDt)}/${fmt(gcalEnd)}&sf=true`;
+    const meetingLabel = { appraiser:'ביקור שמאי QUANTUM', consultation:'פגישת ייעוץ QUANTUM', physical:'פגישה פיזית QUANTUM', surveyor:'ביקור מודד QUANTUM', signing_ceremony:'כנס חתימות QUANTUM' }[session.meeting_type] || 'פגישת QUANTUM';
+    const gcalLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(meetingLabel)}&dates=${fmt(new Date(slotDatetime))}/${fmt(gcalEnd)}&sf=true`;
 
-    // WhatsApp confirmation
-    const repLine = slot.representative_name ? `\n👤 ${lang === 'ru' ? 'Представитель' : 'נציג'}: ${slot.representative_name}` : '';
+    // WhatsApp
+    const repLine = repName ? `\n👤 ${lang === 'ru' ? 'Представитель' : 'נציג'}: ${repName}` : '';
     const waMsg = lang === 'ru'
       ? `✅ *Встреча подтверждена!*\n\n📅 ${dateStr}\n⏰ ${timeStr}${repLine}\n\nНапомним за сутки. До встречи! 👋\n\n📆 Добавить в календарь: ${gcalLink}`
       : `✅ *הפגישה אושרה!*\n\n📅 ${dateStr}\n⏰ ${timeStr}${repLine}\n\nתקבל/י תזכורת יום לפני. להתראות! 👋\n\n📆 הוסף ליומן: ${gcalLink}`;
 
     inforuService.sendWhatsApp(session.phone, waMsg).catch(e => logger.warn('[BookingRoute] WA send failed:', e.message));
 
-    res.json({ success: true, dateStr, timeStr, repName: slot.representative_name, gcalLink });
+    res.json({ success: true, dateStr, timeStr, repName, gcalLink });
   } catch (err) {
     logger.error('[BookingRoute] confirm error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// ── HTML Templates ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// HTML TEMPLATES
+// ══════════════════════════════════════════════════════════════
 
 function errorPage(titleHe, msgEn) {
   return `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QUANTUM</title>
@@ -260,38 +368,40 @@ h2{color:#34d399;font-size:18px;margin-bottom:8px}p{color:#94a3b8;font-size:14px
 </head><body><div class="box"><div class="logo">⚡ QUANTUM</div><h2>${title}</h2><p>${msg}</p></div></body></html>`;
 }
 
-function calendarPage(token, name, lang, config, grouped) {
+function calendarPage(token, name, lang, config, grouped, isCeremony) {
   const isRu = lang === 'ru';
   const dir = isRu ? 'ltr' : 'rtl';
 
   const T = {
     he: {
-      heading: 'בחר/י מועד נוח',
+      heading: isCeremony ? 'בחר/י שעה לכנס החתימות' : 'בחר/י מועד נוח',
       subheading: name ? `שלום ${name} 👋` : 'שלום 👋',
       confirm: 'אישור',
       noSlots: 'אין מועדים פנויים כרגע. ניצור איתך קשר בהקדם.',
       success_title: '✅ הפגישה נקבעה!',
-      success_sub: 'תקבל/י אישור ב-WhatsApp ותזכורת יום לפני.',
+      success_sub: isCeremony ? 'תקבל/י אישור ב-WhatsApp.' : 'תקבל/י אישור ב-WhatsApp ותזכורת יום לפני.',
       slot_taken: 'המועד כבר נתפס - אנא בחר/י מועד אחר.',
       recommended: 'מומלץ',
       cancel: 'בחר/י מועד אחר',
       rep_label: 'נציג',
+      spots: (n) => n === 1 ? 'מקום אחד פנוי' : `${n} מקומות פנויים`,
     },
     ru: {
-      heading: 'Выберите удобное время',
+      heading: isCeremony ? 'Выберите время для церемонии' : 'Выберите удобное время',
       subheading: name ? `Здравствуйте, ${name} 👋` : 'Здравствуйте 👋',
       confirm: 'Подтвердить',
       noSlots: 'Нет доступных слотов. Мы свяжемся с вами.',
       success_title: '✅ Встреча назначена!',
-      success_sub: 'Подтверждение придёт в WhatsApp. Напомним за сутки.',
+      success_sub: isCeremony ? 'Подтверждение придёт в WhatsApp.' : 'Подтверждение придёт в WhatsApp. Напомним за сутки.',
       slot_taken: 'Это время уже занято — выберите другое.',
       recommended: 'Рекомендуем',
       cancel: 'Выбрать другое время',
       rep_label: 'Представитель',
+      spots: (n) => n === 1 ? '1 место' : `${n} места`,
     },
   }[lang] || {};
 
-  // Build slot groups HTML
+  // Build slot HTML
   let slotsHtml = '';
   if (!grouped.length) {
     slotsHtml = `<div class="no-slots">${T.noSlots}</div>`;
@@ -306,25 +416,33 @@ function calendarPage(token, name, lang, config, grouped) {
 
       for (const slot of group.slots) {
         const repSafe = (slot.representative_name || '').replace(/'/g, "\\'");
-        const recBadge = slot.is_recommended
-          ? `<span class="rec-badge">${T.recommended}</span>` : '';
-        const repInfo = config.show_rep_name && slot.representative_name
-          ? `<span class="rep-name">${slot.representative_name}</span>` : '';
-        const recClass = slot.is_recommended ? ' recommended' : '';
+        const slotIdSafe = String(slot.id).replace(/'/g, "\\'");
 
-        slotsHtml += `<button class="slot-btn${recClass}" data-id="${slot.id}"
-          onclick="selectSlot(this,'${slot.id}','${group.label} ${group.dayNum}','${slot.time_str}','${repSafe}')">
+        // Capacity badge for ceremony
+        const capacityBadge = isCeremony && slot.open_count
+          ? `<span class="cap-badge">${T.spots(slot.open_count)}</span>` : '';
+
+        // Recommended badge for meetings
+        const recBadge = !isCeremony && slot.is_recommended
+          ? `<span class="rec-badge">${T.recommended}</span>` : '';
+
+        const recClass = !isCeremony && slot.is_recommended ? ' recommended' : '';
+        const isFull = slot.open_count === 0;
+        const disabledAttr = isFull ? 'disabled' : '';
+
+        slotsHtml += `<button class="slot-btn${recClass}" data-id="${slotIdSafe}" ${disabledAttr}
+          onclick="selectSlot(this,'${slotIdSafe}','${group.label} ${group.dayNum}','${slot.time_str}','${repSafe}')">
           ${recBadge}
           <span class="slot-time">${slot.time_str}</span>
-          ${repInfo}
+          ${capacityBadge}
+          ${!isCeremony && config.show_rep_name && slot.representative_name
+            ? `<span class="rep-name">${slot.representative_name}</span>` : ''}
         </button>`;
       }
 
       slotsHtml += `</div></div>`;
     }
   }
-
-  const showRep = config.show_rep_name ? 'true' : 'false';
 
   return `<!DOCTYPE html>
 <html dir="${dir}" lang="${lang}">
@@ -334,118 +452,88 @@ function calendarPage(token, name, lang, config, grouped) {
 <title>QUANTUM - ${T.heading}</title>
 <style>
   :root {
-    --blue: #3b82f6; --blue-dark: #2563eb;
-    --green: #10b981;
-    --amber: #f59e0b;
-    --dark: #0a0a0f; --card: #111827; --border: #1e293b;
-    --text: #e2e8f0; --muted: #64748b;
+    --blue:#3b82f6; --blue-dark:#2563eb;
+    --green:#10b981; --amber:#f59e0b;
+    --dark:#0a0a0f; --card:#111827; --border:#1e293b;
+    --text:#e2e8f0; --muted:#64748b;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: var(--dark); color: var(--text); min-height: 100vh; direction: ${dir}; }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--dark);color:var(--text);min-height:100vh;direction:${dir}}
 
-  /* ── Header ── */
-  .header { background: linear-gradient(135deg, #1e3a5f, #0d1b2e); padding: 20px 20px 16px; border-bottom: 1px solid #1e40af44; position: sticky; top: 0; z-index: 10; }
-  .logo { font-size: 10px; letter-spacing: 4px; color: #60a5fa; text-transform: uppercase; margin-bottom: 4px; }
-  .greeting { font-size: 17px; font-weight: 700; color: #f1f5f9; }
-  .subhead { font-size: 13px; color: #94a3b8; margin-top: 3px; }
+  .header{background:linear-gradient(135deg,#1e3a5f,#0d1b2e);padding:20px 20px 16px;border-bottom:1px solid #1e40af44;position:sticky;top:0;z-index:10}
+  .logo{font-size:10px;letter-spacing:4px;color:#60a5fa;text-transform:uppercase;margin-bottom:4px}
+  .greeting{font-size:17px;font-weight:700;color:#f1f5f9}
+  .subhead{font-size:13px;color:#94a3b8;margin-top:3px}
 
-  /* ── Layout ── */
-  .container { padding: 16px; max-width: 500px; margin: 0 auto; padding-bottom: 100px; }
+  .container{padding:16px;max-width:500px;margin:0 auto;padding-bottom:110px}
 
-  /* ── Day group ── */
-  .day-group { margin-bottom: 24px; }
-  .day-label { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-  .day-name { font-size: 14px; font-weight: 700; color: var(--blue); }
-  .day-date { font-size: 13px; color: var(--muted); }
-  .slots-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .day-group{margin-bottom:24px}
+  .day-label{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+  .day-name{font-size:14px;font-weight:700;color:var(--blue)}
+  .day-date{font-size:13px;color:var(--muted)}
+  .slots-row{display:flex;flex-wrap:wrap;gap:8px}
 
-  /* ── Slot button ── */
-  .slot-btn {
-    position: relative;
-    background: var(--card);
-    border: 1.5px solid var(--border);
-    border-radius: 12px;
-    padding: 10px 14px;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 76px;
-    gap: 3px;
-    touch-action: manipulation;
+  .slot-btn{
+    position:relative;background:var(--card);border:1.5px solid var(--border);border-radius:12px;
+    padding:10px 14px;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s;
+    display:flex;flex-direction:column;align-items:center;min-width:76px;gap:4px;touch-action:manipulation
   }
-  .slot-btn:hover { border-color: var(--blue); background: #1e293b; }
-  .slot-btn.selected { border-color: var(--blue); background: #1e3a5f; box-shadow: 0 0 0 3px #3b82f620; }
+  .slot-btn:hover{border-color:var(--blue);background:#1e293b}
+  .slot-btn.selected{border-color:var(--blue);background:#1e3a5f;box-shadow:0 0 0 3px #3b82f620}
+  .slot-btn.recommended{border-color:var(--amber);background:#1c1608}
+  .slot-btn.recommended:hover{background:#27200a}
+  .slot-btn.recommended.selected{border-color:var(--blue);background:#1e3a5f;box-shadow:0 0 0 3px #3b82f620}
+  .slot-btn:disabled{opacity:.35;cursor:not-allowed;border-color:var(--border)}
 
-  /* Recommended slot: amber accent */
-  .slot-btn.recommended {
-    border-color: var(--amber);
-    background: #1c1608;
-  }
-  .slot-btn.recommended:hover { background: #27200a; }
-  .slot-btn.recommended.selected { border-color: var(--blue); background: #1e3a5f; box-shadow: 0 0 0 3px #3b82f620; }
-
-  .slot-time { font-size: 16px; font-weight: 700; color: var(--text); }
-  .rep-name { font-size: 10px; color: var(--muted); text-align: center; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .slot-time{font-size:16px;font-weight:700;color:var(--text)}
+  .rep-name{font-size:10px;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* Recommended badge */
-  .rec-badge {
-    position: absolute;
-    top: -9px;
-    ${dir === 'rtl' ? 'right: 6px' : 'left: 6px'};
-    background: var(--amber);
-    color: #0a0a0f;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.3px;
-    padding: 1px 6px;
-    border-radius: 20px;
-    white-space: nowrap;
+  .rec-badge{
+    position:absolute;top:-9px;${dir === 'rtl' ? 'right:6px' : 'left:6px'};
+    background:var(--amber);color:#0a0a0f;font-size:9px;font-weight:800;
+    padding:1px 6px;border-radius:20px;white-space:nowrap
+  }
+  /* Capacity badge (ceremony) */
+  .cap-badge{
+    font-size:9px;font-weight:600;color:#6ee7b7;letter-spacing:.2px
   }
 
-  .no-slots { text-align: center; color: var(--muted); padding: 40px 20px; font-size: 14px; }
+  .no-slots{text-align:center;color:var(--muted);padding:40px 20px;font-size:14px}
 
-  /* ── Confirm drawer ── */
-  .confirm-panel {
-    position: fixed; bottom: 0; left: 0; right: 0;
-    background: #0f172a;
-    border-top: 1px solid var(--blue);
-    padding: 16px 20px 28px;
-    transform: translateY(100%);
-    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
-    z-index: 100;
+  /* Confirm drawer */
+  .confirm-panel{
+    position:fixed;bottom:0;left:0;right:0;background:#0f172a;
+    border-top:1px solid var(--blue);padding:16px 20px 28px;
+    transform:translateY(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:100
   }
-  .confirm-panel.open { transform: translateY(0); }
-  .selected-time { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
-  .selected-rep { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
-  .confirm-btn {
-    width: 100%; background: var(--blue); color: #fff; border: none;
-    border-radius: 14px; padding: 15px; font-size: 17px; font-weight: 700;
-    cursor: pointer; transition: background 0.15s;
+  .confirm-panel.open{transform:translateY(0)}
+  .selected-time{font-size:20px;font-weight:800;margin-bottom:4px}
+  .selected-rep{font-size:13px;color:var(--muted);margin-bottom:14px}
+  .confirm-btn{
+    width:100%;background:var(--blue);color:#fff;border:none;
+    border-radius:14px;padding:15px;font-size:17px;font-weight:700;cursor:pointer
   }
-  .confirm-btn:hover { background: var(--blue-dark); }
-  .confirm-btn:disabled { background: #374151; color: #6b7280; cursor: not-allowed; }
-  .cancel-link { display: block; text-align: center; margin-top: 10px; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .confirm-btn:hover{background:var(--blue-dark)}
+  .confirm-btn:disabled{background:#374151;color:#6b7280;cursor:not-allowed}
+  .cancel-link{display:block;text-align:center;margin-top:10px;color:var(--muted);font-size:13px;cursor:pointer}
 
-  /* ── Success screen ── */
-  .success-screen { display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 40px 24px; }
-  .success-screen.show { display: flex; }
-  .success-icon { font-size: 64px; margin-bottom: 20px; }
-  .success-title { font-size: 22px; font-weight: 800; color: var(--green); margin-bottom: 10px; }
-  .success-detail { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-  .success-sub { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
-  .gcal-btn { display: inline-block; background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; border-radius: 12px; padding: 12px 20px; font-size: 14px; text-decoration: none; font-weight: 600; }
+  /* Success */
+  .success-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px 24px}
+  .success-screen.show{display:flex}
+  .success-icon{font-size:64px;margin-bottom:20px}
+  .success-title{font-size:22px;font-weight:800;color:var(--green);margin-bottom:10px}
+  .success-detail{font-size:16px;font-weight:600;margin-bottom:6px}
+  .success-sub{font-size:13px;color:var(--muted);margin-bottom:24px}
+  .gcal-btn{display:inline-block;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;border-radius:12px;padding:12px 20px;font-size:14px;text-decoration:none;font-weight:600}
 
-  /* ── Toast ── */
-  .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%) translateY(-80px); background: #7f1d1d; color: #fca5a5; padding: 10px 20px; border-radius: 10px; font-size: 14px; transition: transform 0.25s; z-index: 200; max-width: 300px; text-align: center; }
-  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-80px);background:#7f1d1d;color:#fca5a5;padding:10px 20px;border-radius:10px;font-size:14px;transition:transform .25s;z-index:200;max-width:300px;text-align:center}
+  .toast.show{transform:translateX(-50%) translateY(0)}
 
-  /* ── Loader ── */
-  .loading-overlay { display: none; position: fixed; inset: 0; background: #0a0a0fcc; z-index: 150; align-items: center; justify-content: center; }
-  .loading-overlay.show { display: flex; }
-  .spinner { width: 40px; height: 40px; border: 3px solid #1e293b; border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-overlay{display:none;position:fixed;inset:0;background:#0a0a0fcc;z-index:150;align-items:center;justify-content:center}
+  .loading-overlay.show{display:flex}
+  .spinner{width:40px;height:40px;border:3px solid #1e293b;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -479,7 +567,7 @@ function calendarPage(token, name, lang, config, grouped) {
 
 <script>
 const TOKEN = '${token}';
-const SHOW_REP = ${showRep};
+const SHOW_REP = ${config.show_rep_name};
 const REP_LABEL = '${T.rep_label}';
 const SLOT_TAKEN_MSG = '${T.slot_taken}';
 let selectedSlotId = null;
