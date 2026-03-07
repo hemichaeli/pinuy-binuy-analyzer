@@ -14,18 +14,12 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.64.0';
-const BUILD = '2026-03-07-v4.64.0-visual-booking-calendar-sequential-fill';
+const VERSION = '4.65.0';
+const BUILD = '2026-03-07-v4.65.0-register-kones-routes';
 
 // What's in this version:
-// - NEW: Visual booking calendar at /booking/:token (mobile-first, RTL/LTR)
-// - NEW: Sequential fill algorithm - prevents scheduling gaps in time blocks
-// - NEW: show_rep_name / show_station_number configurable per campaign
-// - NEW: Google Calendar link in WhatsApp confirmation
-// - FIX: NULL campaignId SQL bug (IS NOT DISTINCT FROM)
-// - FIX: Combined date+time slot selection (1 step)
-// - NEW: Campaign report endpoint /api/scheduling/campaign/:id/report
-// All previous: Search, CRM, Analytics, Users, Docs, Export, Notifications, Dashboard V5
+// - NEW: konesRoutes registered at /api/kones (Issue #5)
+// All previous: Visual booking calendar, Sequential fill, Search, CRM, Analytics, Users, Docs, Export, Notifications, Dashboard V5
 
 async function runAutoMigrations() {
   try {
@@ -81,7 +75,7 @@ const limiter = rateLimit({
     req.path.startsWith('/api/scheduling/') || req.path.startsWith('/api/backup/') ||
     req.path.startsWith('/api/notifications/') || req.path.startsWith('/api/search/') ||
     req.path.startsWith('/api/docs') || req.path.startsWith('/api/auto-contact') ||
-    req.path.startsWith('/booking/'),
+    req.path.startsWith('/booking/') || req.path.startsWith('/api/kones/'),
   message: { error: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
@@ -117,6 +111,7 @@ function loadAllRoutes() {
     { path: '/api/morning', file: 'routes/morningReportRoutes.js' },
     { path: '/api/vapi', file: 'routes/vapiRoutes.js' },
     { path: '/api/inforu', file: 'routes/inforuRoutes.js' },
+    { path: '/api/kones', file: 'routes/konesRoutes.js' },
     { path: '/api', file: 'routes/whatsappWebhookRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappAlertRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
@@ -271,6 +266,7 @@ app.get('/api/debug', async (req, res) => {
     sandbox: 'active at /sandbox',
     visual_booking: 'active at /booking/:token',
     auto_first_contact: 'active (cron every 30min)',
+    kones_api: 'active at /api/kones (Issue #5)',
     notifications_sse: `active (${notificationStats.connected_clients || 0} clients connected)`,
     export_api: 'active - leads/complexes/messages/ads/full-report',
     search_api: 'active - global/suggestions/saved/history',
@@ -344,6 +340,7 @@ async function start() {
   logger.info('WhatsApp: WEBHOOK mode active');
   logger.info('Visual Booking: ACTIVE at /booking/:token');
   logger.info('Auto First Contact: ACTIVE (P0) - cron every 30min');
+  logger.info('Kones API: ACTIVE at /api/kones (Issue #5)');
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
