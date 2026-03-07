@@ -7,10 +7,10 @@ router.post('/global', async (req, res) => {
   try {
     const { query = '', filters = {}, limit = 20 } = req.body;
     const q = `%${query}%`;
-    const results = { leads: [], complexes: [], ads: [], total: 0 };
+    const results = { leads: [], complexes: [], ads: [], errors: [] };
 
     if (!query && Object.keys(filters).length === 0) {
-      return res.json({ success: true, results, query, filters });
+      return res.json({ success: true, results, query, filters, total: 0 });
     }
 
     // Search leads
@@ -20,50 +20,51 @@ router.post('/global', async (req, res) => {
       let pi = 1;
       if (query) { leadQuery += ` AND (name ILIKE $${pi} OR phone ILIKE $${pi+1} OR email ILIKE $${pi+2})`; params.push(q,q,q); pi+=3; }
       if (filters.status) { leadQuery += ` AND status = $${pi}`; params.push(filters.status); pi++; }
-      leadQuery += ` ORDER BY created_at DESC LIMIT $${pi}`; params.push(Math.min(limit, 50));
+      leadQuery += ` ORDER BY created_at DESC LIMIT $${pi}`; params.push(Math.min(parseInt(limit) || 20, 50));
       const { rows } = await pool.query(leadQuery, params);
       results.leads = rows;
-    } catch (e) { /* ignore */ }
+    } catch (e) { results.errors.push('leads: ' + e.message); }
 
-    // Search complexes - using actual column names
+    // Search complexes - minimal safe columns only
     try {
-      let cxQuery = `SELECT id, name, address, city, iai_score, avg_ssi, status, planned_units, existing_units, developer, 'complex' as entity_type FROM complexes WHERE 1=1`;
+      let cxQuery = `SELECT id, name, city, iai_score, status, developer, neighborhood, 'complex' as entity_type FROM complexes WHERE 1=1`;
       const params = [];
       let pi = 1;
-      if (query) { cxQuery += ` AND (name ILIKE $${pi} OR city ILIKE $${pi+1} OR developer ILIKE $${pi+2})`; params.push(q,q,q); pi+=3; }
+      if (query) { cxQuery += ` AND (name ILIKE $${pi} OR city ILIKE $${pi+1} OR developer ILIKE $${pi+2} OR neighborhood ILIKE $${pi+3})`; params.push(q,q,q,q); pi+=4; }
       if (filters.city) { cxQuery += ` AND city ILIKE $${pi}`; params.push(`%${filters.city}%`); pi++; }
-      if (filters.min_iai) { cxQuery += ` AND iai_score >= $${pi}`; params.push(filters.min_iai); pi++; }
+      if (filters.min_iai) { cxQuery += ` AND iai_score >= $${pi}`; params.push(parseFloat(filters.min_iai)); pi++; }
       if (filters.status) { cxQuery += ` AND status = $${pi}`; params.push(filters.status); pi++; }
-      cxQuery += ` ORDER BY iai_score DESC NULLS LAST LIMIT $${pi}`; params.push(Math.min(limit, 50));
+      cxQuery += ` ORDER BY iai_score DESC NULLS LAST LIMIT $${pi}`; params.push(Math.min(parseInt(limit) || 20, 50));
       const { rows } = await pool.query(cxQuery, params);
       results.complexes = rows;
-    } catch (e) { /* ignore */ }
+    } catch (e) { results.errors.push('complexes: ' + e.message); }
 
     // Search yad2 ads
     try {
-      let adQuery = `SELECT id, title, city, neighborhood, price, rooms, floor, area_sqm, url, scraped_at, 'ad' as entity_type FROM yad2_listings WHERE 1=1`;
+      let adQuery = `SELECT id, city, neighborhood, price, rooms, 'ad' as entity_type FROM yad2_listings WHERE 1=1`;
       const params = [];
       let pi = 1;
-      if (query) { adQuery += ` AND (title ILIKE $${pi} OR city ILIKE $${pi+1} OR neighborhood ILIKE $${pi+2})`; params.push(q,q,q); pi+=3; }
+      if (query) { adQuery += ` AND (city ILIKE $${pi} OR neighborhood ILIKE $${pi+1})`; params.push(q,q); pi+=2; }
       if (filters.city) { adQuery += ` AND city ILIKE $${pi}`; params.push(`%${filters.city}%`); pi++; }
-      if (filters.min_price) { adQuery += ` AND price >= $${pi}`; params.push(filters.min_price); pi++; }
-      if (filters.max_price) { adQuery += ` AND price <= $${pi}`; params.push(filters.max_price); pi++; }
-      adQuery += ` ORDER BY scraped_at DESC LIMIT $${pi}`; params.push(Math.min(limit, 50));
+      if (filters.min_price) { adQuery += ` AND price >= $${pi}`; params.push(parseFloat(filters.min_price)); pi++; }
+      if (filters.max_price) { adQuery += ` AND price <= $${pi}`; params.push(parseFloat(filters.max_price)); pi++; }
+      adQuery += ` LIMIT $${pi}`; params.push(Math.min(parseInt(limit) || 20, 50));
       const { rows } = await pool.query(adQuery, params);
       results.ads = rows;
-    } catch (e) { /* ignore */ }
+    } catch (e) { results.errors.push('ads: ' + e.message); }
 
-    results.total = results.leads.length + results.complexes.length + results.ads.length;
+    const total = results.leads.length + results.complexes.length + results.ads.length;
+    results.total = total;
 
     // Save to search history
     try {
       await pool.query(
         `INSERT INTO search_history (query, filters, result_count, created_at) VALUES ($1, $2, $3, NOW())`,
-        [query, JSON.stringify(filters), results.total]
+        [query, JSON.stringify(filters), total]
       );
-    } catch (e) { /* ignore if table not ready */ }
+    } catch (e) { /* ignore */ }
 
-    res.json({ success: true, results, query, filters, total: results.total });
+    res.json({ success: true, results, query, filters, total });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -73,24 +74,16 @@ router.post('/global', async (req, res) => {
 router.get('/suggestions', async (req, res) => {
   try {
     const { q = '' } = req.query;
-    if (!q || q.length < 2) return res.json({ success: true, suggestions: [] });
+    if (!q || q.length < 1) return res.json({ success: true, suggestions: [] });
     const like = `%${q}%`;
     const suggestions = new Set();
 
-    try {
-      const cities = await pool.query(`SELECT DISTINCT city FROM complexes WHERE city ILIKE $1 AND city IS NOT NULL LIMIT 5`, [like]);
-      cities.rows.forEach(r => r.city && suggestions.add(r.city));
-    } catch (e) {}
-
-    try {
-      const names = await pool.query(`SELECT name FROM complexes WHERE name ILIKE $1 AND name IS NOT NULL LIMIT 5`, [like]);
-      names.rows.forEach(r => r.name && suggestions.add(r.name));
-    } catch (e) {}
-
-    try {
-      const leads = await pool.query(`SELECT DISTINCT name FROM leads WHERE name ILIKE $1 AND name IS NOT NULL LIMIT 3`, [like]);
-      leads.rows.forEach(r => r.name && suggestions.add(r.name));
-    } catch (e) {}
+    const [cities, names] = await Promise.all([
+      pool.query(`SELECT DISTINCT city FROM complexes WHERE city ILIKE $1 AND city IS NOT NULL LIMIT 6`, [like]).catch(() => ({ rows: [] })),
+      pool.query(`SELECT name FROM complexes WHERE name ILIKE $1 AND name IS NOT NULL ORDER BY iai_score DESC NULLS LAST LIMIT 6`, [like]).catch(() => ({ rows: [] }))
+    ]);
+    cities.rows.forEach(r => r.city && suggestions.add(r.city));
+    names.rows.forEach(r => r.name && suggestions.add(r.name));
 
     res.json({ success: true, suggestions: Array.from(suggestions).slice(0, 10) });
   } catch (err) {
