@@ -14,12 +14,14 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.65.0';
-const BUILD = '2026-03-07-v4.65.0-register-kones-routes';
+const VERSION = '4.68.0';
+const BUILD = '2026-03-07-v4.68.0-kones-auto-contact-dashboard-tab';
 
 // What's in this version:
-// - NEW: konesRoutes registered at /api/kones (Issue #5)
-// All previous: Visual booking calendar, Sequential fill, Search, CRM, Analytics, Users, Docs, Export, Notifications, Dashboard V5
+// - NEW: kones auto-contact cron (Issue #5) - daily at 07:45
+// - NEW: kones DB migration (phone, contact_status, contact_attempts)
+// - NEW: kones2_listings + konesonline_listings tables
+// - All previous: konesRoutes at /api/kones, Visual booking, Sequential fill, Search, CRM, Analytics, Export, Dashboard V5
 
 async function runAutoMigrations() {
   try {
@@ -182,7 +184,7 @@ function loadBackupRoutes() {
 
 function loadAutoContactRoutes() {
   try {
-    const { runAutoFirstContact, getContactStats } = require('./services/autoFirstContactService');
+    const { runAutoFirstContact, runKonesAutoContact, getContactStats } = require('./services/autoFirstContactService');
 
     app.get('/api/auto-contact/stats', async (req, res) => {
       try {
@@ -203,8 +205,18 @@ function loadAutoContactRoutes() {
       }
     });
 
+    app.post('/api/auto-contact/run-kones', async (req, res) => {
+      try {
+        logger.info('[KonesContact] Manual trigger via API');
+        const result = await runKonesAutoContact();
+        res.json({ success: true, result, timestamp: new Date().toISOString() });
+      } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+
     routeLoadResults.push({ path: '/api/auto-contact', status: 'ok', file: 'services/autoFirstContactService.js' });
-    logger.info('[AutoContact] API routes loaded: /api/auto-contact/stats, /api/auto-contact/run');
+    logger.info('[AutoContact] API routes loaded');
   } catch (err) {
     routeLoadResults.push({ path: '/api/auto-contact', status: 'failed', error: err.message, file: 'services/autoFirstContactService.js' });
     logger.error('[AutoContact] Failed to load routes:', err.message);
@@ -262,10 +274,11 @@ app.get('/api/debug', async (req, res) => {
     backup_service: backupStatus,
     email_notifications: 'disabled',
     facebook_integration: 'active',
-    dashboard_v5: 'complete_6_tabs',
+    dashboard_v5: 'complete_7_tabs',
     sandbox: 'active at /sandbox',
     visual_booking: 'active at /booking/:token',
     auto_first_contact: 'active (cron every 30min)',
+    kones_auto_contact: 'active (cron daily 07:45)',
     kones_api: 'active at /api/kones (Issue #5)',
     notifications_sse: `active (${notificationStats.connected_clients || 0} clients connected)`,
     export_api: 'active - leads/complexes/messages/ads/full-report',
@@ -302,13 +315,22 @@ async function start() {
   failed.forEach(r => logger.error(`  FAILED: ${r.path} (${r.file}) -> ${r.error}`));
 
   try {
-    const { initialize: initAutoContact, runAutoFirstContact } = require('./services/autoFirstContactService');
+    const { initialize: initAutoContact, runAutoFirstContact, runKonesAutoContact } = require('./services/autoFirstContactService');
     await initAutoContact();
     const cron = require('node-cron');
+
+    // Yad2 + Facebook auto-contact: every 30 minutes
     cron.schedule('*/30 * * * *', async () => {
       try { await runAutoFirstContact(); } catch (e) { logger.warn('[AutoContact] Cron error:', e.message); }
     });
+
+    // Kones auto-contact: daily at 07:45 (Issue #5)
+    cron.schedule('45 7 * * *', async () => {
+      try { await runKonesAutoContact(); } catch (e) { logger.warn('[KonesContact] Cron error:', e.message); }
+    });
+
     logger.info('[AutoContact] ACTIVE - cron every 30 minutes');
+    logger.info('[KonesContact] ACTIVE - cron daily at 07:45');
   } catch (e) {
     logger.warn('[AutoContact] Failed to start:', e.message);
   }
@@ -340,7 +362,8 @@ async function start() {
   logger.info('WhatsApp: WEBHOOK mode active');
   logger.info('Visual Booking: ACTIVE at /booking/:token');
   logger.info('Auto First Contact: ACTIVE (P0) - cron every 30min');
-  logger.info('Kones API: ACTIVE at /api/kones (Issue #5)');
+  logger.info('Kones Auto Contact: ACTIVE (Issue #5) - cron daily 07:45');
+  logger.info('Kones API: ACTIVE at /api/kones');
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
