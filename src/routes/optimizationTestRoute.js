@@ -12,7 +12,7 @@ const axios = require('axios');
 const { logger } = require('../services/logger');
 
 const CAMPAIGN_ID = 'HEMI-TEST-001';
-const TEST_PHONE  = '972525959103'; // Hemi's number - update if different
+const TEST_PHONE  = '972525959103'; // Hemi's default number
 
 // ── Zoho OAuth helper ──────────────────────────────────────────
 async function getZohoToken() {
@@ -24,16 +24,23 @@ async function getZohoToken() {
       grant_type:    'refresh_token'
     }
   });
+  if (!res.data.access_token) throw new Error('No access_token in response: ' + JSON.stringify(res.data));
   return res.data.access_token;
 }
 
-// ── Search Zoho Contacts for "חמי מיכאלי" ─────────────────────
+// ── Search Zoho Contacts by word search ───────────────────────
 async function findHemiInZoho(token) {
+  // Use word search (simpler than criteria, handles Hebrew better)
   const res = await axios.get('https://www.zohoapis.com/crm/v3/Contacts/search', {
     headers: { Authorization: `Zoho-oauthtoken ${token}` },
-    params: { criteria: '(Last_Name:equals:מיכאלי)', fields: 'id,First_Name,Last_Name,Phone,Mobile,Mailing_Street,Mailing_City' }
+    params: {
+      word: 'מיכאלי',
+      fields: 'id,First_Name,Last_Name,Phone,Mobile,Mailing_Street,Mailing_City'
+    }
   });
-  return res.data?.data?.[0] || null;
+  // Find the one named מיכאלי
+  const contacts = res.data?.data || [];
+  return contacts.find(c => c.Last_Name === 'מיכאלי') || contacts[0] || null;
 }
 
 // ── Update Zoho Contact address if missing ────────────────────
@@ -47,10 +54,9 @@ async function ensureZohoAddress(token, contactId, currentStreet) {
 
 // ── Create Zoho Campaign with Hemi only ───────────────────────
 async function ensureZohoCampaign(token, contactId) {
-  // Search existing
   const search = await axios.get('https://www.zohoapis.com/crm/v3/Campaigns/search', {
     headers: { Authorization: `Zoho-oauthtoken ${token}` },
-    params: { criteria: `(Campaign_Name:equals:${CAMPAIGN_ID})`, fields: 'id,Campaign_Name' }
+    params: { word: CAMPAIGN_ID, fields: 'id,Campaign_Name' }
   }).catch(() => ({ data: {} }));
 
   let campaignZohoId = search.data?.data?.[0]?.id;
@@ -67,7 +73,6 @@ async function ensureZohoCampaign(token, contactId) {
     campaignZohoId = create.data?.data?.[0]?.details?.id;
   }
 
-  // Add contact to campaign
   if (campaignZohoId && contactId) {
     await axios.post(`https://www.zohoapis.com/crm/v3/Campaigns/${campaignZohoId}/Contacts`, {
       data: [{ id: contactId }]
@@ -78,17 +83,19 @@ async function ensureZohoCampaign(token, contactId) {
 }
 
 // ── Seed meeting_slots for tomorrow ───────────────────────────
-// Creates an ISOLATED slot for Hemi + two clustered slots for "others"
-// So the optimization engine has a real candidate to work with
 async function seedTestSlots(phone, street) {
-  // Campaign config
+  // Get any valid project_id from the DB to satisfy the FK constraint
+  const projRow = await pool.query('SELECT id FROM projects ORDER BY id LIMIT 1');
+  const projectId = projRow.rows[0]?.id || null;
+
+  // Campaign config (project_id can be null if FK allows, else use first available)
   await pool.query(
     `INSERT INTO campaign_schedule_config
        (zoho_campaign_id, project_id, meeting_type, slot_duration_minutes, buffer_minutes, wa_language, updated_at)
-     VALUES ($1, 1, 'appraiser', 45, 15, 'he', NOW())
+     VALUES ($1, $2, 'appraiser', 45, 15, 'he', NOW())
      ON CONFLICT (zoho_campaign_id) DO UPDATE
-     SET meeting_type='appraiser', updated_at=NOW()`,
-    [CAMPAIGN_ID]
+     SET project_id=$2, meeting_type='appraiser', updated_at=NOW()`,
+    [CAMPAIGN_ID, projectId]
   );
 
   // Tomorrow date
@@ -96,65 +103,54 @@ async function seedTestSlots(phone, street) {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tDate = tomorrow.toISOString().split('T')[0];
 
-  // Helper to build ISO datetime for a time on tomorrow (Israel time = UTC+2/3)
+  // Israel timezone offset (UTC+2 winter / UTC+3 summer)
+  const isDST = new Date().getTimezoneOffset() < -120;
+  const utcOffset = isDST ? 3 : 2;
   const dt = (hhmm) => {
     const [h, m] = hhmm.split(':').map(Number);
-    const d = new Date(tDate);
-    d.setUTCHours(h - 2, m, 0, 0); // convert Israel time to UTC
+    const d = new Date(tDate + 'T00:00:00Z');
+    d.setUTCHours(h - utcOffset, m, 0, 0);
     return d.toISOString();
   };
 
-  // Clean previous test slots
+  // Clean previous test data
+  await pool.query(`DELETE FROM reschedule_requests WHERE campaign_id=$1`, [CAMPAIGN_ID]);
   await pool.query(`DELETE FROM meeting_slots WHERE campaign_id=$1`, [CAMPAIGN_ID]);
 
-  // ── Slot 1: 09:00 — "אחר 1" (clustered together at morning)
+  // ── 09:00 — "אחר 1" (morning cluster)
   await pool.query(
-    `INSERT INTO meeting_slots
-       (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
+    `INSERT INTO meeting_slots (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
      VALUES ($1,$2,45,'confirmed','972501111111','ישראל ישראלי','הרצל')`,
     [CAMPAIGN_ID, dt('09:00')]
   );
-
-  // ── Slot 2: 09:45 — "אחר 2" (clustered with slot 1)
+  // ── 09:45 — "אחר 2" (morning cluster)
   await pool.query(
-    `INSERT INTO meeting_slots
-       (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
+    `INSERT INTO meeting_slots (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
      VALUES ($1,$2,45,'confirmed','972502222222','שרה כהן','הרצל')`,
     [CAMPAIGN_ID, dt('09:45')]
   );
-
-  // ── Slot 3: 13:30 — HEMI (ISOLATED — gap >2.5h from slot 2 and slot 4)
-  const hemiSlotRes = await pool.query(
-    `INSERT INTO meeting_slots
-       (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street, contact_address)
-     VALUES ($1,$2,45,'confirmed',$3,'חמי מיכאלי',$4,$5)
-     RETURNING id`,
+  // ── 13:30 — HEMI (ISOLATED: gap >150m from 09:45 and >90m from 16:00)
+  const hemiSlot = await pool.query(
+    `INSERT INTO meeting_slots (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street, contact_address)
+     VALUES ($1,$2,45,'confirmed',$3,'חמי מיכאלי',$4,$5) RETURNING id`,
     [CAMPAIGN_ID, dt('13:30'), phone, street, `${street}, תל אביב`]
   );
-
-  // ── Slot 4: 16:00 — "אחר 3" (clustered at afternoon)
+  // ── 16:00 — "אחר 3" (afternoon cluster)
   await pool.query(
-    `INSERT INTO meeting_slots
-       (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
+    `INSERT INTO meeting_slots (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
      VALUES ($1,$2,45,'confirmed','972503333333','דוד לוי','הרצל')`,
     [CAMPAIGN_ID, dt('16:00')]
   );
-
-  // ── Slot 5: 16:45 — "אחר 4" (clustered with slot 4)
+  // ── 16:45 — "אחר 4" (afternoon cluster)
   await pool.query(
-    `INSERT INTO meeting_slots
-       (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
+    `INSERT INTO meeting_slots (campaign_id, slot_datetime, duration_minutes, status, contact_phone, contact_name, contact_street)
      VALUES ($1,$2,45,'confirmed','972504444444','רחל מזרחי','הרצל')`,
     [CAMPAIGN_ID, dt('16:45')]
   );
-
-  // ── OPEN Slot at 09:30 — best proposal for Hemi (between slot 1 and slot 2)
-  // This is where the optimizer should suggest moving Hemi to
-  const proposedSlotRes = await pool.query(
-    `INSERT INTO meeting_slots
-       (campaign_id, slot_datetime, duration_minutes, status)
-     VALUES ($1,$2,45,'open')
-     RETURNING id`,
+  // ── 10:30 OPEN — best proposal for Hemi (close to morning cluster)
+  const proposedSlot = await pool.query(
+    `INSERT INTO meeting_slots (campaign_id, slot_datetime, duration_minutes, status)
+     VALUES ($1,$2,45,'open') RETURNING id`,
     [CAMPAIGN_ID, dt('10:30')]
   );
 
@@ -165,18 +161,15 @@ async function seedTestSlots(phone, street) {
      ON CONFLICT (phone, zoho_campaign_id) DO UPDATE
      SET state='confirmed', contact_address=EXCLUDED.contact_address,
          contact_street=EXCLUDED.contact_street, context=EXCLUDED.context`,
-    [
-      phone, CAMPAIGN_ID,
-      `${street}, תל אביב`,
-      street,
-      JSON.stringify({ contactName: 'חמי מיכאלי', confirmedSlot: { dateStr: tDate, timeStr: '13:30' } })
-    ]
+    [phone, CAMPAIGN_ID, `${street}, תל אביב`, street,
+     JSON.stringify({ contactName: 'חמי מיכאלי', confirmedSlot: { dateStr: tDate, timeStr: '13:30' } })]
   );
 
   return {
-    hemi_slot_id: hemiSlotRes.rows[0].id,
-    proposed_slot_id: proposedSlotRes.rows[0].id,
+    hemi_slot_id: hemiSlot.rows[0].id,
+    proposed_slot_id: proposedSlot.rows[0].id,
     tomorrow: tDate,
+    project_id: projectId,
     slots_created: 6
   };
 }
@@ -185,19 +178,11 @@ async function seedTestSlots(phone, street) {
 // ROUTES
 // ══════════════════════════════════════════════════════════════
 
-/**
- * POST /api/test/optimization/setup
- * 1. Find Hemi in Zoho
- * 2. Ensure he has an address (add one if missing)
- * 3. Create/verify Zoho campaign
- * 4. Seed DB slots for tomorrow
- */
 router.post('/setup', async (req, res) => {
   const log = [];
   const step = (msg, data) => { log.push({ msg, data }); logger.info(`[TestSetup] ${msg}`); };
 
   try {
-    // ── Step 1: Zoho contact ──────────────────────────────────
     step('Fetching Zoho token...');
     let zohoContactId = null;
     let hemiPhone = TEST_PHONE;
@@ -211,38 +196,33 @@ router.post('/setup', async (req, res) => {
       const contact = await findHemiInZoho(token);
       if (contact) {
         zohoContactId = contact.id;
-        hemiPhone = (contact.Mobile || contact.Phone || TEST_PHONE).replace(/\D/g, '');
-        if (!hemiPhone.startsWith('972')) hemiPhone = '972' + hemiPhone.replace(/^0/, '');
-        step(`Found Hemi in Zoho: ${contact.First_Name} ${contact.Last_Name}`, { id: zohoContactId, phone: hemiPhone, street: contact.Mailing_Street });
+        const rawPhone = (contact.Mobile || contact.Phone || TEST_PHONE).replace(/\D/g, '');
+        hemiPhone = rawPhone.startsWith('972') ? rawPhone : '972' + rawPhone.replace(/^0/, '');
+        step(`Found: ${contact.First_Name} ${contact.Last_Name} | phone: ${hemiPhone} | street: ${contact.Mailing_Street}`);
 
-        // Ensure address
         const addrResult = await ensureZohoAddress(token, zohoContactId, contact.Mailing_Street);
-        hemiStreet = addrResult.street?.replace(/^(רחוב|שד'|דרך)\s+/i, '').replace(/\s+\d+$/, '').trim() || 'הרצל';
-        step(addrResult.updated ? `Address added: ${addrResult.street}` : `Address exists: ${addrResult.street}`);
+        hemiStreet = (addrResult.street || 'הרצל 20').replace(/^(רחוב|שד'|דרך)\s+/i, '').trim();
+        step(addrResult.updated ? `✅ Address added: ${addrResult.street}` : `Address exists: ${addrResult.street}`);
       } else {
-        step('Hemi not found in Zoho — using test defaults', { phone: hemiPhone });
+        step('⚠️ Hemi not found in Zoho — using defaults');
       }
 
-      // Create/verify Zoho campaign
       const zohoId = await ensureZohoCampaign(token, zohoContactId);
-      step(`Zoho campaign: ${CAMPAIGN_ID}`, { zoho_id: zohoId });
+      step(`Zoho campaign: ${CAMPAIGN_ID} (id=${zohoId})`);
       zohoOk = true;
     } catch (zohoErr) {
-      step(`Zoho error (continuing with DB-only): ${zohoErr.message}`);
+      step(`⚠️ Zoho error (DB-only mode): ${zohoErr.message}`);
     }
 
-    // ── Step 2: Seed DB slots ─────────────────────────────────
-    step('Seeding test slots in DB...');
+    step('Seeding test slots...');
     const seedResult = await seedTestSlots(hemiPhone, hemiStreet);
     step('Slots seeded', seedResult);
 
-    // ── Step 3: Run optimization ──────────────────────────────
     step('Running optimization engine...');
     const optimizationService = require('../services/optimizationService');
     const optResult = await optimizationService.sendRescheduleOffers(CAMPAIGN_ID);
-    step('Optimization run complete', optResult);
+    step('Optimization complete', optResult);
 
-    // ── Step 4: Fetch current state ───────────────────────────
     const slotRows = await pool.query(
       `SELECT id, TO_CHAR(slot_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS time,
               status, contact_name, contact_phone
@@ -274,24 +254,22 @@ router.post('/setup', async (req, res) => {
   }
 });
 
-/**
- * GET /api/test/optimization/state
- * Show current slots + reschedule_requests for HEMI-TEST-001
- */
 router.get('/state', async (req, res) => {
   try {
     const slots = await pool.query(
-      `SELECT id,
-              TO_CHAR(slot_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS time,
+      `SELECT id, TO_CHAR(slot_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS time,
               status, contact_name, contact_phone, contact_street
        FROM meeting_slots WHERE campaign_id=$1 ORDER BY slot_datetime`,
       [CAMPAIGN_ID]
     );
     const requests = await pool.query(
-      `SELECT rr.*, 
-              TO_CHAR(rr.original_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS orig_time,
-              TO_CHAR(rr.proposed_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS prop_time
-       FROM reschedule_requests rr WHERE rr.campaign_id=$1 ORDER BY rr.created_at DESC`,
+      `SELECT rr.*,
+              TO_CHAR(ms_orig.slot_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS orig_time,
+              TO_CHAR(ms_prop.slot_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS prop_time
+       FROM reschedule_requests rr
+       LEFT JOIN meeting_slots ms_orig ON ms_orig.id = rr.original_slot_id
+       LEFT JOIN meeting_slots ms_prop ON ms_prop.id = rr.proposed_slot_id
+       WHERE rr.campaign_id=$1 ORDER BY rr.created_at DESC`,
       [CAMPAIGN_ID]
     );
     const session = await pool.query(
@@ -304,10 +282,6 @@ router.get('/state', async (req, res) => {
   }
 });
 
-/**
- * POST /api/test/optimization/reset
- * Clean up all test data
- */
 router.post('/reset', async (req, res) => {
   try {
     await pool.query(`DELETE FROM reschedule_requests WHERE campaign_id=$1`, [CAMPAIGN_ID]);
