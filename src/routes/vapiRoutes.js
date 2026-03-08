@@ -156,6 +156,21 @@ const AGENTS = {
 אל תזכיר טכנולוגיה.`,
   },
 
+  quantum_appointment_scheduler: {
+    id: 'quantum_appointment_scheduler',
+    name: 'בוט תיאום פגישות',
+    description: 'שיחת Vapi fallback לתיאום פגישה — מופעל אחרי שעה ללא תגובה ל-WhatsApp',
+    assistantId: process.env.VAPI_ASSISTANT_APPOINTMENT || null,
+    systemPrompt: `אתה נציג תיאום פגישות של QUANTUM - חברת פינוי-בינוי.
+שמך "מיכל מ-QUANTUM".
+המטרה: לתאם מועד ל-{{campaign_type}} עם הדייר.
+מועדים פנויים: {{available_slots}}
+פתיחה: "שלום, אני מיכל מ-QUANTUM. שלחנו לך הודעה לתיאום {{campaign_type}} - רצינו לוודא שקיבלת. יש לך כמה דקות?"
+אם כן - הצג מועדים ובקש לבחור.
+אם לא - "אין בעיה, מתי נוח לך שנחזור אליך?" - תאם מחדש.
+שפה: עברית. חמים, קצר, לא לחצני.`,
+  },
+
   inbound_handler: {
     id: 'inbound_handler',
     name: 'מענה נכנס',

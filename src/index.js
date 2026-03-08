@@ -121,6 +121,7 @@ function loadAllRoutes() {
     { path: '/api/whatsapp', file: 'routes/whatsappAlertRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
     { path: '/api/scheduling', file: 'routes/schedulingRoutes.js' },
+    { path: '/api/appointments', file: 'routes/appointmentRoutes.js' },
     { path: '/api/notifications', file: 'routes/notificationRoutes.js' },
     { path: '/api/export', file: 'routes/exportRoutes.js' },
     { path: '/api/search', file: 'routes/searchRoutes.js' },
@@ -435,9 +436,8 @@ async function start() {
   try { const { startWatcher } = require('./jobs/stuckScanWatcher'); startWatcher(); } catch (e) { logger.warn('Stuck scan watcher failed to start:', e.message); }
   try { const { startDiscoveryScheduler } = require('./jobs/discoveryScheduler'); startDiscoveryScheduler(); } catch (e) { logger.warn('Discovery scheduler failed to start:', e.message); }
 
-  try {
-    const { processReminderQueue } = require('./jobs/reminderJob');
-    const cron = require('node-cron');
+  try { const { initialize: initAppointmentFallback } = require('./jobs/appointmentFallbackJob'); initAppointmentFallback(); } catch (e) { logger.warn('Appointment fallback job failed to start:', e.message); }
+  try { const { processReminderQueue } = require('./jobs/reminderJob'); const cron = require('node-cron');
     cron.schedule('* * * * *', async () => {
       try { await processReminderQueue(); } catch (e) { logger.warn('[ReminderJob] Error:', e.message); }
     });
