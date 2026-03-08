@@ -1,0 +1,154 @@
+name: Konesonline Daily Scraper
+
+on:
+  schedule:
+    # Daily at 07:00 UTC (10:00 Israel time)
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual trigger'
+        required: false
+        default: 'Manual scrape'
+
+jobs:
+  scrape-konesonline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Scrape konesonline.co.il and import to Railway
+        env:
+          RAILWAY_API_URL: ${{ secrets.RAILWAY_API_URL }}
+        run: |
+          python3 << 'PYEOF'
+          import urllib.request, re, html, json, os, sys
+
+          API_URL = os.environ.get('RAILWAY_API_URL', 'https://pinuy-binuy-analyzer-production.up.railway.app')
+          
+          print(f"[KonesonlineScraper] Fetching from konesonline.co.il...")
+          
+          url = "https://www.konesonline.co.il/RealEstates"
+          req = urllib.request.Request(url, headers={
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'he-IL,he;q=0.9',
+              'Referer': 'https://www.google.co.il/',
+          })
+          
+          try:
+              content = urllib.request.urlopen(req, timeout=30).read().decode('utf-8')
+          except Exception as e:
+              print(f"[ERROR] Failed to fetch konesonline: {e}")
+              sys.exit(1)
+
+          prop_types = ['דירת גן', 'בית מגורים', 'בית פרטי', 'דירה', 'מגרש', 'קרקע', 'פנטהאוז', 'דופלקס', 'מחסן', 'חנות']
+          prop_map = {
+              'דירה': 'apartment', 'דירת גן': 'garden_apartment', 'פנטהאוז': 'penthouse',
+              'דופלקס': 'duplex', 'בית פרטי': 'house', 'בית מגורים': 'house',
+              'מגרש': 'land', 'קרקע': 'land', 'חנות': 'store', 'מחסן': 'storage'
+          }
+          city_regions = {
+              'תל אביב': 'מרכז', 'רמת גן': 'מרכז', 'חולון': 'מרכז', 'בת ים': 'מרכז',
+              'בני ברק': 'מרכז', 'פתח תקווה': 'מרכז', 'ראש העין': 'מרכז',
+              'אור יהודה': 'מרכז', 'יבנה': 'מרכז', 'ראשון לציון': 'מרכז',
+              'נס ציונה': 'מרכז', 'רחובות': 'מרכז', 'לוד': 'מרכז', 'רמלה': 'מרכז',
+              'הוד השרון': 'שרון', 'כפר סבא': 'שרון', 'רעננה': 'שרון', 'הרצליה': 'שרון',
+              'נתניה': 'שרון', 'חדרה': 'שרון', 'ירושלים': 'ירושלים',
+              'חיפה': 'צפון', 'מגדל העמק': 'צפון', 'עפולה': 'צפון',
+              'קרית גת': 'דרום', 'אשדוד': 'דרום', 'אשקלון': 'דרום',
+              'באר שבע': 'דרום', 'אילת': 'דרום', 'ערד': 'דרום',
+          }
+          region_en = {'מרכז': 'center', 'דרום': 'south', 'צפון': 'north', 'ירושלים': 'jerusalem', 'שרון': 'center'}
+          prop_pattern = '|'.join(prop_types)
+          block_pattern = re.compile(r'RealEstatesProductDetails/(\d+)[^>]*>(.*?)(?=RealEstatesProductDetails/\d+|</body>|$)', re.DOTALL)
+
+          listings = []
+          seen = set()
+
+          for m in block_pattern.finditer(content):
+              ext_id = m.group(1)
+              if ext_id in seen:
+                  continue
+              seen.add(ext_id)
+              
+              text = re.sub(r'<[^>]+>', ' ', m.group(2))
+              text = html.unescape(re.sub(r'\s+', ' ', text)).strip()
+              
+              date_m = re.search(r'(\d{2}/\d{2}/\d{4})', text)
+              if date_m:
+                  d = date_m.group(1).split('/')
+                  deadline = f"{d[2]}-{d[1]}-{d[0]}"
+              else:
+                  deadline = None
+              
+              prop_m = re.search(rf'({prop_pattern})', text)
+              prop = prop_m.group(1) if prop_m else None
+              
+              city = None
+              address = None
+              
+              if prop:
+                  after = text[text.index(prop)+len(prop):].strip()
+                  city_m = re.search(r'^\u05d1([\u05d0-\u05ea\s\-"\']+?)(?:\s+(?:\u05e8\u05d7\'|\u05e8\u05d7\u05d5\u05d1|\u05e9\u05d3\'|\u05d3\u05e8\u05da))', after)
+                  if city_m:
+                      city = city_m.group(1).strip()
+                      street_m = re.search(r"(?:\u05e8\u05d7'|\u05e8\u05d7\u05d5\u05d1|\u05e9\u05d3'|\u05d3\u05e8\u05da)\s+([\u05d0-\u05ea\s\"'\-\d]+?)(?:\s+(?:\u05d4\u05de\u05db\u05e8\u05d6|\u05e2\u05d5\u05d3|\u05e6\u05e4\u05d4|\u05d4\u05e1\u05ea\u05d9\u05d9\u05dd|\u05e4\u05e2\u05d9\u05dc|\u05d4\u05d9\u05d5\u05dd|\d{2}\/)|$)", after)
+                      if street_m:
+                          address = street_m.group(1).strip()
+                          address = re.sub(r'\s+(?:\u05e2\u05d5\u05d3 \d+ \u05d9\u05de\u05d9\u05dd?|\u05d4\u05de\u05db\u05e8\u05d6 \u05d4\u05d9\u05d5\u05dd|\u05e2\u05d5\u05d3 \u05d9\u05d5\u05dd \u05d0\u05d7\u05d3).*$', '', address).strip()
+              
+              if not city or not address:
+                  continue
+              
+              region = city_regions.get(city)
+              listings.append({
+                  "source": "konesonline",
+                  "externalId": ext_id,
+                  "propertyType": prop,
+                  "propertyTypeEn": prop_map.get(prop, 'other'),
+                  "city": city,
+                  "address": address,
+                  "region": region,
+                  "regionEn": region_en.get(region) if region else None,
+                  "submissionDeadline": deadline,
+                  "phone": None,
+                  "url": f"https://www.konesonline.co.il/RealEstates/RealEstatesProductDetails/{ext_id}",
+                  "isReceivership": True,
+                  "ssiContribution": 30
+              })
+
+          print(f"[KonesonlineScraper] Scraped {len(listings)} listings")
+          
+          if not listings:
+              print("[WARN] No listings found - site structure may have changed")
+              sys.exit(0)
+
+          # POST to Railway import endpoint
+          payload = json.dumps({"listings": listings}).encode('utf-8')
+          req2 = urllib.request.Request(
+              f"{API_URL}/api/kones/import",
+              data=payload,
+              headers={'Content-Type': 'application/json'},
+              method='POST'
+          )
+          
+          try:
+              resp = urllib.request.urlopen(req2, timeout=30).read().decode('utf-8')
+              result = json.loads(resp)
+              imported = result.get('imported', 0)
+              skipped = result.get('skipped', 0)
+              print(f"[KonesonlineScraper] Import result: {imported} imported, {skipped} skipped")
+              if imported > 0:
+                  print(f"[KonesonlineScraper] SUCCESS: {imported} new listings added to QUANTUM DB")
+              else:
+                  print("[KonesonlineScraper] No new listings (all already in DB)")
+          except Exception as e:
+              print(f"[ERROR] Failed to import to Railway: {e}")
+              sys.exit(1)
+          PYEOF
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "Konesonline scraper completed at $(date -u)"
