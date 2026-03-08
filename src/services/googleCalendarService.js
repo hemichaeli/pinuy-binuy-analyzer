@@ -8,7 +8,7 @@
  * Each station in a ceremony can also have its own calendar (ceremony_stations.google_calendar_id).
  *
  * Auth: Service Account JSON in GOOGLE_SERVICE_ACCOUNT_JSON env var
- *       or individual fields GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY
+ *       or individual fields GOOGLE_CLIENT_EMAIL / GOOGLE_SA_EMAIL + GOOGLE_PRIVATE_KEY / GOOGLE_SA_PRIVATE_KEY
  *
  * Scopes required: https://www.googleapis.com/auth/calendar
  */
@@ -28,18 +28,26 @@ function getClient() {
       google = require('googleapis').google;
     }
 
-    const { GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY } = process.env;
+    const {
+      GOOGLE_SERVICE_ACCOUNT_JSON,
+      // Support both naming conventions
+      GOOGLE_CLIENT_EMAIL, GOOGLE_SA_EMAIL,
+      GOOGLE_PRIVATE_KEY, GOOGLE_SA_PRIVATE_KEY
+    } = process.env;
+
+    const clientEmail = GOOGLE_CLIENT_EMAIL || GOOGLE_SA_EMAIL;
+    const privateKey  = GOOGLE_PRIVATE_KEY  || GOOGLE_SA_PRIVATE_KEY;
 
     let credentials;
     if (GOOGLE_SERVICE_ACCOUNT_JSON) {
       credentials = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON);
-    } else if (GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY) {
+    } else if (clientEmail && privateKey) {
       credentials = {
-        client_email: GOOGLE_CLIENT_EMAIL,
-        private_key: GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
+        client_email: clientEmail,
+        private_key: privateKey.replace(/\\n/g, '\n')
       };
     } else {
-      logger.warn('[GCal] No credentials configured. Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_CLIENT_EMAIL + GOOGLE_PRIVATE_KEY');
+      logger.warn('[GCal] No credentials configured. Set GOOGLE_SA_EMAIL + GOOGLE_SA_PRIVATE_KEY on Railway');
       return null;
     }
 
@@ -51,6 +59,7 @@ function getClient() {
     );
 
     calendar = google.calendar({ version: 'v3', auth: jwtClient });
+    logger.info(`[GCal] Client initialized for ${credentials.client_email}`);
     return jwtClient;
   } catch (err) {
     logger.warn('[GCal] Failed to initialize client:', err.message);
@@ -147,6 +156,23 @@ async function updateEvent(calendarId, eventId, updates) {
 }
 
 /**
+ * Test calendar connectivity - list events from a calendar
+ */
+async function testCalendarAccess(calendarId) {
+  if (!getClient()) return { ok: false, error: 'No credentials' };
+  try {
+    const res = await calendar.events.list({
+      calendarId,
+      maxResults: 1,
+      timeMin: new Date().toISOString()
+    });
+    return { ok: true, calendarId, eventCount: res.data.items?.length || 0 };
+  } catch (err) {
+    return { ok: false, calendarId, error: err.message };
+  }
+}
+
+/**
  * Create a booking event for a ceremony slot.
  * Resolves the correct calendar from station → project chain.
  *
@@ -160,7 +186,6 @@ async function createCeremonySlotEvent(pool, slot, contactName, contactPhone) {
   if (!getClient()) return null;
 
   try {
-    // Get station → building → ceremony → project chain for calendar IDs
     const res = await pool.query(
       `SELECT
          cst.google_calendar_id AS station_gcal,
@@ -182,7 +207,6 @@ async function createCeremonySlotEvent(pool, slot, contactName, contactPhone) {
     if (!res.rows.length) return null;
     const row = res.rows[0];
 
-    // Prefer station-level calendar, fall back to project calendar
     const calendarId = row.station_gcal || row.project_gcal;
     if (!calendarId) {
       logger.warn(`[GCal] No calendar configured for slot ${slot.id}`);
@@ -267,7 +291,11 @@ async function createMeetingSlotEvent(pool, slot, contactName, contactPhone) {
  * Check if calendar service is configured.
  */
 function isConfigured() {
-  return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_CLIENT_EMAIL);
+  return !!(
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
+    process.env.GOOGLE_CLIENT_EMAIL ||
+    process.env.GOOGLE_SA_EMAIL
+  );
 }
 
 module.exports = {
@@ -276,5 +304,6 @@ module.exports = {
   updateEvent,
   createCeremonySlotEvent,
   createMeetingSlotEvent,
+  testCalendarAccess,
   isConfigured
 };
