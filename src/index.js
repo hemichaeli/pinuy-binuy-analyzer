@@ -14,15 +14,19 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.74.0';
-const BUILD = '2026-03-08-v4.74.0-appointments-bot-issue8';
+const VERSION = '4.76.0';
+const BUILD = '2026-03-08-v4.76.0-schedule-optimization-engine';
 
 // What's in this version:
-// - NEW: Appointments bot (Issue #8) - WhatsApp + Vapi fallback scheduling
-// - NEW: POST /api/appointments/send-slots - send available slots to lead via WhatsApp
-// - NEW: Vapi fallback cron - auto-call after 1hr no reply
-// - PREV: konesonline.co.il GitHub Actions scraper (runs on GitHub IPs)
-// - PREV: Dashboard Morning Intelligence + Kones UX (v4.72.0)
+// - NEW: Schedule Optimization Engine (v4.76.0)
+//   * optimizationService.js - detects isolated slots, sends WA offer, queues Vapi fallback
+//   * optimizationCron.js - runs at 20:00 Sun-Thu + 22:30 expire stale requests
+//   * Atomic slot swap on accept (PostgreSQL transaction)
+//   * reschedule_requests table in DB
+//   * API: POST /api/scheduling/optimization/run + GET /api/scheduling/optimization/status
+//   * Webhook intercepts reschedule replies before normal bot flow
+// - PREV: Smart Slot Clustering - address-based scoring (v4.75.0)
+// - PREV: Appointments bot (Issue #8) - WhatsApp + Vapi fallback scheduling
 
 async function runAutoMigrations() {
   try {
@@ -121,7 +125,6 @@ function loadAllRoutes() {
     { path: '/api/whatsapp', file: 'routes/whatsappAlertRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
     { path: '/api/scheduling', file: 'routes/schedulingRoutes.js' },
-    { path: '/api/appointments', file: 'routes/appointmentRoutes.js' },
     { path: '/api/notifications', file: 'routes/notificationRoutes.js' },
     { path: '/api/export', file: 'routes/exportRoutes.js' },
     { path: '/api/search', file: 'routes/searchRoutes.js' },
@@ -277,6 +280,14 @@ app.get('/api/debug', async (req, res) => {
     const ns = require('./services/notificationService');
     notificationStats = ns.getStats();
   } catch (e) { /* ignore */ }
+
+  let optimizationStats = {};
+  try {
+    const { rows } = await pool.query(
+      `SELECT status, COUNT(*) AS total FROM reschedule_requests GROUP BY status`
+    );
+    optimizationStats = Object.fromEntries(rows.map(r => [r.status, parseInt(r.total)]));
+  } catch (e) { /* table may not exist yet */ }
   
   res.json({
     version: VERSION,
@@ -297,6 +308,8 @@ app.get('/api/debug', async (req, res) => {
     morning_intelligence: 'active at /api/morning/preview - shown in dashboard',
     kones_ux: 'landline/no_phone color-coded + stats bar + filter (v4.72.0)',
     appointments_bot: 'active at /api/appointments (Issue #8) - WhatsApp + Vapi fallback',
+    schedule_optimization: `active - cron 20:00 Sun-Thu + 22:30 expire | stats: ${JSON.stringify(optimizationStats)}`,
+    smart_slot_clustering: 'active - address-based proximity scoring (v4.75.0)',
     notifications_sse: `active (${notificationStats.connected_clients || 0} clients connected)`,
     export_api: 'active - leads/complexes/messages/ads/full-report',
     search_api: 'active - global/suggestions/saved/history',
@@ -338,12 +351,10 @@ async function start() {
     await initAutoContact();
     const cron = require('node-cron');
 
-    // Yad2 + Facebook auto-contact: every 30 minutes
     cron.schedule('*/30 * * * *', async () => {
       try { await runAutoFirstContact(); } catch (e) { logger.warn('[AutoContact] Cron error:', e.message); }
     });
 
-    // Kones auto-contact: daily at 07:45 (Issue #5)
     cron.schedule('45 7 * * *', async () => {
       try { await runKonesAutoContact(); } catch (e) { logger.warn('[KonesContact] Cron error:', e.message); }
     });
@@ -354,13 +365,20 @@ async function start() {
     logger.warn('[AutoContact] Failed to start:', e.message);
   }
 
+  // Schedule Optimization Engine - runs 20:00 Sun-Thu + 22:30 expire
+  try {
+    const { startOptimizationCron } = require('./cron/optimizationCron');
+    startOptimizationCron();
+    logger.info('[ScheduleOptimization] ACTIVE - 20:00 Sun-Thu (offer) + 22:30 (expire stale)');
+  } catch (e) {
+    logger.warn('[ScheduleOptimization] Failed to start:', e.message);
+  }
+
   // Konesonline.co.il daily scraper (now handled by GitHub Actions)
   try {
     const konesIsraelService = require('./services/konesIsraelService');
     const cron = require('node-cron');
 
-    // Note: Primary scraping is via GitHub Actions (.github/workflows/konesonline-scraper.yml)
-    // Railway backup cron kept as fallback (Railway IPs may be blocked)
     cron.schedule('15 7 * * *', async () => {
       try {
         const result = await konesIsraelService.runKonesonlineScrape();
@@ -380,7 +398,6 @@ async function start() {
     const cron = require('node-cron');
     cron.schedule('*/15 * * * *', async () => {
       try {
-        // Find appointments sent >1hr ago with no reply
         const { rows: stale } = await pool.query(`
           SELECT a.* FROM appointments a
           WHERE a.status = 'whatsapp_sent'
@@ -444,9 +461,6 @@ async function start() {
     logger.info('Reminder queue job: ACTIVE (every minute)');
   } catch (e) { logger.warn('Reminder job failed to start:', e.message); }
 
-  // ============================================
-  // Issues #4 + #5: New Scrapers — daily cron
-  // ============================================
   const scraperDefs = [
     { name: 'Komo',       module: './services/komoScraper',       cron: '0 8 * * *',  fn: 'scanAll' },
     { name: 'BankNadlan', module: './services/bankNadlanScraper', cron: '15 8 * * *', fn: 'scanAll' },
@@ -483,6 +497,7 @@ async function start() {
   logger.info('Morning Intelligence: ACTIVE - /api/morning/preview');
   logger.info('WhatsApp Conversations: FIXED (Issue #6)');
   logger.info('Appointments Bot: ACTIVE (Issue #8) - /api/appointments');
+  logger.info('Schedule Optimization: ACTIVE - 20:00 + 22:30 cron');
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Server running on port ${PORT}`);
