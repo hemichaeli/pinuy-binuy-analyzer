@@ -2,6 +2,7 @@
  * QUANTUM Bot Engine v4
  * - ALL meeting types (including signing ceremonies) use visual booking link
  * - Ceremony: stores ceremony context so bookingRoute knows to query ceremony_slots
+ * - Pulls contact address from Zoho CRM for smart slot clustering
  */
 
 const pool = require('../db/pool');
@@ -28,13 +29,11 @@ const STRINGS = {
     confirmIdentity: (name) => `שלום ${name} 👋\nאני הבוט של QUANTUM.\n\nרק לאימות - האם אתה/את ${name}?\n1️⃣ כן\n2️⃣ לא, מדובר בטעות`,
     wrongPerson: `מצטערים על הבלבול. נשמח אם תעביר/י את ההודעה לבעל הדירה הרשום. תודה 🙏`,
 
-    // Ceremony: ask if they'll attend, then send link
     ceremonyIntro: (name, ceremony) =>
       `${name}, כנס החתימות לפרויקט *${ceremony.projectName}* יתקיים ב:\n📅 ${ceremony.dateStr}\n📍 ${ceremony.location}\n\nנשמח לראותך! האם תוכל/י להגיע?\n1️⃣ כן, אגיע\n2️⃣ לא אוכל להגיע\n3️⃣ עדיין לא יודע/ת`,
     ceremonyDeclined: `תודה שעדכנת אותנו. נציג שלנו ייצור איתך קשר בהקדם.`,
     ceremonyMaybe: `מובן. נחזור אליך קרוב לתאריך הכנס לאישור סופי.`,
 
-    // Booking link (used for both meetings and ceremonies)
     bookingLink: (name, type, url) =>
       `שלום ${name} 👋\nQUANTUM כאן.\n\nנשמח לתאם *${type}* עבור דירתך.\n\n📅 לבחירת מועד נוח - לחץ/י על הקישור:\n${url}\n\nהקישור תקף ל-48 שעות.`,
 
@@ -93,23 +92,44 @@ class BotEngine {
       return s;
     }
 
+    // ── Pull contact details + address from Zoho ──────────────
     let contactId = null, contactName = '', lang = 'he';
+    let contactAddress = null, contactStreet = null, contactBuildingNo = null;
+
     try {
       const contact = await zoho.findContactByPhone(phone);
       if (contact) {
-        contactId = contact.id;
-        contactName = contact.Full_Name || '';
-        if (contact.Language === 'Russian' || contact.Language === 'ru') lang = 'ru';
+        contactId        = contact.id;
+        contactName      = contact.Full_Name || '';
+        contactAddress   = contact.contact_address   || null;
+        contactStreet    = contact.contact_street    || null;
+        contactBuildingNo = contact.contact_building_no || null;
+
+        // Detect language: explicit field first, then fallback to Cyrillic name detection
+        if (contact.Language === 'Russian' || contact.Language === 'ru') {
+          lang = 'ru';
+        } else if (/[\u0400-\u04FF]/.test(contactName)) {
+          lang = 'ru';
+        }
       }
     } catch (e) {
       logger.warn('[BotEngine] Zoho contact lookup failed:', e.message);
     }
 
+    // ── Insert session with address fields ────────────────────
     const ins = await pool.query(
-      `INSERT INTO bot_sessions (phone, zoho_contact_id, zoho_campaign_id, language, state, context)
-       VALUES ($1,$2,$3,$4,'confirm_identity',$5) RETURNING *`,
-      [phone, contactId, campaignId, lang, JSON.stringify({ contactName })]
+      `INSERT INTO bot_sessions
+         (phone, zoho_contact_id, zoho_campaign_id, language, state, context,
+          contact_address, contact_street, contact_building_no)
+       VALUES ($1,$2,$3,$4,'confirm_identity',$5,$6,$7,$8)
+       RETURNING *`,
+      [
+        phone, contactId, campaignId, lang,
+        JSON.stringify({ contactName }),
+        contactAddress, contactStreet, contactBuildingNo
+      ]
     );
+
     const s = ins.rows[0];
     s.context = { contactName };
     this._zohoStatus(s, 'bot_sent').catch(() => {});
@@ -156,14 +176,12 @@ class BotEngine {
         ctx.config = config;
 
         if (config.meeting_type === 'signing_ceremony') {
-          // Ceremony: first ask if they'll attend
           const ceremony = await this.getActiveCeremony(session.zoho_campaign_id);
           if (!ceremony) return S.noSlots;
           ctx.ceremony = ceremony;
           session.state = 'ceremony_confirm_attendance';
           return S.ceremonyIntro(ctx.contactName || '', ceremony);
         } else {
-          // Regular meeting: send visual booking link immediately
           return await this._sendBookingLink(session, config, lang, S);
         }
 
@@ -179,7 +197,6 @@ class BotEngine {
     if (state === 'ceremony_confirm_attendance') {
       if (msg === '1') {
         this._zohoStatus(session, 'answered', 'אישר הגעה לכנס - בוחר שעה').catch(() => {});
-        // Send visual booking link for ceremony slots
         const config = await this.getCampaignConfig(session.zoho_campaign_id);
         return await this._sendBookingLink(session, config, lang, S);
 
@@ -203,7 +220,6 @@ class BotEngine {
     const ctx = session.context;
     const isCeremony = config.meeting_type === 'signing_ceremony';
 
-    // Check slots exist
     const hasSlots = isCeremony
       ? await this.hasCeremonySlots(ctx.ceremony?.id)
       : await this.hasAvailableSlots(session.zoho_campaign_id);
