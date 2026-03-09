@@ -99,13 +99,9 @@ CREATE INDEX IF NOT EXISTS idx_meeting_slots_street ON meeting_slots(campaign_id
 -- ========================================================
 -- QUANTUM v4.76+ - Schedule Optimization Engine
 -- ========================================================
--- Tracks reschedule requests sent to contacts on the eve of their appointment.
--- Phase 1: WhatsApp offer  →  Phase 2: Vapi call if no response
 
 CREATE TABLE IF NOT EXISTS reschedule_requests (
   id                    SERIAL PRIMARY KEY,
-
-  -- Original confirmed slot
   original_slot_id      INTEGER NOT NULL REFERENCES meeting_slots(id),
   campaign_id           TEXT NOT NULL,
   phone                 VARCHAR(30) NOT NULL,
@@ -113,37 +109,19 @@ CREATE TABLE IF NOT EXISTS reschedule_requests (
   contact_name          TEXT,
   language              TEXT DEFAULT 'he',
   original_datetime     TIMESTAMPTZ NOT NULL,
-
-  -- Proposed better slot
   proposed_slot_id      INTEGER NOT NULL REFERENCES meeting_slots(id),
   proposed_datetime     TIMESTAMPTZ NOT NULL,
-
-  -- Optimization metrics
-  gap_saved_minutes     INTEGER,        -- how many minutes of idle time we eliminate
-  cluster_gain          INTEGER,        -- delta in cluster score
-
-  -- Status lifecycle:
-  --   pending        → WA sent, waiting for reply
-  --   accepted       → contact said yes, swap done
-  --   declined       → contact said no or no reply within window
-  --   call_queued    → no WA response, Vapi call triggered
-  --   call_accepted  → accepted on call
-  --   call_declined  → declined on call
-  --   expired        → past the cutoff, no action taken
+  gap_saved_minutes     INTEGER,
+  cluster_gain          INTEGER,
   status                TEXT NOT NULL DEFAULT 'pending',
-
-  -- Timing
   wa_sent_at            TIMESTAMPTZ,
   wa_replied_at         TIMESTAMPTZ,
   call_triggered_at     TIMESTAMPTZ,
   call_completed_at     TIMESTAMPTZ,
-  swapped_at            TIMESTAMPTZ,    -- when the actual slot swap was executed
-  expires_at            TIMESTAMPTZ,    -- deadline for response (e.g. 2 hours before original)
-
+  swapped_at            TIMESTAMPTZ,
+  expires_at            TIMESTAMPTZ,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW(),
-
-  -- One active request per slot max
   UNIQUE(original_slot_id)
 );
 
@@ -151,3 +129,29 @@ CREATE INDEX IF NOT EXISTS idx_reschedule_status   ON reschedule_requests(status
 CREATE INDEX IF NOT EXISTS idx_reschedule_phone    ON reschedule_requests(phone);
 CREATE INDEX IF NOT EXISTS idx_reschedule_campaign ON reschedule_requests(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_reschedule_expires  ON reschedule_requests(expires_at) WHERE status = 'pending';
+
+-- ========================================================
+-- QUANTUM v4.79+ - Campaign Availability Settings
+-- available_windows stores per-day time windows:
+-- [{ "day": 0, "start": "09:00", "end": "18:00" }, ...]
+-- day: 0=ראשון, 1=שני, 2=שלישי, 3=רביעי, 4=חמישי, 5=שישי, 6=שבת
+-- Default: Sun-Thu 09:00-18:00
+-- ========================================================
+
+ALTER TABLE campaign_schedule_config
+  ADD COLUMN IF NOT EXISTS default_start_time TIME DEFAULT '09:00:00';
+
+ALTER TABLE campaign_schedule_config
+  ADD COLUMN IF NOT EXISTS default_end_time TIME DEFAULT '18:00:00';
+
+-- Ensure available_windows has a proper default (Sun-Thu 09:00-18:00)
+-- Existing empty arrays will be treated as "use defaults" by the bot engine
+UPDATE campaign_schedule_config
+  SET available_windows = '[
+    {"day":0,"start":"09:00","end":"18:00"},
+    {"day":1,"start":"09:00","end":"18:00"},
+    {"day":2,"start":"09:00","end":"18:00"},
+    {"day":3,"start":"09:00","end":"18:00"},
+    {"day":4,"start":"09:00","end":"18:00"}
+  ]'::jsonb
+  WHERE available_windows = '[]'::jsonb OR available_windows IS NULL;
