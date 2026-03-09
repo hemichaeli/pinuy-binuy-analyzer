@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.83.0';
-const BUILD = '2026-03-09-v4.83.0-campaign-admin-panel';
+const VERSION = '4.86.0';
+const BUILD = '2026-03-09-v4.86.0-booking-desktop-layout-v6.3';
 
 async function runAutoMigrations() {
   try {
