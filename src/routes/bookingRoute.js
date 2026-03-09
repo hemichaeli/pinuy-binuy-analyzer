@@ -18,7 +18,7 @@
  *
  * GET  /booking/:token          - Visual calendar HTML
  * GET  /booking/:token/slots    - JSON slot data
- * POST /booking/:token/confirm  - Confirm booking + create Google Calendar event
+ * POST /booking/:token/confirm  - Confirm booking + create Google + Zoho Calendar events
  */
 
 const express = require('express');
@@ -28,8 +28,13 @@ const inforuService = require('../services/inforuService');
 const { logger } = require('../services/logger');
 const crypto = require('crypto');
 
+// Google Calendar (service account)
 let gcal;
 try { gcal = require('../services/googleCalendarService'); } catch (e) { /* optional */ }
+
+// Zoho Calendar (OAuth, same credentials as CRM)
+let zcal;
+try { zcal = require('../services/zohoCalendarService'); } catch (e) { /* optional */ }
 
 const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
   ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
@@ -60,16 +65,9 @@ module.exports.BASE_URL = BASE_URL;
 // SMART SLOT CLUSTERING
 // ══════════════════════════════════════════════════════════════
 
-/**
- * Score open slots by geographic density.
- * contactStreet: extracted from Zoho Mailing_Street (e.g. "הרצל")
- * Modifies slots in-place, adding a `cluster_score` field.
- * Returns the same array sorted by score DESC, slot_datetime ASC.
- */
 async function scoreSlotsByProximity(slots, campaignId, contactStreet) {
   if (!slots.length) return slots;
 
-  // Fetch all confirmed/reserved slots for this campaign (with street + datetime)
   const confirmedRes = await pool.query(
     `SELECT slot_datetime, contact_street
      FROM meeting_slots
@@ -81,9 +79,9 @@ async function scoreSlotsByProximity(slots, campaignId, contactStreet) {
   );
   const confirmed = confirmedRes.rows;
 
-  const WINDOW_SAME_STREET = 90 * 60 * 1000;  // 90 min
-  const WINDOW_ANY          = 60 * 60 * 1000;  // 60 min
-  const ISOLATION_GAP       = 90 * 60 * 1000;  // isolation penalty threshold
+  const WINDOW_SAME_STREET = 90 * 60 * 1000;
+  const WINDOW_ANY          = 60 * 60 * 1000;
+  const ISOLATION_GAP       = 90 * 60 * 1000;
 
   for (const slot of slots) {
     let score = 0;
@@ -92,15 +90,13 @@ async function scoreSlotsByProximity(slots, campaignId, contactStreet) {
     for (const c of confirmed) {
       const cMs = new Date(c.slot_datetime).getTime();
       const diff = Math.abs(slotMs - cMs);
-
       if (diff <= WINDOW_SAME_STREET && contactStreet && c.contact_street === contactStreet) {
-        score += 5;  // same street, close in time
+        score += 5;
       } else if (diff <= WINDOW_ANY) {
-        score += 1;  // any confirmed slot nearby
+        score += 1;
       }
     }
 
-    // Penalty: if this slot would be isolated (no confirmed within 90min on EITHER side)
     const before = confirmed.filter(c => new Date(c.slot_datetime).getTime() < slotMs);
     const after  = confirmed.filter(c => new Date(c.slot_datetime).getTime() > slotMs);
     const nearestBefore = before.length ? slotMs - new Date(before[before.length - 1].slot_datetime).getTime() : Infinity;
@@ -112,13 +108,11 @@ async function scoreSlotsByProximity(slots, campaignId, contactStreet) {
     slot.cluster_score = score;
   }
 
-  // Sort: highest score first, then chronological
   slots.sort((a, b) => {
     if (b.cluster_score !== a.cluster_score) return b.cluster_score - a.cluster_score;
     return new Date(a.slot_datetime) - new Date(b.slot_datetime);
   });
 
-  // Mark recommended = top-scoring slot
   if (slots.length > 0) {
     slots[0].is_recommended = true;
   }
@@ -145,10 +139,7 @@ async function getMeetingSlots(campaignId, contactStreet) {
   if (!res.rows.length) return [];
 
   let slots = res.rows.map(s => ({ ...s, booking_type: 'meeting', capacity: 1, open_count: 1, cluster_score: 0, is_recommended: false }));
-
-  // Apply smart scoring if we have street info
   slots = await scoreSlotsByProximity(slots, campaignId, contactStreet || null);
-
   return slots;
 }
 
@@ -227,7 +218,6 @@ function groupByDate(slots, lang = 'he') {
     }
     groups[key].slots.push(slot);
   }
-  // Within each day, sort by time (scoring may have reordered)
   const sorted = Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
   for (const g of sorted) {
     g.slots.sort((a, b) => a.time_str.localeCompare(b.time_str));
@@ -277,17 +267,14 @@ router.get('/:token', async (req, res) => {
         buildingLabel = slots[0]?.building_label || null;
       }
     } else {
-      // Pass contact_street for smart clustering
       slots = await getMeetingSlots(session.zoho_campaign_id, session.contact_street || null);
     }
 
-    // Build smart picks (for meetings only)
     let smartPicks = null;
     if (!isCeremony && slots.length >= 2) {
       const recommended = slots.find(s => s.is_recommended) || slots[0];
       const earliest    = [...slots].sort((a, b) => a.slot_datetime.localeCompare(b.slot_datetime))[0];
       const latest      = [...slots].sort((a, b) => b.slot_datetime.localeCompare(a.slot_datetime))[0];
-      // Deduplicate
       const seen = new Set();
       smartPicks = [recommended, earliest, latest].filter(s => {
         if (seen.has(s.id)) return false;
@@ -358,7 +345,7 @@ router.post('/:token/confirm', async (req, res) => {
       const parts = slotId.split(':');
       const ceremonyId = parts[1];
       const buildingId  = parseInt(parts[2]) || null;
-      const timeStr_    = parts.slice(3).join(':'); // HH:MM
+      const timeStr_    = parts.slice(3).join(':');
 
       const buildingFilter = buildingId ? `AND cst.building_id=${buildingId}` : '';
       const lockRes = await pool.query(
@@ -391,6 +378,7 @@ router.post('/:token/confirm', async (req, res) => {
       confirmedSlotId = slot.id;
       confirmedSlotType = 'ceremony';
 
+      // Google Calendar
       if (gcal?.createCeremonySlotEvent) {
         gcal.createCeremonySlotEvent(pool, slot, ctx.contactName || '', session.phone)
           .then(eventId => {
@@ -402,8 +390,20 @@ router.post('/:token/confirm', async (req, res) => {
           .catch(e => logger.warn('[BookingRoute] GCal ceremony event failed:', e.message));
       }
 
+      // Zoho Calendar
+      if (zcal?.createCeremonySlotEvent) {
+        zcal.createCeremonySlotEvent(pool, slot, ctx.contactName || '', session.phone)
+          .then(uid => {
+            if (uid) {
+              pool.query(`UPDATE ceremony_slots SET zoho_event_id=$1 WHERE id=$2`, [uid, slot.id]).catch(() => {});
+              logger.info(`[BookingRoute] ZohoCal ceremony event created: ${uid}`);
+            }
+          })
+          .catch(e => logger.warn('[BookingRoute] ZohoCal ceremony event failed:', e.message));
+      }
+
     } else {
-      // Regular meeting slot - also save contact_address + contact_street for future cluster scoring
+      // Regular meeting slot
       const lockRes = await pool.query(
         `UPDATE meeting_slots SET
            status='confirmed', reserved_at=NOW(),
@@ -428,6 +428,7 @@ router.post('/:token/confirm', async (req, res) => {
       confirmedSlotId = slot.id;
       confirmedSlotType = 'meeting';
 
+      // Google Calendar
       if (gcal?.createMeetingSlotEvent) {
         gcal.createMeetingSlotEvent(pool, slot, ctx.contactName || '', session.phone)
           .then(eventId => {
@@ -437,6 +438,18 @@ router.post('/:token/confirm', async (req, res) => {
             }
           })
           .catch(e => logger.warn('[BookingRoute] GCal meeting event failed:', e.message));
+      }
+
+      // Zoho Calendar
+      if (zcal?.createMeetingSlotEvent) {
+        zcal.createMeetingSlotEvent(pool, slot, ctx.contactName || '', session.phone)
+          .then(uid => {
+            if (uid) {
+              pool.query(`UPDATE meeting_slots SET zoho_event_id=$1 WHERE id=$2`, [uid, slot.id]).catch(() => {});
+              logger.info(`[BookingRoute] ZohoCal meeting event created: ${uid}`);
+            }
+          })
+          .catch(e => logger.warn('[BookingRoute] ZohoCal meeting event failed:', e.message));
       }
     }
 
@@ -456,7 +469,7 @@ router.post('/:token/confirm', async (req, res) => {
       ? `✅ *Встреча подтверждена!*\n\n📅 ${dateStr}\n⏰ ${timeStr}${repLine}\n\nНапомним за сутки. До встречи! 👋\n\n📆 Добавить в календарь: ${gcalLink}`
       : `✅ *הפגישה אושרה!*\n\n📅 ${dateStr}\n⏰ ${timeStr}${repLine}\n\nתקבל/י תזכורת יום לפני. להתראות! 👋\n\n📆 הוסף ליומן: ${gcalLink}`;
 
-    inforuService.sendWhatsApp(session.phone, waMsg).catch(e => logger.warn('[BookingRoute] WA send failed:', e.message));
+    inforuService.sendWhatsAppChat(session.phone, waMsg).catch(e => logger.warn('[BookingRoute] WA send failed:', e.message));
     res.json({ success: true, dateStr, timeStr, repName, gcalLink });
   } catch (err) {
     logger.error('[BookingRoute] confirm error:', err);
@@ -538,7 +551,6 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
     },
   }[lang] || {};
 
-  // ── Smart picks section (regular meetings only) ──
   let smartHtml = '';
   if (!isCeremony && smartPicks && smartPicks.length > 0) {
     const LABELS = [T.recommended, T.earliest, T.latest];
@@ -562,7 +574,6 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
     smartHtml += `</div></div>`;
   }
 
-  // ── Full slot grid (collapsible for meetings, always shown for ceremony) ──
   let slotsHtml = '';
   if (!grouped.length) {
     slotsHtml = `<div class="no-slots">${T.noSlots}</div>`;
@@ -613,8 +624,6 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
   .subhead{font-size:13px;color:#94a3b8;margin-top:3px}
   .building-tag{display:inline-block;margin-top:6px;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f660;border-radius:8px;padding:3px 10px;font-size:12px;font-weight:600}
   .container{padding:16px;max-width:500px;margin:0 auto;padding-bottom:110px}
-
-  /* Smart picks */
   .smart-section{margin-bottom:24px}
   .section-label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
   .smart-row{display:flex;gap:10px;flex-wrap:wrap}
@@ -625,12 +634,8 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
   .smart-time{font-size:20px;font-weight:800;color:var(--text)}
   .smart-date{font-size:11px;color:var(--muted)}
   .smart-rep{font-size:10px;color:var(--muted)}
-
-  /* All slots toggle */
   .all-toggle{text-align:center;padding:10px;color:var(--blue);font-size:14px;cursor:pointer;border:1px dashed var(--border);border-radius:10px;margin-bottom:16px}
   .all-toggle:hover{background:#1e293b}
-
-  /* Full slot grid */
   .day-group{margin-bottom:24px}
   .day-label{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border)}
   .day-name{font-size:14px;font-weight:700;color:var(--blue)}
@@ -645,8 +650,6 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
   .rep-name{font-size:10px;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cap-badge{font-size:9px;font-weight:600;color:#6ee7b7;letter-spacing:.2px}
   .no-slots{text-align:center;color:var(--muted);padding:40px 20px;font-size:14px}
-
-  /* Confirm panel */
   .confirm-panel{position:fixed;bottom:0;left:0;right:0;background:#0f172a;border-top:1px solid var(--blue);padding:16px 20px 28px;transform:translateY(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:100}
   .confirm-panel.open{transform:translateY(0)}
   .selected-time{font-size:20px;font-weight:800;margin-bottom:4px}
@@ -655,8 +658,6 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
   .confirm-btn:hover{background:var(--blue-dark)}
   .confirm-btn:disabled{background:#374151;color:#6b7280;cursor:not-allowed}
   .cancel-link{display:block;text-align:center;margin-top:10px;color:var(--muted);font-size:13px;cursor:pointer}
-
-  /* Success */
   .success-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px 24px}
   .success-screen.show{display:flex}
   .success-icon{font-size:64px;margin-bottom:20px}
@@ -664,8 +665,6 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
   .success-detail{font-size:16px;font-weight:600;margin-bottom:6px}
   .success-sub{font-size:13px;color:var(--muted);margin-bottom:24px}
   .gcal-btn{display:inline-block;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;border-radius:12px;padding:12px 20px;font-size:14px;text-decoration:none;font-weight:600}
-
-  /* Toast + loader */
   .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-80px);background:#7f1d1d;color:#fca5a5;padding:10px 20px;border-radius:10px;font-size:14px;transition:transform .25s;z-index:200;max-width:300px;text-align:center}
   .toast.show{transform:translateX(-50%) translateY(0)}
   .loading-overlay{display:none;position:fixed;inset:0;background:#0a0a0fcc;z-index:150;align-items:center;justify-content:center}
