@@ -1,6 +1,209 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
+const axios = require('axios');
+const { logger } = require('../services/logger');
+
+// ===================== ZOHO OAUTH =====================
+
+/**
+ * GET /api/crm/oauth/callback
+ * Zoho redirects here with ?code=... after user authorizes
+ * Exchanges the code for a refresh token and displays it
+ */
+router.get('/oauth/callback', async (req, res) => {
+  const { code, error } = req.query;
+
+  if (error) {
+    return res.type('text/html').send(`
+      <html dir="rtl" lang="he">
+      <head><meta charset="UTF-8"><title>Zoho OAuth Error</title>
+      <style>body{font-family:Arial;background:#0a0a0f;color:#f87171;padding:40px;text-align:center}</style>
+      </head><body>
+      <h1>❌ שגיאה בהרשאה</h1>
+      <p>${error}</p>
+      </body></html>
+    `);
+  }
+
+  if (!code) {
+    return res.status(400).type('text/html').send(`
+      <html dir="rtl" lang="he">
+      <head><meta charset="UTF-8"><title>No Code</title>
+      <style>body{font-family:Arial;background:#0a0a0f;color:#fbbf24;padding:40px;text-align:center}</style>
+      </head><body>
+      <h1>⚠️ לא התקבל קוד הרשאה</h1>
+      </body></html>
+    `);
+  }
+
+  try {
+    const clientId = process.env.ZOHO_CLIENT_ID;
+    const clientSecret = process.env.ZOHO_CLIENT_SECRET;
+    const redirectUri = `https://pinuy-binuy-analyzer-production.up.railway.app/api/crm/oauth/callback`;
+
+    const tokenRes = await axios.post('https://accounts.zoho.com/oauth/v2/token', null, {
+      params: {
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code'
+      }
+    });
+
+    const { refresh_token, access_token, error: tokenError } = tokenRes.data;
+
+    if (tokenError || !refresh_token) {
+      logger.error('[Zoho OAuth] Token exchange failed:', tokenRes.data);
+      return res.type('text/html').send(`
+        <html dir="rtl" lang="he">
+        <head><meta charset="UTF-8"><title>Token Error</title>
+        <style>body{font-family:Arial;background:#0a0a0f;color:#f87171;padding:40px}</style>
+        </head><body>
+        <h1>❌ שגיאה בקבלת Refresh Token</h1>
+        <pre style="background:#1e293b;padding:16px;border-radius:8px;color:#e2e8f0">${JSON.stringify(tokenRes.data, null, 2)}</pre>
+        </body></html>
+      `);
+    }
+
+    logger.info('[Zoho OAuth] Refresh token obtained successfully');
+
+    res.type('text/html').send(`
+      <html dir="rtl" lang="he">
+      <head>
+        <meta charset="UTF-8">
+        <title>QUANTUM - Zoho OAuth הצלחה</title>
+        <style>
+          *{box-sizing:border-box;margin:0;padding:0}
+          body{font-family:'Segoe UI',Arial,sans-serif;background:#0a0a0f;color:#e2e8f0;direction:rtl;padding:40px;min-height:100vh}
+          .card{max-width:680px;margin:0 auto;background:#111827;border:1px solid #065f46;border-radius:16px;padding:32px}
+          h1{color:#34d399;font-size:24px;margin-bottom:8px}
+          .sub{color:#94a3b8;font-size:14px;margin-bottom:24px}
+          .token-box{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:16px;margin:16px 0}
+          .token-label{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+          .token-val{font-family:monospace;font-size:13px;color:#60a5fa;word-break:break-all;background:#0a0a0f;padding:10px;border-radius:6px}
+          .step{background:#1e3a5f22;border:1px solid #1e3a5f;border-radius:8px;padding:14px;margin:10px 0}
+          .step-num{color:#60a5fa;font-weight:bold;font-size:13px}
+          code{background:#1e293b;padding:3px 8px;border-radius:4px;font-family:monospace;font-size:12px;color:#fbbf24}
+          .warn{background:#291500;border:1px solid #7c2d12;border-radius:8px;padding:12px;margin-top:16px;font-size:13px;color:#fca5a5}
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>✅ Zoho OAuth הצלחה!</h1>
+          <div class="sub">ה-Refresh Token נוצר בהצלחה. עקוב אחר השלבים הבאים:</div>
+
+          <div class="token-box">
+            <div class="token-label">🔑 Refresh Token (שמור אותו!)</div>
+            <div class="token-val">${refresh_token}</div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">שלב 1: הגדר ב-Railway</div>
+            <div style="margin-top:8px;font-size:13px;color:#94a3b8">
+              העתק את ה-Refresh Token למעלה והגדר ב-Railway:<br>
+              <code>ZOHO_REFRESH_TOKEN = ${refresh_token.substring(0, 20)}...</code>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num">שלב 2: בדיקה</div>
+            <div style="margin-top:8px;font-size:13px;color:#94a3b8">
+              לאחר הגדרת המשתנה, בדוק עם:<br>
+              <code>GET /api/crm/zoho/status</code>
+            </div>
+          </div>
+
+          <div class="warn">
+            ⚠️ אל תסגור את החלון הזה עד שתעתיק את ה-Refresh Token!
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+
+  } catch (err) {
+    logger.error('[Zoho OAuth] Callback error:', err.message);
+    res.status(500).type('text/html').send(`
+      <html dir="rtl"><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#0a0a0f;color:#f87171;padding:40px}</style></head>
+      <body><h1>❌ שגיאה</h1><p>${err.message}</p></body></html>
+    `);
+  }
+});
+
+/**
+ * GET /api/crm/zoho/auth-url
+ * Returns the Zoho OAuth authorization URL
+ */
+router.get('/zoho/auth-url', (req, res) => {
+  const clientId = process.env.ZOHO_CLIENT_ID;
+  if (!clientId) return res.status(503).json({ error: 'ZOHO_CLIENT_ID not set' });
+
+  const redirectUri = encodeURIComponent(`https://pinuy-binuy-analyzer-production.up.railway.app/api/crm/oauth/callback`);
+  const scope = encodeURIComponent('ZohoCRM.modules.ALL,ZohoCRM.settings.ALL');
+  const url = `https://accounts.zoho.com/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=code&access_type=offline&redirect_uri=${redirectUri}`;
+
+  res.json({ url, instruction: 'Open this URL in your browser to authorize Zoho CRM access' });
+});
+
+/**
+ * GET /api/crm/zoho/status
+ * Check Zoho CRM connection status
+ */
+router.get('/zoho/status', async (req, res) => {
+  const clientId = process.env.ZOHO_CLIENT_ID;
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET;
+  const refreshToken = process.env.ZOHO_REFRESH_TOKEN;
+
+  if (!clientId || !clientSecret) {
+    return res.json({ configured: false, missing: ['ZOHO_CLIENT_ID', 'ZOHO_CLIENT_SECRET'].filter(k => !process.env[k]) });
+  }
+
+  if (!refreshToken) {
+    const authUrlRes = await new Promise(r => {
+      const clientId = process.env.ZOHO_CLIENT_ID;
+      const redirectUri = encodeURIComponent(`https://pinuy-binuy-analyzer-production.up.railway.app/api/crm/oauth/callback`);
+      const scope = encodeURIComponent('ZohoCRM.modules.ALL,ZohoCRM.settings.ALL');
+      r(`https://accounts.zoho.com/oauth/v2/auth?scope=${scope}&client_id=${clientId}&response_type=code&access_type=offline&redirect_uri=${redirectUri}`);
+    });
+    return res.json({
+      configured: false,
+      missing: ['ZOHO_REFRESH_TOKEN'],
+      action: 'Visit auth_url to authorize',
+      auth_url: authUrlRes
+    });
+  }
+
+  // Test the refresh token
+  try {
+    const tokenRes = await axios.post('https://accounts.zoho.com/oauth/v2/token', null, {
+      params: {
+        refresh_token: refreshToken,
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'refresh_token'
+      }
+    });
+
+    if (tokenRes.data.access_token) {
+      // Test CRM access
+      const crmRes = await axios.get('https://www.zohoapis.com/crm/v3/org', {
+        headers: { Authorization: `Zoho-oauthtoken ${tokenRes.data.access_token}` }
+      });
+      res.json({
+        configured: true,
+        ok: true,
+        org: crmRes.data?.org?.[0]?.company_name || 'connected',
+        token_valid: true
+      });
+    } else {
+      res.json({ configured: true, ok: false, error: tokenRes.data });
+    }
+  } catch (err) {
+    res.json({ configured: true, ok: false, error: err.response?.data || err.message });
+  }
+});
 
 // ===================== CALLS =====================
 
