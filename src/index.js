@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.80.0';
-const BUILD = '2026-03-09-v4.80.0-vapi-reschedule-call-widget-v2';
+const VERSION = '4.81.0';
+const BUILD = '2026-03-09-v4.81.0-zoho-calendar-incoming-wa-cron';
 
 async function runAutoMigrations() {
   try {
@@ -216,12 +216,19 @@ app.get('/api/debug', async (req, res) => {
       ? `configured (${process.env.GOOGLE_SA_EMAIL || process.env.GOOGLE_CLIENT_EMAIL})`
       : 'credentials missing';
   } catch (e) { gcalStatus = 'service error'; }
+  let zcalStatus = 'not configured';
+  try {
+    const zcal = require('./services/zohoCalendarService');
+    zcalStatus = zcal.isConfigured() ? 'configured (Zoho OAuth)' : 'credentials missing';
+  } catch (e) { zcalStatus = 'service error'; }
   res.json({
     version: VERSION, build: BUILD, timestamp: new Date().toISOString(),
     schedule_optimization: `active - cron 20:00 Sun-Thu + 22:30 expire | ${JSON.stringify(optimizationStats)}`,
     optimization_test: 'active at POST /api/test/optimization/setup',
     smart_slot_clustering: 'active - address-based proximity scoring (v4.75.0)',
     google_calendar: gcalStatus,
+    zoho_calendar: zcalStatus,
+    incoming_whatsapp_poll: 'active - every 60s via INFORU PullData',
     notifications_sse: `active (${notificationStats.connected_clients || 0} clients)`,
     routes: { loaded: loaded.map(r => r.path + ' (' + r.file + ')'), failed: failed.map(r => ({ path: r.path, error: r.error })) }
   });
@@ -253,6 +260,15 @@ async function start() {
   } catch (e) {}
 
   try {
+    const zcal = require('./services/zohoCalendarService');
+    if (zcal.isConfigured()) {
+      logger.info('[ZohoCal] Configured (Zoho OAuth)');
+    } else {
+      logger.warn('[ZohoCal] Not configured - set ZOHO_CLIENT_ID + ZOHO_REFRESH_TOKEN on Railway');
+    }
+  } catch (e) {}
+
+  try {
     const { initialize: initAutoContact, runAutoFirstContact, runKonesAutoContact } = require('./services/autoFirstContactService');
     await initAutoContact();
     const cron = require('node-cron');
@@ -262,6 +278,16 @@ async function start() {
   } catch (e) { logger.warn('[AutoContact] Failed to start:', e.message); }
 
   try { const { startOptimizationCron } = require('./cron/optimizationCron'); startOptimizationCron(); logger.info('[ScheduleOptimization] ACTIVE'); } catch (e) { logger.warn('[ScheduleOptimization] Failed:', e.message); }
+
+  // ── Incoming WhatsApp poll (every 60 seconds via INFORU PullData) ──────────
+  try {
+    const { pollIncomingWhatsApp } = require('./cron/incomingWhatsAppCron');
+    const cron = require('node-cron');
+    cron.schedule('* * * * *', async () => {
+      try { await pollIncomingWhatsApp(); } catch (e) { logger.warn('[IncomingWA] Cron error:', e.message); }
+    });
+    logger.info('[IncomingWA] ACTIVE - polling INFORU every 60s');
+  } catch (e) { logger.warn('[IncomingWA] Failed to start:', e.message); }
 
   try {
     const konesIsraelService = require('./services/konesIsraelService');
