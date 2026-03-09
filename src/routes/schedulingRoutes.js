@@ -1,6 +1,7 @@
 /**
  * QUANTUM Scheduling Routes v4
  *
+ * GET  /api/scheduling/admin                                - Campaign Admin Panel (UI)
  * POST /api/scheduling/webhook                              - Inforu WA webhook
  * GET  /api/scheduling/campaign/:id                        - Get campaign config
  * PUT  /api/scheduling/campaign/:id                        - Save campaign config
@@ -32,6 +33,11 @@ try { optimizationService = require('../services/optimizationService'); } catch 
 // ── ZOHO CRM WIDGET ────────────────────────────────────────────
 router.get('/widget', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/zoho-scheduling-widget.html'));
+});
+
+// ── CAMPAIGN ADMIN PANEL ───────────────────────────────────────
+router.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/campaign-admin.html'));
 });
 
 // ── CAMPAIGN CONTACTS ──────────────────────────────────────────
