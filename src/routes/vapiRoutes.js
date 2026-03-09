@@ -1,6 +1,6 @@
 /**
  * QUANTUM Voice AI - Vapi Integration Routes
- * v1.2.0 - Nova-3 Hebrew transcriber upgrade
+ * v1.3.0 - Reschedule call webhook handler
  */
 
 const express = require('express');
@@ -12,6 +12,17 @@ const { JWT } = require('google-auth-library');
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY || '';
 const VAPI_BASE_URL = 'https://api.vapi.ai';
+
+// ─── Lazy-load optimizationService (avoid circular deps) ─────────────────────
+let _optService = null;
+function getOptService() {
+  if (!_optService) {
+    try { _optService = require('../services/optimizationService'); } catch (e) {
+      logger.warn('[VAPI] optimizationService not available:', e.message);
+    }
+  }
+  return _optService;
+}
 
 // ─── Google Service Account Auth ─────────────────────────────────────────────
 
@@ -81,23 +92,7 @@ const AGENTS = {
     name: 'מוכרים - Follow-up',
     description: 'שיחת המשך עם מוכר פוטנציאלי במתחם פינוי-בינוי',
     assistantId: process.env.VAPI_ASSISTANT_SELLER || null,
-    systemPrompt: `אתה נציג מקצועי של QUANTUM - משרד תיווך בוטיק המתמחה בפינוי-בינוי בישראל.
-שמך הוא "דן מ-QUANTUM".
-
-המטרה שלך בשיחה זו:
-1. לאמוד כוונת מכירה - האם הדייר שוקל לצאת מהמתחם
-2. להבין לחצים - כלכליים, משפחתיים, תזמון
-3. לזהות התנגדויות ולתת מידע רלוונטי על הפרויקט
-4. לתאם פגישת ייעוץ אישית עם הצוות
-
-סגנון: חמים, אמפתי, לא לחצני. אתה שם לב לדברים שהם אומרים.
-שפה: עברית בלבד.
-אל תזכיר טכנולוגיה, אלגוריתמים או מערכות.
-
-מידע על הלקוח: {{lead_context}}
-מידע על המתחם: {{complex_context}}
-
-פתיחת שיחה: "שלום {{lead_name}}, אני דן מ-QUANTUM. אנחנו עוקבים אחרי פרויקטים בסביבה שלך ורציתי להתייעץ איתך רגע - זה זמן טוב לדבר?"`,
+    systemPrompt: `אתה נציג מקצועי של QUANTUM - משרד תיווך בוטיק המתמחה בפינוי-בינוי בישראל.\nשמך הוא "דן מ-QUANTUM".\n\nהמטרה שלך בשיחה זו:\n1. לאמוד כוונת מכירה - האם הדייר שוקל לצאת מהמתחם\n2. להבין לחצים - כלכליים, משפחתיים, תזמון\n3. לזהות התנגדויות ולתת מידע רלוונטי על הפרויקט\n4. לתאם פגישת ייעוץ אישית עם הצוות\n\nסגנון: חמים, אמפתי, לא לחצני. אתה שם לב לדברים שהם אומרים.\nשפה: עברית בלבד.\nאל תזכיר טכנולוגיה, אלגוריתמים או מערכות.\n\nמידע על הלקוח: {{lead_context}}\nמידע על המתחם: {{complex_context}}\n\nפתיחת שיחה: "שלום {{lead_name}}, אני דן מ-QUANTUM. אנחנו עוקבים אחרי פרויקטים בסביבה שלך ורציתי להתייעץ איתך רגע - זה זמן טוב לדבר?"`,
   },
 
   buyer_qualification: {
@@ -105,22 +100,7 @@ const AGENTS = {
     name: 'קונים - Lead Qualification',
     description: 'כישור ליד קונה/משקיע',
     assistantId: process.env.VAPI_ASSISTANT_BUYER || null,
-    systemPrompt: `אתה נציג מקצועי של QUANTUM - משרד תיווך בוטיק המתמחה בפינוי-בינוי בישראל.
-שמך הוא "יעל מ-QUANTUM".
-
-המטרה שלך:
-1. להבין את התקציב האמיתי - לא מה שהם אומרים, מה שהם יכולים
-2. ציר הזמן - מתי הם רוצים לסגור
-3. עדיפויות - אזור, תשואה, בטחון, צמיחה
-4. לבדוק אם יש נכס קיים למכירה
-5. להחליט אם כדאי לקדם לפגישה עם הצוות
-
-שפה: עברית. סגנון מקצועי, ממוקד, חד - אבל לא קר.
-אל תזכיר טכנולוגיה.
-
-מידע על הלקוח: {{lead_context}}
-
-פתיחת שיחה: "שלום {{lead_name}}, אני יעל מ-QUANTUM. ראיתי שהשארת פרטים אצלנו - יש לי כמה שאלות קצרות שיעזרו לי להכין לך את ההצעה הנכונה. יש לך 3 דקות?"`,
+    systemPrompt: `אתה נציג מקצועי של QUANTUM - משרד תיווך בוטיק המתמחה בפינוי-בינוי בישראל.\nשמך הוא "יעל מ-QUANTUM".\n\nהמטרה שלך:\n1. להבין את התקציב האמיתי - לא מה שהם אומרים, מה שהם יכולים\n2. ציר הזמן - מתי הם רוצים לסגור\n3. עדיפויות - אזור, תשואה, בטחון, צמיחה\n4. לבדוק אם יש נכס קיים למכירה\n5. להחליט אם כדאי לקדם לפגישה עם הצוות\n\nשפה: עברית. סגנון מקצועי, ממוקד, חד - אבל לא קר.\nאל תזכיר טכנולוגיה.\n\nמידע על הלקוח: {{lead_context}}\n\nפתיחת שיחה: "שלום {{lead_name}}, אני יעל מ-QUANTUM. ראיתי שהשארת פרטים אצלנו - יש לי כמה שאלות קצרות שיעזרו לי להכין לך את ההצעה הנכונה. יש לך 3 דקות?"`,
   },
 
   meeting_reminder: {
@@ -128,19 +108,7 @@ const AGENTS = {
     name: 'תזכורת פגישה',
     description: 'אישור ותזכורת לפגישה מתוזמנת',
     assistantId: process.env.VAPI_ASSISTANT_REMINDER || null,
-    systemPrompt: `אתה נציג של QUANTUM. שמך "אביב מ-QUANTUM".
-המטרה: לאשר פגישה + לבנות ציפייה חיובית לפני הפגישה.
-
-מידע על הפגישה: {{meeting_context}}
-מידע על הלקוח: {{lead_context}}
-
-פתיחת שיחה: "שלום {{lead_name}}, אני אביב מ-QUANTUM - מתקשר לאשר את הפגישה שלנו {{meeting_time}}. אתה/את מאשר/ת?"
-
-אם מאשר: "מצוין! ממליץ/ה להביא תעודת זהות ואם יש - נסח טאבו. נתראה."
-אם לא יכול: "אין בעיה - מה התאריך הקרוב שנוח לך?" - תאם מחדש.
-אם לא עונה: השאר הודעה קצרה בלבד.
-
-שפה: עברית. שיחה קצרה - מקסימום 2 דקות.`,
+    systemPrompt: `אתה נציג של QUANTUM. שמך "אביב מ-QUANTUM".\nהמטרה: לאשר פגישה + לבנות ציפייה חיובית לפני הפגישה.\n\nמידע על הפגישה: {{meeting_context}}\nמידע על הלקוח: {{lead_context}}\n\nפתיחת שיחה: "שלום {{lead_name}}, אני אביב מ-QUANTUM - מתקשר לאשר את הפגישה שלנו {{meeting_time}}. אתה/את מאשר/ת?"\n\nאם מאשר: "מצוין! ממליץ/ה להביא תעודת זהות ואם יש - נסח טאבו. נתראה."\nאם לא יכול: "אין בעיה - מה התאריך הקרוב שנוח לך?" - תאם מחדש.\nאם לא עונה: השאר הודעה קצרה בלבד.\n\nשפה: עברית. שיחה קצרה - מקסימום 2 דקות.`,
   },
 
   cold_prospecting: {
@@ -148,23 +116,7 @@ const AGENTS = {
     name: 'Cold Prospecting - פרוספקטינג',
     description: 'שיחה קרה לדיירים במתחמי פינוי-בינוי',
     assistantId: process.env.VAPI_ASSISTANT_COLD || null,
-    systemPrompt: `אתה נציג מקצועי של QUANTUM. שמך "רן מ-QUANTUM".
-אתה מתקשר לדיירים שגרים במתחמי פינוי-בינוי - הם לא מכירים אותך.
-
-המטרה: ליצור סקרנות ולתאם שיחת ייעוץ. לא למכור בשיחה הזו.
-
-גישה: סמכותי, מעניין, יוצר תחושת "יש לי מידע שאתה לא יודע".
-
-מידע על המתחם: {{complex_context}}
-
-פתיחה: "שלום, אני רן מ-QUANTUM. אנחנו עוסקים בפינוי-בינוי בסביבה שלך ב{{complex_city}}, ויש לי מידע על הפרויקט שרוב הדיירים עדיין לא יודעים - זה רגע טוב לדבר?"
-
-אם מסכים: ספר משהו ספציפי ומעניין על המתחם (מהמידע שניתן לך), ואז: "הפרטים המלאים - 20 דקות עם הצוות שלנו. מתי נוח?"
-אם לא מעוניין: "אין בעיה. אם תרצה להתייעץ בעתיד - QUANTUM נדלן."
-אם שואל מחיר: "זה תלוי בהרבה פרמטרים - בדיוק בשביל זה כדאי לשבת. פגישת ייעוץ אצלנו היא ללא עלות."
-
-שפה: עברית. מקצועי, לא לחצני, אבל בטוח בעצמך.
-אל תזכיר טכנולוגיה.`,
+    systemPrompt: `אתה נציג מקצועי של QUANTUM. שמך "רן מ-QUANTUM".\nאתה מתקשר לדיירים שגרים במתחמי פינוי-בינוי - הם לא מכירים אותך.\n\nהמטרה: ליצור סקרנות ולתאם שיחת ייעוץ. לא למכור בשיחה הזו.\n\nגישה: סמכותי, מעניין, יוצר תחושת "יש לי מידע שאתה לא יודע".\n\nמידע על המתחם: {{complex_context}}\n\nפתיחה: "שלום, אני רן מ-QUANTUM. אנחנו עוסקים בפינוי-בינוי בסביבה שלך ב{{complex_city}}, ויש לי מידע על הפרויקט שרוב הדיירים עדיין לא יודעים - זה רגע טוב לדבר?"\n\nאם מסכים: ספר משהו ספציפי ומעניין על המתחם (מהמידע שניתן לך), ואז: "הפרטים המלאים - 20 דקות עם הצוות שלנו. מתי נוח?"\nאם לא מעוניין: "אין בעיה. אם תרצה להתייעץ בעתיד - QUANTUM נדלן."\nאם שואל מחיר: "זה תלוי בהרבה פרמטרים - בדיוק בשביל זה כדאי לשבת. פגישת ייעוץ אצלנו היא ללא עלות."\n\nשפה: עברית. מקצועי, לא לחצני, אבל בטוח בעצמך.\nאל תזכיר טכנולוגיה.`,
   },
 
   inbound_handler: {
@@ -172,26 +124,7 @@ const AGENTS = {
     name: 'מענה נכנס',
     description: 'מענה לשיחות נכנסות - זיהוי + ניתוב',
     assistantId: process.env.VAPI_ASSISTANT_INBOUND || null,
-    systemPrompt: `אתה נציג קבלה של QUANTUM - משרד תיווך פינוי-בינוי.
-שמך "נועה מ-QUANTUM".
-
-המטרה: לזהות את המתקשר, להבין מה הם צריכים, ולנתב נכון.
-
-מידע על המתקשר: {{caller_context}}
-
-פתיחה אם מוכר מוכר: "שלום {{lead_name}}, נועה מ-QUANTUM - שמחה שחזרת! אני רואה שדיברנו בעבר על {{lead_topic}}. רוצה שאעביר אותך ישר לנציג שטיפל בך?"
-
-פתיחה אם לא מזוהה: "שלום! כאן QUANTUM נדלן - פינוי-בינוי. איך אפשר לעזור?"
-
-סוגי בקשות:
-- שאלה על מתחם ספציפי - אסוף פרטים + העבר לנציג
-- רוצה להמכר - אסוף כתובת + העבר לנציג
-- רוצה לקנות - אסוף תקציב ואזור + העבר לנציג
-- כבר בתהליך - העבר לנציג המוכר
-
-העברה לנציג: "מצוין, אני מעבירה אותך עכשיו. שנייה בבקשה."
-
-שפה: עברית. חמים, מקצועי, קצר.`,
+    systemPrompt: `אתה נציג קבלה של QUANTUM - משרד תיווך פינוי-בינוי.\nשמך "נועה מ-QUANTUM".\n\nהמטרה: לזהות את המתקשר, להבין מה הם צריכים, ולנתב נכון.\n\nמידע על המתקשר: {{caller_context}}\n\nפתיחה אם מוכר מוכר: "שלום {{lead_name}}, נועה מ-QUANTUM - שמחה שחזרת! אני רואה שדיברנו בעבר על {{lead_topic}}. רוצה שאעביר אותך ישר לנציג שטיפל בך?"\n\nפתיחה אם לא מזוהה: "שלום! כאן QUANTUM נדלן - פינוי-בינוי. איך אפשר לעזור?"\n\nסוגי בקשות:\n- שאלה על מתחם ספציפי - אסוף פרטים + העבר לנציג\n- רוצה להמכר - אסוף כתובת + העבר לנציג\n- רוצה לקנות - אסוף תקציב ואזור + העבר לנציג\n- כבר בתהליך - העבר לנציג המוכר\n\nהעברה לנציג: "מצוין, אני מעבירה אותך עכשיו. שנייה בבקשה."\n\nשפה: עברית. חמים, מקצועי, קצר.`,
   },
 };
 
@@ -271,6 +204,138 @@ function extractTopic(lead) {
   if (lead.form_data?.subject) return lead.form_data.subject;
   if (lead.user_type === 'investor') return 'השקעה בפינוי-בינוי';
   return 'פינוי-בינוי';
+}
+
+// ─── Reschedule Call Outcome Parser ──────────────────────────────────────────
+// Analyzes Vapi transcript to determine if caller accepted or declined reschedule.
+// Returns: 'accepted' | 'declined' | 'no_answer'
+
+function extractRescheduleOutcome(call) {
+  // Collect all customer/user speech from transcript
+  const transcript = call.transcript || [];
+  const customerTexts = transcript
+    .filter(t => t.role === 'user' || t.role === 'customer')
+    .map(t => (t.text || t.content || '').trim().toLowerCase())
+    .join(' ');
+
+  const summary = (call.summary || '').toLowerCase();
+  const allText = `${customerTexts} ${summary}`;
+
+  // Declined signals (check first — more specific)
+  const declinedPatterns = [
+    '2', 'לא', 'לא רוצה', 'לא מעוניין', 'לא מתאים', 'нет', 'no', 'decline',
+    'להישאר', 'לשמור', 'כמו שיש', 'אני בסדר', 'לא צריך'
+  ];
+  for (const p of declinedPatterns) {
+    if (allText.includes(p)) {
+      // Make sure '2' is a standalone reply, not part of a number
+      if (p === '2') {
+        if (/\b2\b/.test(customerTexts)) return 'declined';
+        continue;
+      }
+      return 'declined';
+    }
+  }
+
+  // Accepted signals
+  const acceptedPatterns = [
+    '1', 'כן', 'בסדר', 'מסכים', 'מסכימה', 'אשריד', 'да', 'yes', 'ok', 'okay',
+    'מקבל', 'מקבלת', 'אחלה', 'נהדר', 'רוצה', 'רוצה לעבור', 'מתאים'
+  ];
+  for (const p of acceptedPatterns) {
+    if (allText.includes(p)) {
+      if (p === '1') {
+        if (/\b1\b/.test(customerTexts)) return 'accepted';
+        continue;
+      }
+      return 'accepted';
+    }
+  }
+
+  // Check endedReason — customer_ended_call after short duration = likely no answer
+  const endedReason = call.endedReason || '';
+  if (['no-answer', 'voicemail', 'failed', 'busy'].includes(endedReason)) {
+    return 'no_answer';
+  }
+
+  return 'no_answer';
+}
+
+// ─── Handle reschedule call outcome ──────────────────────────────────────────
+
+async function handleRescheduleCallOutcome(call) {
+  const rescheduleRequestId = call.metadata?.reschedule_request_id;
+  if (!rescheduleRequestId) return;
+
+  const opt = getOptService();
+  if (!opt) {
+    logger.warn('[VAPI] optimizationService unavailable - cannot process reschedule outcome');
+    return;
+  }
+
+  // Load the reschedule request
+  const reqRes = await pool.query(
+    `SELECT * FROM reschedule_requests WHERE id=$1`,
+    [rescheduleRequestId]
+  );
+  if (!reqRes.rows.length) {
+    logger.warn(`[VAPI] Reschedule req #${rescheduleRequestId} not found`);
+    return;
+  }
+
+  const req = reqRes.rows[0];
+
+  if (req.status !== 'pending') {
+    logger.info(`[VAPI] Reschedule req #${rescheduleRequestId} already ${req.status} — skipping`);
+    return;
+  }
+
+  // Mark call_completed_at
+  await pool.query(
+    `UPDATE reschedule_requests SET call_completed_at=NOW(), updated_at=NOW() WHERE id=$1`,
+    [rescheduleRequestId]
+  );
+
+  const outcome = extractRescheduleOutcome(call);
+  logger.info(`[VAPI] Reschedule call outcome for req #${rescheduleRequestId}: ${outcome}`);
+
+  const inforuService = require('../services/inforuService');
+  const lang = req.language || 'he';
+
+  if (outcome === 'accepted') {
+    const swapped = await opt.performSwap(req);
+    if (swapped) {
+      const propDate = new Date(req.proposed_datetime).toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit' });
+      const propTime = new Date(req.proposed_datetime).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+      const msg = lang === 'ru'
+        ? `Отлично! Встреча перенесена на ${propTime} (${propDate}). До встречи! 🤝`
+        : `מעולה! הפגישה הועברה ל-${propTime} (${propDate}). נתראה! 🤝`;
+      await inforuService.sendWhatsAppChat(req.phone, msg).catch(() => {});
+      logger.info(`[VAPI] Reschedule swap completed for req #${rescheduleRequestId}`);
+    } else {
+      // Slot no longer available
+      const msg = lang === 'ru'
+        ? 'К сожалению, выбранный слот уже недоступен. Встреча остается в исходное время.'
+        : 'לצערנו, החריץ שהוצע כבר אינו זמין. הפגישה נשארת במועד המקורי.';
+      await inforuService.sendWhatsAppChat(req.phone, msg).catch(() => {});
+      await pool.query(
+        `UPDATE reschedule_requests SET status='expired', updated_at=NOW() WHERE id=$1`,
+        [rescheduleRequestId]
+      );
+    }
+  } else if (outcome === 'declined') {
+    await opt.declineRequest(req);
+    const origTime = new Date(req.original_datetime).toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+    const origDate = new Date(req.original_datetime).toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit' });
+    const msg = lang === 'ru'
+      ? `Хорошо! Встреча остается ${origDate} в ${origTime}. До встречи! 🤝`
+      : `בסדר גמור! הפגישה נשארת ב-${origDate} בשעה ${origTime}. נתראה! 🤝`;
+    await inforuService.sendWhatsAppChat(req.phone, msg).catch(() => {});
+    logger.info(`[VAPI] Reschedule declined for req #${rescheduleRequestId}`);
+  } else {
+    // no_answer — leave pending, will expire naturally
+    logger.info(`[VAPI] Reschedule call no_answer for req #${rescheduleRequestId} — leaving pending`);
+  }
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -470,6 +535,8 @@ router.post('/outbound/batch', async (req, res) => {
   }
 });
 
+// ─── Webhook (call-started, call-ended, reschedule outcome) ───────────────────
+
 router.post('/webhook', async (req, res) => {
   res.json({ received: true });
 
@@ -477,7 +544,7 @@ router.post('/webhook', async (req, res) => {
   const { type, call } = event;
 
   try {
-    logger.info(`[VAPI] Webhook: ${type} | call: ${call?.id}`);
+    logger.info(`[VAPI] Webhook: ${type} | call: ${call?.id} | agent: ${call?.metadata?.agent_type || 'unknown'}`);
 
     if (type === 'call-started') {
       await pool.query(
@@ -505,10 +572,18 @@ router.post('/webhook', async (req, res) => {
           call.id, call.customer?.number || 'unknown', call.metadata?.agent_type || 'unknown',
           duration, call.summary || '', intent,
           JSON.stringify(call.transcript || []),
-          JSON.stringify({ cost: call.cost, endedReason: call.endedReason, lead_id: call.metadata?.lead_id, complex_id: call.metadata?.complex_id }),
+          JSON.stringify({ cost: call.cost, endedReason: call.endedReason, lead_id: call.metadata?.lead_id, complex_id: call.metadata?.complex_id, reschedule_request_id: call.metadata?.reschedule_request_id }),
         ]
       ).catch((e) => logger.warn('[VAPI] DB update error:', e.message));
 
+      // ── Reschedule call outcome handler ──────────────────────────────────
+      if (call.metadata?.reschedule_request_id) {
+        handleRescheduleCallOutcome(call).catch(err =>
+          logger.error('[VAPI] Reschedule outcome handler error:', err.message)
+        );
+      }
+
+      // ── General meeting_set handler ───────────────────────────────────────
       if (intent === 'meeting_set' && call.metadata?.lead_id) {
         await pool.query(
           `UPDATE leads SET status = 'meeting_scheduled',
