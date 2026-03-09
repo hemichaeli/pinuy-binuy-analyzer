@@ -1,8 +1,8 @@
 /**
- * QUANTUM Visual Booking Route v6.2
+ * QUANTUM Visual Booking Route v6.3
  *
- * v6.2: Fix clicks not working — removed Hebrew from onclick attributes.
- *       All slot data stored as JSON in <script> block, buttons use data-slot-id only.
+ * v6.2: Fix clicks not working — data-slot-id + JSON slot map
+ * v6.3: Responsive desktop layout — two columns, bigger slots, sidebar confirm panel
  *
  * GET  /booking/:token          - Visual calendar HTML
  * GET  /booking/:token/slots    - JSON slot data
@@ -26,7 +26,7 @@ const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
   : 'https://pinuy-binuy-analyzer-production.up.railway.app';
 
 const DAY_NAMES_HE = ['\u05e8\u05d0\u05e9\u05d5\u05df','\u05e9\u05e0\u05d9','\u05e9\u05dc\u05d9\u05e9\u05d9','\u05e8\u05d1\u05d9\u05e2\u05d9','\u05d7\u05de\u05d9\u05e9\u05d9','\u05e9\u05d9\u05e9\u05d9','\u05e9\u05d1\u05ea'];
-const DAY_NAMES_RU = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+const DAY_NAMES_RU = ['\u0412\u043e\u0441\u043a\u0440\u0435\u0441\u0435\u043d\u044c\u0435','\u041f\u043e\u043d\u0435\u0434\u0435\u043b\u044c\u043d\u0438\u043a','\u0412\u0442\u043e\u0440\u043d\u0438\u043a','\u0421\u0440\u0435\u0434\u0430','\u0427\u0435\u0442\u0432\u0435\u0440\u0433','\u041f\u044f\u0442\u043d\u0438\u0446\u0430','\u0421\u0443\u0431\u0431\u043e\u0442\u0430'];
 
 function generateToken() { return crypto.randomBytes(16).toString('hex'); }
 
@@ -379,8 +379,6 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
   const isRu = lang === 'ru';
   const dir = isRu ? 'ltr' : 'rtl';
 
-  // All translatable strings — NO Hebrew injected into JS variables
-  // They are embedded in the HTML only, never in JS string literals
   const T = {
     he: {
       heading: isCeremony ? '\u05d1\u05d7\u05e8/\u05d9 \u05e9\u05e2\u05d4 \u05dc\u05db\u05e0\u05e1 \u05d4\u05d7\u05ea\u05d9\u05de\u05d5\u05ea' : '\u05d1\u05d7\u05e8/\u05d9 \u05de\u05d5\u05e2\u05d3 \u05e0\u05d5\u05d7',
@@ -401,6 +399,7 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
       gcal: '\u05d4\u05d5\u05e1\u05e3 \u05dc\u05d9\u05d5\u05de\u05df Google',
       spots_one: '\u05de\u05e7\u05d5\u05dd \u05d0\u05d7\u05d3 \u05e4\u05e0\u05d5\u05d9',
       spots_many: '\u05de\u05e7\u05d5\u05de\u05d5\u05ea \u05e4\u05e0\u05d5\u05d9\u05d9\u05dd',
+      no_selection: '\u05d1\u05d7\u05e8/\u05d9 \u05de\u05d5\u05e2\u05d3 \u05d5\u05dc\u05d7\u05e5 \u05d0\u05d9\u05e9\u05d5\u05e8',
     },
     ru: {
       heading: isCeremony ? '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0432\u0440\u0435\u043c\u044f \u0434\u043b\u044f \u0446\u0435\u0440\u0435\u043c\u043e\u043d\u0438\u0438' : '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0443\u0434\u043e\u0431\u043d\u043e\u0435 \u0432\u0440\u0435\u043c\u044f',
@@ -421,22 +420,18 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
       gcal: '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0432 \u043a\u0430\u043b\u0435\u043d\u0434\u0430\u0440\u044c',
       spots_one: '1 \u043c\u0435\u0441\u0442\u043e',
       spots_many: '\u043c\u0435\u0441\u0442\u0430',
+      no_selection: '\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0432\u0440\u0435\u043c\u044f \u0438 \u043d\u0430\u0436\u043c\u0438\u0442\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c',
     },
   }[lang] || {};
 
-  // Build slot data map for JS — keyed by slot id, safe JSON (no inline onclick)
+  // Slot data map for JS
   const slotDataMap = {};
   for (const s of (allSlots || [])) {
     const dateObj = new Date(`${s.slot_date}T${s.time_str}`);
     const dayLabel = (isRu ? DAY_NAMES_RU : DAY_NAMES_HE)[s.dow] || '';
     const dayNum = `${String(dateObj.getDate()).padStart(2,'0')}/${String(dateObj.getMonth()+1).padStart(2,'0')}`;
-    slotDataMap[String(s.id)] = {
-      dateLabel: `${dayLabel} ${dayNum}`,
-      time: s.time_str,
-      rep: s.representative_name || ''
-    };
+    slotDataMap[String(s.id)] = { dateLabel: `${dayLabel} ${dayNum}`, time: s.time_str, rep: s.representative_name || '' };
   }
-  // Also add smartPicks to map
   if (smartPicks) {
     for (const s of smartPicks) {
       if (!slotDataMap[String(s.id)]) {
@@ -448,7 +443,7 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
     }
   }
 
-  // Smart picks buttons — NO onclick with Hebrew, just data-slot-id
+  // Smart picks HTML
   let smartHtml = '';
   if (!isCeremony && smartPicks && smartPicks.length > 0) {
     const LABELS = [T.recommended, T.earliest, T.latest];
@@ -469,7 +464,7 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
     smartHtml += `</div></div>`;
   }
 
-  // Slot buttons — NO onclick, just data-slot-id
+  // Slot grid HTML
   let slotsHtml = '';
   if (!grouped.length) {
     slotsHtml = `<div class="no-slots">${T.noSlots}</div>`;
@@ -510,78 +505,205 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>QUANTUM</title>
 <style>
-  :root{--blue:#3b82f6;--blue-dark:#2563eb;--green:#10b981;--amber:#f59e0b;--dark:#0a0a0f;--card:#111827;--border:#1e293b;--text:#e2e8f0;--muted:#64748b}
+  :root{--blue:#3b82f6;--blue-dark:#1d4ed8;--green:#10b981;--amber:#f59e0b;--dark:#07080f;--card:#0f1623;--card2:#111827;--border:#1e293b;--text:#e2e8f0;--muted:#64748b;--sidebar:320px}
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
   body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--dark);color:var(--text);min-height:100vh;direction:${dir}}
-  .header{background:linear-gradient(135deg,#1e3a5f,#0d1b2e);padding:20px 20px 16px;border-bottom:1px solid #1e40af44;position:sticky;top:0;z-index:10}
-  .logo{font-size:10px;letter-spacing:4px;color:#60a5fa;text-transform:uppercase;margin-bottom:4px}
-  .greeting{font-size:17px;font-weight:700;color:#f1f5f9}
-  .subhead{font-size:13px;color:#94a3b8;margin-top:3px}
-  .building-tag{display:inline-block;margin-top:6px;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f660;border-radius:8px;padding:3px 10px;font-size:12px;font-weight:600}
-  .container{padding:16px;max-width:500px;margin:0 auto;padding-bottom:120px}
-  .smart-section{margin-bottom:24px}
-  .section-label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px}
-  .smart-row{display:flex;gap:10px;flex-wrap:wrap}
-  .smart-btn{flex:1;min-width:100px;background:linear-gradient(135deg,#1e293b,#0f172a);border:1.5px solid var(--blue);border-radius:14px;padding:12px 10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;touch-action:manipulation;transition:all .15s;-webkit-appearance:none}
-  .smart-btn:hover,.smart-btn:active{border-color:#60a5fa;background:#1e3a5f}
-  .smart-btn.selected{background:#1e3a5f;border-color:#93c5fd;box-shadow:0 0 0 3px #3b82f630}
-  .smart-label{font-size:10px;font-weight:700;color:var(--blue);letter-spacing:.5px;pointer-events:none}
-  .smart-time{font-size:20px;font-weight:800;color:var(--text);pointer-events:none}
-  .smart-date{font-size:11px;color:var(--muted);pointer-events:none}
-  .smart-rep{font-size:10px;color:var(--muted);pointer-events:none}
-  .all-toggle{text-align:center;padding:10px;color:var(--blue);font-size:14px;cursor:pointer;border:1px dashed var(--border);border-radius:10px;margin-bottom:16px;user-select:none}
-  .all-toggle:hover{background:#1e293b}
-  .day-group{margin-bottom:24px}
-  .day-label{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-  .day-name{font-size:14px;font-weight:700;color:var(--blue)}
-  .day-date{font-size:13px;color:var(--muted)}
-  .slots-row{display:flex;flex-wrap:wrap;gap:8px}
-  .slot-btn{position:relative;background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:10px 14px;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s;display:flex;flex-direction:column;align-items:center;min-width:76px;gap:4px;touch-action:manipulation;-webkit-appearance:none}
-  .slot-btn:hover,.slot-btn:active{border-color:var(--blue);background:#1e293b}
-  .slot-btn.selected{border-color:var(--blue);background:#1e3a5f;box-shadow:0 0 0 3px #3b82f620}
-  .slot-btn.recommended{border-color:var(--amber);background:#1c1608}
-  .slot-btn:disabled{opacity:.35;cursor:not-allowed}
-  .slot-time{font-size:16px;font-weight:700;color:var(--text);pointer-events:none}
-  .rep-name{font-size:10px;color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none}
+
+  /* ── HEADER ── */
+  .page-header{background:linear-gradient(160deg,#0d1f3c 0%,#061120 100%);border-bottom:1px solid #1e3a5f66;padding:0}
+  .header-inner{max-width:1200px;margin:0 auto;padding:18px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .header-brand{display:flex;align-items:center;gap:12px}
+  .logo-mark{font-size:22px;line-height:1}
+  .logo-text{font-size:10px;letter-spacing:5px;color:#60a5fa;text-transform:uppercase;font-weight:700}
+  .header-info{text-align:${isRu ? 'left' : 'right'}}
+  .header-title{font-size:18px;font-weight:800;color:#f1f5f9}
+  .header-sub{font-size:13px;color:#94a3b8;margin-top:2px}
+  .building-tag{display:inline-block;margin-top:5px;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f660;border-radius:8px;padding:2px 10px;font-size:12px;font-weight:600}
+
+  /* ── LAYOUT ── */
+  .page-body{max-width:1200px;margin:0 auto;padding:24px 24px 40px}
+
+  /* Mobile: single column */
+  .layout{display:block}
+  .main-col{min-width:0}
+  .sidebar-col{display:none}
+
+  /* ── SECTION LABELS ── */
+  .section-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px}
+
+  /* ── SMART PICKS ── */
+  .smart-section{margin-bottom:28px}
+  .smart-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px}
+  .smart-btn{background:linear-gradient(160deg,#131d2e,#0a1120);border:1.5px solid var(--blue);border-radius:16px;padding:16px 12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;touch-action:manipulation;transition:all .15s;-webkit-appearance:none;text-align:center}
+  .smart-btn:hover,.smart-btn:active{border-color:#60a5fa;background:#132040;transform:translateY(-1px)}
+  .smart-btn.selected{background:#132040;border-color:#93c5fd;box-shadow:0 0 0 3px #3b82f630}
+  .smart-label{font-size:10px;font-weight:800;color:var(--blue);letter-spacing:.5px;pointer-events:none}
+  .smart-time{font-size:26px;font-weight:900;color:var(--text);line-height:1;pointer-events:none}
+  .smart-date{font-size:12px;color:var(--muted);pointer-events:none;margin-top:2px}
+  .smart-rep{font-size:10px;color:#475569;pointer-events:none}
+
+  /* ── ALL SLOTS TOGGLE ── */
+  .all-toggle{text-align:center;padding:12px 16px;color:var(--blue);font-size:14px;cursor:pointer;border:1px dashed var(--border);border-radius:12px;margin-bottom:20px;user-select:none;font-weight:600}
+  .all-toggle:hover{background:#0f1623;border-color:var(--blue)}
+
+  /* ── DAY GROUPS ── */
+  .day-group{margin-bottom:28px}
+  .day-label{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+  .day-name{font-size:15px;font-weight:800;color:var(--blue)}
+  .day-date{font-size:13px;color:var(--muted);font-weight:500}
+
+  /* ── SLOT BUTTONS ── */
+  .slots-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
+  .slot-btn{position:relative;background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:12px 8px;cursor:pointer;transition:border-color .12s,background .12s,box-shadow .12s,transform .1s;display:flex;flex-direction:column;align-items:center;gap:4px;touch-action:manipulation;-webkit-appearance:none}
+  .slot-btn:hover,.slot-btn:active{border-color:var(--blue);background:#0f1e35;transform:translateY(-1px)}
+  .slot-btn.selected{border-color:var(--blue);background:#0f1e35;box-shadow:0 0 0 3px #3b82f625}
+  .slot-btn.recommended{border-color:var(--amber);background:#130f02}
+  .slot-btn:disabled{opacity:.3;cursor:not-allowed;transform:none}
+  .slot-time{font-size:15px;font-weight:800;color:var(--text);pointer-events:none;line-height:1}
+  .rep-name{font-size:9px;color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;pointer-events:none;text-align:center}
   .cap-badge{font-size:9px;font-weight:600;color:#6ee7b7;pointer-events:none}
-  .no-slots{text-align:center;color:var(--muted);padding:40px 20px;font-size:14px}
-  .confirm-panel{position:fixed;bottom:0;left:0;right:0;background:#0f172a;border-top:1px solid var(--blue);padding:16px 20px 32px;transform:translateY(110%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:100}
+  .no-slots{text-align:center;color:var(--muted);padding:60px 20px;font-size:15px}
+
+  /* ── MOBILE CONFIRM PANEL (fixed bottom) ── */
+  .confirm-panel{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(180deg,#0c1525,#08101e);border-top:1px solid #2563eb88;padding:16px 20px 32px;transform:translateY(110%);transition:transform .3s cubic-bezier(.4,0,.2,1);z-index:100;backdrop-filter:blur(12px)}
   .confirm-panel.open{transform:translateY(0)}
-  .selected-time{font-size:20px;font-weight:800;margin-bottom:4px}
+  .selected-time{font-size:22px;font-weight:900;margin-bottom:3px;color:#f1f5f9}
   .selected-rep{font-size:13px;color:var(--muted);margin-bottom:14px;min-height:18px}
-  .confirm-btn{width:100%;background:var(--blue);color:#fff;border:none;border-radius:14px;padding:15px;font-size:17px;font-weight:700;cursor:pointer;-webkit-appearance:none}
-  .confirm-btn:hover{background:var(--blue-dark)}
-  .confirm-btn:disabled{background:#374151;color:#6b7280;cursor:not-allowed}
+  .confirm-btn{width:100%;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;-webkit-appearance:none;letter-spacing:.3px;transition:opacity .15s}
+  .confirm-btn:hover{opacity:.92}
+  .confirm-btn:disabled{background:#1e293b;color:#475569;cursor:not-allowed}
   .cancel-link{display:block;text-align:center;margin-top:12px;color:var(--muted);font-size:13px;cursor:pointer;padding:4px}
+
+  /* ── SIDEBAR CONFIRM CARD (desktop only, hidden on mobile) ── */
+  .sidebar-confirm{display:none}
+
+  /* ── SUCCESS SCREEN ── */
   .success-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:40px 24px}
   .success-screen.show{display:flex}
-  .success-icon{font-size:64px;margin-bottom:20px}
-  .success-title{font-size:22px;font-weight:800;color:var(--green);margin-bottom:10px}
-  .success-detail{font-size:16px;font-weight:600;margin-bottom:6px}
-  .success-sub{font-size:13px;color:var(--muted);margin-bottom:24px}
-  .gcal-btn{display:inline-block;background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;border-radius:12px;padding:12px 20px;font-size:14px;text-decoration:none;font-weight:600}
-  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-80px);background:#7f1d1d;color:#fca5a5;padding:10px 20px;border-radius:10px;font-size:14px;transition:transform .25s;z-index:200;max-width:300px;text-align:center}
+  .success-icon{font-size:72px;margin-bottom:24px}
+  .success-title{font-size:24px;font-weight:900;color:var(--green);margin-bottom:10px}
+  .success-detail{font-size:17px;font-weight:700;margin-bottom:8px}
+  .success-sub{font-size:14px;color:var(--muted);margin-bottom:28px}
+  .gcal-btn{display:inline-block;background:#0f1e35;color:#93c5fd;border:1.5px solid #3b82f6;border-radius:14px;padding:14px 24px;font-size:14px;text-decoration:none;font-weight:700}
+
+  /* ── TOAST ── */
+  .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-80px);background:#7f1d1d;color:#fca5a5;padding:10px 20px;border-radius:10px;font-size:14px;transition:transform .25s;z-index:200;max-width:320px;text-align:center;font-weight:600}
   .toast.show{transform:translateX(-50%) translateY(0)}
-  .loading-overlay{display:none;position:fixed;inset:0;background:#0a0a0fcc;z-index:150;align-items:center;justify-content:center}
+
+  /* ── LOADER ── */
+  .loading-overlay{display:none;position:fixed;inset:0;background:#07080fcc;z-index:150;align-items:center;justify-content:center}
   .loading-overlay.show{display:flex}
-  .spinner{width:40px;height:40px;border:3px solid #1e293b;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
+  .spinner{width:44px;height:44px;border:3px solid #1e293b;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ══════════════════════════════════════════════
+     DESKTOP — 768px and above
+  ══════════════════════════════════════════════ */
+  @media (min-width:768px) {
+    /* Header */
+    .header-title{font-size:21px}
+
+    /* Two-column layout */
+    .layout{display:grid;grid-template-columns:1fr var(--sidebar);gap:32px;align-items:start}
+    .main-col{min-width:0}
+    .sidebar-col{display:block;position:sticky;top:24px}
+
+    /* Bigger slot grid */
+    .slots-row{grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px}
+    .slot-btn{padding:14px 10px;border-radius:14px}
+    .slot-time{font-size:17px}
+    .rep-name{font-size:10px;max-width:100px}
+
+    /* Smart picks bigger */
+    .smart-time{font-size:30px}
+    .smart-date{font-size:13px}
+
+    /* Mobile confirm panel hidden on desktop */
+    .confirm-panel{display:none !important}
+
+    /* Sidebar confirm card */
+    .sidebar-confirm{display:block;background:linear-gradient(160deg,#0d1f3c,#08101e);border:1.5px solid #2563eb66;border-radius:20px;padding:24px;margin-bottom:20px}
+    .sidebar-confirm.has-selection{border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f620}
+    .sidebar-no-sel{color:var(--muted);font-size:14px;text-align:center;padding:8px 0}
+    .sidebar-time{font-size:28px;font-weight:900;color:#f1f5f9;margin-bottom:4px}
+    .sidebar-rep{font-size:13px;color:var(--muted);margin-bottom:18px;min-height:16px}
+    .sidebar-confirm-btn{width:100%;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:800;cursor:pointer;-webkit-appearance:none;transition:opacity .15s;display:none}
+    .sidebar-confirm-btn.visible{display:block}
+    .sidebar-confirm-btn:hover{opacity:.9}
+    .sidebar-confirm-btn:disabled{background:#1e293b;color:#475569;cursor:not-allowed}
+    .sidebar-cancel-link{display:none;text-align:center;margin-top:10px;color:var(--muted);font-size:13px;cursor:pointer;padding:4px}
+    .sidebar-cancel-link.visible{display:block}
+
+    /* Sidebar brand card */
+    .sidebar-brand{background:linear-gradient(160deg,#0a1120,#060d18);border:1px solid var(--border);border-radius:16px;padding:20px;text-align:center}
+    .sidebar-brand-logo{font-size:11px;letter-spacing:4px;color:#60a5fa;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+    .sidebar-brand-tagline{font-size:12px;color:#475569;line-height:1.5}
+
+    /* Page body padding */
+    .page-body{padding:28px 28px 60px}
+
+    /* All-slots toggle */
+    .all-toggle{padding:14px 20px}
+  }
+
+  @media (min-width:1100px) {
+    --sidebar: 340px;
+    .slots-row{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
+    .slot-time{font-size:18px}
+  }
 </style>
 </head>
 <body>
-<div id="mainView">
-  <div class="header">
-    <div class="logo">&#x26A1; QUANTUM</div>
-    <div class="greeting">${T.heading}</div>
-    <div class="subhead">${T.subheading}</div>
-    ${buildingHtml}
-  </div>
-  <div class="container">
-    ${smartHtml}
-    ${allSlotsSection}
+
+<!-- Header -->
+<div class="page-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <span class="logo-mark">&#x26A1;</span>
+      <span class="logo-text">QUANTUM</span>
+    </div>
+    <div class="header-info">
+      <div class="header-title">${T.heading}</div>
+      <div class="header-sub">${T.subheading}</div>
+      ${buildingHtml}
+    </div>
   </div>
 </div>
 
+<div id="mainView">
+  <div class="page-body">
+    <div class="layout">
+
+      <!-- Left/Main column: smart picks + calendar -->
+      <div class="main-col">
+        ${smartHtml}
+        ${allSlotsSection}
+      </div>
+
+      <!-- Right/Sidebar: confirm card + brand (desktop only) -->
+      <div class="sidebar-col">
+
+        <div class="sidebar-confirm" id="sidebarConfirm">
+          <div class="section-label">&#x2713; ${T.confirm}</div>
+          <div class="sidebar-no-sel" id="sidebarNoSel">${T.no_selection}</div>
+          <div class="sidebar-time" id="sidebarTime" style="display:none"></div>
+          <div class="sidebar-rep" id="sidebarRep" style="display:none"></div>
+          <button class="sidebar-confirm-btn" id="sidebarConfirmBtn">${T.confirm}</button>
+          <span class="sidebar-cancel-link" id="sidebarCancelBtn">&#x21A9; ${T.cancel}</span>
+        </div>
+
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-logo">&#x26A1; QUANTUM</div>
+          <div class="sidebar-brand-tagline">${lang === 'ru' ? '\u0411\u0443\u0442\u0438\u043a\u043e\u0432\u043e\u0435 \u0430\u0433\u0435\u043d\u0442\u0441\u0442\u0432\u043e \u043d\u0435\u0434\u0432\u0438\u0436\u0438\u043c\u043e\u0441\u0442\u0438' : '\u05ea\u05d9\u05d5\u05d5\u05db \u05e0\u05d3\u05dc\u05df \u05de\u05d5\u05d1\u05d7\u05e8 \u05d1\u05e4\u05d9\u05e0\u05d5\u05d9-\u05d1\u05d9\u05e0\u05d5\u05d9'}</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile confirm panel (hidden on desktop via CSS) -->
 <div class="confirm-panel" id="confirmPanel">
   <div class="selected-time" id="selectedLabel"></div>
   <div class="selected-rep" id="selectedRep"></div>
@@ -589,6 +711,7 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
   <span class="cancel-link" id="cancelBtn">&#x21A9; ${T.cancel}</span>
 </div>
 
+<!-- Success screen -->
 <div class="success-screen" id="successScreen">
   <div class="success-icon">&#x1F389;</div>
   <div class="success-title">${T.success_title}</div>
@@ -601,40 +724,27 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
 <div class="loading-overlay" id="loader"><div class="spinner"></div></div>
 
 <script>
-// All slot data stored as JSON — no Hebrew in JS string literals or onclick attributes
 var TOKEN = ${JSON.stringify(token)};
 var SHOW_REP = ${config.show_rep_name ? 'true' : 'false'};
 var REP_LABEL = ${JSON.stringify(T.rep_label || '')};
 var SLOT_TAKEN_MSG = ${JSON.stringify(lang === 'ru' ? '\u042d\u0442\u043e \u0432\u0440\u0435\u043c\u044f \u0443\u0436\u0435 \u0437\u0430\u043d\u044f\u0442\u043e \u2014 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u043e\u0435.' : '\u05d4\u05de\u05d5\u05e2\u05d3 \u05db\u05d1\u05e8 \u05e0\u05ea\u05e4\u05e1 \u2014 \u05d0\u05e0\u05d0 \u05d1\u05d7\u05e8/\u05d9 \u05de\u05d5\u05e2\u05d3 \u05d0\u05d7\u05e8.')};
 var SHOW_ALL_TXT = '\u25BC ${T.show_all}';
 var HIDE_ALL_TXT = '\u25B2 ${T.hide_all}';
-var HAS_SMART = ${hasSmartAndSlots ? 'true' : 'false'};
-
-// Slot data map: { slotId: { dateLabel, time, rep } }
 var SLOT_DATA = ${JSON.stringify(slotDataMap)};
-
 var selectedSlotId = null;
 var allVisible = false;
 
-// Event delegation — one listener handles ALL button clicks
+function isDesktop() { return window.innerWidth >= 768; }
+
 document.addEventListener('click', function(e) {
-  var btn = e.target.closest('[data-slot-id]');
-  if (btn && !btn.disabled) {
-    selectSlot(btn, btn.getAttribute('data-slot-id'));
-    return;
-  }
-  if (e.target === document.getElementById('confirmBtn') || e.target.closest('#confirmBtn')) {
-    confirmBooking();
-    return;
-  }
-  if (e.target === document.getElementById('cancelBtn') || e.target.closest('#cancelBtn')) {
-    cancelSelection();
-    return;
-  }
-  if (e.target === document.getElementById('allToggle') || e.target.closest('#allToggle')) {
-    toggleAllSlots();
-    return;
-  }
+  var slotBtn = e.target.closest('[data-slot-id]');
+  if (slotBtn && !slotBtn.disabled) { selectSlot(slotBtn, slotBtn.getAttribute('data-slot-id')); return; }
+  var el = e.target;
+  if (el.id === 'confirmBtn' || el.closest('#confirmBtn') ||
+      el.id === 'sidebarConfirmBtn' || el.closest('#sidebarConfirmBtn')) { confirmBooking(); return; }
+  if (el.id === 'cancelBtn' || el.closest('#cancelBtn') ||
+      el.id === 'sidebarCancelBtn' || el.closest('#sidebarCancelBtn')) { cancelSelection(); return; }
+  if (el.id === 'allToggle' || el.closest('#allToggle')) { toggleAllSlots(); return; }
 });
 
 function selectSlot(btn, id) {
@@ -642,15 +752,46 @@ function selectSlot(btn, id) {
   btn.classList.add('selected');
   selectedSlotId = id;
   var data = SLOT_DATA[String(id)] || {};
-  document.getElementById('selectedLabel').textContent = (data.dateLabel || '') + '  \u23F0 ' + (data.time || '');
-  document.getElementById('selectedRep').textContent = (SHOW_REP && data.rep) ? REP_LABEL + ': ' + data.rep : '';
+  var label = (data.dateLabel || '') + '  \u23F0 ' + (data.time || '');
+  var rep = (SHOW_REP && data.rep) ? REP_LABEL + ': ' + data.rep : '';
+
+  // Update both mobile panel and desktop sidebar
+  document.getElementById('selectedLabel').textContent = label;
+  document.getElementById('selectedRep').textContent = rep;
   document.getElementById('confirmPanel').classList.add('open');
+
+  // Desktop sidebar
+  var sidebarNoSel = document.getElementById('sidebarNoSel');
+  var sidebarTime = document.getElementById('sidebarTime');
+  var sidebarRep = document.getElementById('sidebarRep');
+  var sidebarConfirmBtn = document.getElementById('sidebarConfirmBtn');
+  var sidebarCancelBtn = document.getElementById('sidebarCancelBtn');
+  var sidebarConfirm = document.getElementById('sidebarConfirm');
+  if (sidebarNoSel) sidebarNoSel.style.display = 'none';
+  if (sidebarTime) { sidebarTime.textContent = label; sidebarTime.style.display = 'block'; }
+  if (sidebarRep) { sidebarRep.textContent = rep; sidebarRep.style.display = rep ? 'block' : 'none'; }
+  if (sidebarConfirmBtn) sidebarConfirmBtn.classList.add('visible');
+  if (sidebarCancelBtn) sidebarCancelBtn.classList.add('visible');
+  if (sidebarConfirm) sidebarConfirm.classList.add('has-selection');
 }
 
 function cancelSelection() {
   document.querySelectorAll('[data-slot-id]').forEach(function(b) { b.classList.remove('selected'); });
   selectedSlotId = null;
   document.getElementById('confirmPanel').classList.remove('open');
+
+  var sidebarNoSel = document.getElementById('sidebarNoSel');
+  var sidebarTime = document.getElementById('sidebarTime');
+  var sidebarRep = document.getElementById('sidebarRep');
+  var sidebarConfirmBtn = document.getElementById('sidebarConfirmBtn');
+  var sidebarCancelBtn = document.getElementById('sidebarCancelBtn');
+  var sidebarConfirm = document.getElementById('sidebarConfirm');
+  if (sidebarNoSel) sidebarNoSel.style.display = 'block';
+  if (sidebarTime) sidebarTime.style.display = 'none';
+  if (sidebarRep) sidebarRep.style.display = 'none';
+  if (sidebarConfirmBtn) sidebarConfirmBtn.classList.remove('visible');
+  if (sidebarCancelBtn) sidebarCancelBtn.classList.remove('visible');
+  if (sidebarConfirm) sidebarConfirm.classList.remove('has-selection');
 }
 
 function toggleAllSlots() {
@@ -668,8 +809,8 @@ function showToast(msg) {
 
 async function confirmBooking() {
   if (!selectedSlotId) return;
-  var btn = document.getElementById('confirmBtn');
-  btn.disabled = true;
+  var confirmBtns = [document.getElementById('confirmBtn'), document.getElementById('sidebarConfirmBtn')];
+  confirmBtns.forEach(function(b) { if (b) b.disabled = true; });
   document.getElementById('loader').classList.add('show');
   try {
     var res = await fetch('/booking/' + TOKEN + '/confirm', {
@@ -692,12 +833,12 @@ async function confirmBooking() {
       document.getElementById('successScreen').classList.add('show');
     } else {
       showToast('\u05e9\u05d2\u05d9\u05d0\u05d4 \u2014 \u05d0\u05e0\u05d0 \u05e0\u05e1\u05d4/\u05d9 \u05e9\u05d5\u05d1');
-      btn.disabled = false;
+      confirmBtns.forEach(function(b) { if (b) b.disabled = false; });
     }
   } catch (err) {
     document.getElementById('loader').classList.remove('show');
     showToast('\u05e9\u05d2\u05d9\u05d0\u05ea \u05d7\u05d9\u05d1\u05d5\u05e8 \u2014 \u05d0\u05e0\u05d0 \u05e0\u05e1\u05d4/\u05d9 \u05e9\u05d5\u05d1');
-    btn.disabled = false;
+    confirmBtns.forEach(function(b) { if (b) b.disabled = false; });
   }
 }
 </script>
