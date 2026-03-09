@@ -2,6 +2,7 @@
  * QUANTUM Scheduling Routes v4
  *
  * GET  /api/scheduling/admin                                - Campaign Admin Panel (UI)
+ * POST /api/scheduling/demo-link                            - Generate real booking URL for demo/testing
  * POST /api/scheduling/webhook                              - Inforu WA webhook
  * GET  /api/scheduling/campaign/:id                        - Get campaign config
  * PUT  /api/scheduling/campaign/:id                        - Save campaign config
@@ -30,6 +31,10 @@ try { zohoSchedulingService = require('../services/zohoSchedulingService'); } ca
 let optimizationService;
 try { optimizationService = require('../services/optimizationService'); } catch (e) { /* optional */ }
 
+const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : 'https://pinuy-binuy-analyzer-production.up.railway.app';
+
 // ── ZOHO CRM WIDGET ────────────────────────────────────────────
 router.get('/widget', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/zoho-scheduling-widget.html'));
@@ -38,6 +43,38 @@ router.get('/widget', (req, res) => {
 // ── CAMPAIGN ADMIN PANEL ───────────────────────────────────────
 router.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/campaign-admin.html'));
+});
+
+// ── DEMO BOOKING LINK ──────────────────────────────────────────
+// POST /api/scheduling/demo-link
+// Body: { campaignId, phone, name, language }
+// Creates (or reuses) a bot_session + booking_token → returns a real booking URL
+router.post('/demo-link', async (req, res) => {
+  try {
+    const { campaignId, phone, name, language } = req.body;
+    if (!campaignId || !phone) return res.status(400).json({ error: 'campaignId and phone required' });
+    const crypto = require('crypto');
+    const newToken = crypto.randomBytes(16).toString('hex');
+    const context = JSON.stringify({ contactName: name || phone });
+    await pool.query(
+      `INSERT INTO bot_sessions (phone, zoho_campaign_id, state, language, context, booking_token, created_at, last_message_at)
+       VALUES ($1,$2,'awaiting_booking',$3,$4,$5,NOW(),NOW())
+       ON CONFLICT (phone, zoho_campaign_id) DO UPDATE SET
+         booking_token = COALESCE(NULLIF(bot_sessions.booking_token,''), EXCLUDED.booking_token),
+         context = CASE WHEN bot_sessions.context::text='{}' THEN EXCLUDED.context ELSE bot_sessions.context END,
+         language = EXCLUDED.language,
+         last_message_at = NOW()`,
+      [phone, campaignId, language || 'he', context, newToken]
+    );
+    const row = await pool.query(
+      `SELECT booking_token FROM bot_sessions WHERE phone=$1 AND zoho_campaign_id=$2`,
+      [phone, campaignId]
+    );
+    const token = row.rows[0]?.booking_token;
+    res.json({ success: true, booking_url: `${BASE_URL}/booking/${token}`, token });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── CAMPAIGN CONTACTS ──────────────────────────────────────────
@@ -154,43 +191,16 @@ router.get('/campaign/:campaignId', async (req, res) => {
   }
 });
 
-/**
- * PUT /api/scheduling/campaign/:campaignId
- *
- * All campaign availability settings live here:
- *
- * available_windows  - array of { day: 0-6, start: "HH:MM", end: "HH:MM" }
- *                      day: 0=ראשון, 1=שני, ..., 6=שבת
- *                      defaults to Sun-Thu 09:00-18:00 if omitted
- * slot_duration_minutes  - meeting length (default 45)
- * buffer_minutes         - gap between slots (default 15)
- * representative_name    - optional single rep name for all slots
- * representatives        - optional array [{ name, weight }] for round-robin
- * generate_days_ahead    - how many days ahead to pre-generate slots (default 30)
- */
 router.put('/campaign/:campaignId', async (req, res) => {
   try {
     const { campaignId } = req.params;
     const {
-      project_id,
-      meeting_type,
-      available_windows,
-      slot_duration_minutes,
-      buffer_minutes,
-      reminder_delay_hours,
-      bot_followup_delay_hours,
-      pre_meeting_reminder_hours,
-      morning_reminder_hours,
-      wa_initial_template,
-      wa_language,
-      show_rep_name,
-      booking_link_expires_hours,
-      default_start_time,
-      default_end_time,
-      generate_days_ahead
+      project_id, meeting_type, available_windows, slot_duration_minutes, buffer_minutes,
+      reminder_delay_hours, bot_followup_delay_hours, pre_meeting_reminder_hours, morning_reminder_hours,
+      wa_initial_template, wa_language, show_rep_name, booking_link_expires_hours,
+      default_start_time, default_end_time, generate_days_ahead
     } = req.body;
 
-    // Resolve available_windows default: Sun-Thu 09:00-18:00
     const windows = available_windows && available_windows.length > 0
       ? available_windows
       : [
@@ -209,12 +219,10 @@ router.put('/campaign/:campaignId', async (req, res) => {
           pre_meeting_reminder_hours, morning_reminder_hours,
           wa_initial_template, wa_language,
           show_rep_name, booking_link_expires_hours,
-          default_start_time, default_end_time,
-          updated_at)
+          default_start_time, default_end_time, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
        ON CONFLICT (zoho_campaign_id) DO UPDATE SET
-         project_id = EXCLUDED.project_id,
-         meeting_type = EXCLUDED.meeting_type,
+         project_id = EXCLUDED.project_id, meeting_type = EXCLUDED.meeting_type,
          available_windows = EXCLUDED.available_windows,
          slot_duration_minutes = EXCLUDED.slot_duration_minutes,
          buffer_minutes = EXCLUDED.buffer_minutes,
@@ -230,22 +238,13 @@ router.put('/campaign/:campaignId', async (req, res) => {
          default_end_time = EXCLUDED.default_end_time,
          updated_at = NOW()`,
       [
-        campaignId,
-        project_id || null,
-        meeting_type || 'consultation',
-        JSON.stringify(windows),
-        slot_duration_minutes || 45,
-        buffer_minutes || 15,
-        reminder_delay_hours || 24,
-        bot_followup_delay_hours || 48,
-        pre_meeting_reminder_hours || 24,
-        morning_reminder_hours || 2,
-        wa_initial_template || '',
-        wa_language || 'he',
-        show_rep_name !== false,
-        booking_link_expires_hours || 48,
-        default_start_time || '09:00',
-        default_end_time || '18:00'
+        campaignId, project_id || null, meeting_type || 'consultation', JSON.stringify(windows),
+        slot_duration_minutes || 45, buffer_minutes || 15,
+        reminder_delay_hours || 24, bot_followup_delay_hours || 48,
+        pre_meeting_reminder_hours || 24, morning_reminder_hours || 2,
+        wa_initial_template || '', wa_language || 'he',
+        show_rep_name !== false, booking_link_expires_hours || 48,
+        default_start_time || '09:00', default_end_time || '18:00'
       ]
     );
 
@@ -256,40 +255,12 @@ router.put('/campaign/:campaignId', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
-// SLOT GENERATION — auto-generate meeting_slots from campaign config
-//
-// available_windows drives WHICH days/hours are valid.
-// slot_duration_minutes + buffer_minutes set the step.
-// representatives[] (optional) assigns reps in round-robin.
-//
-// POST /api/scheduling/campaign/:id/generate-slots
-// Body: {
-//   from_date: "YYYY-MM-DD",   // default: today
-//   to_date:   "YYYY-MM-DD",   // default: today + generate_days_ahead (30)
-//   representatives: [         // optional, overrides config
-//     { name: "דני לוי", weight: 1 },
-//     { name: "רחל כהן", weight: 2 }   // weight=2 → appears twice per cycle
-//   ],
-//   dry_run: false             // if true, return preview without inserting
-// }
-//
-// GET /api/scheduling/campaign/:id/slots/preview?from=YYYY-MM-DD&to=YYYY-MM-DD
-//   Same logic but always dry_run=true
-//
-// DELETE /api/scheduling/campaign/:id/slots?from=YYYY-MM-DD&to=YYYY-MM-DD
-//   Delete open (not confirmed/reserved) slots in date range
+// SLOT GENERATION
 // ══════════════════════════════════════════════════════════════
 
-/**
- * Build a flat list of slot datetimes given:
- * - windows:   [{ day, start, end }]  (0=Sun ... 6=Sat)
- * - fromDate, toDate: JS Date objects
- * - slotMin, bufferMin: integers
- */
 function buildSlotDatetimes(windows, fromDate, toDate, slotMin, bufferMin) {
   const step = slotMin + bufferMin;
   const slots = [];
-  // Build a map: day-of-week → [{ startMins, endMins }]
   const windowMap = {};
   for (const w of windows) {
     const d = parseInt(w.day);
@@ -298,20 +269,15 @@ function buildSlotDatetimes(windows, fromDate, toDate, slotMin, bufferMin) {
     const [eh, em] = (w.end   || '18:00').split(':').map(Number);
     windowMap[d].push({ startMins: sh * 60 + sm, endMins: eh * 60 + em });
   }
-
-  const cur = new Date(fromDate);
-  cur.setHours(0, 0, 0, 0);
-  const end = new Date(toDate);
-  end.setHours(23, 59, 59, 999);
-
+  const cur = new Date(fromDate); cur.setHours(0, 0, 0, 0);
+  const end = new Date(toDate);   end.setHours(23, 59, 59, 999);
   while (cur <= end) {
-    const dow = cur.getDay(); // 0=Sun
-    const windows_today = windowMap[dow] || [];
-    for (const win of windows_today) {
+    const dow = cur.getDay();
+    for (const win of (windowMap[dow] || [])) {
       for (let m = win.startMins; m + slotMin <= win.endMins; m += step) {
         const dt = new Date(cur);
         dt.setHours(Math.floor(m / 60), m % 60, 0, 0);
-        if (dt > new Date()) slots.push(new Date(dt)); // only future slots
+        if (dt > new Date()) slots.push(new Date(dt));
       }
     }
     cur.setDate(cur.getDate() + 1);
@@ -319,11 +285,6 @@ function buildSlotDatetimes(windows, fromDate, toDate, slotMin, bufferMin) {
   return slots;
 }
 
-/**
- * Build a round-robin rep list from weights.
- * representatives: [{ name, weight }]
- * Returns a flat array repeated by weight: ["דני","רחל","רחל","דני",...]
- */
 function buildRepCycle(representatives) {
   if (!representatives || !representatives.length) return [];
   const cycle = [];
@@ -338,69 +299,43 @@ router.post('/campaign/:campaignId/generate-slots', async (req, res) => {
   try {
     const { campaignId } = req.params;
     const configRes = await pool.query(
-      `SELECT * FROM campaign_schedule_config WHERE zoho_campaign_id=$1`,
-      [campaignId]
+      `SELECT * FROM campaign_schedule_config WHERE zoho_campaign_id=$1`, [campaignId]
     );
     if (!configRes.rows.length) return res.status(404).json({ error: 'Campaign config not found. Create config first via PUT.' });
     const cfg = configRes.rows[0];
-
-    const {
-      from_date,
-      to_date,
-      representatives: repsOverride,
-      dry_run = false
-    } = req.body;
+    const { from_date, to_date, representatives: repsOverride, dry_run = false } = req.body;
 
     const daysAhead = cfg.generate_days_ahead || 30;
     const fromDate = from_date ? new Date(from_date) : new Date();
     const toDate   = to_date   ? new Date(to_date)   : new Date(Date.now() + daysAhead * 86400000);
-
-    const windows = cfg.available_windows && cfg.available_windows.length
-      ? cfg.available_windows
-      : [
-          { day: 0, start: '09:00', end: '18:00' },
-          { day: 1, start: '09:00', end: '18:00' },
-          { day: 2, start: '09:00', end: '18:00' },
-          { day: 3, start: '09:00', end: '18:00' },
-          { day: 4, start: '09:00', end: '18:00' }
-        ];
-
+    const windows  = cfg.available_windows?.length ? cfg.available_windows : [0,1,2,3,4].map(d => ({ day: d, start: '09:00', end: '18:00' }));
     const slotMin   = parseInt(cfg.slot_duration_minutes) || 45;
-    const bufferMin = parseInt(cfg.buffer_minutes)        || 15;
-
+    const bufferMin = parseInt(cfg.buffer_minutes) || 15;
     const datetimes = buildSlotDatetimes(windows, fromDate, toDate, slotMin, bufferMin);
     const reps = buildRepCycle(repsOverride || []);
     const projectId = cfg.project_id || null;
 
-    // Build preview list
     const preview = datetimes.map((dt, i) => ({
       slot_datetime: dt.toISOString(),
       duration_minutes: slotMin,
       representative_name: reps.length ? reps[i % reps.length] : null,
-      campaign_id: campaignId,
-      project_id: projectId
+      campaign_id: campaignId, project_id: projectId
     }));
 
     if (dry_run) {
       return res.json({
-        dry_run: true,
-        total: preview.length,
+        dry_run: true, total: preview.length,
         from: fromDate.toISOString().substring(0, 10),
         to: toDate.toISOString().substring(0, 10),
-        slot_duration_minutes: slotMin,
-        buffer_minutes: bufferMin,
-        windows_used: windows,
-        preview: preview.slice(0, 20), // first 20 for preview
+        slot_duration_minutes: slotMin, buffer_minutes: bufferMin,
+        windows_used: windows, preview: preview.slice(0, 20),
         note: preview.length > 20 ? `...and ${preview.length - 20} more` : null
       });
     }
 
-    // Insert - skip already-existing slots (UNIQUE: campaign_id, representative_id, slot_datetime)
     let inserted = 0, skipped = 0;
     for (const slot of preview) {
-      const repId = slot.representative_name
-        ? `${campaignId}:${slot.representative_name}`
-        : null;
+      const repId = slot.representative_name ? `${campaignId}:${slot.representative_name}` : null;
       try {
         await pool.query(
           `INSERT INTO meeting_slots
@@ -408,32 +343,17 @@ router.post('/campaign/:campaignId/generate-slots', async (req, res) => {
               representative_id, representative_name, status)
            VALUES ($1,$2,$3,$4,$5,$6,$7,'open')
            ON CONFLICT (campaign_id, representative_id, slot_datetime) DO NOTHING`,
-          [
-            campaignId,
-            projectId,
-            cfg.meeting_type || 'consultation',
-            slot.slot_datetime,
-            slotMin,
-            repId,
-            slot.representative_name
-          ]
+          [campaignId, projectId, cfg.meeting_type || 'consultation', slot.slot_datetime, slotMin, repId, slot.representative_name]
         );
         inserted++;
-      } catch (e) {
-        skipped++;
-      }
+      } catch (e) { skipped++; }
     }
 
     res.json({
-      success: true,
-      inserted,
-      skipped,
-      total: preview.length,
+      success: true, inserted, skipped, total: preview.length,
       from: fromDate.toISOString().substring(0, 10),
       to: toDate.toISOString().substring(0, 10),
-      slot_duration_minutes: slotMin,
-      buffer_minutes: bufferMin,
-      windows_used: windows,
+      slot_duration_minutes: slotMin, buffer_minutes: bufferMin, windows_used: windows,
       message: `נוצרו ${inserted} slots עבור קמפיין ${campaignId}`
     });
   } catch (err) {
@@ -441,34 +361,22 @@ router.post('/campaign/:campaignId/generate-slots', async (req, res) => {
   }
 });
 
-// GET /api/scheduling/campaign/:campaignId/slots/preview
 router.get('/campaign/:campaignId/slots/preview', async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { from, to } = req.query;
-
-    const configRes = await pool.query(
-      `SELECT * FROM campaign_schedule_config WHERE zoho_campaign_id=$1`, [campaignId]
-    );
+    const configRes = await pool.query(`SELECT * FROM campaign_schedule_config WHERE zoho_campaign_id=$1`, [campaignId]);
     if (!configRes.rows.length) return res.status(404).json({ error: 'No config' });
     const cfg = configRes.rows[0];
-
     const daysAhead = cfg.generate_days_ahead || 30;
     const fromDate = from ? new Date(from) : new Date();
     const toDate   = to   ? new Date(to)   : new Date(Date.now() + daysAhead * 86400000);
-
-    const windows = cfg.available_windows?.length
-      ? cfg.available_windows
-      : [0,1,2,3,4].map(d => ({ day: d, start: '09:00', end: '18:00' }));
-
+    const windows  = cfg.available_windows?.length ? cfg.available_windows : [0,1,2,3,4].map(d => ({ day: d, start: '09:00', end: '18:00' }));
     const slotMin   = parseInt(cfg.slot_duration_minutes) || 45;
-    const bufferMin = parseInt(cfg.buffer_minutes)        || 15;
+    const bufferMin = parseInt(cfg.buffer_minutes) || 15;
     const datetimes = buildSlotDatetimes(windows, fromDate, toDate, slotMin, bufferMin);
-
     res.json({
-      total: datetimes.length,
-      slot_duration_minutes: slotMin,
-      buffer_minutes: bufferMin,
+      total: datetimes.length, slot_duration_minutes: slotMin, buffer_minutes: bufferMin,
       windows_used: windows,
       from: fromDate.toISOString().substring(0, 10),
       to: toDate.toISOString().substring(0, 10),
@@ -479,19 +387,13 @@ router.get('/campaign/:campaignId/slots/preview', async (req, res) => {
   }
 });
 
-// DELETE /api/scheduling/campaign/:campaignId/slots
 router.delete('/campaign/:campaignId/slots', async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { from, to } = req.query;
     if (!from || !to) return res.status(400).json({ error: 'from and to dates required (?from=YYYY-MM-DD&to=YYYY-MM-DD)' });
-
     const result = await pool.query(
-      `DELETE FROM meeting_slots
-       WHERE campaign_id=$1
-         AND status='open'
-         AND slot_datetime::date BETWEEN $2::date AND $3::date
-       RETURNING id`,
+      `DELETE FROM meeting_slots WHERE campaign_id=$1 AND status='open' AND slot_datetime::date BETWEEN $2::date AND $3::date RETURNING id`,
       [campaignId, from, to]
     );
     res.json({ success: true, deleted: result.rowCount, from, to });
@@ -504,12 +406,9 @@ router.delete('/campaign/:campaignId/slots', async (req, res) => {
 router.post('/broadcast', async (req, res) => {
   try {
     const { campaignId, contacts } = req.body;
-    const config = await pool.query(
-      `SELECT * FROM campaign_schedule_config WHERE zoho_campaign_id=$1`, [campaignId]
-    );
+    const config = await pool.query(`SELECT * FROM campaign_schedule_config WHERE zoho_campaign_id=$1`, [campaignId]);
     if (!config.rows.length) return res.status(400).json({ error: 'Campaign config not found' });
     const cfg = config.rows[0];
-
     let sent = 0, failed = 0;
     for (const contact of contacts) {
       try {
@@ -585,7 +484,6 @@ router.post('/ceremony', async (req, res) => {
           slot_duration_minutes || 15, break_duration_minutes || 0
         );
       }
-
       buildingResults.push({ buildingId, address: bld.address, label: bld.label || bld.address, station_count: stationCount, slots_created: slotsCreated });
     }
 
@@ -600,7 +498,7 @@ async function generateCeremonySlots(ceremonyId, stationId, date, startTime, end
   const [sh, sm] = startTime.split(':').map(Number);
   const [eh, em] = endTime.split(':').map(Number);
   const startMins = sh * 60 + sm;
-  const endMins = eh * 60 + em;
+  const endMins   = eh * 60 + em;
   const step = slotMin + breakMin;
   let count = 0;
   for (let m = startMins; m + slotMin <= endMins; m += step) {
@@ -748,7 +646,6 @@ router.get('/campaign/:campaignId/report', async (req, res) => {
   try {
     const { campaignId } = req.params;
     const format = req.query.format || 'html';
-
     const configRes = await pool.query(
       `SELECT csc.*, p.name AS project_name FROM campaign_schedule_config csc LEFT JOIN projects p ON csc.project_id=p.id WHERE csc.zoho_campaign_id=$1`, [campaignId]
     );
@@ -768,11 +665,11 @@ router.get('/campaign/:campaignId/report', async (req, res) => {
     const totalSent = sessions.reduce((a, b) => a + parseInt(b.total), 0);
     const totalAnswered = sessions.filter(s => s.state !== 'confirm_identity').reduce((a, b) => a + parseInt(b.total), 0);
     const totalConfirmed = parseInt(sessions.find(s => s.state === 'confirmed')?.total || 0);
-    const totalDeclined = parseInt(sessions.find(s => s.state === 'closed' || s.state === 'ceremony_declined')?.total || 0);
+    const totalDeclined  = parseInt(sessions.find(s => s.state === 'closed' || s.state === 'ceremony_declined')?.total || 0);
     const slots = slotsRes.rows[0] || {};
     const slotUtil = slots.total_slots > 0 ? Math.round((slots.confirmed / slots.total_slots) * 100) : 0;
-    const responseRate = totalSent > 0 ? Math.round((totalAnswered / totalSent) * 100) : 0;
-    const conversionRate = totalAnswered > 0 ? Math.round((totalConfirmed / totalAnswered) * 100) : 0;
+    const responseRate   = totalSent     > 0 ? Math.round((totalAnswered   / totalSent)     * 100) : 0;
+    const conversionRate = totalAnswered > 0 ? Math.round((totalConfirmed  / totalAnswered)  * 100) : 0;
 
     const data = {
       campaignId, projectName: config.project_name || campaignId, meetingType: config.meeting_type || 'meeting',
@@ -783,14 +680,14 @@ router.get('/campaign/:campaignId/report', async (req, res) => {
 
     if (format === 'json') return res.json(data);
 
-    const confirmedRows = confirmedRes.rows.map(m => `<tr><td>${m.name||m.phone}</td><td>${m.phone}</td><td>${m.date_str}</td><td>${m.time_str}</td><td>${m.rep||'-'}</td><td>${m.language==='ru'?'🇷🇺':'🇮🇱'}</td></tr>`).join('');
-    const timelineBars = timelineRes.rows.map(t => { const pct=Math.min(100,Math.round((t.confirmed/Math.max(1,totalConfirmed))*100)); return `<div style="margin:4px 0;display:flex;align-items:center;gap:8px"><span style="width:40px;font-size:12px;color:#666">${t.label}</span><div style="background:#d1fae5;width:${pct}%;max-width:200px;height:18px;border-radius:3px;display:flex;align-items:center;padding:0 6px;font-size:11px">${t.confirmed}</div></div>`; }).join('');
-    const repRows = repsRes.rows.map(r => `<tr><td>${r.rep}</td><td>${r.total}</td><td>${r.confirmed}</td><td>${r.total>0?Math.round(r.confirmed/r.total*100):0}%</td></tr>`).join('');
+    const confirmedRows  = confirmedRes.rows.map(m => `<tr><td>${m.name||m.phone}</td><td>${m.phone}</td><td>${m.date_str}</td><td>${m.time_str}</td><td>${m.rep||'-'}</td><td>${m.language==='ru'?'🇷🇺':'🇮🇱'}</td></tr>`).join('');
+    const timelineBars   = timelineRes.rows.map(t => { const pct=Math.min(100,Math.round((t.confirmed/Math.max(1,totalConfirmed))*100)); return `<div style="margin:4px 0;display:flex;align-items:center;gap:8px"><span style="width:40px;font-size:12px;color:#666">${t.label}</span><div style="background:#d1fae5;width:${pct}%;max-width:200px;height:18px;border-radius:3px;display:flex;align-items:center;padding:0 6px;font-size:11px">${t.confirmed}</div></div>`; }).join('');
+    const repRows        = repsRes.rows.map(r => `<tr><td>${r.rep}</td><td>${r.total}</td><td>${r.confirmed}</td><td>${r.total>0?Math.round(r.confirmed/r.total*100):0}%</td></tr>`).join('');
 
     res.type('text/html').send(`<!DOCTYPE html>
 <html dir="rtl" lang="he"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>דוח קמפיין QUANTUM - ${data.projectName}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;background:#0a0a0f;color:#e2e8f0;direction:rtl}.header{background:linear-gradient(135deg,#1e3a5f,#0d1b2e);padding:32px 24px;border-bottom:1px solid #1e40af44}.logo{font-size:13px;letter-spacing:4px;color:#60a5fa;text-transform:uppercase;margin-bottom:8px}h1{font-size:22px;color:#f1f5f9;font-weight:700}.meta{font-size:12px;color:#94a3b8;margin-top:6px}.container{max-width:960px;margin:0 auto;padding:24px 16px}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:20px 0}.kpi{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:16px;text-align:center}.kpi-val{font-size:28px;font-weight:800}.kpi-val.green{color:#34d399}.kpi-val.blue{color:#60a5fa}.kpi-val.yellow{color:#fbbf24}.kpi-val.red{color:#f87171}.kpi-label{font-size:11px;color:#64748b;margin-top:4px}.section{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:20px;margin:16px 0}.section h2{font-size:14px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;border-bottom:1px solid #1e293b;padding-bottom:10px}.optim-box{background:#0f2e1e;border:1px solid #065f46;border-radius:10px;padding:14px;margin-bottom:16px;display:flex;gap:20px;flex-wrap:wrap}.optim-stat{text-align:center;flex:1}.optim-val{font-size:22px;font-weight:800;color:#34d399}.optim-label{font-size:11px;color:#6ee7b7;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:right;padding:8px 10px;color:#64748b;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px;background:#0f172a}td{padding:9px 10px;border-bottom:1px solid #1e293b}tr:last-child td{border-bottom:none}tr:hover td{background:#1e293b44}.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}.badge-green{background:#064e3b;color:#34d399}.badge-blue{background:#1e3a5f;color:#60a5fa}</style>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;background:#0a0a0f;color:#e2e8f0;direction:rtl}.header{background:linear-gradient(135deg,#1e3a5f,#0d1b2e);padding:32px 24px;border-bottom:1px solid #1e40af44}.logo{font-size:13px;letter-spacing:4px;color:#60a5fa;text-transform:uppercase;margin-bottom:8px}h1{font-size:22px;color:#f1f5f9;font-weight:700}.meta{font-size:12px;color:#94a3b8;margin-top:6px}.container{max-width:960px;margin:0 auto;padding:24px 16px}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:20px 0}.kpi{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:16px;text-align:center}.kpi-val{font-size:28px;font-weight:800}.kpi-val.green{color:#34d399}.kpi-val.blue{color:#60a5fa}.kpi-val.yellow{color:#fbbf24}.kpi-val.red{color:#f87171}.kpi-label{font-size:11px;color:#64748b;margin-top:4px}.section{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:20px;margin:16px 0}.section h2{font-size:14px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-bottom:16px;border-bottom:1px solid #1e293b;padding-bottom:10px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:right;padding:8px 10px;color:#64748b;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:1px;background:#0f172a}td{padding:9px 10px;border-bottom:1px solid #1e293b}tr:last-child td{border-bottom:none}.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}.badge-green{background:#064e3b;color:#34d399}.badge-blue{background:#1e3a5f;color:#60a5fa}</style>
 </head><body>
 <div class="header"><div class="logo">⚡ QUANTUM Intelligence</div><h1>דוח קמפיין: ${data.projectName}</h1><div class="meta">סוג: ${data.meetingType} | נוצר: ${new Date(data.generatedAt).toLocaleString('he-IL')} | <a href="?format=json" style="color:#60a5fa">JSON</a></div></div>
 <div class="container">
@@ -804,7 +701,6 @@ router.get('/campaign/:campaignId/report', async (req, res) => {
   <div class="kpi"><div class="kpi-val blue">${data.summary.openSlots}</div><div class="kpi-label">פנויים</div></div>
   <div class="kpi"><div class="kpi-val ${data.summary.slotUtil>=70?'green':'yellow'}">${data.summary.slotUtil}%</div><div class="kpi-label">תפיסה</div></div>
 </div>
-${parseInt(optim.swapped)>0||parseInt(optim.pending)>0?`<div class="section"><h2>🔄 אופטימיזציית לו"ז</h2><div class="optim-box"><div class="optim-stat"><div class="optim-val">${optim.swapped||0}</div><div class="optim-label">הוחלפו</div></div><div class="optim-stat"><div class="optim-val">${optim.declined||0}</div><div class="optim-label">סירבו</div></div><div class="optim-stat"><div class="optim-val">${optim.pending||0}</div><div class="optim-label">ממתינים</div></div><div class="optim-stat"><div class="optim-val">${optim.avg_gap_saved||0} דק'</div><div class="optim-label">חיסכון ממוצע</div></div></div></div>`:''}
 ${timelineRes.rows.length?`<div class="section"><h2>📈 פגישות לפי יום</h2>${timelineBars}</div>`:''}
 <div class="section"><h2>✅ פגישות שנקבעו (${data.summary.totalConfirmed})</h2>${confirmedRows?`<table><thead><tr><th>שם</th><th>טלפון</th><th>תאריך</th><th>שעה</th><th>נציג</th><th>שפה</th></tr></thead><tbody>${confirmedRows}</tbody></table>`:'<div style="color:#64748b;font-size:13px;padding:8px 0">אין פגישות</div>'}</div>
 ${repsRes.rows.length?`<div class="section"><h2>👤 עומס לפי נציג</h2><table><thead><tr><th>נציג</th><th>סה"כ</th><th>נקבעו</th><th>תפיסה</th></tr></thead><tbody>${repRows}</tbody></table></div>`:''}
