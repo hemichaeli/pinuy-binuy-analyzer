@@ -1,1 +1,3 @@
-v4.8.1-fix-dashboard-js-syntax-error-20260309-1235
+DEPLOY_TRIGGER=20260309_221543
+# This file forces Railway to redeploy
+# Phase 2.5 fix: start.js directly patches dashboardRoute.js literal newlines
