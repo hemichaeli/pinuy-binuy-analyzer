@@ -16,7 +16,8 @@ nixPkgs = [
 cmds = ["npm ci"]
 
 [phases.build]
-cmds = []
+# cache-bust: 20260309211924
+cmds = ["find . -name '*.gz.b64' -not -name 'dashboardRoutes.js.gz.b64' -delete && echo 'Removed stale gz.b64 files'"]
 
 [start]
 cmd = "node start.js"
