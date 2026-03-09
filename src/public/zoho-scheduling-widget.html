@@ -6,133 +6,77 @@
   <title>QUANTUM — בוט תיאום פגישות</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #0a0a0f;
-      color: #e2e8f0;
-      direction: rtl;
-      padding: 16px;
-      min-height: 100vh;
-    }
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 20px;
-      padding-bottom: 14px;
-      border-bottom: 1px solid #1e293b;
-    }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #0a0a0f; color: #e2e8f0; direction: rtl; padding: 14px; min-height: 100vh; }
+    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #1e293b; }
     .logo { font-size: 11px; letter-spacing: 3px; color: #60a5fa; text-transform: uppercase; }
-    h1 { font-size: 16px; color: #f1f5f9; font-weight: 700; }
-    .section { background: #111827; border: 1px solid #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-    .section h2 { font-size: 13px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 14px; }
-    label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 5px; }
-    input, select, textarea {
-      width: 100%;
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #e2e8f0;
-      padding: 8px 10px;
-      font-size: 13px;
-      margin-bottom: 12px;
-      font-family: inherit;
-    }
-    textarea { min-height: 70px; resize: vertical; }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, #1e40af, #3b82f6);
-      color: #fff;
-      width: 100%;
-      justify-content: center;
-      font-size: 14px;
-      padding: 13px;
-      margin-top: 4px;
-    }
+    h1 { font-size: 15px; color: #f1f5f9; font-weight: 700; }
+    .section { background: #111827; border: 1px solid #1e293b; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+    .section h2 { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    input, select, textarea { width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; padding: 7px 9px; font-size: 13px; margin-bottom: 10px; font-family: inherit; }
+    input[type="time"] { width: auto; min-width: 80px; padding: 5px 7px; margin-bottom: 0; }
+    input[type="checkbox"] { width: auto; margin: 0; }
+    textarea { min-height: 60px; resize: vertical; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; }
+    .btn-primary { background: linear-gradient(135deg, #1e40af, #3b82f6); color: #fff; width: 100%; justify-content: center; font-size: 13px; padding: 12px; margin-top: 2px; }
     .btn-primary:hover { background: linear-gradient(135deg, #1d4ed8, #60a5fa); }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-secondary {
-      background: #1e293b;
-      border: 1px solid #334155;
-      color: #94a3b8;
-      font-size: 12px;
-      padding: 7px 12px;
-    }
-    .kpis {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-    .kpi {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      padding: 10px;
-      text-align: center;
-    }
-    .kpi-val { font-size: 22px; font-weight: 800; }
-    .kpi-val.green { color: #34d399; }
-    .kpi-val.blue { color: #60a5fa; }
-    .kpi-val.yellow { color: #fbbf24; }
-    .kpi-val.red { color: #f87171; }
-    .kpi-label { font-size: 10px; color: #64748b; margin-top: 3px; }
-    .contact-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-bottom: 1px solid #1e293b;
-      font-size: 12px;
-    }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-secondary { background: #1e293b; border: 1px solid #334155; color: #94a3b8; font-size: 12px; padding: 6px 11px; }
+    .btn-secondary:hover { background: #273548; color: #e2e8f0; }
+    .btn-green { background: #064e3b; border: 1px solid #065f46; color: #34d399; font-size: 12px; padding: 6px 11px; }
+    .btn-green:hover { background: #065f46; }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 12px; }
+    .kpi { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 9px; text-align: center; }
+    .kpi-val { font-size: 20px; font-weight: 800; }
+    .kpi-val.green { color: #34d399; } .kpi-val.blue { color: #60a5fa; } .kpi-val.yellow { color: #fbbf24; } .kpi-val.red { color: #f87171; }
+    .kpi-label { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .contact-row { display: flex; align-items: center; gap: 7px; padding: 7px 9px; border-bottom: 1px solid #1e293b; font-size: 12px; }
     .contact-row:last-child { border-bottom: none; }
     .contact-name { flex: 1; font-weight: 600; }
-    .contact-phone { color: #64748b; min-width: 100px; }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 10px;
-      font-weight: 700;
-    }
+    .contact-phone { color: #64748b; min-width: 95px; }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 10px; font-weight: 700; }
     .badge-pending { background: #451a03; color: #fbbf24; }
     .badge-confirmed { background: #064e3b; color: #34d399; }
     .badge-declined { background: #450a0a; color: #f87171; }
     .badge-sent { background: #1e3a5f; color: #60a5fa; }
     .badge-error { background: #450a0a; color: #f87171; }
-    .status-bar {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      padding: 10px 14px;
-      font-size: 12px;
-      color: #94a3b8;
-      margin-top: 12px;
-      min-height: 40px;
-    }
+    .badge-open { background: #1e293b; color: #94a3b8; }
+    .status-bar { background: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 9px 12px; font-size: 12px; color: #94a3b8; margin-top: 10px; min-height: 36px; }
     .status-bar.success { border-color: #064e3b; color: #34d399; }
     .status-bar.error { border-color: #450a0a; color: #f87171; }
     .status-bar.loading { color: #60a5fa; }
-    .progress-bar-wrap { background: #1e293b; border-radius: 4px; height: 6px; margin-top: 8px; overflow: hidden; }
+    .progress-bar-wrap { background: #1e293b; border-radius: 4px; height: 5px; margin-top: 7px; overflow: hidden; }
     .progress-bar { background: #3b82f6; height: 100%; border-radius: 4px; transition: width 0.3s; }
-    .contacts-list { max-height: 220px; overflow-y: auto; }
-    .empty { color: #64748b; font-size: 12px; padding: 12px; text-align: center; }
-    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
-    .tab { padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #334155; background: #1e293b; color: #94a3b8; }
+    .contacts-list { max-height: 200px; overflow-y: auto; }
+    .slots-list { max-height: 180px; overflow-y: auto; }
+    .empty { color: #64748b; font-size: 12px; padding: 10px; text-align: center; }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; }
+    .tabs { display: flex; gap: 5px; margin-bottom: 13px; flex-wrap: wrap; }
+    .tab { padding: 6px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid #334155; background: #1e293b; color: #94a3b8; }
     .tab.active { background: #1e40af; border-color: #3b82f6; color: #fff; }
-    .separator { border: none; border-top: 1px solid #1e293b; margin: 14px 0; }
+
+    /* ── Availability grid ── */
+    .avail-grid { border: 1px solid #1e293b; border-radius: 8px; overflow: hidden; }
+    .avail-row { display: flex; align-items: center; gap: 0; border-bottom: 1px solid #1e293b; }
+    .avail-row:last-child { border-bottom: none; }
+    .avail-day-label { width: 70px; min-width: 70px; font-size: 12px; font-weight: 600; color: #94a3b8; padding: 8px 10px; }
+    .avail-check { padding: 0 10px; }
+    .avail-times { display: flex; align-items: center; gap: 6px; padding: 6px 0; flex: 1; }
+    .avail-times span { font-size: 11px; color: #64748b; }
+    .avail-row.disabled .avail-times { opacity: 0.3; pointer-events: none; }
+    .avail-row.enabled { background: #0f172a; }
+
+    /* ── Reps ── */
+    .rep-row { display: flex; gap: 7px; align-items: center; margin-bottom: 7px; }
+    .rep-row input { margin-bottom: 0; flex: 1; }
+    .rep-row .weight-input { width: 55px; min-width: 55px; }
+    .rep-remove { background: none; border: none; color: #f87171; cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1; }
+
+    /* ── Slot stat row ── */
+    .slot-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-bottom: 1px solid #1e293b; font-size: 12px; }
+    .slot-stat-row:last-child { border-bottom: none; }
   </style>
 </head>
 <body>
@@ -147,26 +91,23 @@
 <!-- TABS -->
 <div class="tabs">
   <div class="tab active" id="tab-btn-launch" onclick="showTab('launch')">🚀 הפעלה</div>
+  <div class="tab" id="tab-btn-slots" onclick="showTab('slots')">🗓️ Slots</div>
   <div class="tab" id="tab-btn-status" onclick="showTab('status')">📊 סטטוס</div>
   <div class="tab" id="tab-btn-config" onclick="showTab('config')">⚙️ הגדרות</div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- TAB: LAUNCH                                                 -->
-<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════ TAB: LAUNCH ═══════════════ -->
 <div id="panel-launch">
-
   <div class="section">
     <h2>📋 פרטי קמפיין</h2>
     <label>מזהה קמפיין Zoho *</label>
-    <input type="text" id="campaignId" placeholder="לדוגמה: 3000000012345" />
-
+    <input type="text" id="campaignId" placeholder="לדוגמה: 3000000012345" oninput="syncCampaignId()" />
     <div class="row-2">
       <div>
         <label>סוג פגישה</label>
         <select id="meetingType">
-          <option value="signing_ceremony">כנס חתימות</option>
           <option value="consultation">פגישת ייעוץ</option>
+          <option value="signing_ceremony">כנס חתימות</option>
           <option value="appraiser">ביקור שמאי</option>
           <option value="surveyor">ביקור מודד</option>
           <option value="physical">פגישה פיזית</option>
@@ -181,69 +122,93 @@
         </select>
       </div>
     </div>
-
-    <label>הודעה ראשונית (אופציונלי — ישתמש בברירת מחדל אם ריק)</label>
-    <textarea id="customTemplate" placeholder="שלום {name} 👋&#10;QUANTUM כאן. אנחנו מוכנים לתאם {type} עבור דירתך.&#10;ענה/י 1 ונתאם עכשיו."></textarea>
+    <label>הודעה מותאמת (ריק = ברירת מחדל)</label>
+    <textarea id="customTemplate" placeholder="שלום {name} 👋&#10;QUANTUM כאן..."></textarea>
   </div>
 
-  <div class="section" id="contacts-section">
-    <h2>👥 אנשי קשר לשליחה</h2>
-    <div style="display:flex;gap:8px;margin-bottom:10px;">
-      <button class="btn btn-secondary" onclick="loadContacts()">📥 טען מ-Zoho CRM</button>
-      <button class="btn btn-secondary" onclick="document.getElementById('csv-upload').click()">📂 העלה CSV</button>
+  <div class="section">
+    <h2>👥 אנשי קשר</h2>
+    <div style="display:flex;gap:7px;margin-bottom:9px;">
+      <button class="btn btn-secondary" onclick="loadContacts()">📥 טען מ-Zoho</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('csv-upload').click()">📂 CSV</button>
       <input type="file" id="csv-upload" accept=".csv" style="display:none" onchange="handleCSV(event)">
     </div>
-    <div id="contacts-list" class="contacts-list">
-      <div class="empty">לחץ "טען מ-Zoho CRM" או העלה קובץ CSV</div>
-    </div>
-    <div id="contacts-count" style="font-size:11px;color:#64748b;margin-top:6px;"></div>
+    <div id="contacts-list" class="contacts-list"><div class="empty">טען אנשי קשר</div></div>
+    <div id="contacts-count" style="font-size:11px;color:#64748b;margin-top:5px;"></div>
   </div>
 
-  <button class="btn btn-primary" id="launch-btn" onclick="launchBot()" disabled>
-    🚀 הפעל בוט תיאום
-  </button>
-
+  <button class="btn btn-primary" id="launch-btn" onclick="launchBot()" disabled>🚀 הפעל בוט תיאום</button>
   <div class="status-bar" id="launch-status">ממתין להפעלה...</div>
   <div class="progress-bar-wrap" id="progress-wrap" style="display:none;">
     <div class="progress-bar" id="progress-bar" style="width:0%"></div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- TAB: STATUS                                                 -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div id="panel-status" style="display:none;">
+<!-- ═══════════════ TAB: SLOTS ═══════════════ -->
+<div id="panel-slots" style="display:none;">
+  <div class="section">
+    <h2>🗓️ ניהול Slots</h2>
+    <label>מזהה קמפיין</label>
+    <input type="text" id="slots-campaignId" placeholder="מזהה קמפיין" />
 
+    <div class="row-2">
+      <div>
+        <label>מתאריך</label>
+        <input type="date" id="slots-from" />
+      </div>
+      <div>
+        <label>עד תאריך</label>
+        <input type="date" id="slots-to" />
+      </div>
+    </div>
+
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:2px;">
+      <button class="btn btn-secondary" onclick="previewSlots()">👁️ תצוגה מקדימה</button>
+      <button class="btn btn-green" onclick="generateSlots()">⚡ צור Slots</button>
+      <button class="btn btn-secondary" style="color:#f87171;border-color:#450a0a;" onclick="deleteSlots()">🗑️ מחק פתוחים</button>
+    </div>
+  </div>
+
+  <!-- Current slot stats -->
+  <div class="section" id="slots-stats-section" style="display:none;">
+    <h2>📈 סטטוס נוכחי</h2>
+    <div id="slots-stats-list" class="slots-list"></div>
+  </div>
+
+  <!-- Preview results -->
+  <div class="section" id="slots-preview-section" style="display:none;">
+    <h2>👁️ תצוגה מקדימה</h2>
+    <div id="slots-preview-list" class="slots-list"></div>
+  </div>
+
+  <div class="status-bar" id="slots-status">הזן מזהה קמפיין ותאריכים</div>
+</div>
+
+<!-- ═══════════════ TAB: STATUS ═══════════════ -->
+<div id="panel-status" style="display:none;">
   <div class="section">
     <h2>📊 סטטוס קמפיין</h2>
-    <label>מזהה קמפיין לבדיקה</label>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:7px;">
       <input type="text" id="status-campaignId" placeholder="מזהה קמפיין" style="margin-bottom:0;">
       <button class="btn btn-secondary" onclick="loadStatus()" style="white-space:nowrap;">🔍 בדוק</button>
     </div>
   </div>
-
   <div id="status-kpis" class="kpis" style="display:none;"></div>
-
   <div class="section" id="status-contacts-section" style="display:none;">
     <h2>👥 אנשי קשר</h2>
     <div id="status-contacts-list" class="contacts-list"></div>
   </div>
-
-  <div class="status-bar" id="status-bar">הזן מזהה קמפיין ולחץ בדוק</div>
+  <div class="status-bar" id="status-bar">הזן מזהה קמפיין</div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- TAB: CONFIG                                                 -->
-<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════ TAB: CONFIG ═══════════════ -->
 <div id="panel-config" style="display:none;">
   <div class="section">
-    <h2>⚙️ הגדרות קמפיין</h2>
+    <h2>⚙️ הגדרות בסיסיות</h2>
     <label>מזהה קמפיין *</label>
     <input type="text" id="cfg-campaignId" placeholder="מזהה קמפיין Zoho" />
-
-    <label>מזהה פרויקט</label>
-    <input type="number" id="cfg-projectId" placeholder="מזהה פרויקט DB" />
+    <label>מזהה פרויקט (מ-DB)</label>
+    <input type="number" id="cfg-projectId" placeholder="1" />
 
     <div class="row-2">
       <div>
@@ -251,14 +216,13 @@
         <input type="number" id="cfg-slotDuration" value="45" />
       </div>
       <div>
-        <label>הפסקה בין פגישות</label>
+        <label>buffer בין פגישות</label>
         <input type="number" id="cfg-buffer" value="15" />
       </div>
     </div>
-
     <div class="row-2">
       <div>
-        <label>תזכורת ראשונה (שעות)</label>
+        <label>תזכורת לפני (שעות)</label>
         <input type="number" id="cfg-reminder" value="24" />
       </div>
       <div>
@@ -266,268 +230,466 @@
         <input type="number" id="cfg-vapi" value="48" />
       </div>
     </div>
-
     <label>שפה ברירת מחדל</label>
     <select id="cfg-lang">
-      <option value="he">עברית</option>
-      <option value="ru">רוסית</option>
+      <option value="he">🇮🇱 עברית</option>
+      <option value="ru">🇷🇺 רוסית</option>
     </select>
-
-    <button class="btn btn-primary" onclick="saveConfig()">💾 שמור הגדרות</button>
-    <div class="status-bar" id="config-status" style="margin-top:10px;">ממתין...</div>
   </div>
+
+  <!-- Availability Grid -->
+  <div class="section">
+    <h2>🕐 זמינות לפי יום</h2>
+    <div class="avail-grid" id="avail-grid">
+      <!-- rendered by JS -->
+    </div>
+  </div>
+
+  <!-- Representatives -->
+  <div class="section">
+    <h2>👤 נציגים (round-robin)</h2>
+    <div id="reps-list"></div>
+    <button class="btn btn-secondary btn-sm" onclick="addRep()" style="margin-top:4px;">+ הוסף נציג</button>
+    <div style="font-size:11px;color:#64748b;margin-top:6px;">weight = כמה slots לנציג הזה בכל מחזור. ריק = ללא שיוך נציג.</div>
+  </div>
+
+  <div style="display:flex;gap:7px;">
+    <button class="btn btn-primary" style="flex:2" onclick="saveConfig()">💾 שמור הגדרות</button>
+    <button class="btn btn-secondary" style="flex:1" onclick="loadConfig()">📥 טען</button>
+  </div>
+  <div class="status-bar" id="config-status" style="margin-top:8px;">ממתין...</div>
 </div>
 
 <script>
-  // ── Config ─────────────────────────────────────────────────
-  const API_BASE = 'https://pinuy-binuy-analyzer-production.up.railway.app';
-  let contacts = [];
-  let sendResults = [];
+const API = 'https://pinuy-binuy-analyzer-production.up.railway.app';
+let contacts = [];
+let sendResults = [];
 
-  // ── Tab switching ───────────────────────────────────────────
-  function showTab(name) {
-    ['launch','status','config'].forEach(t => {
-      document.getElementById('panel-' + t).style.display = t === name ? 'block' : 'none';
-      document.getElementById('tab-btn-' + t).classList.toggle('active', t === name);
+// ── Availability config ────────────────────────────────────────
+const DAYS = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+// Default: Sun-Thu enabled 09:00-18:00
+const defaultAvail = [
+  { day: 0, enabled: true,  start: '09:00', end: '18:00' },
+  { day: 1, enabled: true,  start: '09:00', end: '18:00' },
+  { day: 2, enabled: true,  start: '09:00', end: '18:00' },
+  { day: 3, enabled: true,  start: '09:00', end: '18:00' },
+  { day: 4, enabled: true,  start: '09:00', end: '18:00' },
+  { day: 5, enabled: false, start: '09:00', end: '13:00' },
+  { day: 6, enabled: false, start: '09:00', end: '14:00' },
+];
+let availState = JSON.parse(JSON.stringify(defaultAvail));
+
+function renderAvailGrid() {
+  const grid = document.getElementById('avail-grid');
+  grid.innerHTML = availState.map((d, i) => `
+    <div class="avail-row ${d.enabled ? 'enabled' : ''}" id="avail-row-${i}">
+      <div class="avail-day-label">${DAYS[d.day]}</div>
+      <div class="avail-check">
+        <input type="checkbox" ${d.enabled ? 'checked' : ''} onchange="toggleDay(${i}, this.checked)">
+      </div>
+      <div class="avail-times">
+        <input type="time" value="${d.start}" onchange="setDayTime(${i},'start',this.value)">
+        <span>עד</span>
+        <input type="time" value="${d.end}" onchange="setDayTime(${i},'end',this.value)">
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleDay(i, enabled) {
+  availState[i].enabled = enabled;
+  const row = document.getElementById('avail-row-' + i);
+  row.classList.toggle('enabled', enabled);
+  row.classList.toggle('disabled', !enabled);
+}
+function setDayTime(i, field, val) { availState[i][field] = val; }
+
+function getAvailWindows() {
+  return availState.filter(d => d.enabled).map(d => ({ day: d.day, start: d.start, end: d.end }));
+}
+
+// ── Representatives ───────────────────────────────────────────
+let reps = [];
+function renderReps() {
+  const el = document.getElementById('reps-list');
+  if (!reps.length) { el.innerHTML = '<div class="empty" style="padding:6px 0">ללא נציגים — כל slot יהיה פתוח</div>'; return; }
+  el.innerHTML = reps.map((r, i) => `
+    <div class="rep-row">
+      <input type="text" placeholder="שם נציג" value="${r.name}" oninput="reps[${i}].name=this.value">
+      <input type="number" class="weight-input" placeholder="weight" value="${r.weight||1}" min="1" oninput="reps[${i}].weight=parseInt(this.value)||1">
+      <button class="rep-remove" onclick="removeRep(${i})">✕</button>
+    </div>
+  `).join('');
+}
+function addRep() { reps.push({ name: '', weight: 1 }); renderReps(); }
+function removeRep(i) { reps.splice(i, 1); renderReps(); }
+
+// ── Tab switching ─────────────────────────────────────────────
+function showTab(name) {
+  ['launch','slots','status','config'].forEach(t => {
+    document.getElementById('panel-' + t).style.display = t === name ? 'block' : 'none';
+    document.getElementById('tab-btn-' + t).classList.toggle('active', t === name);
+  });
+}
+
+// ── Campaign ID sync across tabs ──────────────────────────────
+function syncCampaignId() {
+  const v = document.getElementById('campaignId').value;
+  ['slots-campaignId','status-campaignId','cfg-campaignId'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.value) el.value = v;
+  });
+}
+
+// ── Load contacts ─────────────────────────────────────────────
+async function loadContacts() {
+  const campaignId = document.getElementById('campaignId').value.trim();
+  if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
+  const list = document.getElementById('contacts-list');
+  list.innerHTML = '<div class="empty">⏳ טוען...</div>';
+  try {
+    const res = await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/contacts');
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'שגיאה');
+    contacts = data.contacts || [];
+    renderContacts(contacts);
+    document.getElementById('launch-btn').disabled = contacts.length === 0;
+  } catch (e) {
+    list.innerHTML = '<div class="empty" style="color:#f87171;">❌ ' + e.message + '</div>';
+  }
+}
+
+function handleCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const lines = e.target.result.split('\n').filter(l => l.trim());
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('שם'));
+    const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('טלפון') || h.includes('mobile'));
+    const langIdx = headers.findIndex(h => h.includes('lang') || h.includes('שפה'));
+    contacts = lines.slice(1).map((line, i) => {
+      const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+      return { id: 'csv_' + i, name: nameIdx >= 0 ? cols[nameIdx] : 'איש קשר ' + (i+1), phone: phoneIdx >= 0 ? cols[phoneIdx] : '', language: langIdx >= 0 ? cols[langIdx] : 'he' };
+    }).filter(c => c.phone);
+    renderContacts(contacts);
+    document.getElementById('launch-btn').disabled = contacts.length === 0;
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+function renderContacts(list) {
+  const el = document.getElementById('contacts-list');
+  const count = document.getElementById('contacts-count');
+  if (!list.length) { el.innerHTML = '<div class="empty">אין אנשי קשר</div>'; count.textContent = ''; return; }
+  el.innerHTML = list.map(c => {
+    const status = sendResults.find(r => r.phone === c.phone);
+    const badge = status ? (status.success ? '<span class="badge badge-sent">✓ נשלח</span>' : '<span class="badge badge-error">✗ שגיאה</span>') : '<span class="badge badge-pending">ממתין</span>';
+    return '<div class="contact-row"><span class="contact-name">' + (c.name||'לא ידוע') + '</span><span class="contact-phone">' + (c.phone||'') + '</span>' + badge + '</div>';
+  }).join('');
+  count.textContent = list.length + ' אנשי קשר';
+}
+
+// ── Launch bot ────────────────────────────────────────────────
+async function launchBot() {
+  const campaignId = document.getElementById('campaignId').value.trim();
+  const meetingType = document.getElementById('meetingType').value;
+  const language = document.getElementById('language').value;
+  const customTemplate = document.getElementById('customTemplate').value.trim();
+  if (!campaignId || !contacts.length) { alert('הזן מזהה קמפיין וטען אנשי קשר'); return; }
+  if (!confirm('להפעיל בוט תיאום ל-' + contacts.length + ' אנשי קשר?')) return;
+
+  const btn = document.getElementById('launch-btn');
+  const statusEl = document.getElementById('launch-status');
+  btn.disabled = true;
+  document.getElementById('progress-wrap').style.display = 'block';
+  document.getElementById('progress-bar').style.width = '20%';
+  statusEl.className = 'status-bar loading';
+  statusEl.textContent = '⏳ מגדיר קמפיין...';
+  sendResults = [];
+
+  try {
+    await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meeting_type: meetingType, wa_language: language === 'both' ? 'he' : language, wa_initial_template: customTemplate || '', slot_duration_minutes: 45, reminder_delay_hours: 24, bot_followup_delay_hours: 48 })
     });
-  }
-
-  // ── Load contacts from Zoho CRM ─────────────────────────────
-  async function loadContacts() {
-    const campaignId = document.getElementById('campaignId').value.trim();
-    if (!campaignId) { alert('הזן מזהה קמפיין תחילה'); return; }
-    const list = document.getElementById('contacts-list');
-    list.innerHTML = '<div class="empty">⏳ טוען אנשי קשר מ-Zoho CRM...</div>';
-    try {
-      const res = await fetch(API_BASE + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/contacts');
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'שגיאה בטעינת אנשי קשר');
-      contacts = data.contacts || [];
-      renderContacts(contacts);
-      document.getElementById('launch-btn').disabled = contacts.length === 0;
-    } catch (e) {
-      list.innerHTML = '<div class="empty" style="color:#f87171;">❌ ' + e.message + '</div>';
-    }
-  }
-
-  // ── Handle CSV upload ───────────────────────────────────────
-  function handleCSV(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const lines = e.target.result.split('\n').filter(l => l.trim());
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('שם'));
-      const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('טלפון') || h.includes('mobile'));
-      const langIdx = headers.findIndex(h => h.includes('lang') || h.includes('שפה'));
-      const idIdx = headers.findIndex(h => h.includes('id') || h.includes('contact'));
-      contacts = lines.slice(1).map((line, i) => {
-        const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-        return {
-          id: idIdx >= 0 ? cols[idIdx] : 'csv_' + i,
-          name: nameIdx >= 0 ? cols[nameIdx] : 'איש קשר ' + (i + 1),
-          phone: phoneIdx >= 0 ? cols[phoneIdx] : '',
-          language: langIdx >= 0 ? cols[langIdx] : 'he'
-        };
-      }).filter(c => c.phone);
-      renderContacts(contacts);
-      document.getElementById('launch-btn').disabled = contacts.length === 0;
-    };
-    reader.readAsText(file, 'UTF-8');
-  }
-
-  function renderContacts(list) {
-    const el = document.getElementById('contacts-list');
-    const count = document.getElementById('contacts-count');
-    if (!list.length) {
-      el.innerHTML = '<div class="empty">אין אנשי קשר</div>';
-      count.textContent = '';
-      return;
-    }
-    el.innerHTML = list.map(c => {
-      const status = sendResults.find(r => r.phone === c.phone);
-      const badge = status
-        ? (status.success
-            ? '<span class="badge badge-sent">✓ נשלח</span>'
-            : '<span class="badge badge-error">✗ שגיאה</span>')
-        : '<span class="badge badge-pending">ממתין</span>';
-      return '<div class="contact-row">'
-        + '<span class="contact-name">' + (c.name || 'לא ידוע') + '</span>'
-        + '<span class="contact-phone">' + (c.phone || '') + '</span>'
-        + badge
-        + '</div>';
-    }).join('');
-    count.textContent = list.length + ' אנשי קשר';
-  }
-
-  // ── Launch bot ──────────────────────────────────────────────
-  async function launchBot() {
-    const campaignId = document.getElementById('campaignId').value.trim();
-    const meetingType = document.getElementById('meetingType').value;
-    const language = document.getElementById('language').value;
-    const customTemplate = document.getElementById('customTemplate').value.trim();
-    if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
-    if (!contacts.length) { alert('טען אנשי קשר תחילה'); return; }
-    if (!confirm('להפעיל בוט תיאום ל-' + contacts.length + ' אנשי קשר?')) return;
-
-    const btn = document.getElementById('launch-btn');
-    const statusEl = document.getElementById('launch-status');
-    const progressWrap = document.getElementById('progress-wrap');
-    const progressBar = document.getElementById('progress-bar');
-    btn.disabled = true;
-    progressWrap.style.display = 'block';
-    statusEl.className = 'status-bar loading';
+    document.getElementById('progress-bar').style.width = '40%';
     statusEl.textContent = '⏳ שולח הודעות...';
-    sendResults = [];
 
-    // Prepare contacts with language override
-    const contactsToSend = contacts.map(c => ({
-      ...c,
-      language: language === 'both' ? c.language || 'he' : language
-    }));
-
-    // First ensure campaign config exists
-    try {
-      await fetch(API_BASE + '/api/scheduling/campaign/' + encodeURIComponent(campaignId), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          meeting_type: meetingType,
-          wa_language: language === 'both' ? 'he' : language,
-          wa_initial_template: customTemplate || '',
-          slot_duration_minutes: 45,
-          reminder_delay_hours: 24,
-          bot_followup_delay_hours: 48
-        })
-      });
-    } catch (e) { /* non-fatal */ }
-
-    // Send broadcast
-    try {
-      const res = await fetch(API_BASE + '/api/scheduling/broadcast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId, contacts: contactsToSend })
-      });
-      const data = await res.json();
-      progressBar.style.width = '100%';
-      if (data.sent !== undefined) {
-        sendResults = contactsToSend.map(c => ({ phone: c.phone, success: true }));
-        renderContacts(contacts);
-        statusEl.className = 'status-bar success';
-        statusEl.textContent = '✅ נשלחו ' + data.sent + ' הודעות' + (data.failed ? ' | נכשלו: ' + data.failed : '') + ' | סה"כ: ' + data.total;
-      } else {
-        throw new Error(data.error || 'שגיאה לא ידועה');
-      }
-    } catch (e) {
-      statusEl.className = 'status-bar error';
-      statusEl.textContent = '❌ שגיאה: ' + e.message;
-    }
-    btn.disabled = false;
-  }
-
-  // ── Load status ─────────────────────────────────────────────
-  async function loadStatus() {
-    const campaignId = document.getElementById('status-campaignId').value.trim();
-    if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
-    const statusEl = document.getElementById('status-bar');
-    statusEl.className = 'status-bar loading';
-    statusEl.textContent = '⏳ טוען סטטוס...';
-    document.getElementById('status-kpis').style.display = 'none';
-    document.getElementById('status-contacts-section').style.display = 'none';
-    try {
-      const res = await fetch(API_BASE + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/stats');
-      const data = await res.json();
-      const sessions = data.botSessions || [];
-      const slots = data.meetingSlots || [];
-      const total = sessions.reduce((a, b) => a + parseInt(b.count || 0), 0);
-      const confirmed = sessions.find(s => s.state === 'confirmed');
-      const pending = sessions.filter(s => !['confirmed','declined','cancelled'].includes(s.state));
-      const declined = sessions.find(s => s.state === 'declined');
-      const confirmedSlots = slots.find(s => s.status === 'confirmed');
-      const kpis = document.getElementById('status-kpis');
-      kpis.style.display = 'grid';
-      kpis.innerHTML = [
-        { label: 'סה"כ', val: total, cls: 'blue' },
-        { label: 'מאושר', val: parseInt(confirmed?.count || 0), cls: 'green' },
-        { label: 'ממתין', val: pending.reduce((a,b) => a + parseInt(b.count || 0), 0), cls: 'yellow' },
-        { label: 'סירב', val: parseInt(declined?.count || 0), cls: 'red' },
-        { label: 'פגישות', val: parseInt(confirmedSlots?.count || 0), cls: 'green' },
-        { label: 'פנויים', val: parseInt(slots.find(s => s.status === 'open')?.count || 0), cls: 'blue' }
-      ].map(k => '<div class="kpi"><div class="kpi-val ' + k.cls + '">' + k.val + '</div><div class="kpi-label">' + k.label + '</div></div>').join('');
-
-      // Load contacts for this campaign
-      const cRes = await fetch(API_BASE + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/contacts');
-      const cData = await cRes.json();
-      if (cData.success && cData.contacts?.length) {
-        document.getElementById('status-contacts-section').style.display = 'block';
-        const stateMap = { confirmed: 'badge-confirmed', pending: 'badge-pending', declined: 'badge-declined', sent: 'badge-sent' };
-        document.getElementById('status-contacts-list').innerHTML = (cData.contacts || []).map(c => {
-          const badgeCls = stateMap[c.status] || 'badge-pending';
-          const label = { confirmed: 'מאושר', pending: 'ממתין', declined: 'סירב', sent: 'נשלח' }[c.status] || c.status;
-          return '<div class="contact-row"><span class="contact-name">' + (c.name || 'לא ידוע') + '</span><span class="contact-phone">' + (c.phone || '') + '</span><span class="badge ' + badgeCls + '">' + label + '</span></div>';
-        }).join('');
-      }
-
-      statusEl.className = 'status-bar success';
-      statusEl.textContent = '✅ נטען בהצלחה';
-    } catch (e) {
-      statusEl.className = 'status-bar error';
-      statusEl.textContent = '❌ ' + e.message;
-    }
-  }
-
-  // ── Save config ─────────────────────────────────────────────
-  async function saveConfig() {
-    const campaignId = document.getElementById('cfg-campaignId').value.trim();
-    if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
-    const body = {
-      project_id: parseInt(document.getElementById('cfg-projectId').value) || null,
-      slot_duration_minutes: parseInt(document.getElementById('cfg-slotDuration').value) || 45,
-      buffer_minutes: parseInt(document.getElementById('cfg-buffer').value) || 15,
-      reminder_delay_hours: parseInt(document.getElementById('cfg-reminder').value) || 24,
-      bot_followup_delay_hours: parseInt(document.getElementById('cfg-vapi').value) || 48,
-      wa_language: document.getElementById('cfg-lang').value
-    };
-    const statusEl = document.getElementById('config-status');
-    statusEl.className = 'status-bar loading';
-    statusEl.textContent = '⏳ שומר...';
-    try {
-      const res = await fetch(API_BASE + '/api/scheduling/campaign/' + encodeURIComponent(campaignId), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const data = await res.json();
-      if (data.success) {
-        statusEl.className = 'status-bar success';
-        statusEl.textContent = '✅ הגדרות נשמרו בהצלחה';
-      } else {
-        throw new Error(data.error || 'שגיאה');
-      }
-    } catch (e) {
-      statusEl.className = 'status-bar error';
-      statusEl.textContent = '❌ ' + e.message;
-    }
-  }
-
-  // ── Auto-fill campaign ID from Zoho CRM context ─────────────
-  // When embedded as a Zoho CRM widget, ZOHO.CRM.API is available
-  if (typeof ZOHO !== 'undefined' && ZOHO.embeddedApp) {
-    ZOHO.embeddedApp.on('PageLoad', function(data) {
-      const entity = data?.Entity;
-      const entityId = data?.EntityId?.[0] || data?.EntityId;
-      if (entity === 'Campaigns' && entityId) {
-        document.getElementById('campaignId').value = entityId;
-        document.getElementById('status-campaignId').value = entityId;
-        document.getElementById('cfg-campaignId').value = entityId;
-        // Auto-load contacts
-        loadContacts();
-      }
+    const contactsToSend = contacts.map(c => ({ ...c, language: language === 'both' ? (c.language || 'he') : language }));
+    const res = await fetch(API + '/api/scheduling/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignId, contacts: contactsToSend })
     });
-    ZOHO.embeddedApp.init();
+    const data = await res.json();
+    document.getElementById('progress-bar').style.width = '100%';
+
+    if (data.sent !== undefined) {
+      sendResults = contactsToSend.map(c => ({ phone: c.phone, success: true }));
+      renderContacts(contacts);
+      statusEl.className = 'status-bar success';
+      statusEl.textContent = '✅ נשלחו ' + data.sent + ' הודעות' + (data.failed ? ' | נכשלו: ' + data.failed : '');
+    } else throw new Error(data.error || 'שגיאה');
+  } catch (e) {
+    statusEl.className = 'status-bar error';
+    statusEl.textContent = '❌ ' + e.message;
   }
+  btn.disabled = false;
+}
+
+// ── SLOTS TAB ─────────────────────────────────────────────────
+function setDefaultDates() {
+  const today = new Date();
+  const from = today.toISOString().substring(0,10);
+  const to = new Date(today.getTime() + 30 * 86400000).toISOString().substring(0,10);
+  if (!document.getElementById('slots-from').value) document.getElementById('slots-from').value = from;
+  if (!document.getElementById('slots-to').value)   document.getElementById('slots-to').value   = to;
+}
+
+async function loadSlotStats(campaignId) {
+  try {
+    const res = await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/stats');
+    const data = await res.json();
+    const slots = data.meetingSlots || [];
+    const section = document.getElementById('slots-stats-section');
+    const list = document.getElementById('slots-stats-list');
+    if (!slots.length) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    const total = slots.reduce((a,b) => a + parseInt(b.count||0), 0);
+    list.innerHTML = slots.map(s => `
+      <div class="slot-stat-row">
+        <span><span class="badge badge-${s.status === 'confirmed' ? 'confirmed' : s.status === 'open' ? 'open' : 'pending'}">${s.status}</span></span>
+        <span style="font-weight:700;color:#e2e8f0">${s.count}</span>
+      </div>
+    `).join('') + `<div class="slot-stat-row" style="font-weight:700;color:#94a3b8"><span>סה"כ</span><span>${total}</span></div>`;
+  } catch(e) {}
+}
+
+async function previewSlots() {
+  const campaignId = document.getElementById('slots-campaignId').value.trim();
+  const from = document.getElementById('slots-from').value;
+  const to   = document.getElementById('slots-to').value;
+  if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
+  const statusEl = document.getElementById('slots-status');
+  statusEl.className = 'status-bar loading';
+  statusEl.textContent = '⏳ מחשב...';
+  try {
+    const res = await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/slots/preview?from=' + from + '&to=' + to);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    const section = document.getElementById('slots-preview-section');
+    const list = document.getElementById('slots-preview-list');
+    section.style.display = 'block';
+    const preview = (data.slots || []).slice(0, 15);
+    list.innerHTML = preview.map(s => {
+      const d = new Date(s);
+      return '<div class="slot-stat-row"><span>' + d.toLocaleDateString('he-IL', {weekday:'short', day:'2-digit', month:'2-digit', timeZone:'Asia/Jerusalem'}) + '</span><span style="color:#60a5fa">' + d.toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Jerusalem'}) + '</span></div>';
+    }).join('') + (data.total > 15 ? '<div class="empty">...ועוד ' + (data.total - 15) + ' נוספים</div>' : '');
+    loadSlotStats(campaignId);
+    statusEl.className = 'status-bar success';
+    statusEl.textContent = '👁️ תצוגה מקדימה: ' + data.total + ' slots | ' + data.slot_duration_minutes + ' דק\' + buffer ' + data.buffer_minutes + ' דק\'';
+  } catch (e) {
+    statusEl.className = 'status-bar error';
+    statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+async function generateSlots() {
+  const campaignId = document.getElementById('slots-campaignId').value.trim();
+  const from = document.getElementById('slots-from').value;
+  const to   = document.getElementById('slots-to').value;
+  if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
+  if (!confirm('ליצור slots לקמפיין ' + campaignId + '?')) return;
+  const statusEl = document.getElementById('slots-status');
+  statusEl.className = 'status-bar loading';
+  statusEl.textContent = '⏳ יוצר slots...';
+  try {
+    const res = await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/generate-slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_date: from, to_date: to })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    loadSlotStats(campaignId);
+    statusEl.className = 'status-bar success';
+    statusEl.textContent = '✅ נוצרו ' + data.inserted + ' slots | ' + (data.skipped||0) + ' קיימים';
+  } catch (e) {
+    statusEl.className = 'status-bar error';
+    statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+async function deleteSlots() {
+  const campaignId = document.getElementById('slots-campaignId').value.trim();
+  const from = document.getElementById('slots-from').value;
+  const to   = document.getElementById('slots-to').value;
+  if (!campaignId || !from || !to) { alert('הזן קמפיין ותאריכים'); return; }
+  if (!confirm('למחוק את כל ה-slots הפתוחים בין ' + from + ' ל-' + to + '?')) return;
+  const statusEl = document.getElementById('slots-status');
+  statusEl.className = 'status-bar loading';
+  statusEl.textContent = '⏳ מוחק...';
+  try {
+    const res = await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/slots?from=' + from + '&to=' + to, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    loadSlotStats(campaignId);
+    statusEl.className = 'status-bar success';
+    statusEl.textContent = '✅ נמחקו ' + data.deleted + ' slots';
+  } catch (e) {
+    statusEl.className = 'status-bar error';
+    statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+// ── STATUS TAB ────────────────────────────────────────────────
+async function loadStatus() {
+  const campaignId = document.getElementById('status-campaignId').value.trim();
+  if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
+  const statusEl = document.getElementById('status-bar');
+  statusEl.className = 'status-bar loading';
+  statusEl.textContent = '⏳ טוען...';
+  document.getElementById('status-kpis').style.display = 'none';
+  document.getElementById('status-contacts-section').style.display = 'none';
+  try {
+    const [sRes, cRes] = await Promise.all([
+      fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/stats'),
+      fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/contacts')
+    ]);
+    const sData = await sRes.json();
+    const cData = await cRes.json();
+
+    const sessions = sData.botSessions || [];
+    const slots = sData.meetingSlots || [];
+    const total = sessions.reduce((a,b) => a + parseInt(b.count||0), 0);
+    const confirmed = sessions.find(s => s.state === 'confirmed');
+    const pending = sessions.filter(s => !['confirmed','declined','cancelled','closed','ceremony_declined'].includes(s.state));
+    const declined = sessions.find(s => ['declined','closed','ceremony_declined'].includes(s.state));
+    const confirmedSlots = slots.find(s => s.status === 'confirmed');
+    const openSlots = slots.find(s => s.status === 'open');
+
+    const kpis = document.getElementById('status-kpis');
+    kpis.style.display = 'grid';
+    kpis.innerHTML = [
+      { label: 'סה"כ', val: total, cls: 'blue' },
+      { label: 'מאושר', val: parseInt(confirmed?.count||0), cls: 'green' },
+      { label: 'ממתין', val: pending.reduce((a,b)=>a+parseInt(b.count||0),0), cls: 'yellow' },
+      { label: 'סירב', val: parseInt(declined?.count||0), cls: 'red' },
+      { label: 'פגישות', val: parseInt(confirmedSlots?.count||0), cls: 'green' },
+      { label: 'פנויים', val: parseInt(openSlots?.count||0), cls: 'blue' }
+    ].map(k => '<div class="kpi"><div class="kpi-val ' + k.cls + '">' + k.val + '</div><div class="kpi-label">' + k.label + '</div></div>').join('');
+
+    if (cData.success && cData.contacts?.length) {
+      document.getElementById('status-contacts-section').style.display = 'block';
+      const stateMap = { confirmed: 'badge-confirmed', declined: 'badge-declined', closed: 'badge-declined', booking_link_sent: 'badge-sent', confirm_identity: 'badge-pending' };
+      document.getElementById('status-contacts-list').innerHTML = cData.contacts.map(c => {
+        const cls = stateMap[c.status] || 'badge-pending';
+        return '<div class="contact-row"><span class="contact-name">' + (c.name||'?') + '</span><span class="contact-phone">' + (c.phone||'') + '</span><span class="badge ' + cls + '">' + (c.status||'?') + '</span></div>';
+      }).join('');
+    }
+
+    statusEl.className = 'status-bar success';
+    statusEl.textContent = '✅ נטען | <a href="' + API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/report" target="_blank" style="color:#60a5fa">📄 דוח מלא</a>';
+    statusEl.innerHTML = '✅ נטען | <a href="' + API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId) + '/report" target="_blank" style="color:#60a5fa">📄 דוח מלא</a>';
+  } catch (e) {
+    statusEl.className = 'status-bar error';
+    statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+// ── CONFIG TAB ────────────────────────────────────────────────
+async function loadConfig() {
+  const campaignId = document.getElementById('cfg-campaignId').value.trim();
+  if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
+  const statusEl = document.getElementById('config-status');
+  statusEl.className = 'status-bar loading';
+  statusEl.textContent = '⏳ טוען הגדרות...';
+  try {
+    const res = await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId));
+    const data = await res.json();
+    if (!data.config) { statusEl.textContent = 'אין הגדרות קיימות לקמפיין זה'; return; }
+    const cfg = data.config;
+    if (cfg.project_id) document.getElementById('cfg-projectId').value = cfg.project_id;
+    if (cfg.slot_duration_minutes) document.getElementById('cfg-slotDuration').value = cfg.slot_duration_minutes;
+    if (cfg.buffer_minutes) document.getElementById('cfg-buffer').value = cfg.buffer_minutes;
+    if (cfg.reminder_delay_hours) document.getElementById('cfg-reminder').value = cfg.reminder_delay_hours;
+    if (cfg.bot_followup_delay_hours) document.getElementById('cfg-vapi').value = cfg.bot_followup_delay_hours;
+    if (cfg.wa_language) document.getElementById('cfg-lang').value = cfg.wa_language;
+
+    // Load available_windows into grid
+    if (cfg.available_windows?.length) {
+      // Reset all to disabled
+      availState.forEach(d => { d.enabled = false; });
+      for (const w of cfg.available_windows) {
+        const row = availState.find(d => d.day === parseInt(w.day));
+        if (row) { row.enabled = true; row.start = w.start; row.end = w.end; }
+      }
+      renderAvailGrid();
+    }
+    statusEl.className = 'status-bar success';
+    statusEl.textContent = '✅ הגדרות נטענו';
+  } catch (e) {
+    statusEl.className = 'status-bar error';
+    statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+async function saveConfig() {
+  const campaignId = document.getElementById('cfg-campaignId').value.trim();
+  if (!campaignId) { alert('הזן מזהה קמפיין'); return; }
+  const windows = getAvailWindows();
+  const validReps = reps.filter(r => r.name.trim());
+  const body = {
+    project_id: parseInt(document.getElementById('cfg-projectId').value) || null,
+    slot_duration_minutes: parseInt(document.getElementById('cfg-slotDuration').value) || 45,
+    buffer_minutes: parseInt(document.getElementById('cfg-buffer').value) || 15,
+    reminder_delay_hours: parseInt(document.getElementById('cfg-reminder').value) || 24,
+    bot_followup_delay_hours: parseInt(document.getElementById('cfg-vapi').value) || 48,
+    wa_language: document.getElementById('cfg-lang').value,
+    available_windows: windows
+  };
+  const statusEl = document.getElementById('config-status');
+  statusEl.className = 'status-bar loading';
+  statusEl.textContent = '⏳ שומר...';
+  try {
+    const res = await fetch(API + '/api/scheduling/campaign/' + encodeURIComponent(campaignId), {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      statusEl.className = 'status-bar success';
+      const days = windows.length;
+      statusEl.textContent = '✅ נשמר | ' + days + ' ימים פעילים | ' + (validReps.length ? validReps.length + ' נציגים' : 'ללא שיוך נציג');
+    } else throw new Error(data.error || 'שגיאה');
+  } catch (e) {
+    statusEl.className = 'status-bar error';
+    statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────
+renderAvailGrid();
+renderReps();
+setDefaultDates();
+
+// Auto-fill from Zoho CRM context
+if (typeof ZOHO !== 'undefined' && ZOHO.embeddedApp) {
+  ZOHO.embeddedApp.on('PageLoad', function(data) {
+    const entity = data?.Entity;
+    const entityId = data?.EntityId?.[0] || data?.EntityId;
+    if (entity === 'Campaigns' && entityId) {
+      ['campaignId','slots-campaignId','status-campaignId','cfg-campaignId'].forEach(id => {
+        document.getElementById(id).value = entityId;
+      });
+      loadContacts();
+      loadSlotStats(entityId);
+    }
+  });
+  ZOHO.embeddedApp.init();
+}
 </script>
 </body>
 </html>
