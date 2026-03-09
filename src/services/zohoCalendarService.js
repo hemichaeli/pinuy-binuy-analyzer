@@ -5,25 +5,25 @@
  * Uses the same ZOHO_REFRESH_TOKEN / CLIENT_ID / CLIENT_SECRET as CRM.
  *
  * Zoho Calendar API: https://www.zoho.com/calendar/help/api/
- * Scopes needed: ZohoCalendar.event.ALL
+ * Scopes needed: ZohoCalendar.calendar.ALL, ZohoCalendar.event.ALL
  *
  * Env vars (already set for CRM):
  *   ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN
  *
  * Projects DB table: projects
- *   - zoho_calendar_id  VARCHAR  (Zoho Calendar UID, e.g. "abc123@zohocalendar")
+ *   - zoho_calendar_id  VARCHAR  (Zoho Calendar UID)
  */
 
 const axios = require('axios');
 const pool  = require('../db/pool');
 const { logger } = require('./logger');
 
-const TOKEN_URL  = 'https://accounts.zoho.com/oauth/v2/token';
+const TOKEN_URL     = 'https://accounts.zoho.com/oauth/v2/token';
 const CALENDAR_BASE = 'https://calendar.zoho.com/api/v1';
 
-// ── Token cache (in-memory, refreshed before expiry) ──────────
+// ── Token cache ───────────────────────────────────────────────
 let _accessToken = null;
-let _tokenExpiry = 0;
+let _tokenExpiry  = 0;
 
 async function getAccessToken() {
   if (_accessToken && Date.now() < _tokenExpiry - 60000) return _accessToken;
@@ -51,7 +51,7 @@ async function getAccessToken() {
     }
 
     _accessToken = resp.data.access_token;
-    _tokenExpiry = Date.now() + (resp.data.expires_in || 3600) * 1000;
+    _tokenExpiry  = Date.now() + (resp.data.expires_in || 3600) * 1000;
     logger.info('[ZohoCal] Access token refreshed');
     return _accessToken;
   } catch (err) {
@@ -62,14 +62,14 @@ async function getAccessToken() {
 
 // ── Core: Create event ────────────────────────────────────────
 /**
- * @param {string} calendarId  - Zoho Calendar UID (from projects.zoho_calendar_id)
+ * @param {string} calendarId   Zoho Calendar UID
  * @param {object} opts
- *   - title        {string}
- *   - startDatetime {string}  ISO datetime "2026-04-15T10:00:00"
- *   - durationMins {number}   default 45
- *   - description  {string}
- *   - location     {string}
- * @returns {string|null}  Zoho event UID
+ *   - title         {string}
+ *   - startDatetime {string}  ISO "2026-04-15T10:00:00"
+ *   - durationMins  {number}  default 45
+ *   - description   {string}
+ *   - location      {string}
+ * @returns {string|null} Zoho event UID
  */
 async function createEvent(calendarId, { title, startDatetime, durationMins = 45, description = '', location = '' }) {
   const token = await getAccessToken();
@@ -79,7 +79,7 @@ async function createEvent(calendarId, { title, startDatetime, durationMins = 45
     const start = new Date(startDatetime);
     const end   = new Date(start.getTime() + durationMins * 60000);
 
-    // Zoho Calendar date format: yyyyMMddTHHmmssZ
+    // Zoho format: yyyyMMddTHHmmssZ
     const fmt = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 
     const eventData = {
@@ -93,12 +93,16 @@ async function createEvent(calendarId, { title, startDatetime, durationMins = 45
       location
     };
 
+    // Zoho Calendar API requires form-encoded body with eventdata as JSON string
+    const params = new URLSearchParams();
+    params.append('eventdata', JSON.stringify(eventData));
+
     const resp = await axios.post(
       `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events`,
-      { eventdata: JSON.stringify(eventData) },
+      params.toString(),
       {
         headers: {
-          Authorization: `Zoho-oauthtoken ${token}`,
+          Authorization:  `Zoho-oauthtoken ${token}`,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         timeout: 15000
@@ -140,10 +144,6 @@ async function deleteEvent(calendarId, eventUid) {
 }
 
 // ── Meeting slot event ────────────────────────────────────────
-/**
- * Create a Zoho Calendar event for a regular meeting booking.
- * Resolves calendar from the project linked to the slot.
- */
 async function createMeetingSlotEvent(pool, slot, contactName, contactPhone) {
   try {
     const res = await pool.query(
@@ -187,10 +187,6 @@ async function createMeetingSlotEvent(pool, slot, contactName, contactPhone) {
 }
 
 // ── Ceremony slot event ───────────────────────────────────────
-/**
- * Create a Zoho Calendar event for a ceremony slot booking.
- * Resolves calendar from station → project chain.
- */
 async function createCeremonySlotEvent(pool, slot, contactName, contactPhone) {
   try {
     const res = await pool.query(
@@ -219,7 +215,7 @@ async function createCeremonySlotEvent(pool, slot, contactName, contactPhone) {
       return null;
     }
 
-    const timeStr = (slot.slot_time || '').substring(0, 5);
+    const timeStr       = (slot.slot_time || '').substring(0, 5);
     const startDatetime = `${slot.slot_date}T${timeStr}:00`;
 
     return await createEvent(row.zoho_calendar_id, {
@@ -242,6 +238,7 @@ async function createCeremonySlotEvent(pool, slot, contactName, contactPhone) {
 }
 
 // ── Test connectivity ─────────────────────────────────────────
+// Fetches events without any extra query params (Zoho rejects unknown params)
 async function testCalendarAccess(calendarId) {
   const token = await getAccessToken();
   if (!token) return { ok: false, error: 'No access token' };
@@ -251,13 +248,12 @@ async function testCalendarAccess(calendarId) {
       `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events`,
       {
         headers: { Authorization: `Zoho-oauthtoken ${token}` },
-        params: { range_type: 'month', range: '1' },
         timeout: 10000
       }
     );
     return { ok: true, calendarId, eventCount: resp.data?.events?.length || 0 };
   } catch (err) {
-    return { ok: false, calendarId, error: err.message };
+    return { ok: false, calendarId, error: err.response?.data || err.message };
   }
 }
 
