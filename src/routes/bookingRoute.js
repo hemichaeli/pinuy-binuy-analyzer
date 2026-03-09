@@ -1,20 +1,12 @@
 /**
- * QUANTUM Visual Booking Route v6
+ * QUANTUM Visual Booking Route v6.1
  *
  * Regular meetings:  meeting_slots table, one slot = one person
  * Signing ceremony:  ceremony_slots table, parallel stations per building
  *                    Each contact sees ONLY their building's slots
  *                    capacity = number of active stations in that building
  *
- * v6: Smart slot clustering
- *   - Pulls contact_street from bot_sessions (sourced from Zoho Mailing_Street)
- *   - Scores each open slot by geographic density:
- *       +5  same street already has confirmed/reserved appointments in ±90 min window
- *       +2  adjacent slots on same street (within ±3 slots)
- *       +1  any other confirmed slot within ±60 min
- *       -3  slot creates an isolated "island" (gap > 90 min on both sides)
- *   - Surfaces 3 smart picks: recommended, earliest, latest
- *   - Full list still accessible via "show all times"
+ * v6.1: Fix smartPicks sort crash (slot_datetime is Date object from PG, not string)
  *
  * GET  /booking/:token          - Visual calendar HTML
  * GET  /booking/:token/slots    - JSON slot data
@@ -273,8 +265,9 @@ router.get('/:token', async (req, res) => {
     let smartPicks = null;
     if (!isCeremony && slots.length >= 2) {
       const recommended = slots.find(s => s.is_recommended) || slots[0];
-      const earliest    = [...slots].sort((a, b) => a.slot_datetime.localeCompare(b.slot_datetime))[0];
-      const latest      = [...slots].sort((a, b) => b.slot_datetime.localeCompare(a.slot_datetime))[0];
+      // FIX v6.1: slot_datetime from PG is a Date object — use getTime() not localeCompare
+      const earliest = [...slots].sort((a, b) => new Date(a.slot_datetime).getTime() - new Date(b.slot_datetime).getTime())[0];
+      const latest   = [...slots].sort((a, b) => new Date(b.slot_datetime).getTime() - new Date(a.slot_datetime).getTime())[0];
       const seen = new Set();
       smartPicks = [recommended, earliest, latest].filter(s => {
         if (seen.has(s.id)) return false;
@@ -341,7 +334,6 @@ router.post('/:token/confirm', async (req, res) => {
     let dateStr, timeStr, repName, slotDatetime, confirmedSlotId, confirmedSlotType;
 
     if (slotId.startsWith('ceremony:')) {
-      // Format: ceremony:CEREMONY_ID:BUILDING_ID:HH:MM
       const parts = slotId.split(':');
       const ceremonyId = parts[1];
       const buildingId  = parseInt(parts[2]) || null;
@@ -378,7 +370,6 @@ router.post('/:token/confirm', async (req, res) => {
       confirmedSlotId = slot.id;
       confirmedSlotType = 'ceremony';
 
-      // Google Calendar
       if (gcal?.createCeremonySlotEvent) {
         gcal.createCeremonySlotEvent(pool, slot, ctx.contactName || '', session.phone)
           .then(eventId => {
@@ -390,7 +381,6 @@ router.post('/:token/confirm', async (req, res) => {
           .catch(e => logger.warn('[BookingRoute] GCal ceremony event failed:', e.message));
       }
 
-      // Zoho Calendar
       if (zcal?.createCeremonySlotEvent) {
         zcal.createCeremonySlotEvent(pool, slot, ctx.contactName || '', session.phone)
           .then(uid => {
@@ -403,7 +393,6 @@ router.post('/:token/confirm', async (req, res) => {
       }
 
     } else {
-      // Regular meeting slot
       const lockRes = await pool.query(
         `UPDATE meeting_slots SET
            status='confirmed', reserved_at=NOW(),
@@ -428,7 +417,6 @@ router.post('/:token/confirm', async (req, res) => {
       confirmedSlotId = slot.id;
       confirmedSlotType = 'meeting';
 
-      // Google Calendar
       if (gcal?.createMeetingSlotEvent) {
         gcal.createMeetingSlotEvent(pool, slot, ctx.contactName || '', session.phone)
           .then(eventId => {
@@ -440,7 +428,6 @@ router.post('/:token/confirm', async (req, res) => {
           .catch(e => logger.warn('[BookingRoute] GCal meeting event failed:', e.message));
       }
 
-      // Zoho Calendar
       if (zcal?.createMeetingSlotEvent) {
         zcal.createMeetingSlotEvent(pool, slot, ctx.contactName || '', session.phone)
           .then(uid => {
