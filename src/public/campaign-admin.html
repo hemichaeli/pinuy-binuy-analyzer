@@ -9,12 +9,24 @@
   --blue:#3b82f6; --blue-dark:#2563eb; --green:#10b981; --amber:#f59e0b;
   --red:#ef4444; --dark:#0a0a0f; --card:#111827; --border:#1e293b;
   --text:#e2e8f0; --muted:#64748b; --input-bg:#0f172a;
+  --purple:#8b5cf6; --purple-dark:#6d28d9;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--dark);color:var(--text);min-height:100vh;direction:rtl}
 .header{background:linear-gradient(135deg,#1e3a5f,#0d1b2e);padding:20px 24px;border-bottom:1px solid #1e40af44;display:flex;align-items:center;justify-content:space-between}
 .logo{font-size:10px;letter-spacing:4px;color:#60a5fa}
 .header h1{font-size:18px;font-weight:700;margin-top:4px}
+
+/* Tabs */
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:#0d1117;padding:0 16px;overflow-x:auto}
+.tab-btn{padding:14px 22px;font-size:14px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-btn.purple.active{color:var(--purple);border-bottom-color:var(--purple)}
+
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
 .container{max-width:860px;margin:0 auto;padding:24px 16px 80px}
 .section{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px;margin-bottom:20px}
 .section-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:18px;display:flex;align-items:center;gap:8px}
@@ -23,6 +35,7 @@ input,select,textarea{width:100%;background:var(--input-bg);border:1.5px solid v
 input:focus,select:focus{border-color:var(--blue)}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.row4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
 .field{margin-bottom:16px}
 .type-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .type-btn{background:var(--input-bg);border:1.5px solid var(--border);border-radius:12px;padding:14px 10px;cursor:pointer;text-align:center;transition:all .15s}
@@ -31,8 +44,6 @@ input:focus,select:focus{border-color:var(--blue)}
 .type-icon{font-size:24px;display:block;margin-bottom:6px}
 .type-label{font-size:12px;font-weight:600;color:var(--text)}
 .type-desc{font-size:10px;color:var(--muted);margin-top:3px}
-.windows-grid{display:flex;flex-direction:column;gap:8px}
-.window-row{display:grid;grid-template-columns:auto 1fr 1fr auto;gap:10px;align-items:center;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
 .day-toggle{display:flex;gap:6px;flex-wrap:wrap}
 .day-btn{width:36px;height:36px;border-radius:8px;border:1.5px solid var(--border);background:var(--input-bg);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .day-btn.active{border-color:var(--blue);background:#1e3a5f;color:var(--blue)}
@@ -46,12 +57,18 @@ input:focus,select:focus{border-color:var(--blue)}
 .building-row{background:var(--input-bg);border:1px solid var(--border);border-radius:12px;padding:14px}
 .building-header{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-bottom:10px}
 .badge{display:inline-flex;align-items:center;gap:4px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f660;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600}
+.badge.purple{background:#2e1065;color:#a78bfa;border-color:#7c3aed60}
+.badge.green{background:#064e3b;color:#34d399;border-color:#059669}
+.badge.amber{background:#451a03;color:#fbbf24;border-color:#b45309}
 .hint{font-size:11px;color:var(--muted);margin-top:4px}
 .notice{background:#1e3a5f22;border:1px solid #3b82f640;border-radius:10px;padding:12px 14px;font-size:13px;color:#93c5fd;margin-bottom:16px}
 .notice.warn{background:#78350f22;border-color:#92400e;color:#fbbf24}
+.notice.purple{background:#2e106522;border-color:#7c3aed40;color:#c4b5fd}
 .actions{display:flex;gap:12px;flex-wrap:wrap}
 .btn-primary{background:var(--blue);color:#fff;border:none;border-radius:12px;padding:13px 24px;font-size:15px;font-weight:700;cursor:pointer;flex:1;min-width:160px}
 .btn-primary:hover{background:var(--blue-dark)}
+.btn-primary.purple{background:var(--purple)}
+.btn-primary.purple:hover{background:var(--purple-dark)}
 .btn-secondary{background:#1e293b;color:var(--text);border:1.5px solid var(--border);border-radius:12px;padding:13px 24px;font-size:14px;font-weight:600;cursor:pointer}
 .btn-secondary:hover{border-color:var(--blue);color:var(--blue)}
 .btn-preview{background:#064e3b44;color:#34d399;border:1.5px solid #065f46;border-radius:12px;padding:13px 24px;font-size:14px;font-weight:600;cursor:pointer}
@@ -68,20 +85,72 @@ select option{background:#1e293b}
 .campaign-id-row input{flex:1}
 .btn-load{background:#1e293b;border:1.5px solid var(--border);color:var(--text);border-radius:10px;padding:10px 16px;cursor:pointer;font-size:13px;white-space:nowrap}
 .btn-load:hover{border-color:var(--blue)}
+
+/* Visit cards */
+.visits-grid{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+.visit-card{background:var(--input-bg);border:1px solid var(--border);border-radius:12px;padding:16px}
+.visit-card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.visit-card-title{font-size:15px;font-weight:700}
+.visit-card-meta{font-size:12px;color:var(--muted);margin-top:3px}
+.visit-card-badges{display:flex;gap:6px;flex-wrap:wrap}
+.visit-profs{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.visit-prof-row{display:flex;justify-content:space-between;align-items:center;background:#0d1117;border-radius:8px;padding:8px 12px}
+.visit-prof-name{font-size:13px;font-weight:600}
+.visit-prof-stats{display:flex;gap:8px}
+.stat-chip{font-size:11px;padding:2px 8px;border-radius:5px;font-weight:600}
+.stat-chip.open{background:#1e3a5f;color:#60a5fa}
+.stat-chip.booked{background:#064e3b;color:#34d399}
+.btn-report{background:#2e106544;color:#a78bfa;border:1px solid #7c3aed50;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:600}
+.btn-report:hover{background:#2e1065}
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted);font-size:14px}
+
+/* Professional row in visit form */
+.prof-form-row{background:var(--input-bg);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px;position:relative}
+.prof-form-row .row3{margin-bottom:0}
+.prof-num{position:absolute;top:10px;right:12px;background:#2e1065;color:#a78bfa;border:1px solid #7c3aed60;border-radius:6px;padding:1px 8px;font-size:11px;font-weight:700}
+.prof-remove{position:absolute;top:8px;left:10px;background:#7f1d1d44;border:1px solid #7f1d1d;color:#f87171;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px}
+
+/* Visit type selector (2-option) */
+.vtype-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.vtype-btn{background:var(--input-bg);border:2px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;text-align:center;transition:all .15s}
+.vtype-btn:hover{border-color:var(--purple)}
+.vtype-btn.active{border-color:var(--purple);background:#2e106522}
+.vtype-icon{font-size:28px;margin-bottom:6px}
+.vtype-label{font-size:14px;font-weight:700}
+.vtype-desc{font-size:11px;color:var(--muted);margin-top:3px}
+
+/* Building picker */
+.building-picker{display:flex;flex-direction:column;gap:6px}
+.building-option{display:flex;align-items:center;gap:10px;background:var(--input-bg);border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;cursor:pointer;transition:all .15s}
+.building-option:hover{border-color:var(--purple)}
+.building-option.selected{border-color:var(--purple);background:#2e106522}
+.building-option input[type=radio]{accent-color:var(--purple);width:16px;height:16px;flex-shrink:0}
+.building-option-label{font-size:14px;font-weight:600}
+.building-option-sub{font-size:11px;color:var(--muted)}
+.no-buildings-hint{font-size:13px;color:var(--muted);padding:12px;background:var(--input-bg);border-radius:10px;text-align:center}
 </style>
 </head>
 <body>
 <div class="header">
   <div>
     <div class="logo">⚡ QUANTUM</div>
-    <h1>ניהול הגדרות קמפיין</h1>
+    <h1>ניהול קמפיין</h1>
   </div>
   <a href="/dashboard" style="color:#60a5fa;font-size:13px;text-decoration:none">← לוח בקרה</a>
 </div>
 
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('settings')">⚙️ הגדרות קמפיין</button>
+  <button class="tab-btn purple" onclick="switchTab('visits')">🏠 ביקורי מקצועיים</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 1: הגדרות קמפיין (existing)
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-settings" class="tab-pane active">
 <div class="container">
 
-  <!-- Campaign ID -->
   <div class="section">
     <div class="section-title">🎯 זיהוי קמפיין</div>
     <div class="field">
@@ -100,7 +169,6 @@ select option{background:#1e293b}
     </div>
   </div>
 
-  <!-- Meeting Type -->
   <div class="section">
     <div class="section-title">📋 סוג הפגישה</div>
     <div class="type-grid" id="typeGrid">
@@ -132,38 +200,30 @@ select option{background:#1e293b}
     </div>
   </div>
 
-  <!-- Timing — non-ceremony -->
   <div id="timingSection" class="section">
     <div class="section-title">⏱️ תזמון פגישות</div>
     <div class="row">
       <div class="field">
         <label>משך כל פגישה (דקות)</label>
         <input type="number" id="slotDuration" value="45" min="5" max="240">
-        <div class="hint">כמה זמן כל כניסה — לשמאי/מודד בד"כ 30-60 דק'</div>
       </div>
       <div class="field">
         <label>מרווח בין פגישות (דקות)</label>
         <input type="number" id="bufferMinutes" value="15" min="0" max="120">
-        <div class="hint">זמן מעבר + מרגע — 0 לצפיפות מקסימלית</div>
       </div>
     </div>
-
     <div class="sep"></div>
     <div class="section-title">👥 נציגים במקביל</div>
     <div class="notice">
-      כל נציג יוצר <strong>מסלול עצמאי של slots</strong> לאותן שעות — כלומר N נציגים = N פגישות מקבילות בכל שעה.
-      <br>Weight קובע כמה פגישות מוקצות לנציג ביחס לאחרים (2 = פי שניים).
+      כל נציג יוצר <strong>מסלול עצמאי של slots</strong> — N נציגים = N פגישות מקבילות בכל שעה.
     </div>
     <div id="repsList" class="reps-list"></div>
     <button class="btn-add" onclick="addRep()">+ הוסף נציג / שמאי / מודד</button>
   </div>
 
-  <!-- Ceremony Section -->
   <div id="ceremonySection" class="section" style="display:none">
     <div class="section-title">✍️ הגדרות כנס חתימות</div>
-    <div class="notice warn">
-      כנס חתימות הוא אירוע חד-פעמי עם עמדות מקבילות לכל בניין. הגדר תאריך, שעות, ומספר עמדות לכל בניין.
-    </div>
+    <div class="notice warn">כנס חתימות הוא אירוע חד-פעמי עם עמדות מקבילות לכל בניין.</div>
     <div class="row">
       <div class="field">
         <label>תאריך הכנס</label>
@@ -191,23 +251,17 @@ select option{background:#1e293b}
     <div class="field">
       <label>מרווח בין כניסות (דק')</label>
       <input type="number" id="ceremonyBreak" value="0" min="0" max="30">
-      <div class="hint">0 = ללא מרווח, חתימות רצופות</div>
     </div>
-
     <div class="sep"></div>
     <div class="section-title">🏢 בניינים ועמדות</div>
-    <div class="notice">
-      כל בניין מקבל <strong>מספר עמדות עצמאיות</strong> — כל עמדה = עורך דין שחותם במקביל.
-      <br>דיירים מוקצים לבניין שלהם ורואים רק את slots של הבניין שלהם.
-    </div>
+    <div class="notice">כל בניין מקבל <strong>מספר עמדות עצמאיות</strong> — כל עמדה = עורך דין שחותם במקביל.</div>
     <div id="buildingsList" class="buildings-list"></div>
     <button class="btn-add" onclick="addBuilding()">+ הוסף בניין</button>
   </div>
 
-  <!-- Available Windows -->
   <div id="windowsSection" class="section">
     <div class="section-title">📅 ימים ושעות זמינות</div>
-    <div class="notice">בחר ימים ושעות שבהן ניתן לקבוע פגישות. ניתן להגדיר שעות שונות לכל יום.</div>
+    <div class="notice">בחר ימים ושעות לקבלת פגישות.</div>
     <div class="day-toggle" id="dayToggle">
       <button class="day-btn active" data-day="0" onclick="toggleDay(this)">א'</button>
       <button class="day-btn active" data-day="1" onclick="toggleDay(this)">ב'</button>
@@ -220,18 +274,17 @@ select option{background:#1e293b}
     <div style="margin-top:14px">
       <div class="row">
         <div class="field">
-          <label>שעת התחלה (כל הימים)</label>
-          <input type="time" id="globalStart" value="09:00" onchange="updateAllTimes()">
+          <label>שעת התחלה</label>
+          <input type="time" id="globalStart" value="09:00">
         </div>
         <div class="field">
-          <label>שעת סיום (כל הימים)</label>
-          <input type="time" id="globalEnd" value="18:00" onchange="updateAllTimes()">
+          <label>שעת סיום</label>
+          <input type="time" id="globalEnd" value="18:00">
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Reminders & Bot -->
   <div class="section">
     <div class="section-title">🔔 תזכורות ובוט</div>
     <div class="row">
@@ -262,24 +315,177 @@ select option{background:#1e293b}
     </div>
   </div>
 
-  <!-- Actions -->
   <div class="actions">
     <button class="btn-preview" onclick="previewSlots()">👁 תצוגה מקדימה</button>
     <button class="btn-secondary" onclick="loadCampaign()">⟳ טען קיים</button>
     <button class="btn-primary" onclick="saveCampaign()">💾 שמור הגדרות</button>
   </div>
-
   <div id="previewBox" class="preview-box"></div>
 
+</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     TAB 2: ביקורי מקצועיים
+     ══════════════════════════════════════════════════════════════ -->
+<div id="tab-visits" class="tab-pane">
+<div class="container">
+
+  <!-- Campaign ID for visits tab -->
+  <div class="section">
+    <div class="section-title">🎯 קמפיין</div>
+    <div class="field">
+      <label>מזהה קמפיין</label>
+      <div class="campaign-id-row">
+        <input type="text" id="vCampaignId" placeholder="הזן Campaign ID">
+        <button class="btn-load" style="border-color:#7c3aed;color:#a78bfa" onclick="loadVisits()">טען ביקורים</button>
+      </div>
+      <div class="hint">מזהה זהה לקמפיין בטאב הגדרות. לאחר הזנה — לחץ "טען ביקורים" לראות ביקורים קיימים ולשלוף בניינים.</div>
+    </div>
+    <div class="field">
+      <label>פרויקט</label>
+      <select id="vProjectId">
+        <option value="1">QUANTUM - פרויקט ראשי (1)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Existing visits -->
+  <div class="section" id="existingVisitsSection" style="display:none">
+    <div class="section-title" style="justify-content:space-between">
+      <span>📋 ביקורים קיימים</span>
+      <span id="visitsCount" class="badge purple"></span>
+    </div>
+    <div id="visitsList" class="visits-grid">
+      <div class="empty-state">טוען...</div>
+    </div>
+  </div>
+
+  <!-- New visit form -->
+  <div class="section">
+    <div class="section-title">➕ הוסף ביקור חדש</div>
+    <div class="notice purple">
+      ביקור מקצועי = שמאי/מודד שמגיע לבניין ספציפי ביום ספציפי.
+      כל איש מקצוע מקבל <strong>slots עצמאיים</strong> — דיירים מזמינים ישירות אצלו.
+    </div>
+
+    <!-- Visit type -->
+    <div class="field">
+      <label>סוג ביקור</label>
+      <div class="vtype-grid">
+        <div class="vtype-btn active" data-vtype="appraiser" onclick="selectVType(this)">
+          <div class="vtype-icon">🏠</div>
+          <div class="vtype-label">שמאי</div>
+          <div class="vtype-desc">Appraiser</div>
+        </div>
+        <div class="vtype-btn" data-vtype="surveyor" onclick="selectVType(this)">
+          <div class="vtype-icon">📐</div>
+          <div class="vtype-label">מודד</div>
+          <div class="vtype-desc">Surveyor</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Building selector -->
+    <div class="field">
+      <label>בניין</label>
+      <div id="buildingPickerSection">
+        <!-- Populated after loadVisits() or shown as text input -->
+        <div id="buildingPicker" class="building-picker"></div>
+        <input type="text" id="vBuildingManual" placeholder="או הזן כתובת ידנית: סמילצ'נסקי 3" style="margin-top:8px;display:none">
+        <div class="hint">לאחר לחיצה על "טען ביקורים" — הבניינים הקשורים לקמפיין ב-Zoho יופיעו כאן לבחירה.</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>עיר</label>
+      <input type="text" id="vCity" placeholder="ראשון לציון">
+    </div>
+
+    <!-- Date & Times -->
+    <div class="row3">
+      <div class="field">
+        <label>תאריך ביקור</label>
+        <input type="date" id="vDate">
+      </div>
+      <div class="field">
+        <label>שעת התחלה</label>
+        <input type="time" id="vStart" value="09:00">
+      </div>
+      <div class="field">
+        <label>שעת סיום</label>
+        <input type="time" id="vEnd" value="17:00">
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>משך כל slot (דקות)</label>
+        <input type="number" id="vSlotDuration" value="30" min="5" max="120">
+        <div class="hint">לשמאי/מודד: 20-45 דק'</div>
+      </div>
+      <div class="field">
+        <label>מרווח בין slots (דקות)</label>
+        <input type="number" id="vBuffer" value="5" min="0" max="60">
+        <div class="hint">זמן מעבר בין דיירים</div>
+      </div>
+    </div>
+
+    <!-- Professionals -->
+    <div class="sep"></div>
+    <div class="section-title">👤 אנשי מקצוע (עד 3)</div>
+    <div class="notice purple">כל איש מקצוע מקבל slots עצמאיים — אם שניים מגיעים, שניהם פועלים במקביל.</div>
+    <div id="profFormList"></div>
+    <button class="btn-add" id="btnAddProf" onclick="addProfForm()" style="border-color:#7c3aed;color:#a78bfa">+ הוסף איש מקצוע</button>
+
+    <div class="sep"></div>
+    <div class="actions">
+      <button class="btn-primary purple" onclick="createVisit()">✅ צור ביקור + Slots</button>
+    </div>
+    <div id="visitResult" class="preview-box"></div>
+  </div>
+
+</div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
+// ══════════════════════════════════════════════════
+// SHARED
+// ══════════════════════════════════════════════════
+let currentTab = 'settings';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', (i===0 && tab==='settings') || (i===1 && tab==='visits'));
+  });
+  document.getElementById('tab-settings').classList.toggle('active', tab==='settings');
+  document.getElementById('tab-visits').classList.toggle('active', tab==='visits');
+
+  if (tab === 'visits') {
+    // Sync campaign ID
+    const mainId = document.getElementById('campaignId').value.trim();
+    if (mainId && !document.getElementById('vCampaignId').value) {
+      document.getElementById('vCampaignId').value = mainId;
+    }
+  }
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ══════════════════════════════════════════════════
+// TAB 1 — SETTINGS (original logic preserved)
+// ══════════════════════════════════════════════════
 let currentType = 'consultation';
 let repCount = 0;
 let buildingCount = 0;
-
 const DAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 
 function selectType(el) {
@@ -292,18 +498,11 @@ function selectType(el) {
   document.getElementById('windowsSection').style.display = isCeremony ? 'none' : '';
 }
 
-function toggleDay(btn) {
-  btn.classList.toggle('active');
-}
-
-function updateAllTimes() {
-  // no per-day times in simplified UI — global times apply to all active days
-}
+function toggleDay(btn) { btn.classList.toggle('active'); }
 
 function getActiveDays() {
   return [...document.querySelectorAll('.day-btn.active')].map(b => parseInt(b.dataset.day));
 }
-
 function getAvailableWindows() {
   const days = getActiveDays();
   const start = document.getElementById('globalStart').value || '09:00';
@@ -311,13 +510,11 @@ function getAvailableWindows() {
   return days.map(day => ({ day, start, end }));
 }
 
-// ── Reps ──
 function addRep(name = '', weight = 1) {
   repCount++;
   const id = repCount;
   const div = document.createElement('div');
-  div.className = 'rep-row';
-  div.id = 'rep-' + id;
+  div.className = 'rep-row'; div.id = 'rep-' + id;
   div.innerHTML = `
     <input type="text" placeholder="שם נציג / שמאי / מודד" value="${name}">
     <div style="display:flex;align-items:center;gap:6px">
@@ -341,13 +538,11 @@ function getReps() {
   return reps;
 }
 
-// ── Buildings ──
 function addBuilding(address = '', label = '', stations = 2) {
   buildingCount++;
   const id = buildingCount;
   const div = document.createElement('div');
-  div.className = 'building-row';
-  div.id = 'building-' + id;
+  div.className = 'building-row'; div.id = 'building-' + id;
   div.innerHTML = `
     <div class="building-header">
       <span class="badge">🏢 בניין ${id}</span>
@@ -360,14 +555,13 @@ function addBuilding(address = '', label = '', stations = 2) {
         <input type="text" placeholder="רח' בן-גוריון 15, רמלה" value="${address}" class="b-address">
       </div>
       <div class="field" style="margin:0">
-        <label>תווית (לתצוגה)</label>
+        <label>תווית</label>
         <input type="text" placeholder="בניין א'" value="${label}" class="b-label">
       </div>
     </div>
     <div class="field" style="margin-top:10px">
-      <label>מספר עמדות (עו"ד חותמים במקביל)</label>
+      <label>מספר עמדות</label>
       <input type="number" value="${stations}" min="1" max="20" class="b-stations">
-      <div class="hint">כל עמדה = עורך דין אחד. 3 עמדות = 3 דיירים חותמים בו-זמנית</div>
     </div>
   `;
   document.getElementById('buildingsList').appendChild(div);
@@ -385,20 +579,14 @@ function getBuildings() {
   return buildings;
 }
 
-// ── Save ──
 async function saveCampaign() {
   const campaignId = document.getElementById('campaignId').value.trim();
   if (!campaignId) return showToast('חובה להזין מזהה קמפיין', 'error');
-
-  const btn = document.querySelector('.btn-primary');
-  btn.innerHTML = 'שומר...<span class="spinner"></span>';
-  btn.disabled = true;
-
+  const btn = document.querySelector('#tab-settings .btn-primary');
+  btn.innerHTML = 'שומר...<span class="spinner"></span>'; btn.disabled = true;
   const isCeremony = currentType === 'signing_ceremony';
-
   try {
     if (isCeremony) {
-      // Save ceremony
       const ceremonyDate = document.getElementById('ceremonyDate').value;
       const ceremonyName = document.getElementById('ceremonyName').value.trim() || `כנס חתימות ${campaignId}`;
       const startTime = document.getElementById('ceremonyStart').value;
@@ -406,39 +594,15 @@ async function saveCampaign() {
       const slotDur = parseInt(document.getElementById('ceremonySlotDuration').value) || 15;
       const breakDur = parseInt(document.getElementById('ceremonyBreak').value) || 0;
       const buildings = getBuildings();
-
       if (!ceremonyDate) { showToast('חובה לבחור תאריך כנס', 'error'); return; }
       if (!buildings.length) { showToast('הוסף לפחות בניין אחד', 'error'); return; }
-
-      // First save campaign config (meeting_type = signing_ceremony)
       await fetch(`/api/scheduling/campaign/${campaignId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: parseInt(document.getElementById('projectId').value) || 1,
-          meeting_type: 'signing_ceremony',
-          wa_language: document.getElementById('waLanguage').value,
-          booking_link_expires_hours: parseInt(document.getElementById('bookingExpiry').value) || 48,
-          show_rep_name: document.getElementById('showRepName').value === 'true',
-        })
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: parseInt(document.getElementById('projectId').value)||1, meeting_type: 'signing_ceremony', wa_language: document.getElementById('waLanguage').value, booking_link_expires_hours: parseInt(document.getElementById('bookingExpiry').value)||48, show_rep_name: document.getElementById('showRepName').value==='true' })
       });
-
-      // Create ceremony
       const ceremRes = await fetch('/api/scheduling/ceremony', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_id: parseInt(document.getElementById('projectId').value) || 1,
-          zoho_campaign_id: campaignId,
-          name: ceremonyName,
-          ceremony_date: ceremonyDate,
-          start_time: startTime,
-          end_time: endTime,
-          slot_duration_minutes: slotDur,
-          break_duration_minutes: breakDur,
-          location: '',
-          buildings
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: parseInt(document.getElementById('projectId').value)||1, zoho_campaign_id: campaignId, name: ceremonyName, ceremony_date: ceremonyDate, start_time: startTime, end_time: endTime, slot_duration_minutes: slotDur, break_duration_minutes: breakDur, location: '', buildings })
       });
       const data = await ceremRes.json();
       if (data.success) {
@@ -447,126 +611,61 @@ async function saveCampaign() {
         showToast('הכנס נוצר בהצלחה!', 'success');
         document.getElementById('previewBox').style.display = 'block';
         document.getElementById('previewBox').textContent = summary;
-      } else {
-        showToast('שגיאה: ' + (data.error || 'לא ידוע'), 'error');
-      }
+      } else { showToast('שגיאה: ' + (data.error||'לא ידוע'), 'error'); }
     } else {
-      // Save regular meeting campaign
       const reps = getReps();
-      const body = {
-        project_id: parseInt(document.getElementById('projectId').value) || 1,
-        meeting_type: currentType,
-        slot_duration_minutes: parseInt(document.getElementById('slotDuration').value) || 45,
-        buffer_minutes: parseInt(document.getElementById('bufferMinutes').value) || 15,
-        available_windows: getAvailableWindows(),
-        wa_language: document.getElementById('waLanguage').value,
-        booking_link_expires_hours: parseInt(document.getElementById('bookingExpiry').value) || 48,
-        show_rep_name: document.getElementById('showRepName').value === 'true',
-        pre_meeting_reminder_hours: parseInt(document.getElementById('reminderHours').value) || 24,
-      };
-
-      const res = await fetch(`/api/scheduling/campaign/${campaignId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      const body = { project_id: parseInt(document.getElementById('projectId').value)||1, meeting_type: currentType, slot_duration_minutes: parseInt(document.getElementById('slotDuration').value)||45, buffer_minutes: parseInt(document.getElementById('bufferMinutes').value)||15, available_windows: getAvailableWindows(), wa_language: document.getElementById('waLanguage').value, booking_link_expires_hours: parseInt(document.getElementById('bookingExpiry').value)||48, show_rep_name: document.getElementById('showRepName').value==='true', pre_meeting_reminder_hours: parseInt(document.getElementById('reminderHours').value)||24 };
+      const res = await fetch(`/api/scheduling/campaign/${campaignId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
       if (data.success) {
         showToast('הגדרות נשמרו!', 'success');
-
-        // Generate slots with reps
         if (reps.length > 0) {
-          const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-          const nextMonth = new Date(); nextMonth.setDate(nextMonth.getDate() + 30);
+          const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+          const nextMonth = new Date(); nextMonth.setDate(nextMonth.getDate()+30);
           const fmt = d => d.toISOString().split('T')[0];
-          const slotsRes = await fetch(`/api/scheduling/campaign/${campaignId}/generate-slots`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from_date: fmt(tomorrow), to_date: fmt(nextMonth), representatives: reps })
-          });
+          const slotsRes = await fetch(`/api/scheduling/campaign/${campaignId}/generate-slots`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from_date: fmt(tomorrow), to_date: fmt(nextMonth), representatives: reps }) });
           const slotsData = await slotsRes.json();
           document.getElementById('previewBox').style.display = 'block';
-          document.getElementById('previewBox').textContent =
-            `✅ הגדרות נשמרו\n📅 Slots נוצרו: ${slotsData.inserted} (דילוג: ${slotsData.skipped})\n` +
-            `📆 טווח: ${slotsData.from} — ${slotsData.to}\n` +
-            `⏱️ ${slotsData.slot_duration_minutes} דק' + ${slotsData.buffer_minutes} דק' מרווח\n` +
-            `👥 נציגים: ${reps.map(r => r.name + (r.weight > 1 ? ` (x${r.weight})`  : '')).join(', ')}`;
+          document.getElementById('previewBox').textContent = `✅ הגדרות נשמרו\n📅 Slots נוצרו: ${slotsData.inserted} (דילוג: ${slotsData.skipped})\n📆 טווח: ${slotsData.from} — ${slotsData.to}\n⏱️ ${slotsData.slot_duration_minutes} דק' + ${slotsData.buffer_minutes} דק' מרווח\n👥 נציגים: ${reps.map(r=>r.name+(r.weight>1?` (x${r.weight})`:'')). join(', ')}`;
         } else {
           document.getElementById('previewBox').style.display = 'block';
-          document.getElementById('previewBox').textContent = `✅ הגדרות נשמרו\n\nכדי ליצור slots, הוסף נציג אחד לפחות ושמור שוב.\nאו: POST /api/scheduling/campaign/${campaignId}/generate-slots`;
+          document.getElementById('previewBox').textContent = `✅ הגדרות נשמרו\n\nכדי ליצור slots, הוסף נציג אחד לפחות ושמור שוב.`;
         }
-      } else {
-        showToast('שגיאה: ' + (data.error || 'לא ידוע'), 'error');
-      }
+      } else { showToast('שגיאה: ' + (data.error||'לא ידוע'), 'error'); }
     }
-  } catch (err) {
-    showToast('שגיאת רשת: ' + err.message, 'error');
-  } finally {
-    btn.innerHTML = '💾 שמור הגדרות';
-    btn.disabled = false;
-  }
+  } catch (err) { showToast('שגיאת רשת: ' + err.message, 'error'); }
+  finally { btn.innerHTML = '💾 שמור הגדרות'; btn.disabled = false; }
 }
 
-// ── Preview Slots ──
 async function previewSlots() {
   const campaignId = document.getElementById('campaignId').value.trim();
   if (!campaignId) return showToast('הזן מזהה קמפיין תחילה', 'error');
   if (currentType === 'signing_ceremony') return showToast('תצוגה מקדימה זמינה רק לפגישות רגילות', 'error');
-
-  // First save config silently, then preview
   const reps = getReps();
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-  const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate() + 7);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const nextWeek = new Date(); nextWeek.setDate(nextWeek.getDate()+7);
   const fmt = d => d.toISOString().split('T')[0];
-
-  const body = {
-    project_id: parseInt(document.getElementById('projectId').value) || 1,
-    meeting_type: currentType,
-    slot_duration_minutes: parseInt(document.getElementById('slotDuration').value) || 45,
-    buffer_minutes: parseInt(document.getElementById('bufferMinutes').value) || 15,
-    available_windows: getAvailableWindows(),
-  };
-
-  await fetch(`/api/scheduling/campaign/${campaignId}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-  });
-
-  const res = await fetch(`/api/scheduling/campaign/${campaignId}/generate-slots`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from_date: fmt(tomorrow), to_date: fmt(nextWeek), representatives: reps, dry_run: true })
-  });
+  const body = { project_id: parseInt(document.getElementById('projectId').value)||1, meeting_type: currentType, slot_duration_minutes: parseInt(document.getElementById('slotDuration').value)||45, buffer_minutes: parseInt(document.getElementById('bufferMinutes').value)||15, available_windows: getAvailableWindows() };
+  await fetch(`/api/scheduling/campaign/${campaignId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(`/api/scheduling/campaign/${campaignId}/generate-slots`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from_date: fmt(tomorrow), to_date: fmt(nextWeek), representatives: reps, dry_run: true }) });
   const data = await res.json();
   const box = document.getElementById('previewBox');
   box.style.display = 'block';
-  const slotLines = (data.preview || []).map(s => {
-    const d = new Date(s.slot_datetime);
-    const day = DAY_NAMES[d.getDay()];
-    return `${day} ${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${s.representative_name ? '  —  ' + s.representative_name : ''}`;
-  });
-  box.textContent = `תצוגה מקדימה — ${data.total || 0} slots ב-7 ימים הקרובים:\n\n` + slotLines.join('\n') + (data.note ? '\n' + data.note : '');
+  const slotLines = (data.preview||[]).map(s => { const d = new Date(s.slot_datetime); const day = DAY_NAMES[d.getDay()]; return `${day} ${d.toLocaleDateString('he-IL')} ${d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${s.representative_name?'  —  '+s.representative_name:''}`; });
+  box.textContent = `תצוגה מקדימה — ${data.total||0} slots ב-7 ימים הקרובים:\n\n` + slotLines.join('\n') + (data.note?'\n'+data.note:'');
 }
 
-// ── Load Existing Campaign ──
 async function loadCampaign() {
   const campaignId = document.getElementById('campaignId').value.trim();
   if (!campaignId) return showToast('הזן מזהה קמפיין', 'error');
-
   const res = await fetch(`/api/scheduling/campaign/${campaignId}`);
   const data = await res.json();
   if (!data.config) return showToast('קמפיין לא נמצא', 'error');
-
   const cfg = data.config;
-
-  // Type
   const typeBtn = document.querySelector(`[data-type="${cfg.meeting_type}"]`);
   if (typeBtn) selectType(typeBtn);
-
-  // Timing
   if (cfg.slot_duration_minutes) document.getElementById('slotDuration').value = cfg.slot_duration_minutes;
   if (cfg.buffer_minutes) document.getElementById('bufferMinutes').value = cfg.buffer_minutes;
-
-  // Windows
   if (cfg.available_windows?.length) {
     document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
     const startTimes = [], endTimes = [];
@@ -578,26 +677,317 @@ async function loadCampaign() {
     if (startTimes.length) document.getElementById('globalStart').value = startTimes[0];
     if (endTimes.length) document.getElementById('globalEnd').value = endTimes[0];
   }
-
-  // Settings
   if (cfg.wa_language) document.getElementById('waLanguage').value = cfg.wa_language;
   if (cfg.booking_link_expires_hours) document.getElementById('bookingExpiry').value = cfg.booking_link_expires_hours;
   if (cfg.pre_meeting_reminder_hours) document.getElementById('reminderHours').value = cfg.pre_meeting_reminder_hours;
   document.getElementById('showRepName').value = cfg.show_rep_name ? 'true' : 'false';
-
   showToast('הגדרות נטענו בהצלחה', 'success');
 }
 
-// ── Toast ──
-function showToast(msg, type = 'success') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = `toast ${type} show`;
-  setTimeout(() => t.classList.remove('show'), 3500);
+// ══════════════════════════════════════════════════
+// TAB 2 — PROFESSIONAL VISITS
+// ══════════════════════════════════════════════════
+let currentVType = 'appraiser';
+let profCount = 0;
+let campaignBuildings = [];  // loaded from Zoho
+
+function selectVType(el) {
+  document.querySelectorAll('.vtype-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  currentVType = el.dataset.vtype;
 }
 
-// Init
+// ── Load visits + buildings for campaign ──
+async function loadVisits() {
+  const campaignId = document.getElementById('vCampaignId').value.trim();
+  if (!campaignId) return showToast('הזן מזהה קמפיין', 'error');
+
+  // Load existing visits
+  try {
+    const res = await fetch(`/api/scheduling/visits?campaign_id=${encodeURIComponent(campaignId)}`);
+    const data = await res.json();
+    renderVisits(data.visits || []);
+    document.getElementById('existingVisitsSection').style.display = '';
+  } catch (e) {
+    showToast('שגיאה בטעינת ביקורים', 'error');
+  }
+
+  // Load Zoho buildings
+  try {
+    const res = await fetch(`/api/scheduling/campaigns/${encodeURIComponent(campaignId)}/buildings`);
+    const data = await res.json();
+    campaignBuildings = data.buildings || [];
+    renderBuildingPicker(campaignBuildings);
+  } catch (e) {
+    // Zoho not available — show manual input
+    campaignBuildings = [];
+    renderBuildingPicker([]);
+  }
+}
+
+function renderBuildingPicker(buildings) {
+  const picker = document.getElementById('buildingPicker');
+  const manual = document.getElementById('vBuildingManual');
+
+  if (!buildings.length) {
+    picker.innerHTML = '<div class="no-buildings-hint">לא נמצאו בניינים מ-Zoho — הזן כתובת ידנית למטה</div>';
+    manual.style.display = '';
+    return;
+  }
+
+  manual.style.display = 'none';
+  picker.innerHTML = buildings.map((b, i) => `
+    <label class="building-option" onclick="selectBuilding(this)">
+      <input type="radio" name="vBuilding" value="${escHtml(b.address || b.name)}" ${i===0?'checked':''}>
+      <div>
+        <div class="building-option-label">${escHtml(b.address || b.name)}</div>
+        <div class="building-option-sub">מזהה Zoho: ${escHtml(b.id||'')}</div>
+      </div>
+    </label>
+  `).join('');
+
+  // Mark first as selected visually
+  const first = picker.querySelector('.building-option');
+  if (first) first.classList.add('selected');
+}
+
+function selectBuilding(el) {
+  document.querySelectorAll('.building-option').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function getSelectedBuilding() {
+  // From radio buttons
+  const radio = document.querySelector('input[name="vBuilding"]:checked');
+  if (radio) return radio.value;
+  // From manual input
+  return document.getElementById('vBuildingManual').value.trim();
+}
+
+function renderVisits(visits) {
+  const list = document.getElementById('visitsList');
+  const count = document.getElementById('visitsCount');
+  count.textContent = `${visits.length} ביקורים`;
+
+  if (!visits.length) {
+    list.innerHTML = '<div class="empty-state">אין ביקורים עדיין לקמפיין זה</div>';
+    return;
+  }
+
+  const typeLabel = { appraiser: 'שמאי', surveyor: 'מודד' };
+  const typeIcon  = { appraiser: '🏠', surveyor: '📐' };
+
+  list.innerHTML = visits.map(v => {
+    const profs = (v.professionals || []).filter(p => p.name);
+    const totalOpen   = profs.reduce((s,p) => s + (parseInt(p.slots_open)||0), 0);
+    const totalBooked = profs.reduce((s,p) => s + (parseInt(p.slots_booked)||0), 0);
+    const dateStr = v.visit_date ? new Date(v.visit_date).toLocaleDateString('he-IL') : '';
+
+    return `
+      <div class="visit-card">
+        <div class="visit-card-header">
+          <div>
+            <div class="visit-card-title">${typeIcon[v.visit_type]||'📋'} ${escHtml(v.building_address)} <span style="color:var(--muted);font-weight:400;font-size:13px">— ${escHtml(v.city||'')}</span></div>
+            <div class="visit-card-meta">📅 ${dateStr}  ⏰ ${v.start_time||''}–${v.end_time||''}  ⏱️ ${v.slot_duration_minutes} דק' + ${v.buffer_minutes} דק' מרווח</div>
+          </div>
+          <div class="visit-card-badges">
+            <span class="badge purple">${typeLabel[v.visit_type]||v.visit_type}</span>
+            <span class="badge green">פתוח: ${totalOpen}</span>
+            ${totalBooked ? `<span class="badge amber">נקבע: ${totalBooked}</span>` : ''}
+          </div>
+        </div>
+        <div class="visit-profs">
+          ${profs.map(p => `
+            <div class="visit-prof-row">
+              <div class="visit-prof-name">👤 ${escHtml(p.name)}</div>
+              <div class="visit-prof-stats">
+                <span class="stat-chip open">פתוח: ${p.slots_open||0}</span>
+                ${p.slots_booked ? `<span class="stat-chip booked">נקבע: ${p.slots_booked}</span>` : ''}
+                <button class="btn-report" onclick="showVisitReport(${v.id},'${escHtml(v.building_address)}')">📊 דוח</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Visit report popup ──
+async function showVisitReport(visitId, buildingAddr) {
+  try {
+    const res = await fetch(`/api/scheduling/visits/${visitId}/report`);
+    const data = await res.json();
+    if (!data.visit) return showToast('דוח לא זמין', 'error');
+
+    let text = `דוח ביקור — ${buildingAddr}\n`;
+    text += `📅 ${data.visit.visit_date}\n`;
+    text += `סה"כ slots: ${data.summary.total} | נקבעו: ${data.summary.booked} | פתוחים: ${data.summary.open}\n\n`;
+
+    for (const [profName, slots] of Object.entries(data.report || {})) {
+      text += `👤 ${profName}\n`;
+      slots.forEach(s => {
+        const status = s.status === 'confirmed' ? '✅' : '○';
+        text += `  ${status} ${s.time_str}`;
+        if (s.contact_name) text += ` — ${s.contact_name}`;
+        if (s.apartment_number) text += ` דירה ${s.apartment_number}`;
+        text += '\n';
+      });
+      text += '\n';
+    }
+
+    const box = document.getElementById('visitResult');
+    box.style.display = 'block';
+    box.textContent = text;
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (e) {
+    showToast('שגיאה בטעינת דוח', 'error');
+  }
+}
+
+// ── Professionals form ──
+function addProfForm(name='', phone='') {
+  const existing = document.querySelectorAll('.prof-form-row').length;
+  if (existing >= 3) { showToast('מקסימום 3 אנשי מקצוע לביקור', 'error'); return; }
+  profCount++;
+  const id = profCount;
+  const num = existing + 1;
+  const div = document.createElement('div');
+  div.className = 'prof-form-row'; div.id = 'prof-' + id;
+  div.innerHTML = `
+    <span class="prof-num">${num}</span>
+    <button class="prof-remove" onclick="removeProf('prof-${id}')">✕</button>
+    <div class="row3" style="margin-top:6px">
+      <div class="field" style="margin:0">
+        <label>שם</label>
+        <input type="text" placeholder="יוסי כהן" value="${escHtml(name)}" class="prof-name">
+      </div>
+      <div class="field" style="margin:0">
+        <label>טלפון</label>
+        <input type="text" placeholder="050-0000000" value="${escHtml(phone)}" class="prof-phone" style="direction:ltr">
+      </div>
+      <div class="field" style="margin:0">
+        <label>Zoho Calendar ID (אופציונלי)</label>
+        <input type="text" placeholder="calendar-id" class="prof-zoho" style="direction:ltr;font-size:11px">
+      </div>
+    </div>
+  `;
+  document.getElementById('profFormList').appendChild(div);
+  updateAddProfBtn();
+}
+
+function removeProf(id) {
+  document.getElementById(id)?.remove();
+  // Re-number
+  document.querySelectorAll('.prof-form-row .prof-num').forEach((el,i) => { el.textContent = i+1; });
+  updateAddProfBtn();
+}
+
+function updateAddProfBtn() {
+  const count = document.querySelectorAll('.prof-form-row').length;
+  const btn = document.getElementById('btnAddProf');
+  btn.style.display = count >= 3 ? 'none' : '';
+}
+
+function getProfessionals() {
+  const rows = document.querySelectorAll('.prof-form-row');
+  const profs = [];
+  rows.forEach(row => {
+    const name  = row.querySelector('.prof-name')?.value.trim();
+    const phone = row.querySelector('.prof-phone')?.value.trim();
+    const zoho  = row.querySelector('.prof-zoho')?.value.trim();
+    if (name) profs.push({ name, phone: phone||null, zoho_calendar_id: zoho||null });
+  });
+  return profs;
+}
+
+// ── Create visit ──
+async function createVisit() {
+  const campaignId = document.getElementById('vCampaignId').value.trim();
+  if (!campaignId) return showToast('הזן מזהה קמפיין', 'error');
+
+  const building = getSelectedBuilding();
+  if (!building) return showToast('בחר/הזן כתובת בניין', 'error');
+
+  const city = document.getElementById('vCity').value.trim();
+  if (!city) return showToast('הזן עיר', 'error');
+
+  const visitDate  = document.getElementById('vDate').value;
+  if (!visitDate) return showToast('בחר תאריך ביקור', 'error');
+
+  const startTime  = document.getElementById('vStart').value;
+  const endTime    = document.getElementById('vEnd').value;
+  if (!startTime || !endTime) return showToast('הזן שעות ביקור', 'error');
+  if (endTime <= startTime) return showToast('שעת סיום חייבת להיות אחרי שעת התחלה', 'error');
+
+  const slotDur    = parseInt(document.getElementById('vSlotDuration').value) || 30;
+  const buffer     = parseInt(document.getElementById('vBuffer').value) || 5;
+  const profs      = getProfessionals();
+  if (!profs.length) return showToast('הוסף לפחות איש מקצוע אחד', 'error');
+
+  const btn = document.querySelector('.btn-primary.purple');
+  btn.innerHTML = 'יוצר ביקור...<span class="spinner"></span>'; btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/scheduling/visits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        campaign_id: campaignId,
+        project_id: parseInt(document.getElementById('vProjectId').value) || 1,
+        visit_type: currentVType,
+        building_address: building,
+        city,
+        visit_date: visitDate,
+        start_time: startTime,
+        end_time: endTime,
+        slot_duration_minutes: slotDur,
+        buffer_minutes: buffer,
+        professionals: profs
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      let summary = `✅ ביקור נוצר בהצלחה! (ID: ${data.visit_id})\n`;
+      summary += `🏢 בניין: ${data.building_address}\n`;
+      summary += `📅 תאריך: ${data.visit_date}\n`;
+      summary += `📊 סה"כ slots: ${data.total_slots}\n\n`;
+      data.professionals?.forEach(p => {
+        summary += `👤 ${p.professional}\n`;
+        summary += `   slots: ${p.slots_created} | ראשון: ${p.first_slot} | אחרון: ${p.last_slot}\n\n`;
+      });
+      const box = document.getElementById('visitResult');
+      box.style.display = 'block';
+      box.textContent = summary;
+      showToast(`ביקור נוצר — ${data.total_slots} slots`, 'success');
+
+      // Reload visits list
+      loadVisits();
+
+      // Reset form
+      document.getElementById('profFormList').innerHTML = '';
+      profCount = 0;
+      updateAddProfBtn();
+      document.getElementById('vDate').value = '';
+    } else {
+      showToast('שגיאה: ' + (data.error||'לא ידוע'), 'error');
+    }
+  } catch (err) {
+    showToast('שגיאת רשת: ' + err.message, 'error');
+  } finally {
+    btn.innerHTML = '✅ צור ביקור + Slots'; btn.disabled = false;
+  }
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ──
 addRep('נציג ראשי', 1);
+addProfForm();
 </script>
 </body>
 </html>
