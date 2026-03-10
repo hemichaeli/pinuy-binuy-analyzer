@@ -1,8 +1,11 @@
 /**
- * QUANTUM Visual Booking Route v6.3
+ * QUANTUM Visual Booking Route v6.4
  *
  * v6.2: Fix clicks not working — data-slot-id + JSON slot map
  * v6.3: Responsive desktop layout — two columns, bigger slots, sidebar confirm panel
+ * v6.4: Fix UTC timezone display bug — remove AT TIME ZONE from getMeetingSlots SQL
+ *       slot_datetime stored as TIMESTAMP WITHOUT TZ in UTC (Railway server),
+ *       display directly without conversion.
  *
  * GET  /booking/:token          - Visual calendar HTML
  * GET  /booking/:token/slots    - JSON slot data
@@ -91,11 +94,14 @@ async function scoreSlotsByProximity(slots, campaignId, contactStreet) {
 // ══════════════════════════════════════════════════════════════
 
 async function getMeetingSlots(campaignId, contactStreet) {
+  // NOTE: slot_datetime is TIMESTAMP WITHOUT TIME ZONE stored as intended local time
+  // (Railway server runs UTC, setHours() stores intended display time directly).
+  // Do NOT use AT TIME ZONE — display the stored value as-is.
   const res = await pool.query(
     `SELECT id, slot_datetime,
-            TO_CHAR(slot_datetime AT TIME ZONE 'Asia/Jerusalem','YYYY-MM-DD') AS slot_date,
-            TO_CHAR(slot_datetime AT TIME ZONE 'Asia/Jerusalem','HH24:MI') AS time_str,
-            EXTRACT(DOW FROM slot_datetime AT TIME ZONE 'Asia/Jerusalem')::int AS dow,
+            TO_CHAR(slot_datetime,'YYYY-MM-DD') AS slot_date,
+            TO_CHAR(slot_datetime,'HH24:MI') AS time_str,
+            EXTRACT(DOW FROM slot_datetime)::int AS dow,
             representative_name
      FROM meeting_slots
      WHERE campaign_id=$1 AND status='open' AND slot_datetime > NOW()
@@ -319,8 +325,9 @@ router.post('/:token/confirm', async (req, res) => {
       if (!lockRes.rows.length) return res.status(409).json({ error: 'slot_taken' });
       const slot = lockRes.rows[0];
       const slotDt = new Date(slot.slot_datetime);
-      dateStr = slotDt.toLocaleDateString('he-IL', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Jerusalem' });
-      timeStr = slotDt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+      // Display slot time as stored (no TZ conversion - stored as intended local time)
+      dateStr = `${String(slotDt.getUTCDate()).padStart(2,'0')}/${String(slotDt.getUTCMonth()+1).padStart(2,'0')}/${slotDt.getUTCFullYear()}`;
+      timeStr = `${String(slotDt.getUTCHours()).padStart(2,'0')}:${String(slotDt.getUTCMinutes()).padStart(2,'0')}`;
       repName = slot.representative_name;
       slotDatetime = slot.slot_datetime;
       if (gcal?.createMeetingSlotEvent) gcal.createMeetingSlotEvent(pool, slot, ctx.contactName || '', session.phone).then(id => id && pool.query(`UPDATE meeting_slots SET google_event_id=$1 WHERE id=$2`, [id, slot.id]).catch(() => {})).catch(e => logger.warn('[BookingRoute] GCal meeting failed:', e.message));
@@ -601,28 +608,17 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
      DESKTOP — 768px and above
   ══════════════════════════════════════════════ */
   @media (min-width:768px) {
-    /* Header */
     .header-title{font-size:21px}
-
-    /* Two-column layout */
     .layout{display:grid;grid-template-columns:1fr var(--sidebar);gap:32px;align-items:start}
     .main-col{min-width:0}
     .sidebar-col{display:block;position:sticky;top:24px}
-
-    /* Bigger slot grid */
     .slots-row{grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:10px}
     .slot-btn{padding:14px 10px;border-radius:14px}
     .slot-time{font-size:17px}
     .rep-name{font-size:10px;max-width:100px}
-
-    /* Smart picks bigger */
     .smart-time{font-size:30px}
     .smart-date{font-size:13px}
-
-    /* Mobile confirm panel hidden on desktop */
     .confirm-panel{display:none !important}
-
-    /* Sidebar confirm card */
     .sidebar-confirm{display:block;background:linear-gradient(160deg,#0d1f3c,#08101e);border:1.5px solid #2563eb66;border-radius:20px;padding:24px;margin-bottom:20px}
     .sidebar-confirm.has-selection{border-color:#3b82f6;box-shadow:0 0 0 1px #3b82f620}
     .sidebar-no-sel{color:var(--muted);font-size:14px;text-align:center;padding:8px 0}
@@ -634,16 +630,10 @@ function calendarPage(token, name, lang, config, grouped, isCeremony, buildingLa
     .sidebar-confirm-btn:disabled{background:#1e293b;color:#475569;cursor:not-allowed}
     .sidebar-cancel-link{display:none;text-align:center;margin-top:10px;color:var(--muted);font-size:13px;cursor:pointer;padding:4px}
     .sidebar-cancel-link.visible{display:block}
-
-    /* Sidebar brand card */
     .sidebar-brand{background:linear-gradient(160deg,#0a1120,#060d18);border:1px solid var(--border);border-radius:16px;padding:20px;text-align:center}
     .sidebar-brand-logo{font-size:11px;letter-spacing:4px;color:#60a5fa;text-transform:uppercase;font-weight:700;margin-bottom:8px}
     .sidebar-brand-tagline{font-size:12px;color:#475569;line-height:1.5}
-
-    /* Page body padding */
     .page-body{padding:28px 28px 60px}
-
-    /* All-slots toggle */
     .all-toggle{padding:14px 20px}
   }
 
@@ -755,12 +745,10 @@ function selectSlot(btn, id) {
   var label = (data.dateLabel || '') + '  \u23F0 ' + (data.time || '');
   var rep = (SHOW_REP && data.rep) ? REP_LABEL + ': ' + data.rep : '';
 
-  // Update both mobile panel and desktop sidebar
   document.getElementById('selectedLabel').textContent = label;
   document.getElementById('selectedRep').textContent = rep;
   document.getElementById('confirmPanel').classList.add('open');
 
-  // Desktop sidebar
   var sidebarNoSel = document.getElementById('sidebarNoSel');
   var sidebarTime = document.getElementById('sidebarTime');
   var sidebarRep = document.getElementById('sidebarRep');
