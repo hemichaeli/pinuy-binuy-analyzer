@@ -61,7 +61,7 @@ router.get('/api/kones', async (req, res) => {
         const { city, status, search } = req.query;
         let query = `SELECT id, COALESCE(address, city, 'כינוס נכסים') as title, address, city, price, phone,
                             contact_status, contact_attempts, last_contact_at,
-                            source, source_site, contact_person, contact_name, email, url, gush_helka,
+                            source, contact_person, email, url, gush_helka,
                             submission_deadline, property_type, created_at
                      FROM kones_listings WHERE is_active = TRUE`;
         const params = [];
