@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.89.0';
-const BUILD = '2026-03-10-v4.89.0-short-calendar-links';
+const VERSION = '4.90.0';
+const BUILD = '2026-03-10-v4.90.0-professional-visits';
 
 async function runAutoMigrations() {
   try {
@@ -66,7 +66,8 @@ const limiter = rateLimit({
     req.path.startsWith('/api/notifications/') || req.path.startsWith('/api/search/') ||
     req.path.startsWith('/api/docs') || req.path.startsWith('/api/auto-contact') ||
     req.path.startsWith('/booking/') || req.path.startsWith('/cal/') || req.path.startsWith('/api/kones/') ||
-    req.path.startsWith('/api/appointments/') || req.path.startsWith('/api/test/'),
+    req.path.startsWith('/api/appointments/') || req.path.startsWith('/api/test/') ||
+    req.path.startsWith('/api/visits/'),
   message: { error: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
@@ -109,6 +110,7 @@ function loadAllRoutes() {
     { path: '/api/whatsapp', file: 'routes/whatsappAlertRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
     { path: '/api/scheduling', file: 'routes/schedulingRoutes.js' },
+    { path: '/api/scheduling', file: 'routes/professionalVisitRoutes.js' },   // ← NEW v4.90
     { path: '/api/scheduling/calendar', file: 'routes/calendarRoutes.js' },
     { path: '/api/test/optimization', file: 'routes/optimizationTestRoute.js' },
     { path: '/api/notifications', file: 'routes/notificationRoutes.js' },
@@ -182,8 +184,6 @@ function loadAutoContactRoutes() {
   }
 }
 
-// ─── Vapi Keyterms Support Checker ───────────────────────────────────────────
-
 const VAPI_QUANTUM_KEYTERMS = [
   'פינוי-בינוי', 'ועדה מקומית', 'כינוס נכסים', 'פרמיה',
   'דייר סרבן', 'יזם', 'נסח טאבו', 'QUANTUM', 'קוונטום',
@@ -203,9 +203,7 @@ async function checkVapiKeytermsSupport() {
   const apiKey = process.env.VAPI_API_KEY;
   const testId = process.env.VAPI_ASSISTANT_COLD;
   if (!apiKey || !testId) return;
-
   logger.info('[VapiKeyterms] Checking if Vapi supports keyterms...');
-
   try {
     const axios = require('axios');
     const testBody = { transcriber: { provider: 'deepgram', model: 'nova-3', language: 'he', keyterms: ['פינוי-בינוי', 'QUANTUM'] } };
@@ -219,20 +217,11 @@ async function checkVapiKeytermsSupport() {
         if (!agentId) continue;
         try { await axios.patch(`https://api.vapi.ai/assistant/${agentId}`, fullBody, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }); success++; } catch (e) { logger.warn(`[VapiKeyterms] Failed to update agent ${agentId}:`, e.message); }
       }
-      try {
-        await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', { Data: { Message: `✅ *QUANTUM Voice AI - עדכון חשוב*\n\nVapi תומך עכשיו ב-Keyterms עבור Deepgram Nova-3!\n\nהוחלו ${success}/5 נציגים עם מונחי מקצוע נדל"ן:\nפינוי-בינוי, ועדה מקומית, כינוס נכסים ועוד ${VAPI_QUANTUM_KEYTERMS.length - 3} מונחים.\n\nהדיוק בזיהוי מונחים מקצועיים עלה משמעותית.`, PhoneNumber: '972546550815' }, AuthInfo: { Username: process.env.INFORU_USERNAME || 'hemichaeli', ApiToken: process.env.INFORU_PASSWORD || process.env.INFORU_API_TOKEN } });
-        logger.info('[VapiKeyterms] WhatsApp alert sent');
-      } catch (waErr) { logger.warn('[VapiKeyterms] WhatsApp alert failed:', waErr.message); }
     } else {
       logger.info('[VapiKeyterms] Not yet supported - will check again in 3 days');
     }
   } catch (err) {
-    const msg = err.response?.data?.message || err.message;
-    if (typeof msg === 'string' && msg.includes('keyterms')) {
-      logger.info('[VapiKeyterms] Not yet supported (400 error) - will check again in 3 days');
-    } else {
-      logger.warn('[VapiKeyterms] Unexpected error during check:', msg);
-    }
+    logger.warn('[VapiKeyterms] Check error:', err.response?.data?.message || err.message);
   }
 }
 
@@ -266,29 +255,17 @@ app.get('/api/debug', async (req, res) => {
   let optimizationStats = {};
   try { const { rows } = await pool.query(`SELECT status, COUNT(*) AS total FROM reschedule_requests GROUP BY status`); optimizationStats = Object.fromEntries(rows.map(r => [r.status, parseInt(r.total)])); } catch (e) {}
   let gcalStatus = 'not configured';
-  try {
-    const gcal = require('./services/googleCalendarService');
-    gcalStatus = gcal.isConfigured()
-      ? `configured (${process.env.GOOGLE_SA_EMAIL || process.env.GOOGLE_CLIENT_EMAIL})`
-      : 'credentials missing';
-  } catch (e) { gcalStatus = 'service error'; }
+  try { const gcal = require('./services/googleCalendarService'); gcalStatus = gcal.isConfigured() ? `configured (${process.env.GOOGLE_SA_EMAIL || process.env.GOOGLE_CLIENT_EMAIL})` : 'credentials missing'; } catch (e) { gcalStatus = 'service error'; }
   let zcalStatus = 'not configured';
-  try {
-    const zcal = require('./services/zohoCalendarService');
-    zcalStatus = zcal.isConfigured() ? 'configured (Zoho OAuth)' : 'credentials missing';
-  } catch (e) { zcalStatus = 'service error'; }
+  try { const zcal = require('./services/zohoCalendarService'); zcalStatus = zcal.isConfigured() ? 'configured (Zoho OAuth)' : 'credentials missing'; } catch (e) { zcalStatus = 'service error'; }
   res.json({
     version: VERSION, build: BUILD, timestamp: new Date().toISOString(),
     campaign_admin_panel: 'active at GET /api/scheduling/admin',
+    professional_visits: 'active at POST /api/scheduling/visits | POST /api/scheduling/pre-register',
     schedule_optimization: `active - cron 20:00 Sun-Thu + 22:30 expire | ${JSON.stringify(optimizationStats)}`,
-    optimization_test: 'active at POST /api/test/optimization/setup',
-    smart_slot_clustering: 'active - address-based proximity scoring (v4.75.0)',
     google_calendar: gcalStatus,
     zoho_calendar: zcalStatus,
     incoming_whatsapp_poll: 'active - every 60s via INFORU PullData',
-    vapi_reschedule_webhook: 'active - outcome handler in /api/vapi/webhook (v4.82)',
-    notifications_sse: `active (${notificationStats.connected_clients || 0} clients)`,
-    vapi_keyterms_checker: 'active - runs every 3 days at 09:00',
     routes: { loaded: loaded.map(r => r.path + ' (' + r.file + ')'), failed: failed.map(r => ({ path: r.path, error: r.error })) }
   });
 });
@@ -309,23 +286,8 @@ async function start() {
   loaded.forEach(r => logger.info(`  OK: ${r.path} (${r.file})`));
   failed.forEach(r => logger.error(`  FAILED: ${r.path} (${r.file}) -> ${r.error}`));
 
-  try {
-    const gcal = require('./services/googleCalendarService');
-    if (gcal.isConfigured()) {
-      logger.info(`[GCal] Configured with service account: ${process.env.GOOGLE_SA_EMAIL || process.env.GOOGLE_CLIENT_EMAIL}`);
-    } else {
-      logger.warn('[GCal] Not configured - set GOOGLE_SA_EMAIL + GOOGLE_SA_PRIVATE_KEY on Railway');
-    }
-  } catch (e) {}
-
-  try {
-    const zcal = require('./services/zohoCalendarService');
-    if (zcal.isConfigured()) {
-      logger.info('[ZohoCal] Configured (Zoho OAuth)');
-    } else {
-      logger.warn('[ZohoCal] Not configured - set ZOHO_CLIENT_ID + ZOHO_REFRESH_TOKEN on Railway');
-    }
-  } catch (e) {}
+  try { const gcal = require('./services/googleCalendarService'); if (gcal.isConfigured()) { logger.info(`[GCal] Configured`); } } catch (e) {}
+  try { const zcal = require('./services/zohoCalendarService'); if (zcal.isConfigured()) { logger.info('[ZohoCal] Configured'); } } catch (e) {}
 
   try {
     const { initialize: initAutoContact, runAutoFirstContact, runKonesAutoContact } = require('./services/autoFirstContactService');
@@ -341,25 +303,17 @@ async function start() {
   try {
     const { pollIncomingWhatsApp } = require('./cron/incomingWhatsAppCron');
     const cron = require('node-cron');
-    cron.schedule('* * * * *', async () => {
-      try { await pollIncomingWhatsApp(); } catch (e) { logger.warn('[IncomingWA] Cron error:', e.message); }
-    });
+    cron.schedule('* * * * *', async () => { try { await pollIncomingWhatsApp(); } catch (e) { logger.warn('[IncomingWA] Cron error:', e.message); } });
     logger.info('[IncomingWA] ACTIVE - polling INFORU every 60s');
   } catch (e) { logger.warn('[IncomingWA] Failed to start:', e.message); }
 
   try {
     const cron = require('node-cron');
-    cron.schedule('0 9 */3 * *', async () => {
-      try { await checkVapiKeytermsSupport(); } catch (e) { logger.warn('[VapiKeyterms] Cron error:', e.message); }
-    });
+    cron.schedule('0 9 */3 * *', async () => { try { await checkVapiKeytermsSupport(); } catch (e) { logger.warn('[VapiKeyterms] Cron error:', e.message); } });
     logger.info('[VapiKeyterms] Checker ACTIVE - every 3 days at 09:00');
   } catch (e) { logger.warn('[VapiKeyterms] Failed to start checker:', e.message); }
 
-  try {
-    const konesIsraelService = require('./services/konesIsraelService');
-    const cron = require('node-cron');
-    cron.schedule('15 7 * * *', async () => { try { await konesIsraelService.runKonesonlineScrape(); } catch (e) {} });
-  } catch (e) {}
+  try { const konesIsraelService = require('./services/konesIsraelService'); const cron = require('node-cron'); cron.schedule('15 7 * * *', async () => { try { await konesIsraelService.runKonesonlineScrape(); } catch (e) {} }); } catch (e) {}
 
   try {
     const cron = require('node-cron');
@@ -402,11 +356,7 @@ async function start() {
     { name: 'Govmap', module: './services/govmapScraper', cron: '0 7 * * 1', fn: 'scanAll' },
   ];
   for (const def of scraperDefs) {
-    try {
-      const scraper = require(def.module); const cron = require('node-cron');
-      cron.schedule(def.cron, async () => { try { await scraper[def.fn](); } catch (e) {} });
-      logger.info(`[${def.name}Scraper] ACTIVE`);
-    } catch (e) {}
+    try { const scraper = require(def.module); const cron = require('node-cron'); cron.schedule(def.cron, async () => { try { await scraper[def.fn](); } catch (e) {} }); logger.info(`[${def.name}Scraper] ACTIVE`); } catch (e) {}
   }
 
   app.use((req, res) => res.status(404).json({ error: 'Not Found', path: req.path, version: VERSION }));
