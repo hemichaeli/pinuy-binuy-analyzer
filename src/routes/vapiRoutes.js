@@ -1,6 +1,6 @@
 /**
  * QUANTUM Voice AI - Vapi Integration Routes
- * v1.6.0 - Fixed Vapi tool call format (toolCallList + results[])
+ * v1.7.0 - Pre-fetched calendar slots, fixed INFORU token, native endCall
  */
 
 const express = require('express');
@@ -11,7 +11,6 @@ const axios = require('axios');
 const { JWT } = require('google-auth-library');
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY || '';
-const VAPI_BASE_URL = 'https://api.vapi.ai';
 
 let _optService = null;
 function getOptService() {
@@ -49,33 +48,130 @@ async function getGoogleAccessToken() {
   }
 }
 
-const NOVA3_TRANSCRIBER = {
-  provider: 'deepgram', model: 'nova-3', language: 'he',
-  keywords: ['פינוי-בינוי','ועדה מקומית','כינוס נכסים','פרמיה','יזם','דיירים','חתימות','הסכם פינוי','תמא 38','טאבו','קוונטום','נדלן','משכנתא','רוכש','מוכר','מתחם','קבלן'],
+const HEMI_CALENDAR_ID    = process.env.HEMI_CALENDAR_ID    || 'hemi.michaeli@gmail.com';
+const QUANTUM_CALENDAR_ID = process.env.QUANTUM_CALENDAR_ID ||
+  'cf4cd8ef53ef4cbdca7f172bdef3f6862509b4026a5e04b648ce09144ab5aa21@group.calendar.google.com';
+
+// Hebrew hour labels (spoken)
+const HOUR_LABELS = {
+  9:  'תשע בבוקר',
+  10: 'עשר בבוקר',
+  11: 'אחת עשרה',
+  12: 'שתיים עשרה',
+  13: 'אחת אחרי הצהריים',
+  14: 'שתיים אחרי הצהריים',
+  15: 'שלוש אחרי הצהריים',
+  16: 'ארבע אחרי הצהריים',
+  17: 'חמש אחרי הצהריים',
+  18: 'שש בערב',
 };
 
-const AGENTS = {
-  seller_followup:    { id: 'seller_followup',    name: 'מוכרים - Follow-up',          description: 'שיחת המשך עם מוכר פוטנציאלי', assistantId: process.env.VAPI_ASSISTANT_SELLER   || null },
-  buyer_qualification:{ id: 'buyer_qualification', name: 'קונים - Lead Qualification',  description: 'כישור ליד קונה/משקיע',         assistantId: process.env.VAPI_ASSISTANT_BUYER    || null },
-  meeting_reminder:   { id: 'meeting_reminder',    name: 'תזכורת פגישה',               description: 'אישור ותזכורת לפגישה',         assistantId: process.env.VAPI_ASSISTANT_REMINDER || null },
-  cold_prospecting:   { id: 'cold_prospecting',    name: 'Cold Prospecting',            description: 'שיחה קרה לדיירים',             assistantId: process.env.VAPI_ASSISTANT_COLD     || null },
-  inbound_handler:    { id: 'inbound_handler',     name: 'מענה נכנס',                  description: 'מענה לשיחות נכנסות',           assistantId: process.env.VAPI_ASSISTANT_INBOUND  || null },
-};
+// Hebrew day labels relative to today
+function hebrewDayLabel(date, todayDate) {
+  const d = new Date(date);
+  const t = new Date(todayDate);
+  d.setHours(0,0,0,0); t.setHours(0,0,0,0);
+  const diff = Math.round((d - t) / 86400000);
+  if (diff === 1) return 'מחר';
+  if (diff === 2) return 'מחרתיים';
+  const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  return 'ב' + days[d.getDay()];
+}
 
-const ASSISTANT_IDS = [
-  { id: process.env.VAPI_ASSISTANT_SELLER,   name: 'seller_followup' },
-  { id: process.env.VAPI_ASSISTANT_BUYER,    name: 'buyer_qualification' },
-  { id: process.env.VAPI_ASSISTANT_REMINDER, name: 'meeting_reminder' },
-  { id: process.env.VAPI_ASSISTANT_COLD,     name: 'cold_prospecting' },
-  { id: process.env.VAPI_ASSISTANT_INBOUND,  name: 'inbound_handler' },
-];
+// ─── Fetch pre-call available slots ──────────────────────────────────────────
+// Returns up to 4 free 1-hour slots in the next 3 business days, 09:00-18:00 Israel time
+// as { slots: [{ iso, label, date, time }] }
+
+async function fetchFreeSlots() {
+  const TZ = 'Asia/Jerusalem';
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('sv-SE', { timeZone: TZ }); // YYYY-MM-DD
+
+  // Build candidate slots: next 3 weekdays × hours 9-17
+  const candidates = [];
+  let d = new Date(now);
+  d.setHours(d.getHours() + 2); // at least 2h from now
+  let daysAdded = 0;
+
+  while (daysAdded < 3) {
+    d = new Date(d.getTime() + 86400000);
+    const dow = d.toLocaleDateString('en-US', { timeZone: TZ, weekday: 'short' });
+    if (dow === 'Sat' || dow === 'Sun') continue; // skip weekend (Israel: Fri/Sat)
+    const dateStr = d.toLocaleDateString('sv-SE', { timeZone: TZ });
+    for (const h of [9, 10, 11, 13, 14, 15, 16]) {
+      candidates.push({ dateStr, hour: h });
+    }
+    daysAdded++;
+  }
+
+  if (!candidates.length) {
+    return { slots: getFallbackSlots(todayStr) };
+  }
+
+  // Check freeBusy
+  const accessToken = await getGoogleAccessToken();
+  if (!accessToken) {
+    return { slots: getFallbackSlots(todayStr) };
+  }
+
+  const timeMin = new Date(`${candidates[0].dateStr}T09:00:00+03:00`).toISOString();
+  const timeMax = new Date(`${candidates[candidates.length-1].dateStr}T19:00:00+03:00`).toISOString();
+
+  let busyIntervals = [];
+  try {
+    const fbRes = await axios.post(
+      'https://www.googleapis.com/calendar/v3/freeBusy',
+      { timeMin, timeMax, timeZone: TZ, items: [{ id: HEMI_CALENDAR_ID }, { id: QUANTUM_CALENDAR_ID }] },
+      { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+    );
+    const cals = fbRes.data.calendars || {};
+    for (const calId of Object.keys(cals)) {
+      busyIntervals = busyIntervals.concat(cals[calId]?.busy || []);
+    }
+  } catch (err) {
+    logger.warn('[VAPI] freeBusy pre-fetch error:', err.response?.data?.error?.message || err.message);
+    return { slots: getFallbackSlots(todayStr) };
+  }
+
+  const free = [];
+  for (const { dateStr, hour } of candidates) {
+    if (free.length >= 4) break;
+    const slotStart = new Date(`${dateStr}T${String(hour).padStart(2,'0')}:00:00+03:00`);
+    const slotEnd   = new Date(slotStart.getTime() + 3600000);
+    const isBusy = busyIntervals.some(b => {
+      const bs = new Date(b.start), be = new Date(b.end);
+      return slotStart < be && slotEnd > bs;
+    });
+    if (!isBusy) {
+      const label = `${hebrewDayLabel(dateStr, todayStr)} ב${HOUR_LABELS[hour] || `${hour}:00`}`;
+      free.push({ iso: slotStart.toISOString(), label, date: dateStr, time: `${String(hour).padStart(2,'0')}:00` });
+    }
+  }
+
+  return { slots: free.length >= 2 ? free : getFallbackSlots(todayStr) };
+}
+
+function getFallbackSlots(todayStr) {
+  // Deterministic fallback - next 2 weekdays at 10:00 and 14:00
+  const slots = [];
+  let d = new Date(todayStr + 'T12:00:00+03:00');
+  let added = 0;
+  while (added < 2) {
+    d = new Date(d.getTime() + 86400000);
+    const dow = d.toLocaleDateString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'short' });
+    if (dow === 'Sat' || dow === 'Sun') continue;
+    const dateStr = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Jerusalem' });
+    const dayLabel = hebrewDayLabel(dateStr, todayStr);
+    slots.push({ iso: new Date(`${dateStr}T10:00:00+03:00`).toISOString(), label: `${dayLabel} בעשר בבוקר`, date: dateStr, time: '10:00' });
+    slots.push({ iso: new Date(`${dateStr}T14:00:00+03:00`).toISOString(), label: `${dayLabel} בשתיים אחרי הצהריים`, date: dateStr, time: '14:00' });
+    added++;
+  }
+  return slots.slice(0, 4);
+}
 
 // ─── Vapi tool call parser ────────────────────────────────────────────────────
-// Vapi sends tool calls as: body.message.toolCallList (not toolCalls)
-// Response must be: { results: [{ toolCallId, result }] }
 
 function parseVapiToolCall(body, toolName) {
-  // Vapi format: body.message.toolCallList
   const list = body?.message?.toolCallList || body?.message?.toolCalls || [];
   const tc = list.find(t => t.function?.name === toolName);
   if (!tc) return { toolCallId: null, args: null };
@@ -86,10 +182,7 @@ function parseVapiToolCall(body, toolName) {
 }
 
 function vapiToolResponse(res, toolCallId, resultText) {
-  // Vapi requires this exact format
-  return res.json({
-    results: [{ toolCallId: toolCallId || 'unknown', result: resultText }]
-  });
+  return res.json({ results: [{ toolCallId: toolCallId || 'unknown', result: resultText }] });
 }
 
 // ─── Helper: build caller context ────────────────────────────────────────────
@@ -127,9 +220,9 @@ async function buildCallerContext(phone) {
     lead_id: lead?.id || null,
     last_contact: lead?.updated_at || null,
     complex_context: complexInfo
-      ? complexInfo.map(c => `${c.name} ב-${c.city}: ציון IAI ${c.iai_score || 'N/A'}, פרמיה תיאורטית ${c.theoretical_premium_min}-${c.theoretical_premium_max}%, ${c.news_summary || ''}`).join(' | ')
+      ? complexInfo.map(c => `${c.name} ב-${c.city}: ציון IAI ${c.iai_score || 'N/A'}, פרמיה ${c.theoretical_premium_min}-${c.theoretical_premium_max}%`).join(' | ')
       : null,
-    lead_context: lead ? `שם: ${lead.name}, סוג: ${lead.user_type}, סטטוס: ${lead.status}, ${JSON.stringify(lead.form_data || {})}` : null,
+    lead_context: lead ? `שם: ${lead.name}, סוג: ${lead.user_type}, סטטוס: ${lead.status}` : null,
   };
 }
 
@@ -137,30 +230,33 @@ function extractTopic(lead) {
   if (!lead) return 'פינוי-בינוי';
   if (lead.form_data?.addresses?.length > 0) { const a = lead.form_data.addresses[0]; return `המתחם ב${a.city || ''} ${a.street || ''}`; }
   if (lead.form_data?.subject) return lead.form_data.subject;
-  if (lead.user_type === 'investor') return 'השקעה בפינוי-בינוי';
   return 'פינוי-בינוי';
 }
 
-// ─── Calendar Links Generator ─────────────────────────────────────────────────
+// ─── Calendar Links ───────────────────────────────────────────────────────────
 
 function generateCalendarLinks({ title, description, location, startISO, durationMinutes = 30 }) {
   const start = new Date(startISO);
   const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
   const fmt = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const encTitle = encodeURIComponent(title);
-  const encDesc = encodeURIComponent(description);
-  const encLoc = encodeURIComponent(location || '');
-  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encTitle}&dates=${fmt(start)}/${fmt(end)}&details=${encDesc}&location=${encLoc}`;
-  const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?subject=${encTitle}&startdt=${start.toISOString()}&enddt=${end.toISOString()}&body=${encDesc}&location=${encLoc}&path=%2Fcalendar%2Faction%2Fcompose&rru=addevent`;
+  const enc = encodeURIComponent;
+  const google = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${enc(title)}&dates=${fmt(start)}/${fmt(end)}&details=${enc(description)}&location=${enc(location || '')}`;
+  const outlook = `https://outlook.live.com/calendar/0/deeplink/compose?subject=${enc(title)}&startdt=${start.toISOString()}&enddt=${end.toISOString()}&body=${enc(description)}&location=${enc(location || '')}&path=%2Fcalendar%2Faction%2Fcompose&rru=addevent`;
   return { google, outlook };
 }
 
 // ─── Send Meeting SMS via INFORU ──────────────────────────────────────────────
 
 async function sendMeetingSMS({ phone, leadName, meetingDatetime, address }) {
-  const INFORU_USERNAME = process.env.INFORU_USERNAME || 'hemichaeli';
-  const INFORU_TOKEN = process.env.INFORU_TOKEN || process.env.QUANTUM_TOKEN;
-  if (!INFORU_TOKEN) { logger.warn('[VAPI] INFORU_TOKEN not set'); return { success: false }; }
+  const username = process.env.INFORU_USERNAME || 'hemichaeli';
+  // Try all possible env var names
+  const token = process.env.INFORU_API_TOKEN || process.env.INFORU_PASSWORD ||
+                process.env.INFORU_TOKEN || process.env.QUANTUM_TOKEN;
+
+  if (!token) {
+    logger.warn('[VAPI] No INFORU token found (tried INFORU_API_TOKEN, INFORU_PASSWORD, INFORU_TOKEN)');
+    return { success: false, error: 'no token' };
+  }
 
   const start = new Date(meetingDatetime);
   const dateStr = start.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' });
@@ -173,7 +269,7 @@ async function sendMeetingSMS({ phone, leadName, meetingDatetime, address }) {
     startISO: meetingDatetime,
   });
 
-  const smsLines = [
+  const msg = [
     `שלום${leadName ? ' ' + leadName : ''}!`,
     `פגישתך עם קוונטום נדלן אושרה:`,
     `${dateStr} בשעה ${timeStr}`,
@@ -186,19 +282,45 @@ async function sendMeetingSMS({ phone, leadName, meetingDatetime, address }) {
     `קוונטום נדלן | 03-757-2229`,
   ].filter(l => l !== null).join('\n');
 
-  const normalizedPhone = phone.replace(/\D/g, '').replace(/^0/, '972').replace(/^972972/, '972');
+  // Normalize to 972XXXXXXXXX
+  const normPhone = phone.replace(/\D/g, '').replace(/^0/, '972').replace(/^972972/, '972');
 
   try {
     const resp = await axios.post(
       'https://capi.inforu.co.il/api/v2/SMS/SendSms',
-      { Data: { Message: smsLines, SMSMaxParts: 4 }, Recipients: { PhoneNumber: normalizedPhone }, Settings: { SenderName: 'QUANTUM' } },
-      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Buffer.from(`${INFORU_USERNAME}:${INFORU_TOKEN}`).toString('base64')}` } }
+      { Data: { Message: msg, SMSMaxParts: 4 }, Recipients: { PhoneNumber: normPhone }, Settings: { SenderName: 'QUANTUM' } },
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Buffer.from(`${username}:${token}`).toString('base64')}` } }
     );
-    logger.info(`[VAPI] Meeting SMS sent to ${phone}: ${resp.data?.Status || 'ok'}`);
+    logger.info(`[VAPI] SMS sent to ${normPhone}: ${resp.data?.Status || JSON.stringify(resp.data)}`);
     return { success: true };
   } catch (err) {
     logger.error('[VAPI] SMS error:', err.response?.data || err.message);
     return { success: false, error: err.message };
+  }
+}
+
+// ─── INFORU WhatsApp helper (also used for SMS fallback) ─────────────────────
+
+async function sendMeetingWhatsApp({ phone, leadName, meetingDatetime, address }) {
+  const token = process.env.INFORU_API_TOKEN || process.env.INFORU_PASSWORD || process.env.INFORU_TOKEN;
+  if (!token) return { success: false };
+
+  const start = new Date(meetingDatetime);
+  const dateStr = start.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' });
+  const timeStr = start.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+  const normPhone = phone.replace(/\D/g, '').replace(/^0/, '972').replace(/^972972/, '972');
+  const links = generateCalendarLinks({ title: 'פגישה עם קוונטום נדלן', description: `פגישת ייעוץ${address ? ' - ' + address : ''}`, location: address || '', startISO: meetingDatetime });
+  const msg = `שלום${leadName ? ' ' + leadName : ''}!\nפגישתך אושרה: ${dateStr} בשעה ${timeStr}${address ? '\nכתובת: ' + address : ''}\n\nGoogle: ${links.google}\nOutlook: ${links.outlook}\n\nקוונטום נדלן | 03-757-2229`;
+
+  try {
+    await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat',
+      { Data: { Message: msg }, Recipients: { PhoneNumber: normPhone } },
+      { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Buffer.from(`hemichaeli:${token}`).toString('base64')}` } }
+    );
+    return { success: true };
+  } catch (e) {
+    logger.warn('[VAPI] WhatsApp fallback error:', e.message);
+    return { success: false };
   }
 }
 
@@ -212,14 +334,13 @@ router.get('/caller-context/:phone', async (req, res) => {
 });
 
 router.get('/agents', (req, res) => {
-  const safe = Object.values(AGENTS).map(a => ({ id: a.id, name: a.name, description: a.description, hasAssistantId: !!a.assistantId }));
+  const safe = Object.values({
+    cold_prospecting: { id: 'cold_prospecting', name: 'Cold Prospecting', description: 'שיחה קרה', assistantId: process.env.VAPI_ASSISTANT_COLD }
+  }).map(a => ({ id: a.id, name: a.name, description: a.description, hasAssistantId: !!a.assistantId }));
   res.json({ success: true, agents: safe });
 });
 
-// ─── Calendar Availability Check ─────────────────────────────────────────────
-
-const HEMI_CALENDAR_ID   = process.env.HEMI_CALENDAR_ID || 'hemi.michaeli@gmail.com';
-const QUANTUM_CALENDAR_ID = process.env.QUANTUM_CALENDAR_ID || 'cf4cd8ef53ef4cbdca7f172bdef3f6862509b4026a5e04b648ce09144ab5aa21@group.calendar.google.com';
+// ─── Calendar check (for user-proposed times during call) ────────────────────
 
 function formatDateHebrew(date) {
   return date.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' });
@@ -228,19 +349,16 @@ function formatDateHebrew(date) {
 router.post('/calendar-check', async (req, res) => {
   try {
     const body = req.body;
-    logger.info('[VAPI] calendar-check body:', JSON.stringify(body).substring(0, 500));
+    logger.info('[VAPI] calendar-check:', JSON.stringify(body).substring(0, 400));
 
     const { toolCallId, args } = parseVapiToolCall(body, 'checkCalendarAvailability');
     const date = args?.date || body.date;
     const time = args?.time || body.time;
 
-    logger.info(`[VAPI] calendar-check: date=${date} time=${time} toolCallId=${toolCallId}`);
-
     if (!date || !time) {
-      return vapiToolResponse(res, toolCallId, 'לא צוין תאריך או שעה. אנא נסה שוב.');
+      return vapiToolResponse(res, toolCallId, 'לא צוין תאריך או שעה.');
     }
 
-    // Normalize HH:MM
     const cleaned = time.toString().replace(/[^\d:]/g, '');
     const parts = cleaned.split(':');
     const hh = (parts[0] || '0').padStart(2, '0');
@@ -248,15 +366,14 @@ router.post('/calendar-check', async (req, res) => {
     const normalizedTime = `${hh}:${mm}`;
 
     const startTime = new Date(`${date}T${normalizedTime}:00+03:00`);
-    const endTime   = new Date(startTime.getTime() + 60 * 60 * 1000);
-
     if (isNaN(startTime.getTime())) {
-      return vapiToolResponse(res, toolCallId, `אני מקבל את השעה. נאשר את הפגישה.`);
+      return vapiToolResponse(res, toolCallId, `FREE:${normalizedTime}:${date}`);
     }
+    const endTime = new Date(startTime.getTime() + 3600000);
 
     const accessToken = await getGoogleAccessToken();
     if (!accessToken) {
-      return vapiToolResponse(res, toolCallId, `השעה ${normalizedTime} נראית פנויה. מאשר.`);
+      return vapiToolResponse(res, toolCallId, `FREE:${normalizedTime}:${date}`);
     }
 
     let busy = false;
@@ -266,24 +383,23 @@ router.post('/calendar-check', async (req, res) => {
         { timeMin: startTime.toISOString(), timeMax: endTime.toISOString(), timeZone: 'Asia/Jerusalem', items: [{ id: HEMI_CALENDAR_ID }, { id: QUANTUM_CALENDAR_ID }] },
         { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
       );
-      const calendars = fbRes.data.calendars || {};
-      for (const calId of Object.keys(calendars)) {
-        if ((calendars[calId]?.busy || []).length > 0) { busy = true; break; }
+      const cals = fbRes.data.calendars || {};
+      for (const calId of Object.keys(cals)) {
+        if ((cals[calId]?.busy || []).length > 0) { busy = true; break; }
       }
     } catch (fbErr) {
-      logger.warn('[VAPI] freeBusy error (calendar may not be shared):', fbErr.response?.data?.error?.message || fbErr.message);
-      // Calendar not shared - assume available
+      logger.warn('[VAPI] freeBusy check error:', fbErr.message);
     }
 
     const dateHebrew = formatDateHebrew(startTime);
 
     if (busy) {
-      const altTime = new Date(startTime.getTime() + 60 * 60 * 1000);
-      const altHour = altTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
-      return vapiToolResponse(res, toolCallId, `BUSY:${normalizedTime}:${altHour}:${date}`);
+      const alt = new Date(startTime.getTime() + 3600000);
+      const altHour = alt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+      return vapiToolResponse(res, toolCallId, `BUSY:${normalizedTime}:${altHour}:${date}:${dateHebrew}`);
     }
 
-    return vapiToolResponse(res, toolCallId, `FREE:${normalizedTime}:${dateHebrew}:${date}`);
+    return vapiToolResponse(res, toolCallId, `FREE:${normalizedTime}:${date}:${dateHebrew}`);
 
   } catch (err) {
     logger.error('[VAPI] calendar-check error:', err.message);
@@ -291,86 +407,112 @@ router.post('/calendar-check', async (req, res) => {
   }
 });
 
-// ─── Send Meeting SMS ─────────────────────────────────────────────────────────
+// ─── Send Meeting SMS/WhatsApp ────────────────────────────────────────────────
 
 router.post('/send-meeting-sms', async (req, res) => {
   try {
     const body = req.body;
-    logger.info('[VAPI] send-meeting-sms body:', JSON.stringify(body).substring(0, 500));
+    logger.info('[VAPI] send-meeting-sms:', JSON.stringify(body).substring(0, 400));
 
     const { toolCallId, args } = parseVapiToolCall(body, 'sendMeetingSMS');
 
-    // Phone fallback: from call customer number
     const phone = args?.phone || body?.message?.call?.customer?.number || body.phone;
-    const leadName       = args?.lead_name || body.lead_name;
+    const leadName        = args?.lead_name || body.lead_name;
     const meetingDatetime = args?.meeting_datetime || body.meeting_datetime;
-    const address        = args?.address || body.address;
+    const address         = args?.address || body.address;
 
-    logger.info(`[VAPI] send-meeting-sms: phone=${phone} datetime=${meetingDatetime} toolCallId=${toolCallId}`);
+    logger.info(`[VAPI] SMS params: phone=${phone} dt=${meetingDatetime} name=${leadName}`);
 
     if (!phone || !meetingDatetime) {
-      return vapiToolResponse(res, toolCallId, 'הפגישה נרשמה. תקבל אישור בקרוב.');
+      return vapiToolResponse(res, toolCallId, 'CONFIRM:no_phone');
     }
 
-    const result = await sendMeetingSMS({ phone, leadName, meetingDatetime, address });
-
-    if (result?.success) {
-      return vapiToolResponse(res, toolCallId, 'SMS_SENT');
-    } else {
-      return vapiToolResponse(res, toolCallId, 'SMS_FAILED');
+    // Try SMS first, then WhatsApp fallback
+    let result = await sendMeetingSMS({ phone, leadName, meetingDatetime, address });
+    if (!result.success) {
+      result = await sendMeetingWhatsApp({ phone, leadName, meetingDatetime, address });
     }
+
+    logger.info(`[VAPI] Message result: ${JSON.stringify(result)}`);
+    return vapiToolResponse(res, toolCallId, result.success ? 'SMS_SENT' : 'SMS_FAILED');
+
   } catch (err) {
     logger.error('[VAPI] send-meeting-sms error:', err.message);
     return vapiToolResponse(res, null, 'SMS_FAILED');
   }
 });
 
-// ─── Admin: Upgrade to Nova-3 ─────────────────────────────────────────────────
-
-router.post('/admin/upgrade-nova3', async (req, res) => {
-  if (!VAPI_API_KEY) return res.status(503).json({ success: false, error: 'VAPI_API_KEY not set' });
-  const results = [];
-  for (const a of ASSISTANT_IDS) {
-    if (!a.id) { results.push({ name: a.name, success: false, error: 'no assistantId' }); continue; }
-    try {
-      const response = await axios.patch(`${VAPI_BASE_URL}/assistant/${a.id}`, { transcriber: NOVA3_TRANSCRIBER }, { headers: { Authorization: `Bearer ${VAPI_API_KEY}`, 'Content-Type': 'application/json' } });
-      const t = response.data.transcriber;
-      results.push({ name: a.name, success: true, model: t?.model, language: t?.language });
-    } catch (err) {
-      results.push({ name: a.name, success: false, error: err.response?.data?.message || err.message });
-    }
-  }
-  const ok = results.filter(r => r.success).length;
-  res.json({ success: ok === results.length, upgraded: ok, total: results.length, results });
-});
-
 // ─── Outbound Call ────────────────────────────────────────────────────────────
+
+const AGENTS_CONFIG = {
+  seller_followup:    process.env.VAPI_ASSISTANT_SELLER   || null,
+  buyer_qualification:process.env.VAPI_ASSISTANT_BUYER    || null,
+  meeting_reminder:   process.env.VAPI_ASSISTANT_REMINDER || null,
+  cold_prospecting:   process.env.VAPI_ASSISTANT_COLD     || null,
+  inbound_handler:    process.env.VAPI_ASSISTANT_INBOUND  || null,
+};
 
 router.post('/outbound', async (req, res) => {
   try {
-    const { phone, agent_type = 'seller_followup', lead_id, complex_id, metadata = {} } = req.body;
+    const { phone, agent_type = 'cold_prospecting', lead_id, complex_id, metadata = {} } = req.body;
     if (!phone) return res.status(400).json({ success: false, error: 'phone required' });
-    if (!AGENTS[agent_type]) return res.status(400).json({ success: false, error: `Unknown agent_type: ${agent_type}` });
+    const assistantId = AGENTS_CONFIG[agent_type];
+    if (!assistantId) return res.status(503).json({ success: false, error: `No assistantId for ${agent_type}` });
     if (!VAPI_API_KEY) return res.status(503).json({ success: false, error: 'VAPI_API_KEY not configured' });
-    const agent = AGENTS[agent_type];
-    if (!agent.assistantId) return res.status(503).json({ success: false, error: `Assistant ID not configured for ${agent_type}` });
-    const context = await buildCallerContext(phone);
+
+    const [context, { slots }] = await Promise.all([
+      buildCallerContext(phone),
+      fetchFreeSlots(),
+    ]);
+
+    // Format slots as Hebrew sentence for the prompt
+    const slotsText = slots.length >= 2
+      ? slots.slice(0, 4).map(s => s.label).join(', ')
+      : 'מחר בעשר בבוקר, מחרתיים בשתיים אחרי הצהריים';
+
+    // Also store slot ISO times for SMS use
+    const slotsJson = JSON.stringify(slots.slice(0, 4).map(s => ({ label: s.label, iso: s.iso, date: s.date, time: s.time })));
+
+    logger.info(`[VAPI] Pre-call slots for ${phone}: ${slotsText}`);
+
     const payload = {
-      assistantId: agent.assistantId,
+      assistantId,
       customer: { number: phone, name: context.lead_name !== 'אורח' ? context.lead_name : undefined },
       assistantOverrides: {
-        variableValues: { lead_name: context.lead_name, lead_context: context.lead_context || 'לקוח חדש', complex_context: context.complex_context || 'מידע על מתחמים בסביבה זמין', complex_city: metadata.city || '', meeting_context: metadata.meeting_context || '', meeting_time: metadata.meeting_time || '' },
-        metadata: { agent_type, lead_id: lead_id || context.lead_id, complex_id, quantum_source: 'outbound_trigger', ...metadata },
+        variableValues: {
+          lead_name: context.lead_name,
+          lead_context: context.lead_context || 'לקוח חדש',
+          complex_context: context.complex_context || '',
+          complex_city: metadata.city || '',
+          available_slots: slotsText,
+          slots_json: slotsJson,
+        },
+        metadata: { agent_type, lead_id: lead_id || context.lead_id, complex_id, quantum_source: 'outbound', ...metadata },
       },
     };
     if (process.env.VAPI_PHONE_NUMBER_ID) payload.phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID;
-    const vapiRes = await fetch('https://api.vapi.ai/call/phone', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VAPI_API_KEY}` }, body: JSON.stringify(payload) });
+
+    const vapiRes = await fetch('https://api.vapi.ai/call/phone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VAPI_API_KEY}` },
+      body: JSON.stringify(payload),
+    });
     const vapiData = await vapiRes.json();
     if (!vapiRes.ok) return res.status(vapiRes.status).json({ success: false, error: vapiData.message || 'Vapi error' });
-    try { await pool.query(`INSERT INTO vapi_calls (call_id, phone, agent_type, lead_id, complex_id, status, metadata, created_at) VALUES ($1,$2,$3,$4,$5,'initiated',$6,NOW()) ON CONFLICT (call_id) DO NOTHING`, [vapiData.id, phone, agent_type, lead_id || context.lead_id, complex_id, JSON.stringify(metadata)]); } catch (dbErr) { logger.warn('[VAPI] DB log error:', dbErr.message); }
-    logger.info(`[VAPI] Outbound call initiated: ${vapiData.id} to ${phone} (${agent_type})`);
-    res.json({ success: true, call_id: vapiData.id, phone, agent_type, status: 'initiated' });
-  } catch (err) { logger.error('[VAPI] outbound error:', err.message); res.status(500).json({ success: false, error: err.message }); }
+
+    try {
+      await pool.query(
+        `INSERT INTO vapi_calls (call_id, phone, agent_type, lead_id, complex_id, status, metadata, created_at) VALUES ($1,$2,$3,$4,$5,'initiated',$6,NOW()) ON CONFLICT (call_id) DO NOTHING`,
+        [vapiData.id, phone, agent_type, lead_id || context.lead_id, complex_id, JSON.stringify({ ...metadata, available_slots: slotsText })]
+      );
+    } catch (dbErr) { logger.warn('[VAPI] DB log error:', dbErr.message); }
+
+    logger.info(`[VAPI] Outbound call: ${vapiData.id} to ${phone}`);
+    res.json({ success: true, call_id: vapiData.id, phone, agent_type, available_slots: slotsText });
+  } catch (err) {
+    logger.error('[VAPI] outbound error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 router.post('/outbound/batch', async (req, res) => {
@@ -380,13 +522,15 @@ router.post('/outbound/batch', async (req, res) => {
     if (calls.length > 50) return res.status(400).json({ success: false, error: 'Max 50 calls per batch' });
     const results = [];
     const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    const { slots } = await fetchFreeSlots();
+    const slotsText = slots.length >= 2 ? slots.slice(0, 4).map(s => s.label).join(', ') : 'מחר בעשר בבוקר, מחרתיים בשתיים אחרי הצהריים';
     for (const call of calls) {
       try {
-        const { phone, agent_type = 'seller_followup', lead_id, complex_id, metadata = {} } = call;
-        const agent = AGENTS[agent_type];
-        if (!phone || !agent?.assistantId || !VAPI_API_KEY) { results.push({ phone, success: false, error: 'missing config' }); continue; }
+        const { phone, agent_type = 'cold_prospecting', lead_id, complex_id, metadata = {} } = call;
+        const assistantId = AGENTS_CONFIG[agent_type];
+        if (!phone || !assistantId || !VAPI_API_KEY) { results.push({ phone, success: false, error: 'missing config' }); continue; }
         const context = await buildCallerContext(phone);
-        const payload = { assistantId: agent.assistantId, customer: { number: phone, name: context.lead_name !== 'אורח' ? context.lead_name : undefined }, assistantOverrides: { variableValues: { lead_name: context.lead_name, lead_context: context.lead_context || 'לקוח חדש', complex_context: context.complex_context || '', complex_city: metadata.city || '', meeting_context: metadata.meeting_context || '', meeting_time: metadata.meeting_time || '' }, metadata: { agent_type, lead_id: lead_id || context.lead_id, complex_id } } };
+        const payload = { assistantId, customer: { number: phone, name: context.lead_name !== 'אורח' ? context.lead_name : undefined }, assistantOverrides: { variableValues: { lead_name: context.lead_name, lead_context: context.lead_context || 'לקוח חדש', complex_context: context.complex_context || '', complex_city: metadata.city || '', available_slots: slotsText }, metadata: { agent_type, lead_id: lead_id || context.lead_id, complex_id } } };
         if (process.env.VAPI_PHONE_NUMBER_ID) payload.phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID;
         const vapiRes = await fetch('https://api.vapi.ai/call/phone', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VAPI_API_KEY}` }, body: JSON.stringify(payload) });
         const vapiData = await vapiRes.json();
@@ -408,67 +552,28 @@ router.post('/webhook', async (req, res) => {
   res.json({ received: true });
   const { type, call } = req.body;
   try {
-    logger.info(`[VAPI] Webhook: ${type} | call: ${call?.id}`);
     if (type === 'call-started') {
       await pool.query(`INSERT INTO vapi_calls (call_id, phone, agent_type, status, created_at) VALUES ($1,$2,$3,'active',NOW()) ON CONFLICT (call_id) DO UPDATE SET status='active', updated_at=NOW()`,
-        [call.id, call.customer?.number || 'unknown', call.metadata?.agent_type || 'inbound']).catch(e => logger.warn('[VAPI] DB error:', e.message));
+        [call.id, call.customer?.number || 'unknown', call.metadata?.agent_type || 'inbound']).catch(() => {});
     }
     if (type === 'call-ended') {
       const duration = call.endedAt && call.startedAt ? Math.round((new Date(call.endedAt) - new Date(call.startedAt)) / 1000) : null;
       const intent = extractCallIntent(call);
       await pool.query(
         `INSERT INTO vapi_calls (call_id, phone, agent_type, status, duration_seconds, summary, intent, transcript, metadata, created_at, updated_at) VALUES ($1,$2,$3,'completed',$4,$5,$6,$7,$8,NOW(),NOW()) ON CONFLICT (call_id) DO UPDATE SET status='completed',duration_seconds=$4,summary=$5,intent=$6,transcript=$7,metadata=COALESCE(vapi_calls.metadata,'{}')||$8::jsonb,updated_at=NOW()`,
-        [call.id, call.customer?.number || 'unknown', call.metadata?.agent_type || 'unknown', duration, call.summary || '', intent, JSON.stringify(call.transcript || []), JSON.stringify({ cost: call.cost, endedReason: call.endedReason, lead_id: call.metadata?.lead_id, complex_id: call.metadata?.complex_id })]
-      ).catch(e => logger.warn('[VAPI] DB error:', e.message));
-      if (call.metadata?.reschedule_request_id) handleRescheduleCallOutcome(call).catch(e => logger.error('[VAPI] Reschedule error:', e.message));
-      if (intent === 'meeting_set' && call.metadata?.lead_id) {
-        await pool.query(`UPDATE leads SET status='meeting_scheduled', notes=COALESCE(notes||' | ','')||$2, updated_at=NOW() WHERE id=$1`,
-          [call.metadata.lead_id, `פגישה נקבעה בשיחת קוונטום Voice - ${new Date().toLocaleDateString('he-IL')}`]).catch(() => {});
-      }
-      logger.info(`[VAPI] Call ended: ${call.id} | ${duration}s | intent: ${intent}`);
+        [call.id, call.customer?.number || 'unknown', call.metadata?.agent_type || 'unknown', duration, call.summary || '', intent, JSON.stringify(call.transcript || []), JSON.stringify({ endedReason: call.endedReason, lead_id: call.metadata?.lead_id })]
+      ).catch(() => {});
+      logger.info(`[VAPI] Call ended: ${call.id} | ${duration}s | ${call.endedReason} | intent: ${intent}`);
     }
   } catch (err) { logger.error('[VAPI] Webhook error:', err.message); }
 });
 
 function extractCallIntent(call) {
   const text = [call.summary || '', ...(call.transcript || []).map(t => t.text || '')].join(' ').toLowerCase();
-  if (text.includes('פגישה') && (text.includes('נקבע') || text.includes('מסכים'))) return 'meeting_set';
+  if (text.includes('פגישה') && (text.includes('נקבע') || text.includes('מסכים') || text.includes('SMS_SENT'))) return 'meeting_set';
   if (text.includes('מעוניין') || text.includes('רוצה')) return 'interested';
   if (text.includes('לא מעוניין') || text.includes('לא רוצה')) return 'not_interested';
   return 'unknown';
-}
-
-function extractRescheduleOutcome(call) {
-  const customerTexts = (call.transcript || []).filter(t => t.role === 'user' || t.role === 'customer').map(t => (t.text || t.content || '').trim().toLowerCase()).join(' ');
-  const allText = `${customerTexts} ${(call.summary || '').toLowerCase()}`;
-  const declined = ['לא', 'לא רוצה', 'לא מעוניין', 'לא מתאים', 'להישאר', 'לא צריך'];
-  for (const p of declined) { if (allText.includes(p)) return 'declined'; }
-  const accepted = ['כן', 'בסדר', 'מסכים', 'מסכימה', 'מקבל', 'אחלה', 'נהדר', 'מתאים'];
-  for (const p of accepted) { if (allText.includes(p)) return 'accepted'; }
-  if (['no-answer', 'voicemail', 'failed', 'busy'].includes(call.endedReason || '')) return 'no_answer';
-  return 'no_answer';
-}
-
-async function handleRescheduleCallOutcome(call) {
-  const id = call.metadata?.reschedule_request_id;
-  if (!id) return;
-  const opt = getOptService();
-  if (!opt) return;
-  const reqRes = await pool.query(`SELECT * FROM reschedule_requests WHERE id=$1`, [id]);
-  if (!reqRes.rows.length) return;
-  const req = reqRes.rows[0];
-  if (req.status !== 'pending') return;
-  await pool.query(`UPDATE reschedule_requests SET call_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [id]);
-  const outcome = extractRescheduleOutcome(call);
-  const inforuService = require('../services/inforuService');
-  const lang = req.language || 'he';
-  if (outcome === 'accepted') {
-    const swapped = await opt.performSwap(req);
-    await inforuService.sendWhatsAppChat(req.phone, swapped ? (lang === 'ru' ? 'Встреча перенесена!' : 'הפגישה הועברה!') : (lang === 'ru' ? 'Слот недоступен.' : 'הפגישה נשארת במועד המקורי.')).catch(() => {});
-  } else if (outcome === 'declined') {
-    await opt.declineRequest(req);
-    await inforuService.sendWhatsAppChat(req.phone, lang === 'ru' ? 'Встреча остается!' : 'הפגישה נשארת במועד המקורי!').catch(() => {});
-  }
 }
 
 router.get('/calls', async (req, res) => {
@@ -488,72 +593,35 @@ router.get('/calls', async (req, res) => {
 router.get('/calls/:id', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM vapi_calls WHERE call_id = $1 OR id::text = $1 LIMIT 1', [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Call not found' });
+    if (!result.rows.length) return res.status(404).json({ success: false, error: 'Call not found' });
     res.json({ success: true, call: result.rows[0] });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 router.get('/stats', async (req, res) => {
   try {
-    const result = await pool.query(`SELECT agent_type, COUNT(*) as total, COUNT(*) FILTER (WHERE status='completed') as completed, COUNT(*) FILTER (WHERE intent='meeting_set') as meetings_set, COUNT(*) FILTER (WHERE intent='interested') as interested, COUNT(*) FILTER (WHERE intent='not_interested') as not_interested, ROUND(AVG(duration_seconds) FILTER (WHERE duration_seconds IS NOT NULL)) as avg_duration_seconds FROM vapi_calls WHERE created_at > NOW() - INTERVAL '30 days' GROUP BY agent_type ORDER BY total DESC`);
+    const result = await pool.query(`SELECT agent_type, COUNT(*) as total, COUNT(*) FILTER (WHERE status='completed') as completed, COUNT(*) FILTER (WHERE intent='meeting_set') as meetings_set, COUNT(*) FILTER (WHERE intent='interested') as interested, ROUND(AVG(duration_seconds) FILTER (WHERE duration_seconds IS NOT NULL)) as avg_duration_seconds FROM vapi_calls WHERE created_at > NOW() - INTERVAL '30 days' GROUP BY agent_type ORDER BY total DESC`);
     res.json({ success: true, stats: result.rows });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
-});
-
-// ─── Schedule Lead + Google Calendar ─────────────────────────────────────────
-
-async function createGoogleCalendarEvent({ leadName, leadAddress, scheduledTime, phoneNumber, leadSource }) {
-  const accessToken = await getGoogleAccessToken();
-  if (!accessToken) { logger.warn('[VAPI] No Google access token'); return null; }
-  const startTime = new Date(scheduledTime);
-  const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
-  const event = {
-    summary: `\u{1F3E0} \u05e9\u05d9\u05d7\u05d4 \u05e2\u05dd ${leadName}`,
-    description: [`\u05dc\u05d9\u05d3: ${leadName}`, leadSource ? `\u05de\u05e7\u05d5\u05e8: ${leadSource}` : '', `\u05db\u05ea\u05d5\u05d1\u05ea: ${leadAddress}`, phoneNumber ? `\u05d8\u05dc: ${phoneNumber}` : ''].filter(Boolean).join('\n'),
-    location: leadAddress,
-    start: { dateTime: startTime.toISOString(), timeZone: 'Asia/Jerusalem' },
-    end: { dateTime: endTime.toISOString(), timeZone: 'Asia/Jerusalem' },
-    reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 60 }, { method: 'popup', minutes: 15 }] },
-    colorId: '11',
-  };
-  try {
-    const response = await axios.post(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(QUANTUM_CALENDAR_ID)}/events`, event, { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } });
-    logger.info(`[VAPI] Calendar event created: ${response.data.id} for ${leadName}`);
-    return response.data;
-  } catch (calErr) {
-    logger.error('[VAPI] Calendar API error:', calErr.response?.data || calErr.message);
-    return null;
-  }
-}
-
-router.post('/schedule-lead', async (req, res) => {
-  try {
-    const body = req.body;
-    const { toolCallId: tcId, args } = parseVapiToolCall(body, 'schedule_lead_call');
-    const leadName = args?.lead_name || body.lead_name || body.leadName;
-    const leadAddress = args?.lead_address || body.lead_address || body.leadAddress;
-    const scheduledTime = args?.scheduled_time || body.scheduled_time || body.scheduledTime;
-    const phoneNumber = args?.phone_number || body.phone_number || body.message?.call?.customer?.number;
-    const leadSource = args?.lead_source || body.lead_source;
-    if (!leadName || !leadAddress || !scheduledTime) return res.json({ result: 'השיחה נרשמה. נציג יחזור אליך בקרוב.', success: false });
-    const calendarEvent = await createGoogleCalendarEvent({ leadName, leadAddress, scheduledTime, phoneNumber, leadSource });
-    try { await pool.query(`INSERT INTO vapi_leads (name, address, phone, scheduled_time, lead_source, calendar_event_id, created_at) VALUES ($1,$2,$3,$4,$5,$6,NOW()) ON CONFLICT DO NOTHING`, [leadName, leadAddress, phoneNumber || null, scheduledTime, leadSource || null, calendarEvent?.id || null]); } catch (_) {}
-    const msg = calendarEvent ? `מעולה! קבעתי שיחה עם ${leadName} ב-${new Date(scheduledTime).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })} ונוצר אירוע ביומן.` : `נרשמה שיחה עם ${leadName}. נציג יצור קשר בזמן שנקבע.`;
-    if (tcId) return vapiToolResponse(res, tcId, msg);
-    res.json({ result: msg, success: true });
-  } catch (err) {
-    res.json({ result: 'השיחה נרשמה. נציג יחזור אליך בקרוב.', success: false });
-  }
 });
 
 router.get('/google-auth-status', async (req, res) => {
   try {
     const email = process.env.GOOGLE_SA_EMAIL;
-    const hasKey = !!process.env.GOOGLE_SA_PRIVATE_KEY;
-    if (!email || !hasKey) return res.json({ success: false, configured: false });
+    if (!email || !process.env.GOOGLE_SA_PRIVATE_KEY) return res.json({ success: false, configured: false });
     const token = await getGoogleAccessToken();
-    res.json({ success: !!token, configured: true, serviceAccountEmail: email, tokenObtained: !!token, message: token ? 'Service Account auth working' : 'Token request failed' });
+    res.json({ success: !!token, configured: true, serviceAccountEmail: email, tokenObtained: !!token });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+// ─── Debug: test SMS ──────────────────────────────────────────────────────────
+router.post('/test-sms', async (req, res) => {
+  try {
+    const { phone = req.body.phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'phone required' });
+    const result = await sendMeetingSMS({ phone, leadName: 'בדיקה', meetingDatetime: new Date(Date.now() + 86400000).toISOString(), address: 'רחוב הבדיקה 1' });
+    res.json({ result, token_used: !!(process.env.INFORU_API_TOKEN || process.env.INFORU_PASSWORD) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;
