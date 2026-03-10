@@ -580,38 +580,7 @@ function generateDashboardHTML(stats) {
             document.querySelectorAll('[data-onclick]').forEach(function(el) {
                 el.addEventListener('click', function() {
                     var fn = this.getAttribute('data-onclick');
-                    try { 
-                        // Execute the function call safely
-                        var funcMatch = fn.match(/^(\w+)\((.*)\)$/);
-                        if (funcMatch) {
-                            var funcName = funcMatch[1];
-                            var argsStr = funcMatch[2].trim();
-                            if (typeof window[funcName] === 'function') {
-                                if (argsStr === '') {
-                                    window[funcName]();
-                                } else {
-                                    // Parse the argument (single string arg)
-                                    var argVal = argsStr.replace(/^\'|^\'|^'|^"/g, '').replace(/\'$|\'$|'$|"$/g, '');
-                                    // Handle escaped quotes
-                                    argVal = argsStr.replace(/^['"\\]+|['"\\]+$/g, '');
-                                    // Try eval for complex args
-                                    try {
-                                        var args = eval('[' + argsStr + ']');
-                                        window[funcName].apply(null, args);
-                                    } catch(e2) {
-                                        window[funcName](argsStr);
-                                    }
-                                }
-                            } else {
-                                // Fallback to eval
-                                eval(fn);
-                            }
-                        } else {
-                            eval(fn);
-                        }
-                    } catch(e) { 
-                        console.error('Button action error:', fn, e); 
-                    }
+                    try { eval(fn); } catch(e) { console.error('Action error:', fn, e); }
                 });
             });
         });
@@ -1048,6 +1017,7 @@ function generateDashboardHTML(stats) {
 
         async function fetchJSON(url, options) {
             const res = await fetch(url, options);
+            if (!res.ok) {
                 const text = await res.text();
                 throw new Error('HTTP ' + res.status + ': ' + text.substring(0, 100));
             }

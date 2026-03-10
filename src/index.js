@@ -14,7 +14,7 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.87.5';
+const VERSION = '4.87.6';
 const BUILD = '2026-03-10-v4.87.2-all-syntax-errors-fixed';
 
 async function runAutoMigrations() {
