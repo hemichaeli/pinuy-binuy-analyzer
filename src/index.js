@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.90.0';
-const BUILD = '2026-03-10-v4.90.0-professional-visits';
+const VERSION = '4.91.0';
+const BUILD = '2026-03-11-v4.91.0-pre-register-auto-buildings';
 
 async function runAutoMigrations() {
   try {
@@ -110,7 +110,7 @@ function loadAllRoutes() {
     { path: '/api/whatsapp', file: 'routes/whatsappAlertRoutes.js' },
     { path: '/api/whatsapp', file: 'routes/whatsappRoutes.js' },
     { path: '/api/scheduling', file: 'routes/schedulingRoutes.js' },
-    { path: '/api/scheduling', file: 'routes/professionalVisitRoutes.js' },   // ← NEW v4.90
+    { path: '/api/scheduling', file: 'routes/professionalVisitRoutes.js' },
     { path: '/api/scheduling/calendar', file: 'routes/calendarRoutes.js' },
     { path: '/api/test/optimization', file: 'routes/optimizationTestRoute.js' },
     { path: '/api/notifications', file: 'routes/notificationRoutes.js' },
@@ -261,8 +261,8 @@ app.get('/api/debug', async (req, res) => {
   res.json({
     version: VERSION, build: BUILD, timestamp: new Date().toISOString(),
     campaign_admin_panel: 'active at GET /api/scheduling/admin',
-    professional_visits: 'active at POST /api/scheduling/visits | POST /api/scheduling/pre-register',
-    schedule_optimization: `active - cron 20:00 Sun-Thu + 22:30 expire | ${JSON.stringify(optimizationStats)}`,
+    professional_visits: 'POST /api/scheduling/visits | POST /api/scheduling/pre-register (auto-fetches buildings from Zoho)',
+    schedule_optimization: `active | ${JSON.stringify(optimizationStats)}`,
     google_calendar: gcalStatus,
     zoho_calendar: zcalStatus,
     incoming_whatsapp_poll: 'active - every 60s via INFORU PullData',
