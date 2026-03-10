@@ -945,7 +945,7 @@ function generateDashboardHTML(stats) {
                 if (res.ok) {
                     const d = await res.json();
                     const r = d.result || {};
-                    alert('✅ Auto Contact הופעל!\n\nנוצר קשר: ' + (r.contacted||0) + '\nקווי ארץ (נדרשת שיחה): ' + (r.skipped_landline||0) + '\nאין טלפון: ' + (r.skipped_no_phone||0) + '\nנכשל: ' + (r.failed||0));
+                    alert('✅ Auto Contact הופעל!\\n\\nנוצר קשר: ' + (r.contacted||0) + '\\nקווי ארץ (נדרשת שיחה): ' + (r.skipped_landline||0) + '\\nאין טלפון: ' + (r.skipped_no_phone||0) + '\\nנכשל: ' + (r.failed||0));
                     loadKones();
                 } else throw new Error('HTTP ' + res.status);
             } catch (e) { alert('❌ נכשל: ' + e.message); }
