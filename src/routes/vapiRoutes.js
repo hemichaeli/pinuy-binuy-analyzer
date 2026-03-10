@@ -1,6 +1,6 @@
 /**
  * QUANTUM Voice AI - Vapi Integration Routes
- * v1.3.0 - Reschedule call webhook handler
+ * v1.4.0 - Calendar availability check + improved רן agent
  */
 
 const express = require('express');
@@ -74,7 +74,7 @@ const NOVA3_TRANSCRIBER = {
     'הסכם פינוי',
     'תמא 38',
     'טאבו',
-    'QUANTUM',
+    'קוונטום',
     'נדלן',
     'משכנתא',
     'רוכש',
@@ -92,43 +92,33 @@ const AGENTS = {
     name: 'מוכרים - Follow-up',
     description: 'שיחת המשך עם מוכר פוטנציאלי במתחם פינוי-בינוי',
     assistantId: process.env.VAPI_ASSISTANT_SELLER || null,
-    systemPrompt: `אתה נציג מקצועי של QUANTUM - משרד תיווך בוטיק המתמחה בפינוי-בינוי בישראל.\nשמך הוא "דן מ-QUANTUM".\n\nהמטרה שלך בשיחה זו:\n1. לאמוד כוונת מכירה - האם הדייר שוקל לצאת מהמתחם\n2. להבין לחצים - כלכליים, משפחתיים, תזמון\n3. לזהות התנגדויות ולתת מידע רלוונטי על הפרויקט\n4. לתאם פגישת ייעוץ אישית עם הצוות\n\nסגנון: חמים, אמפתי, לא לחצני. אתה שם לב לדברים שהם אומרים.\nשפה: עברית בלבד.\nאל תזכיר טכנולוגיה, אלגוריתמים או מערכות.\n\nמידע על הלקוח: {{lead_context}}\nמידע על המתחם: {{complex_context}}\n\nפתיחת שיחה: "שלום {{lead_name}}, אני דן מ-QUANTUM. אנחנו עוקבים אחרי פרויקטים בסביבה שלך ורציתי להתייעץ איתך רגע - זה זמן טוב לדבר?"`,
   },
-
   buyer_qualification: {
     id: 'buyer_qualification',
     name: 'קונים - Lead Qualification',
     description: 'כישור ליד קונה/משקיע',
     assistantId: process.env.VAPI_ASSISTANT_BUYER || null,
-    systemPrompt: `אתה נציג מקצועי של QUANTUM - משרד תיווך בוטיק המתמחה בפינוי-בינוי בישראל.\nשמך הוא "יעל מ-QUANTUM".\n\nהמטרה שלך:\n1. להבין את התקציב האמיתי - לא מה שהם אומרים, מה שהם יכולים\n2. ציר הזמן - מתי הם רוצים לסגור\n3. עדיפויות - אזור, תשואה, בטחון, צמיחה\n4. לבדוק אם יש נכס קיים למכירה\n5. להחליט אם כדאי לקדם לפגישה עם הצוות\n\nשפה: עברית. סגנון מקצועי, ממוקד, חד - אבל לא קר.\nאל תזכיר טכנולוגיה.\n\nמידע על הלקוח: {{lead_context}}\n\nפתיחת שיחה: "שלום {{lead_name}}, אני יעל מ-QUANTUM. ראיתי שהשארת פרטים אצלנו - יש לי כמה שאלות קצרות שיעזרו לי להכין לך את ההצעה הנכונה. יש לך 3 דקות?"`,
   },
-
   meeting_reminder: {
     id: 'meeting_reminder',
     name: 'תזכורת פגישה',
     description: 'אישור ותזכורת לפגישה מתוזמנת',
     assistantId: process.env.VAPI_ASSISTANT_REMINDER || null,
-    systemPrompt: `אתה נציג של QUANTUM. שמך "אביב מ-QUANTUM".\nהמטרה: לאשר פגישה + לבנות ציפייה חיובית לפני הפגישה.\n\nמידע על הפגישה: {{meeting_context}}\nמידע על הלקוח: {{lead_context}}\n\nפתיחת שיחה: "שלום {{lead_name}}, אני אביב מ-QUANTUM - מתקשר לאשר את הפגישה שלנו {{meeting_time}}. אתה/את מאשר/ת?"\n\nאם מאשר: "מצוין! ממליץ/ה להביא תעודת זהות ואם יש - נסח טאבו. נתראה."\nאם לא יכול: "אין בעיה - מה התאריך הקרוב שנוח לך?" - תאם מחדש.\nאם לא עונה: השאר הודעה קצרה בלבד.\n\nשפה: עברית. שיחה קצרה - מקסימום 2 דקות.`,
   },
-
   cold_prospecting: {
     id: 'cold_prospecting',
     name: 'Cold Prospecting - פרוספקטינג',
     description: 'שיחה קרה לדיירים במתחמי פינוי-בינוי',
     assistantId: process.env.VAPI_ASSISTANT_COLD || null,
-    systemPrompt: `אתה נציג מקצועי של QUANTUM. שמך "רן מ-QUANTUM".\nאתה מתקשר לדיירים שגרים במתחמי פינוי-בינוי - הם לא מכירים אותך.\n\nהמטרה: ליצור סקרנות ולתאם שיחת ייעוץ. לא למכור בשיחה הזו.\n\nגישה: סמכותי, מעניין, יוצר תחושת "יש לי מידע שאתה לא יודע".\n\nמידע על המתחם: {{complex_context}}\n\nפתיחה: "שלום, אני רן מ-QUANTUM. אנחנו עוסקים בפינוי-בינוי בסביבה שלך ב{{complex_city}}, ויש לי מידע על הפרויקט שרוב הדיירים עדיין לא יודעים - זה רגע טוב לדבר?"\n\nאם מסכים: ספר משהו ספציפי ומעניין על המתחם (מהמידע שניתן לך), ואז: "הפרטים המלאים - 20 דקות עם הצוות שלנו. מתי נוח?"\nאם לא מעוניין: "אין בעיה. אם תרצה להתייעץ בעתיד - QUANTUM נדלן."\nאם שואל מחיר: "זה תלוי בהרבה פרמטרים - בדיוק בשביל זה כדאי לשבת. פגישת ייעוץ אצלנו היא ללא עלות."\n\nשפה: עברית. מקצועי, לא לחצני, אבל בטוח בעצמך.\nאל תזכיר טכנולוגיה.`,
   },
-
   inbound_handler: {
     id: 'inbound_handler',
     name: 'מענה נכנס',
     description: 'מענה לשיחות נכנסות - זיהוי + ניתוב',
     assistantId: process.env.VAPI_ASSISTANT_INBOUND || null,
-    systemPrompt: `אתה נציג קבלה של QUANTUM - משרד תיווך פינוי-בינוי.\nשמך "נועה מ-QUANTUM".\n\nהמטרה: לזהות את המתקשר, להבין מה הם צריכים, ולנתב נכון.\n\nמידע על המתקשר: {{caller_context}}\n\nפתיחה אם מוכר מוכר: "שלום {{lead_name}}, נועה מ-QUANTUM - שמחה שחזרת! אני רואה שדיברנו בעבר על {{lead_topic}}. רוצה שאעביר אותך ישר לנציג שטיפל בך?"\n\nפתיחה אם לא מזוהה: "שלום! כאן QUANTUM נדלן - פינוי-בינוי. איך אפשר לעזור?"\n\nסוגי בקשות:\n- שאלה על מתחם ספציפי - אסוף פרטים + העבר לנציג\n- רוצה להמכר - אסוף כתובת + העבר לנציג\n- רוצה לקנות - אסוף תקציב ואזור + העבר לנציג\n- כבר בתהליך - העבר לנציג המוכר\n\nהעברה לנציג: "מצוין, אני מעבירה אותך עכשיו. שנייה בבקשה."\n\nשפה: עברית. חמים, מקצועי, קצר.`,
   },
 };
 
-// Assistant IDs list for bulk operations
 const ASSISTANT_IDS = [
   { id: process.env.VAPI_ASSISTANT_SELLER, name: 'seller_followup' },
   { id: process.env.VAPI_ASSISTANT_BUYER, name: 'buyer_qualification' },
@@ -207,11 +197,8 @@ function extractTopic(lead) {
 }
 
 // ─── Reschedule Call Outcome Parser ──────────────────────────────────────────
-// Analyzes Vapi transcript to determine if caller accepted or declined reschedule.
-// Returns: 'accepted' | 'declined' | 'no_answer'
 
 function extractRescheduleOutcome(call) {
-  // Collect all customer/user speech from transcript
   const transcript = call.transcript || [];
   const customerTexts = transcript
     .filter(t => t.role === 'user' || t.role === 'customer')
@@ -221,14 +208,12 @@ function extractRescheduleOutcome(call) {
   const summary = (call.summary || '').toLowerCase();
   const allText = `${customerTexts} ${summary}`;
 
-  // Declined signals (check first — more specific)
   const declinedPatterns = [
     '2', 'לא', 'לא רוצה', 'לא מעוניין', 'לא מתאים', 'нет', 'no', 'decline',
     'להישאר', 'לשמור', 'כמו שיש', 'אני בסדר', 'לא צריך'
   ];
   for (const p of declinedPatterns) {
     if (allText.includes(p)) {
-      // Make sure '2' is a standalone reply, not part of a number
       if (p === '2') {
         if (/\b2\b/.test(customerTexts)) return 'declined';
         continue;
@@ -237,7 +222,6 @@ function extractRescheduleOutcome(call) {
     }
   }
 
-  // Accepted signals
   const acceptedPatterns = [
     '1', 'כן', 'בסדר', 'מסכים', 'מסכימה', 'אשריד', 'да', 'yes', 'ok', 'okay',
     'מקבל', 'מקבלת', 'אחלה', 'נהדר', 'רוצה', 'רוצה לעבור', 'מתאים'
@@ -252,7 +236,6 @@ function extractRescheduleOutcome(call) {
     }
   }
 
-  // Check endedReason — customer_ended_call after short duration = likely no answer
   const endedReason = call.endedReason || '';
   if (['no-answer', 'voicemail', 'failed', 'busy'].includes(endedReason)) {
     return 'no_answer';
@@ -273,7 +256,6 @@ async function handleRescheduleCallOutcome(call) {
     return;
   }
 
-  // Load the reschedule request
   const reqRes = await pool.query(
     `SELECT * FROM reschedule_requests WHERE id=$1`,
     [rescheduleRequestId]
@@ -290,7 +272,6 @@ async function handleRescheduleCallOutcome(call) {
     return;
   }
 
-  // Mark call_completed_at
   await pool.query(
     `UPDATE reschedule_requests SET call_completed_at=NOW(), updated_at=NOW() WHERE id=$1`,
     [rescheduleRequestId]
@@ -313,7 +294,6 @@ async function handleRescheduleCallOutcome(call) {
       await inforuService.sendWhatsAppChat(req.phone, msg).catch(() => {});
       logger.info(`[VAPI] Reschedule swap completed for req #${rescheduleRequestId}`);
     } else {
-      // Slot no longer available
       const msg = lang === 'ru'
         ? 'К сожалению, выбранный слот уже недоступен. Встреча остается в исходное время.'
         : 'לצערנו, החריץ שהוצע כבר אינו זמין. הפגישה נשארת במועד המקורי.';
@@ -333,7 +313,6 @@ async function handleRescheduleCallOutcome(call) {
     await inforuService.sendWhatsAppChat(req.phone, msg).catch(() => {});
     logger.info(`[VAPI] Reschedule declined for req #${rescheduleRequestId}`);
   } else {
-    // no_answer — leave pending, will expire naturally
     logger.info(`[VAPI] Reschedule call no_answer for req #${rescheduleRequestId} — leaving pending`);
   }
 }
@@ -360,6 +339,127 @@ router.get('/agents', (req, res) => {
   }));
   res.json({ success: true, agents: safe });
 });
+
+// ─── Calendar Availability Check (called by Vapi tool) ───────────────────────
+// Checks hemi.michaeli@gmail.com calendar for free/busy slots
+// Note: hemi.michaeli@gmail.com must share calendar with the service account
+
+const HEMI_CALENDAR_ID = process.env.HEMI_CALENDAR_ID || 'hemi.michaeli@gmail.com';
+const QUANTUM_CALENDAR_ID = process.env.QUANTUM_CALENDAR_ID ||
+  'cf4cd8ef53ef4cbdca7f172bdef3f6862509b4026a5e04b648ce09144ab5aa21@group.calendar.google.com';
+
+router.post('/calendar-check', async (req, res) => {
+  try {
+    // Vapi sends tool call data in request body
+    const body = req.body;
+    logger.info('[VAPI] calendar-check called:', JSON.stringify(body).substring(0, 300));
+
+    // Extract parameters - Vapi can send in different formats
+    let date, time;
+    if (body.message?.toolCalls) {
+      const toolCall = body.message.toolCalls.find(t => t.function?.name === 'checkCalendarAvailability');
+      if (toolCall) {
+        const args = typeof toolCall.function.arguments === 'string'
+          ? JSON.parse(toolCall.function.arguments)
+          : toolCall.function.arguments;
+        date = args.date;
+        time = args.time;
+      }
+    } else {
+      date = body.date || body.parameters?.date;
+      time = body.time || body.parameters?.time;
+    }
+
+    if (!date || !time) {
+      return res.json({ result: 'לא צוין תאריך או שעה. אנא נסה שוב.', available: false });
+    }
+
+    // Build datetime string - date: YYYY-MM-DD, time: HH:MM
+    const dateTimeStr = `${date}T${time}:00`;
+    const startTime = new Date(`${dateTimeStr}+03:00`); // Israel timezone
+    const endTime = new Date(startTime.getTime() + 60 * 60 * 1000); // 1 hour slot
+
+    const accessToken = await getGoogleAccessToken();
+    if (!accessToken) {
+      logger.warn('[VAPI] calendar-check: no Google token - assuming available');
+      return res.json({
+        result: `השעה ${time} ב-${formatDateHebrew(startTime)} נראית פנויה. אאשר את הפגישה.`,
+        available: true,
+        date,
+        time
+      });
+    }
+
+    // Check free/busy on both calendars
+    const freeBusyPayload = {
+      timeMin: startTime.toISOString(),
+      timeMax: endTime.toISOString(),
+      timeZone: 'Asia/Jerusalem',
+      items: [
+        { id: HEMI_CALENDAR_ID },
+        { id: QUANTUM_CALENDAR_ID },
+      ],
+    };
+
+    let busy = false;
+    try {
+      const fbRes = await axios.post(
+        'https://www.googleapis.com/calendar/v3/freeBusy',
+        freeBusyPayload,
+        { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+      );
+
+      const calendars = fbRes.data.calendars || {};
+      for (const calId of Object.keys(calendars)) {
+        const busySlots = calendars[calId]?.busy || [];
+        if (busySlots.length > 0) {
+          busy = true;
+          logger.info(`[VAPI] calendar-check: BUSY at ${dateTimeStr} in calendar ${calId}`);
+          break;
+        }
+      }
+    } catch (fbErr) {
+      // If calendar not shared with service account, log and assume available
+      logger.warn('[VAPI] freeBusy API error (calendar may not be shared):', fbErr.response?.data?.error?.message || fbErr.message);
+      busy = false;
+    }
+
+    const dateHebrew = formatDateHebrew(startTime);
+
+    if (busy) {
+      // Suggest next available slot (+1 hour)
+      const altTime = new Date(startTime.getTime() + 60 * 60 * 1000);
+      const altHour = altTime.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
+      return res.json({
+        result: `מצטער, השעה ${time} ב-${dateHebrew} תפוסה. מה דעתך על ${altHour}?`,
+        available: false,
+        suggested_time: altHour,
+        date,
+        time,
+      });
+    }
+
+    return res.json({
+      result: `מצוין! השעה ${time} ב-${dateHebrew} פנויה. קובע את הפגישה.`,
+      available: true,
+      date,
+      time,
+    });
+
+  } catch (err) {
+    logger.error('[VAPI] calendar-check error:', err.message);
+    return res.json({ result: 'אאשר את הזמן ואחזור אליך.', available: true, error: err.message });
+  }
+});
+
+function formatDateHebrew(date) {
+  return date.toLocaleDateString('he-IL', {
+    timeZone: 'Asia/Jerusalem',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+}
 
 // ─── Admin: Upgrade all assistants to Nova-3 Hebrew ──────────────────────────
 
@@ -576,19 +676,17 @@ router.post('/webhook', async (req, res) => {
         ]
       ).catch((e) => logger.warn('[VAPI] DB update error:', e.message));
 
-      // ── Reschedule call outcome handler ──────────────────────────────────
       if (call.metadata?.reschedule_request_id) {
         handleRescheduleCallOutcome(call).catch(err =>
           logger.error('[VAPI] Reschedule outcome handler error:', err.message)
         );
       }
 
-      // ── General meeting_set handler ───────────────────────────────────────
       if (intent === 'meeting_set' && call.metadata?.lead_id) {
         await pool.query(
           `UPDATE leads SET status = 'meeting_scheduled',
            notes = COALESCE(notes || ' | ', '') || $2, updated_at = NOW() WHERE id = $1`,
-          [call.metadata.lead_id, `פגישה נקבעה בשיחת QUANTUM Voice - ${new Date().toLocaleDateString('he-IL')}`]
+          [call.metadata.lead_id, `פגישה נקבעה בשיחת קוונטום Voice - ${new Date().toLocaleDateString('he-IL')}`]
         ).catch(() => {});
       }
 
@@ -655,9 +753,6 @@ router.get('/stats', async (req, res) => {
 
 // ─── Schedule Lead + Google Calendar ─────────────────────────────────────────
 
-const QUANTUM_CALENDAR_ID = process.env.QUANTUM_CALENDAR_ID ||
-  'cf4cd8ef53ef4cbdca7f172bdef3f6862509b4026a5e04b648ce09144ab5aa21@group.calendar.google.com';
-
 async function createGoogleCalendarEvent({ leadName, leadAddress, scheduledTime, phoneNumber, leadSource }) {
   const accessToken = await getGoogleAccessToken();
   if (!accessToken) { logger.warn('[VAPI] No Google access token - skipping calendar'); return null; }
@@ -673,7 +768,7 @@ async function createGoogleCalendarEvent({ leadName, leadAddress, scheduledTime,
       `\u05db\u05ea\u05d5\u05d1\u05ea \u05d4\u05d3\u05d9\u05e8\u05d4: ${leadAddress}`,
       phoneNumber ? `\u05d8\u05dc\u05e4\u05d5\u05df: ${phoneNumber}` : '',
       '',
-      '\u05e0\u05d5\u05e6\u05e8 \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea \u05e2\u05dc \u05d9\u05d3\u05d9 \u05de\u05e2\u05e8\u05db\u05ea QUANTUM Voice AI',
+      '\u05e0\u05d5\u05e6\u05e8 \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea \u05e2\u05dc \u05d9\u05d3\u05d9 \u05de\u05e2\u05e8\u05db\u05ea \u05e7\u05d5\u05d5\u05e0\u05d8\u05d5\u05dd Voice AI',
     ].filter(Boolean).join('\n'),
     location: leadAddress,
     start: { dateTime: startTime.toISOString(), timeZone: 'Asia/Jerusalem' },
@@ -739,7 +834,7 @@ router.post('/schedule-lead', async (req, res) => {
     if (!calendarEvent) logger.error(`[VAPI] ALERT: Calendar event failed for lead ${leadName}`);
 
     const successMsg = calendarEvent
-      ? `מעולה! קבעתי שיחה עם ${leadName} ב-${new Date(scheduledTime).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })} ונוצר אירוע ביומן QUANTUM.`
+      ? `מעולה! קבעתי שיחה עם ${leadName} ב-${new Date(scheduledTime).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })} ונוצר אירוע ביומן קוונטום.`
       : `נרשמה שיחה עם ${leadName}. נציג יצור קשר בזמן שנקבע.`;
 
     logger.info(`[VAPI] Lead scheduled: ${leadName} | ${scheduledTime} | calendar=${!!calendarEvent}`);
