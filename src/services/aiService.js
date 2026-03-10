@@ -1,5 +1,5 @@
 /**
- * QUANTUM AI Service — v1.1
+ * QUANTUM AI Service — v1.2
  * Auto-fallback: Claude → Gemini on ANY API error
  * Sends WhatsApp alert to owner on provider switch
  */
@@ -8,6 +8,7 @@ const axios = require('axios');
 
 const INFORU_CAPI_BASE = 'https://capi.inforu.co.il/api/v2';
 const OWNER_PHONE = '972546550815'; // חמי
+const GEMINI_MODEL = 'gemini-2.0-flash';
 
 // In-memory state — resets on redeploy (forces re-check after fix)
 let currentProvider = 'claude'; // 'claude' | 'gemini'
@@ -66,7 +67,7 @@ async function callGemini(systemPrompt, userMessage) {
   if (!apiKey) throw Object.assign(new Error('No GEMINI_API_KEY'), { code: 'NO_KEY' });
 
   const response = await axios.post(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: 'user', parts: [{ text: userMessage }] }],
@@ -89,17 +90,19 @@ function describeClaudeError(status, errMsg) {
 }
 
 /**
- * Main AI call — tries Claude, falls back to Gemini on ANY API error
+ * Main AI call — tries Claude, falls back to Gemini on ANY permanent API error
  */
 async function generateResponse(systemPrompt, userMessage) {
   // Already on Gemini — use it directly
   if (currentProvider === 'gemini') {
     try {
       const text = await callGemini(systemPrompt, userMessage);
-      console.log('[AIService] ✅ Gemini response OK');
+      console.log(`[AIService] ✅ Gemini (${GEMINI_MODEL}) response OK`);
       return { text, provider: 'gemini' };
     } catch (err) {
-      console.error('[AIService] Gemini error:', err.message);
+      const status = err.response?.status;
+      const body = JSON.stringify(err.response?.data || {});
+      console.error(`[AIService] Gemini error (${status}): ${body.substring(0, 200)}`);
       return { text: 'שלום! במה אפשר לעזור?', provider: 'gemini_error' };
     }
   }
@@ -113,13 +116,12 @@ async function generateResponse(systemPrompt, userMessage) {
     const status = err.response?.status;
     const errMsg = err.response?.data?.error?.message || err.message || '';
     const isApiError = status && status >= 400;
-    const isTransient = status === 500 || status === 503; // server error — don't switch, might recover
+    const isTransient = status === 500 || status === 503;
 
     console.error(`[AIService] ⚠️ Claude error (${status}): ${errMsg.substring(0, 120)}`);
     lastClaudeError = { status, message: errMsg, time: new Date().toISOString() };
 
     if (isApiError && !isTransient) {
-      // Permanent-ish error (400, 401, 403, 404, 429) — switch to Gemini
       currentProvider = 'gemini';
       lastProviderSwitch = new Date().toISOString();
       switchCount++;
@@ -127,7 +129,6 @@ async function generateResponse(systemPrompt, userMessage) {
       const reason = describeClaudeError(status, errMsg);
       console.warn(`[AIService] ⚡ Switching to Gemini (${reason}) — switch #${switchCount}`);
 
-      // Alert owner
       await sendOwnerAlert(
         `⚠️ *QUANTUM Bot — התראה*\n\n` +
         `Claude API נכשל: *${reason}*\n` +
@@ -142,12 +143,13 @@ async function generateResponse(systemPrompt, userMessage) {
         console.log('[AIService] ✅ Gemini fallback OK');
         return { text, provider: 'gemini' };
       } catch (geminiErr) {
-        console.error('[AIService] Gemini also failed:', geminiErr.message);
+        const gs = geminiErr.response?.status;
+        const gb = JSON.stringify(geminiErr.response?.data || {});
+        console.error(`[AIService] Gemini fallback failed (${gs}): ${gb.substring(0, 200)}`);
         return { text: 'שלום! במה אפשר לעזור?', provider: 'error_fallback' };
       }
     }
 
-    // Transient error (500/503/network) — don't switch, just return fallback
     return { text: 'שלום! במה אפשר לעזור?', provider: 'transient_error' };
   }
 }
@@ -158,6 +160,7 @@ function getStatus() {
     lastProviderSwitch,
     switchCount,
     lastClaudeError,
+    geminiModel: GEMINI_MODEL,
     claudeKeySet: !!process.env.ANTHROPIC_API_KEY,
     geminiKeySet: !!process.env.GEMINI_API_KEY
   };
