@@ -59,7 +59,7 @@ router.get('/api/stats', async (req, res) => {
 router.get('/api/kones', async (req, res) => {
     try {
         const { city, status, search } = req.query;
-        let query = `SELECT id, address, city, price, phone,
+        let query = `SELECT id, COALESCE(title, address) as title, address, city, price, phone,
                             contact_status, contact_attempts, last_contact_at,
                             source, contact_person, email, url, gush_helka,
                             created_at
@@ -111,7 +111,7 @@ router.get('/api/leads', async (req, res) => {
 router.get('/api/complexes', async (req, res) => {
     try {
         const { city, minIAI, maxIAI, status, sortBy, sortOrder } = req.query;
-        let query = `SELECT id, name, city, address, existing_units as units_count, planned_units, iai_score, status, developer FROM complexes WHERE 1=1`;
+        let query = `SELECT id, name, city, address, existing_units as units_count, planned_units, iai_score, status, developer, theoretical_premium_min, theoretical_premium_max, permit_date, approval_date, deposit_date, declaration_date FROM complexes WHERE 1=1`;
         const params = [];
         let n = 1;
         if (city?.trim()) { query += ` AND city ILIKE $${n}`; params.push('%' + city.trim() + '%'); n++; }
@@ -134,12 +134,20 @@ router.get('/api/ads', async (req, res) => {
         const { city, minPrice, maxPrice, search, sortBy, sortOrder, phoneFilter, contactStatus, page = 1, limit = 50 } = req.query;
         let query = `
             SELECT l.id,
-                   COALESCE(l.address, 'מודעה') as title,
+                   COALESCE(l.description_snippet, l.address, 'מודעה') as title,
                    l.city, l.address,
                    l.asking_price as price_current,
+                   l.area_sqm, l.rooms, l.floor,
+                   l.source,
+                   l.first_seen as published_at,
                    ROUND(((COALESCE(c.theoretical_premium_min,0) + COALESCE(c.theoretical_premium_max,0)) / 2.0), 1) as premium_percent,
+                   ROUND(COALESCE(c.theoretical_premium_min,0), 1) as premium_min,
+                   ROUND(COALESCE(c.theoretical_premium_max,0), 1) as premium_max,
+                   c.name as complex_name, c.status as complex_status,
+                   GREATEST(c.deposit_date, c.approval_date, c.permit_date, c.declaration_date) as complex_status_date,
+                   COALESCE(c.avg_price_sqm, 0) as avg_price_sqm,
                    l.phone, l.message_status as contact_status, l.deal_status,
-                   l.created_at, l.url, l.source, l.ssi_score
+                   l.created_at, l.url, l.ssi_score
             FROM listings l
             LEFT JOIN complexes c ON l.complex_id = c.id
             WHERE l.is_active = TRUE AND l.asking_price > 0`;
@@ -152,7 +160,7 @@ router.get('/api/ads', async (req, res) => {
         if (phoneFilter === 'yes') query += ` AND l.phone IS NOT NULL AND l.phone != ''`;
         else if (phoneFilter === 'no') query += ` AND (l.phone IS NULL OR l.phone = '')`;
         if (contactStatus) { query += ` AND l.message_status = $${n}`; params.push(contactStatus); n++; }
-        const validSort = ['address', 'city', 'asking_price', 'created_at', 'ssi_score'];
+        const validSort = ['address', 'city', 'asking_price', 'created_at', 'ssi_score', 'area_sqm', 'rooms', 'floor'];
         const sortField = validSort.includes(sortBy) ? `l.${sortBy}` : 'l.created_at';
         const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
         const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -187,6 +195,24 @@ router.post('/api/whatsapp/convert-to-lead', async (req, res) => {
     }
 });
 
+router.post('/api/inforu/send-whatsapp', async (req, res) => {
+    try {
+        const { phone, message } = req.body;
+        if (!phone || !message) return res.status(400).json({ success: false, error: 'Missing phone or message' });
+        const axios = require('axios');
+        const username = process.env.INFORU_USERNAME || 'hemichaeli';
+        const password = process.env.INFORU_PASSWORD || process.env.INFORU_API_TOKEN;
+        if (!password) return res.status(500).json({ success: false, error: 'INFORU credentials not configured' });
+        const normalizedPhone = phone.replace(/^0/, '972').replace(/[^0-9]/g, '');
+        const result = await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
+            Data: { Message: message, PhoneNumber: normalizedPhone, CustomerMessageId: 'dash_' + Date.now() },
+            AuthInfo: { Username: username, ApiToken: password }
+        }, { timeout: 15000 });
+        res.json({ success: true, result: result.data });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 router.get('/api/facebook/ads', async (req, res) => {
     res.json({ success: true, data: [
         { id:1, campaign_name:'קמפיין דירות תל אביב', ad_name:'דירות זולות - תל אביב', status:'active', impressions:12543, clicks:342, ctr:2.73, cost:850.50, leads:23, cost_per_lead:37.00 },
@@ -234,6 +260,7 @@ function generateDashboardHTML(stats) {
         .btn-intel { background:linear-gradient(135deg,#4f46e5,#6366f1); color:#fff; border:none; }
         .btn-intel:hover { box-shadow:0 4px 15px rgba(99,102,241,0.4); }
         .data-list { display:grid; gap:14px; }
+            .trow:hover { background: #1e293b !important; cursor: pointer; }
         .data-item { background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:18px; border-right:4px solid #d4af37; transition:all 0.2s ease; }
         .data-item:hover { background:rgba(255,255,255,0.08); }
         .data-item h3 { color:#d4af37; margin-bottom:10px; font-size:17px; }
@@ -384,7 +411,7 @@ function generateDashboardHTML(stats) {
     <div id="tab-ads" class="tab-content">
         <div class="section">
             <h2>🏘 רשימת מודעות</h2>
-            <div class="filters">
+            <div class="filters" style="flex-wrap:wrap;gap:8px;">
                 <input type="text" class="filter-input" id="cityFilter" placeholder="עיר">
                 <input type="number" class="filter-input" id="minPriceFilter" placeholder="מחיר מינימום">
                 <input type="number" class="filter-input" id="maxPriceFilter" placeholder="מחיר מקסימום">
@@ -393,10 +420,45 @@ function generateDashboardHTML(stats) {
                     <option value="yes">יש טלפון</option>
                     <option value="no">אין טלפון</option>
                 </select>
+                <select class="filter-select" id="adsSortBy" onchange="loadAds()">
+                    <option value="created_at">מיון: תאריך</option>
+                    <option value="asking_price">מיון: מחיר</option>
+                    <option value="ssi_score">מיון: SSI</option>
+                    <option value="city">מיון: עיר</option>
+                    <option value="area_sqm">מיון: שטח</option>
+                </select>
+                <select class="filter-select" id="adsSortOrder" onchange="loadAds()">
+                    <option value="desc">יורד</option>
+                    <option value="asc">עולה</option>
+                </select>
             </div>
             <div class="actions-bar">
                 <button class="btn" data-onclick="loadAds()">🔍 טען מודעות</button>
                 <button class="btn btn-secondary" data-onclick="exportData('ads')">📊 ייצוא לאקסל</button>
+            </div>
+            <div id="ads-pagination" style="margin-bottom:8px;font-size:13px;color:#94a3b8;"></div>
+            <div style="overflow-x:auto;">
+            <table id="ads-table" style="width:100%;border-collapse:collapse;font-size:13px;display:none;">
+                <thead>
+                    <tr style="background:#1e293b;color:#94a3b8;text-align:right;">
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('title')">כותרת המודעה ▲▼</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('city')">עיר ▲▼</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('asking_price')">מחיר ▲▼</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">פרמייה עכשיו</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">פרמייה לאחר פרוייקט</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('area_sqm')">שטח (מ"ר) ▲▼</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('rooms')">חדרים ▲▼</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">קומה</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס מתחם</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">מאז מתי</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('created_at')">פורסם ▲▼</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">מקור</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">SSI</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">פעולה</th>
+                    </tr>
+                </thead>
+                <tbody id="ads-tbody"></tbody>
+            </table>
             </div>
             <div id="ads-list" class="data-list"><div class="loading">טוען מודעות...</div></div>
         </div>
@@ -583,6 +645,14 @@ function generateDashboardHTML(stats) {
                     try { eval(fn); } catch(e) { console.error('Action error:', fn, e); }
                 });
             });
+            
+            // Event delegation for inforu send buttons
+            document.addEventListener('click', function(e) {
+                const btn = e.target.closest('.inforu-btn');
+                if (btn) {
+                    sendInforu(btn.dataset.phone, btn.dataset.name);
+                }
+            });
         });
 
         function updateTime() {
@@ -698,21 +768,73 @@ function generateDashboardHTML(stats) {
                 const data = await fetchJSON('/dashboard/api/ads?' + params);
                 if (!data.success) throw new Error(data.error);
                 if (!data.data.length) { container.innerHTML = '<div class="loading">📋 אין מודעות</div>'; return; }
-                container.innerHTML = data.data.map((ad, i) => renderAd(ad, i)).join('');
+                _adsData = data.data;
+                document.getElementById('ads-pagination').textContent = 'סה"כ: ' + (data.pagination?.total || data.data.length) + ' מודעות | מוצגות: ' + data.data.length;
+                renderAdsTable(_adsData);
             } catch (e) { container.innerHTML = errorHTML(e.message, 'loadAds()'); }
         }
 
+        let _adsSortField = 'created_at', _adsSortDir = 'desc', _adsData = [];
+        function sortAdsBy(field) {
+            if (_adsSortField === field) _adsSortDir = _adsSortDir === 'asc' ? 'desc' : 'asc';
+            else { _adsSortField = field; _adsSortDir = 'desc'; }
+            _adsData.sort((a,b) => {
+                let va = a[field], vb = b[field];
+                if (va == null) va = ''; if (vb == null) vb = '';
+                if (!isNaN(parseFloat(va)) && !isNaN(parseFloat(vb))) { va = parseFloat(va); vb = parseFloat(vb); }
+                if (_adsSortDir === 'asc') return va > vb ? 1 : va < vb ? -1 : 0;
+                return va < vb ? 1 : va > vb ? -1 : 0;
+            });
+            renderAdsTable(_adsData);
+        }
+        const complexStatusHe = { deposited: 'הופקדה', approved: 'אושרה', pre_deposit: 'להפקדה', planning: 'בתכנון', construction: 'בביצוע', declared: 'הוכרז', unknown: 'לא ידוע' };
+        function renderAdsTable(ads) {
+            const tbody = document.getElementById('ads-tbody');
+            const table = document.getElementById('ads-table');
+            const oldList = document.getElementById('ads-list');
+            if (!tbody) return;
+            table.style.display = '';
+            oldList.style.display = 'none';
+            const premiumColor = (pct) => parseFloat(pct) > 30 ? '#22c55e' : parseFloat(pct) > 15 ? '#f59e0b' : '#ef4444';
+            tbody.innerHTML = ads.map((ad, i) => {
+                const price = ad.price_current ? '\u20AA' + parseInt(ad.price_current).toLocaleString() : '—';
+                const premNow = ad.premium_percent && parseFloat(ad.premium_percent) > 0 ? parseFloat(ad.premium_percent).toFixed(1) + '%' : '—';
+                // Premium after project = min-max range
+                const premAfter = (ad.premium_min && ad.premium_max && (parseFloat(ad.premium_min) > 0 || parseFloat(ad.premium_max) > 0))
+                    ? parseFloat(ad.premium_min).toFixed(0) + '%–' + parseFloat(ad.premium_max).toFixed(0) + '%'
+                    : '—';
+                const statusHe = complexStatusHe[ad.complex_status] || (ad.complex_status || '—');
+                const statusDate = ad.complex_status_date ? new Date(ad.complex_status_date).toLocaleDateString('he-IL') : '—';
+                const published = ad.published_at ? new Date(ad.published_at).toLocaleDateString('he-IL') : (ad.created_at ? new Date(ad.created_at).toLocaleDateString('he-IL') : '—');
+                const ssi = ad.ssi_score || 0;
+                const ssiColor = ssi > 70 ? '#22c55e' : ssi > 40 ? '#f59e0b' : '#94a3b8';
+                const title = ad.title || ad.address || ('מודעה #' + (i+1));
+                const actionBtn = ad.url ? '<a href="' + ad.url + '" target="_blank" style="color:#3b82f6;font-size:12px;">פתח</a>' : '—';
+                return '<tr style="border-bottom:1px solid #1e293b;transition:background 0.15s;" class="trow">'
+                    + '<td style="padding:9px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + title + '">' + title + '</td>'
+                    + '<td style="padding:9px 12px;">' + (ad.city || '—') + '</td>'
+                    + '<td style="padding:9px 12px;font-weight:600;color:#fbbf24;">' + price + '</td>'
+                    + '<td style="padding:9px 12px;color:' + premiumColor(ad.premium_percent) + ';">' + premNow + '</td>'
+                    + '<td style="padding:9px 12px;color:#60a5fa;">' + premAfter + '</td>'
+                    + '<td style="padding:9px 12px;">' + (ad.area_sqm ? parseFloat(ad.area_sqm).toFixed(0) : '—') + '</td>'
+                    + '<td style="padding:9px 12px;">' + (ad.rooms || '—') + '</td>'
+                    + '<td style="padding:9px 12px;">' + (ad.floor != null ? ad.floor : '—') + '</td>'
+                    + '<td style="padding:9px 12px;"><span style="background:rgba(100,100,200,0.2);padding:2px 8px;border-radius:4px;font-size:11px;">' + statusHe + '</span></td>'
+                    + '<td style="padding:9px 12px;font-size:12px;color:#94a3b8;">' + statusDate + '</td>'
+                    + '<td style="padding:9px 12px;font-size:12px;color:#94a3b8;">' + published + '</td>'
+                    + '<td style="padding:9px 12px;font-size:12px;">' + (ad.source || '—') + '</td>'
+                    + '<td style="padding:9px 12px;color:' + ssiColor + ';font-weight:600;">' + ssi + '</td>'
+                    + '<td style="padding:9px 12px;">' + actionBtn + '</td>'
+                    + '</tr>';
+            }).join('');
+        }
         function renderAd(ad, i) {
-            const price = ad.price_current ? '₪' + parseInt(ad.price_current).toLocaleString() : 'מחיר לא ידוע';
-            const premium = ad.premium_percent && parseFloat(ad.premium_percent) > 0 ? parseFloat(ad.premium_percent).toFixed(1) + '%' : null;
-            return '<div class="data-item"><h3>' + (ad.address || 'מודעה #' + (i+1)) + '</h3><div class="data-meta">' +
-                '<div class="data-meta-item"><span class="data-meta-label">עיר:</span><span class="data-meta-value">' + (ad.city||'לא ידוע') + '</span></div>' +
-                '<div class="data-meta-item"><span class="data-meta-label">מחיר:</span><span class="data-meta-value">' + price + '</span></div>' +
-                (premium ? '<div class="data-meta-item"><span class="data-meta-label">פרמיה:</span><span class="data-meta-value">' + premium + '</span></div>' : '') +
-                '<div class="data-meta-item"><span class="data-meta-label">SSI:</span><span class="data-meta-value">' + (ad.ssi_score||0) + '</span></div>' +
-                (ad.phone ? '<div class="data-meta-item"><span class="data-meta-label">טלפון:</span><span class="data-meta-value"><a href="tel:' + ad.phone + '" style="color:#3b82f6;">' + ad.phone + '</a> <a href="https://wa.me/' + ad.phone.replace(/[^0-9]/g,'') + '" style="background:#22c55e;color:white;padding:2px 8px;border-radius:4px;text-decoration:none;font-size:12px;">WhatsApp</a></span></div>' : '') +
-                (ad.url ? '<div class="data-meta-item"><span class="data-meta-label">קישור:</span><span class="data-meta-value"><a href="' + ad.url + '" target="_blank" style="color:#3b82f6;">פתח מודעה</a></span></div>' : '') +
-                '</div></div>';
+            // fallback card view (not used when table is shown)
+            const price = ad.price_current ? '\u20AA' + parseInt(ad.price_current).toLocaleString() : 'מחיר לא ידוע';
+            return '<div class="data-item"><h3>' + (ad.title || ad.address || 'מודעה #' + (i+1)) + '</h3><div class="data-meta">'
+                + '<div class="data-meta-item"><span class="data-meta-label">עיר:</span><span class="data-meta-value">' + (ad.city||'לא ידוע') + '</span></div>'
+                + '<div class="data-meta-item"><span class="data-meta-label">מחיר:</span><span class="data-meta-value">' + price + '</span></div>'
+                + '</div></div>';
         }
 
         // Issue #6 - Conversations View
@@ -819,19 +941,49 @@ function generateDashboardHTML(stats) {
                 const data = await fetchJSON(url);
                 if (!data.success) throw new Error(data.error);
                 if (!data.data.length) { container.innerHTML = '<div class="loading">👤 אין לידים בסינון הנ"ל</div>'; return; }
-                container.innerHTML = data.data.map((lead, i) => renderLead(lead, i)).join('');
+                renderLeadsTable(data.data);
             } catch (e) { container.innerHTML = errorHTML(e.message, 'loadLeads()'); }
         }
 
-        function renderLead(lead, i) {
+        function renderLeadsTable(leads) {
+            const container = document.getElementById('leads-list');
+            if (!leads.length) { container.innerHTML = '<div class="loading">אין לידים בסינון זה</div>'; return; }
             const typeLabel = { investor: '🏢 משקיע', owner: '🏠 מוכר', contact: '📩 פנייה' };
-            return '<div class="data-item"><h3>' + (lead.name || 'ליד #' + (i+1)) + ' ' + (typeLabel[lead.user_type] || '') + (lead.is_urgent ? ' 🚨' : '') + '</h3><div class="data-meta">' +
-                (lead.phone ? '<div class="data-meta-item"><span class="data-meta-label">טלפון:</span><span class="data-meta-value"><a href="tel:' + lead.phone + '" style="color:#3b82f6;">' + lead.phone + '</a></span></div>' : '') +
-                (lead.email ? '<div class="data-meta-item"><span class="data-meta-label">אימייל:</span><span class="data-meta-value">' + lead.email + '</span></div>' : '') +
-                '<div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-' + (lead.status||'new') + '">' + (lead.status||'חדש') + '</span></span></div>' +
-                '<div class="data-meta-item"><span class="data-meta-label">מקור:</span><span class="data-meta-value">' + (lead.source||'לא ידוע') + '</span></div>' +
-                (lead.notes ? '<div class="data-meta-item"><span class="data-meta-label">הערות:</span><span class="data-meta-value">' + lead.notes + '</span></div>' : '') +
-                '</div></div>';
+            const statusColors = { new: '#3b82f6', qualified: '#22c55e', contacted: '#f59e0b', closed: '#6b7280', rejected: '#ef4444' };
+            const statusHe = { new: 'חדש', qualified: 'מוכשר', contacted: 'בתהליך', closed: 'סגור', rejected: 'נדחה' };
+            container.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+                + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">שם</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">טלפון</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">אימייל</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">מקור</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">פניה / מוכר / משקיע</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">הערות</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">תאריך</th>'
+                + '</tr></thead><tbody>'
+                + leads.map((lead, i) => {
+                    const st = lead.status || 'new';
+                    const stColor = statusColors[st] || '#6b7280';
+                    const stHe = statusHe[st] || st;
+                    const type = typeLabel[lead.user_type] || lead.user_type || '—';
+                    const date = lead.created_at ? new Date(lead.created_at).toLocaleDateString('he-IL') : '—';
+                    return '<tr style="border-bottom:1px solid #1e293b;" class="trow">'
+                        + '<td style="padding:9px 12px;font-weight:600;">' + (lead.name || 'ליד #' + (i+1)) + (lead.is_urgent ? ' 🚨' : '') + '</td>'
+                        + '<td style="padding:9px 12px;">' + (lead.phone ? '<a href="tel:' + lead.phone + '" style="color:#3b82f6;">' + lead.phone + '</a>' : '—') + '</td>'
+                        + '<td style="padding:9px 12px;font-size:12px;">' + (lead.email || '—') + '</td>'
+                        + '<td style="padding:9px 12px;"><span style="background:' + stColor + '22;color:' + stColor + ';padding:2px 8px;border-radius:4px;font-size:11px;">' + stHe + '</span></td>'
+                        + '<td style="padding:9px 12px;font-size:12px;">' + (lead.source || '—') + '</td>'
+                        + '<td style="padding:9px 12px;">' + type + '</td>'
+                        + '<td style="padding:9px 12px;font-size:12px;color:#94a3b8;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (lead.notes || '') + '">' + (lead.notes || '—') + '</td>'
+                        + '<td style="padding:9px 12px;font-size:12px;color:#94a3b8;">' + date + '</td>'
+                        + '</tr>';
+                }).join('')
+                + '</tbody></table></div>';
+        }
+        function renderLead(lead, i) {
+            // kept for compatibility but not used
+            return '';
         }
 
         async function loadComplexes(filter) {
@@ -853,20 +1005,59 @@ function generateDashboardHTML(stats) {
                 const data = await fetchJSON('/dashboard/api/complexes?' + params);
                 if (!data.success) throw new Error(data.error);
                 if (!data.data.length) { container.innerHTML = '<div class="loading">🏢 אין מתחמים</div>'; return; }
-                container.innerHTML = data.data.map((c, i) => renderComplex(c, i)).join('');
+                renderComplexesTable(data.data);
             } catch (e) { container.innerHTML = errorHTML(e.message, 'loadComplexes()'); }
         }
 
+        function renderComplexesTable(complexes) {
+            const container = document.getElementById('complexes-list');
+            if (!complexes.length) { container.innerHTML = '<div class="loading">אין מתחמים בסינון זה</div>'; return; }
+            const statusHe = { deposited: 'הופקדה', approved: 'אושרה', pre_deposit: 'להפקדה', planning: 'בתכנון', construction: 'בביצוע', declared: 'הוכרז', unknown: 'לא ידוע' };
+            const statusProjectHe = { permit: 'היתר בנייה', construction: 'בבנייה', planning: 'תכנון', deposited: 'הופקדה', approved: 'אושרה' };
+            container.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+                + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">שם מתחם</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">עיר</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס תכנון</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס הפרוייקט</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">יחידות קיים</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">יחידות מתוכנן</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">ציון IAI</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">פרמייה תיאורטית</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כתובת</th>'
+                + '</tr></thead><tbody>'
+                + complexes.map((c, i) => {
+                    const st = c.status || 'unknown';
+                    const stHe = statusHe[st] || st;
+                    const iai = c.iai_score || 0;
+                    const iaiColor = iai > 80 ? '#22c55e' : iai > 60 ? '#f59e0b' : '#ef4444';
+                    const premMin = c.theoretical_premium_min ? parseFloat(c.theoretical_premium_min).toFixed(0) + '%' : '—';
+                    const premMax = c.theoretical_premium_max ? parseFloat(c.theoretical_premium_max).toFixed(0) + '%' : '';
+                    const prem = premMax ? premMin + '–' + premMax : premMin;
+                    // Determine project status: permit > construction > approved > deposited > planning
+                    let projStatus = '—';
+                    if (c.permit_date) projStatus = 'היתר בנייה';
+                    else if (st === 'construction') projStatus = 'בבנייה';
+                    else if (st === 'approved') projStatus = 'אושרה';
+                    else if (st === 'deposited') projStatus = 'הופקדה';
+                    else if (st === 'planning' || st === 'pre_deposit') projStatus = 'תכנון';
+                    return '<tr style="border-bottom:1px solid #1e293b;" class="trow">'
+                        + '<td style="padding:9px 12px;font-weight:600;">' + (c.name || 'מתחם #' + (i+1)) + '</td>'
+                        + '<td style="padding:9px 12px;">' + (c.city || '—') + '</td>'
+                        + '<td style="padding:9px 12px;"><span style="background:rgba(100,100,200,0.2);padding:2px 8px;border-radius:4px;font-size:11px;">' + stHe + '</span></td>'
+                        + '<td style="padding:9px 12px;"><span style="background:rgba(59,130,246,0.15);color:#60a5fa;padding:2px 8px;border-radius:4px;font-size:11px;">' + projStatus + '</span></td>'
+                        + '<td style="padding:9px 12px;text-align:center;">' + (c.units_count || c.existing_units || 0) + '</td>'
+                        + '<td style="padding:9px 12px;text-align:center;">' + (c.planned_units || 0) + '</td>'
+                        + '<td style="padding:9px 12px;text-align:center;color:' + iaiColor + ';font-weight:600;">' + (iai || '—') + '</td>'
+                        + '<td style="padding:9px 12px;color:#22c55e;">' + prem + '</td>'
+                        + '<td style="padding:9px 12px;font-size:12px;color:#94a3b8;">' + (c.address || c.addresses || '—') + '</td>'
+                        + '</tr>';
+                }).join('')
+                + '</tbody></table></div>';
+        }
         function renderComplex(c, i) {
-            return '<div class="data-item"><h3>' + (c.name || 'מתחם #' + (i+1)) + '</h3><div class="data-meta">' +
-                '<div class="data-meta-item"><span class="data-meta-label">עיר:</span><span class="data-meta-value">' + (c.city||'לא ידוע') + '</span></div>' +
-                '<div class="data-meta-item"><span class="data-meta-label">יחידות קיים:</span><span class="data-meta-value">' + (c.units_count||0) + '</span></div>' +
-                '<div class="data-meta-item"><span class="data-meta-label">יחידות מתוכנן:</span><span class="data-meta-value">' + (c.planned_units||0) + '</span></div>' +
-                (c.iai_score ? '<div class="data-meta-item"><span class="data-meta-label">ציון IAI:</span><span class="data-meta-value" style="color:' + (c.iai_score > 80 ? '#22c55e' : c.iai_score > 60 ? '#f59e0b' : '#ef4444') + ';">' + c.iai_score + '</span></div>' : '') +
-                '<div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value">' + (c.status||'לא ידוע') + '</span></div>' +
-                '</div>' +
-                (c.address ? '<p style="margin-top:8px;color:#9ca3af;font-size:13px;">📍 ' + c.address + '</p>' : '') +
-                '</div>';
+            // kept for compatibility
+            return '';
         }
 
         async function loadKones(filter) {
@@ -914,55 +1105,55 @@ function generateDashboardHTML(stats) {
                 }
 
                 if (!data.data.length) { container.innerHTML = '<div class="loading">🏗️ אין כינוסי נכסים בסינון זה</div>'; return; }
-                container.innerHTML = data.data.map((k, i) => renderKones(k, i)).join('');
+                renderKonesTable(data.data);
             } catch (e) { container.innerHTML = errorHTML(e.message, 'loadKones()'); }
         }
 
-        function renderKones(k, i) {
-            const statusClass = {
-                pending: 'status-pending',
-                contacted: 'status-contacted',
-                failed: 'status-new',
-                landline: 'status-landline',
-                no_phone: 'status-nophone'
-            };
-            const statusLabel = {
-                pending: 'ממתין',
-                contacted: 'נוצר קשר',
-                failed: 'נכשל',
-                landline: 'קו ארץ',
-                no_phone: 'אין טלפון'
-            };
-            const st = k.contact_status || 'pending';
-            const isLandline = st === 'landline';
-            const noPhone = st === 'no_phone';
-            const borderColor = isLandline ? '#6b7280' : noPhone ? '#374151' : '#d4af37';
-
-            // Phone display: landline gets phone-only, mobile gets WhatsApp too
-            let phoneHtml = '';
-            if (k.phone && !noPhone) {
-                phoneHtml = '<div class="data-meta-item"><span class="data-meta-label">טלפון:</span><span class="data-meta-value">' +
-                    '<a href="tel:' + k.phone + '" style="color:#3b82f6;">' + k.phone + '</a>';
-                if (isLandline) {
-                    phoneHtml += ' <span style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:4px;font-size:12px;">📞 שיחה טלפונית</span>';
-                } else {
-                    phoneHtml += ' <a href="https://wa.me/' + k.phone.replace(/[^0-9]/g,'') + '" style="background:#22c55e;color:white;padding:2px 8px;border-radius:4px;text-decoration:none;font-size:12px;">WhatsApp</a>';
-                }
-                phoneHtml += '</span></div>';
-            }
-
-            return '<div class="data-item" style="border-right-color:' + borderColor + '"><h3>🏗️ ' + (k.address || 'כינוס #' + (i+1)) + '</h3><div class="data-meta">' +
-                '<div class="data-meta-item"><span class="data-meta-label">עיר:</span><span class="data-meta-value">' + (k.city||'לא ידוע') + '</span></div>' +
-                (k.gush_helka ? '<div class="data-meta-item"><span class="data-meta-label">גוש/חלקה:</span><span class="data-meta-value">' + k.gush_helka + '</span></div>' : '') +
-                (k.price ? '<div class="data-meta-item"><span class="data-meta-label">מחיר:</span><span class="data-meta-value">₪' + parseInt(k.price).toLocaleString() + '</span></div>' : '') +
-                '<div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge ' + (statusClass[st]||'status-pending') + '">' + (statusLabel[st]||st) + '</span></span></div>' +
-                (k.contact_person ? '<div class="data-meta-item"><span class="data-meta-label">כונס:</span><span class="data-meta-value">' + k.contact_person + '</span></div>' : '') +
-                (k.contact_attempts ? '<div class="data-meta-item"><span class="data-meta-label">ניסיונות פנייה:</span><span class="data-meta-value">' + k.contact_attempts + '</span></div>' : '') +
-                phoneHtml +
-                (k.url ? '<div class="data-meta-item"><span class="data-meta-label">קישור:</span><span class="data-meta-value"><a href="' + k.url + '" target="_blank" style="color:#3b82f6;">פתח כינוס</a></span></div>' : '') +
-                '</div></div>';
+        function renderKonesTable(kones) {
+            const container = document.getElementById('kones-list');
+            if (!kones.length) { container.innerHTML = '<div class="loading">אין כינוסי נכסים בסינון זה</div>'; return; }
+            const statusLabel = { pending: 'ממתין', contacted: 'נוצר קשר', failed: 'נכשל', landline: 'קו ארץ', no_phone: 'אין טלפון' };
+            const statusColors = { pending: '#f59e0b', contacted: '#22c55e', failed: '#ef4444', landline: '#6b7280', no_phone: '#374151' };
+            container.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+                + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כותרת המודעה</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כתובת</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">עיר</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">טלפון</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">מחיר</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כונס</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">ניסיונות</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">גוש/חלקה</th>'
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">קישור</th>'
+                + '</tr></thead><tbody>'
+                + kones.map((k, i) => {
+                    const st = k.contact_status || 'pending';
+                    const stLabel = statusLabel[st] || st;
+                    const stColor = statusColors[st] || '#f59e0b';
+                    const price = k.price ? '\u20AA' + parseInt(k.price).toLocaleString() : '—';
+                    const phone = k.phone ? '<a href="tel:' + k.phone + '" style="color:#3b82f6;">' + k.phone + '</a>' : '—';
+                    const title = k.title || k.address || ('כינוס #' + (i+1));
+                    const address = k.address || '—';
+                    return '<tr style="border-bottom:1px solid #1e293b;" class="trow">'
+                        + '<td style="padding:9px 12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + title + '">' + title + '</td>'
+                        + '<td style="padding:9px 12px;font-size:12px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + address + '</td>'
+                        + '<td style="padding:9px 12px;">' + (k.city || '—') + '</td>'
+                        + '<td style="padding:9px 12px;">' + phone + '</td>'
+                        + '<td style="padding:9px 12px;color:#fbbf24;">' + price + '</td>'
+                        + '<td style="padding:9px 12px;"><span style="background:' + stColor + '22;color:' + stColor + ';padding:2px 8px;border-radius:4px;font-size:11px;">' + stLabel + '</span></td>'
+                        + '<td style="padding:9px 12px;font-size:12px;">' + (k.contact_person || '—') + '</td>'
+                        + '<td style="padding:9px 12px;text-align:center;">' + (k.contact_attempts || 0) + '</td>'
+                        + '<td style="padding:9px 12px;font-size:12px;">' + (k.gush_helka || '—') + '</td>'
+                        + '<td style="padding:9px 12px;">' + (k.url ? '<a href="' + k.url + '" target="_blank" style="color:#3b82f6;font-size:12px;">פתח</a>' : '—') + '</td>'
+                        + '</tr>';
+                }).join('')
+                + '</tbody></table></div>';
         }
-
+        function renderKones(k, i) {
+            // kept for compatibility
+            return '';
+        }
         async function runKonesAutoContact() {
             if (!confirm('להפעיל Auto Contact לכינוסי נכסים?')) return;
             try {
@@ -1084,7 +1275,7 @@ function generateDashboardHTML(stats) {
             const stateLabel = { confirmed: '<span style="color:#34d399;font-weight:700;">✅ מאושר</span>', pending: '<span style="color:#fbbf24;">⏳ ממתין</span>', declined: '<span style="color:#f87171;">❌ סירב</span>', cancelled: '<span style="color:#94a3b8;">🚫 בוטל</span>', no_answer: '<span style="color:#f87171;">📵 לא ענה</span>' };
             const langLabel = { he: '🇮🇱', ru: '🇷🇺' };
             const rows_html = filtered.map(r => {
-                const wa = 'https://wa.me/' + (r.phone || '').replace(/\D/g,'') + '?text=' + encodeURIComponent('שלום ' + (r.contact_name || '') + ', QUANTUM כאן');
+                const phoneClean = (r.phone || '').replace(/\D/g,'');
                 const meetingType = r.meeting_type || r.campaign_meeting_type || '';
                 const typeMap = { signing_ceremony: 'כנס חתימות', consultation: 'ייעוץ', appraiser: 'שמאי', surveyor: 'מודד', physical: 'פגישה' };
                 return '<div class="data-item" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:center;padding:12px 16px;">'
@@ -1092,12 +1283,29 @@ function generateDashboardHTML(stats) {
                     + '<div>' + (stateLabel[r.state] || '<span style="color:#94a3b8;">' + (r.state || '') + '</span>') + '</div>'
                     + '<div style="font-size:12px;color:#94a3b8;">' + (typeMap[meetingType] || meetingType || '—') + '</div>'
                     + '<div style="font-size:12px;color:#60a5fa;">' + (r.slot_display || (r.last_message_at ? new Date(r.last_message_at).toLocaleString('he-IL') : '—')) + '</div>'
-                    + '<a href="' + wa + '" target="_blank" class="btn" style="padding:6px 12px;font-size:12px;background:#064e3b;border-color:#34d399;color:#34d399;white-space:nowrap;">💬 WA</a>'
+                    + '<button class="btn inforu-btn" data-phone="' + phoneClean + '" data-name="' + (r.contact_name||'') + '" style="padding:6px 12px;font-size:12px;background:#064e3b;border-color:#34d399;color:#34d399;white-space:nowrap;">📱 שלח</button>'
                     + '</div>';
             }).join('');
-            list.innerHTML = '<div style="font-size:12px;color:#64748b;padding:8px 16px;border-bottom:1px solid #1e293b;">' + filtered.length + ' רשומות</div>' + rows_html;
+            const thead = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;font-size:12px;color:#94a3b8;font-weight:600;">'
+                + '<div>שם ושפה</div><div>סטטוס</div><div>סוג פגישה</div><div>מועד / עדכון אחרון</div><div>שליחה</div></div>';
+            list.innerHTML = '<div style="font-size:12px;color:#64748b;padding:8px 16px;border-bottom:1px solid #1e293b;">' + filtered.length + ' רשומות</div>' + thead + rows_html;
         }
 
+        async function sendInforu(phone, name) {
+            if (!phone) { alert('אין מספר טלפון'); return; }
+            const msg = prompt('הודעה לשליחה ל-' + (name || phone) + ':', 'שלום ' + (name || '') + ', QUANTUM כאן. האם נוכל לתאם פגישה?');
+            if (!msg) return;
+            try {
+                const res = await fetch('/api/inforu/send-whatsapp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, message: msg })
+                });
+                const d = await res.json();
+                if (d.success) alert('✅ ההודעה נשלחה בהצלחה!');
+                else alert('❌ שגיאה: ' + (d.error || 'נכשל'));
+            } catch(e) { alert('❌ שגיאה: ' + e.message); }
+        }
         // ============================================================
         // SCRAPERS TAB FUNCTIONS
         // ============================================================
