@@ -1,8 +1,9 @@
 /**
- * QUANTUM WhatsApp Bot - v6.3
+ * QUANTUM WhatsApp Bot - v6.4
  * Full conversation tracking + enhanced AI + lead management + auto-handoff
  * v6.2: First message no longer says "אני מ-QUANTUM" - they already know.
  * v6.3: Fixed model name (claude-sonnet-4-6) + fixed updateLead raw_data double-assignment bug
+ * v6.4: Fixed model name to claude-3-5-sonnet-20241022 (400 error fix) + detailed error logging
  */
 
 const express = require('express');
@@ -11,6 +12,7 @@ const pool = require('../db/pool');
 const axios = require('axios');
 
 const INFORU_CAPI_BASE = 'https://capi.inforu.co.il/api/v2';
+const CLAUDE_MODEL = 'claude-3-5-sonnet-20241022';
 const DEPLOYMENT_TIME = new Date().toISOString();
 
 function getBasicAuth() {
@@ -144,7 +146,7 @@ async function callClaudeWithContext(conversationHistory, currentMessage, leadIn
     const systemPrompt = buildEnhancedPrompt(leadInfo, contextSummary);
 
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-sonnet-4-6',   // ← updated model name
+      model: CLAUDE_MODEL,
       max_tokens: 400,
       system: systemPrompt,
       messages: [{ role: 'user', content: currentMessage }]
@@ -157,9 +159,12 @@ async function callClaudeWithContext(conversationHistory, currentMessage, leadIn
       timeout: 10000
     });
 
+    console.log(`[ClaudeAI] ✅ Response received (model: ${CLAUDE_MODEL})`);
     return response.data.content[0].text;
   } catch (error) {
-    console.error('Claude API error:', error.message);
+    const status = error.response?.status;
+    const body = JSON.stringify(error.response?.data || {});
+    console.error(`[ClaudeAI] ❌ Error ${status}: ${body} | ${error.message}`);
     return 'שלום! במה אפשר לעזור?';
   }
 }
@@ -319,7 +324,6 @@ async function updateLead(leadId, updates) {
     if (updates.user_type) { fields.push(`user_type = $${idx++}`); values.push(updates.user_type); }
     if (updates.status)    { fields.push(`status = $${idx++}`);    values.push(updates.status); }
 
-    // Build a single nested raw_data update to avoid duplicate column assignment
     const now = new Date().toISOString();
     if (updates.stage) {
       fields.push(`raw_data = jsonb_set(jsonb_set(COALESCE(raw_data, '{}'::jsonb), '{stage}', $${idx++}), '{last_contact}', $${idx++})`);
@@ -359,7 +363,8 @@ router.get('/whatsapp/webhook', (req, res) => {
   res.status(200).json({
     success: true,
     message: 'QUANTUM WhatsApp Webhook - Active',
-    version: '6.3',
+    version: '6.4',
+    model: CLAUDE_MODEL,
     features: ['conversation_tracking', 'context_awareness', 'lead_management', 'auto_handoff', 'smart_first_response'],
     webhookUrl: getWebhookUrl(),
     whatsappNumber: '037572229',
@@ -399,14 +404,14 @@ router.post('/whatsapp/webhook', async (req, res) => {
       return res.json({ success: true, processed: true, handoff: true, reason: handoffCheck.reason, urgency: handoffCheck.urgency, leadId: lead.id });
     }
     const aiResponse = await callClaudeWithContext(history, parsed.message, leadInfo);
-    await saveMessage(lead.id, 'bot', aiResponse, { model: 'claude-sonnet-4-6', stage: insights.stage });
+    await saveMessage(lead.id, 'bot', aiResponse, { model: CLAUDE_MODEL, stage: insights.stage });
     await updateLead(lead.id, insights);
     const auth = getBasicAuth();
     const result = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/SendWhatsAppChat`, {
       Data: {
         Message: aiResponse,
         Phone: parsed.phone,
-        Settings: { CustomerMessageId: `bot_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`, CustomerParameter: 'QUANTUM_BOT_V6_3' }
+        Settings: { CustomerMessageId: `bot_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`, CustomerParameter: 'QUANTUM_BOT_V6_4' }
       }
     }, {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` },
@@ -495,16 +500,17 @@ router.get('/whatsapp/setup-guide', (req, res) => {
   res.type('text/html').send(`
 <!DOCTYPE html>
 <html dir="rtl" lang="he">
-<head><meta charset="UTF-8"><title>QUANTUM WhatsApp v6.3</title></head>
+<head><meta charset="UTF-8"><title>QUANTUM WhatsApp v6.4</title></head>
 <body style="font-family:system-ui;max-width:900px;margin:40px auto;padding:20px">
-  <h1 style="color:#2563eb">🚀 QUANTUM WhatsApp Bot v6.3</h1>
+  <h1 style="color:#2563eb">🚀 QUANTUM WhatsApp Bot v6.4</h1>
   <div style="background:#ecfdf5;border-right:4px solid #10b981;padding:15px">
     <strong>✓ Active!</strong> Smart first response, auto-handoff, conversation tracking.
   </div>
+  <p><strong>Model:</strong> <code>${CLAUDE_MODEL}</code></p>
   <p><strong>Webhook:</strong> <code>${webhookUrl}</code></p>
   <ul>
     <li>✓ Smart first response (no "אני מ-QUANTUM")</li>
-    <li>✓ Model: claude-sonnet-4-6</li>
+    <li>✓ Model: ${CLAUDE_MODEL}</li>
     <li>✓ Auto-handoff detection</li>
     <li>✓ Analytics dashboard</li>
   </ul>
@@ -554,7 +560,8 @@ router.get('/whatsapp/stats', async (req, res) => {
     `);
     res.json({
       success: true,
-      version: '6.3',
+      version: '6.4',
+      model: CLAUDE_MODEL,
       timestamp: new Date().toISOString(),
       webhookUrl: getWebhookUrl(),
       stats: stats.rows[0],
