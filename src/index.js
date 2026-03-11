@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.93.0';
-const BUILD = '2026-03-11-v4.93.0-wa-bot-ran-escalation';
+const VERSION = '4.94.0';
+const BUILD = '2026-03-11-v4.94.0-event-scheduler';
 
 async function runAutoMigrations() {
   try {
@@ -50,6 +50,17 @@ async function runCampaignsMigration() {
   } catch (err) { logger.error('[MIGRATIONS] Campaigns schema failed:', err.message); }
 }
 
+async function runEventsMigration() {
+  try {
+    const migFile = path.join(__dirname, 'db', 'migrations', 'events_schema.sql');
+    if (fs.existsSync(migFile)) {
+      const sql = fs.readFileSync(migFile, 'utf8');
+      await pool.query(sql);
+      logger.info('[MIGRATIONS] Events schema applied');
+    }
+  } catch (err) { logger.error('[MIGRATIONS] Events schema failed:', err.message); }
+}
+
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -78,7 +89,9 @@ const limiter = rateLimit({
     req.path.startsWith('/api/docs') || req.path.startsWith('/api/auto-contact') ||
     req.path.startsWith('/booking/') || req.path.startsWith('/cal/') || req.path.startsWith('/api/kones/') ||
     req.path.startsWith('/api/appointments/') || req.path.startsWith('/api/test/') ||
-    req.path.startsWith('/api/visits/') || req.path.startsWith('/api/campaigns/'),
+    req.path.startsWith('/api/visits/') || req.path.startsWith('/api/campaigns/') ||
+    req.path.startsWith('/events/') || req.path.startsWith('/api/events/') ||
+    req.path.startsWith('/pro/') || req.path.startsWith('/attend/'),
   message: { error: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
@@ -133,6 +146,8 @@ function loadAllRoutes() {
     { path: '/api/users', file: 'routes/userRoutes.js' },
     { path: '/api/docs', file: 'routes/docsRoute.js' },
     { path: '/api/campaigns', file: 'routes/campaignRoutes.js' },
+    // ── Event Scheduler ─────────────────────────────────────────────────────
+    { path: '/events', file: 'routes/eventSchedulerRoutes.js' },
   ];
 
   for (const { path: routePath, file } of routeFiles) {
@@ -273,12 +288,15 @@ app.get('/api/debug', async (req, res) => {
   try { const zcal = require('./services/zohoCalendarService'); zcalStatus = zcal.isConfigured() ? 'configured (Zoho OAuth)' : 'credentials missing'; } catch (e) { zcalStatus = 'service error'; }
   let escalationStatus = 'not configured';
   try { const { getEscalationMinutes } = require('./services/waBotEscalationService'); const m = await getEscalationMinutes(); escalationStatus = m === 0 ? 'disabled (0 min)' : `active (${m} min silence → Vapi call)`; } catch (e) { escalationStatus = 'error'; }
+  let eventStats = {};
+  try { const { rows } = await pool.query('SELECT COUNT(*) AS total FROM quantum_events'); eventStats = { total_events: parseInt(rows[0].total) }; } catch (e) {}
   res.json({
     version: VERSION, build: BUILD, timestamp: new Date().toISOString(),
     wa_bot: 'רן מ-QUANTUM v7.0 | persona: רן | overlapping scripts with Vapi',
     wa_bot_escalation: escalationStatus,
     campaigns: 'UI at /campaigns | API at /api/campaigns | followup cron: every 2min',
     campaign_admin_panel: 'active at GET /api/scheduling/admin',
+    event_scheduler: `active | UI at /events | API at /api/events | ${JSON.stringify(eventStats)}`,
     professional_visits: 'POST /api/scheduling/visits | POST /api/scheduling/pre-register (auto-fetches buildings from Zoho)',
     schedule_optimization: `active | ${JSON.stringify(optimizationStats)}`,
     google_calendar: gcalStatus,
@@ -295,6 +313,7 @@ async function start() {
   await runAutoMigrations();
   await runSchedulingMigrations();
   await runCampaignsMigration();
+  await runEventsMigration();
   loadAllRoutes();
   loadBackupRoutes();
   loadAutoContactRoutes();
@@ -327,40 +346,28 @@ async function start() {
   } catch (e) { logger.warn('[IncomingWA] Failed to start:', e.message); }
 
   // ── Campaign Follow-up Cron — every 2 minutes ──────────────────────────────
-  // Outbound campaigns: WA-sent leads → Vapi call after wa_wait_minutes
   try {
     const cron = require('node-cron');
     const axios = require('axios');
     cron.schedule('*/2 * * * *', async () => {
       try {
-        await axios.post(
-          `http://localhost:${PORT}/api/campaigns/followup/run`,
-          {},
-          { timeout: 30000 }
-        );
+        await axios.post(`http://localhost:${PORT}/api/campaigns/followup/run`, {}, { timeout: 30000 });
       } catch (e) {
-        if (e.code !== 'ECONNREFUSED') {
-          logger.warn('[CampaignFollowup] Cron error:', e.message);
-        }
+        if (e.code !== 'ECONNREFUSED') { logger.warn('[CampaignFollowup] Cron error:', e.message); }
       }
     });
     logger.info('[CampaignFollowup] ACTIVE - checking every 2 min');
   } catch (e) { logger.warn('[CampaignFollowup] Failed to start:', e.message); }
 
   // ── WA Bot Escalation Cron — every 5 minutes ──────────────────────────────
-  // Inbound bot leads: if silent after X min → רן calls via Vapi
   try {
     const cron = require('node-cron');
     const { runEscalation } = require('./services/waBotEscalationService');
     cron.schedule('*/5 * * * *', async () => {
       try {
         const result = await runEscalation();
-        if (result.called > 0) {
-          logger.info(`[WaBotEscalation] Escalated ${result.called} leads to Vapi`);
-        }
-      } catch (e) {
-        logger.warn('[WaBotEscalation] Cron error:', e.message);
-      }
+        if (result.called > 0) { logger.info(`[WaBotEscalation] Escalated ${result.called} leads to Vapi`); }
+      } catch (e) { logger.warn('[WaBotEscalation] Cron error:', e.message); }
     });
     logger.info('[WaBotEscalation] ACTIVE - checking every 5 min | רן calls silent WA leads');
   } catch (e) { logger.warn('[WaBotEscalation] Failed to start:', e.message); }
@@ -406,11 +413,7 @@ async function start() {
     cron.schedule('30 5 * * *', async () => {
       try {
         logger.info('[MorningReport] Triggering daily morning report...');
-        const result = await axios.post(
-          `http://localhost:${PORT}/api/morning/send`,
-          {},
-          { timeout: 60000 }
-        );
+        const result = await axios.post(`http://localhost:${PORT}/api/morning/send`, {}, { timeout: 60000 });
         if (result.data && result.data.success) {
           const wa = result.data.whatsapp || {};
           logger.info(`[MorningReport] SUCCESS. WhatsApp: ${wa.sent || 0}/${wa.total || 0}`);
