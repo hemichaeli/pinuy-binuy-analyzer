@@ -37,7 +37,7 @@ const SMS_TEMPLATES = {
 };
 
 // --- WhatsApp Templates (QUANTUM account - capi.inforu.co.il) ---
-// Updated 2026-03-10: mapped to actual template IDs in QUANTUM account
+// Updated 2026-03-11: added visit_invite_button template
 const WA_TEMPLATES = {
   // ---- scheduling / bot templates ----
   meeting_invite:         { templateId: '141183', name: 'הזמנה למפגש נציגות',                                    params: [], hasButtons: false },
@@ -45,6 +45,48 @@ const WA_TEMPLATES = {
   zoom_link:              { templateId: '141453', name: 'לינק למפגש זום',                                         params: [], hasButtons: false },
   zoom_confirm:           { templateId: '141199', name: 'תזכורת לאישור השתתפות במפגש זום',                        params: [], hasButtons: false },
   zoom_confirm_reply:     { templateId: '141203', name: 'תזכורת לאישור השתתפות במפגש זום (אישור בהודעה חוזרת)',   params: [], hasButtons: false },
+
+  // ---- professional visit invite — CTA button ----
+  //
+  // ⚠️  PENDING_META_APPROVAL
+  // After approval via INFORU portal → replace templateId value below.
+  //
+  // === Template text to submit to Meta (via INFORU portal) ===
+  //
+  //   שלום {{1}},
+  //   ביום {{2}} יגיע {{3}} למתחם לצורך מדידת הדירות במתחם.
+  //   הסיור תואם עם הנציגות ועם עורכי הדין המייצגים אתכם בפרויקט.
+  //   מדובר בסיור קצר בדירה, שאיננו רועש ואיננו מלכלך.
+  //
+  //   לצורך תיאום, יש ללחוץ על הכפתור, פה בתחתית ההודעה👇
+  //
+  //   תודה רבה על שיתוף הפעולה,
+  //   {{4}}
+  //
+  // === Button (Call-To-Action / URL) ===
+  //   Label:    לתיאום לחצו
+  //   Type:     URL
+  //   Base URL: https://pinuy-binuy-analyzer-production.up.railway.app/booking/
+  //   Dynamic suffix: {{1}}   ← booking token appended at send time
+  //
+  // === Body variables ===
+  //   {{1}} = שם פרטי (firstName)
+  //   {{2}} = תאריך הביקור (visitDate)  e.g. "א', 15.04.2026"
+  //   {{3}} = שמאי / מודד (professionalType)
+  //   {{4}} = שם היזם (developerName)
+  //
+  // === Button variable ===
+  //   ButtonIndex 0, Value = booking token (suffix appended to base URL)
+  //
+  visit_invite_button: {
+    templateId: 'PENDING_META_APPROVAL',
+    name: 'הזמנה לביקור מקצועי עם כפתור תיאום',
+    params: ['firstName', 'visitDate', 'professionalType', 'developerName'],
+    hasButtons: true,
+    buttonBaseUrl: 'https://pinuy-binuy-analyzer-production.up.railway.app/booking/',
+    pendingApproval: true
+  },
+
   // ---- ceremony templates ----
   ceremony_42:            { templateId: '158832', name: 'כנס ראשון - 42',                                         params: [], hasButtons: false },
   ceremony_44:            { templateId: '158833', name: 'כנס ראשון - 44',                                         params: [], hasButtons: false },
@@ -166,9 +208,105 @@ async function sendWhatsApp(recipients, templateKey, variables = {}, options = {
   }
 }
 
+// ==================== VISIT INVITE WITH BUTTON ====================
+
+/**
+ * Send professional visit invitation with a CTA "לתיאום לחצו" button.
+ *
+ * Requires Meta-approved template 'visit_invite_button'.
+ * After INFORU portal approval, update templateId in WA_TEMPLATES above.
+ *
+ * @param {string} phone  - Recipient phone (Israeli format, e.g. "0503016454")
+ * @param {object} params
+ *   @param {string} params.firstName        - דייר שם פרטי           e.g. "יצחק"
+ *   @param {string} params.visitDate        - תאריך בעברית            e.g. "א', 15.04.2026"
+ *   @param {string} params.professionalType - "שמאי" | "מודד"
+ *   @param {string} params.developerName    - שם היזם                 e.g. "גינדי השקעות"
+ *   @param {string} params.bookingToken     - טוקן ייחודי לדייר      e.g. "abc123xyz"
+ *
+ * @returns {object} INFORU API result
+ */
+async function sendVisitInviteWithButton(phone, params) {
+  const tmpl = WA_TEMPLATES['visit_invite_button'];
+
+  if (tmpl.pendingApproval) {
+    logger.warn('[sendVisitInviteWithButton] Template pending Meta approval — cannot send yet', { phone });
+    return { success: false, error: 'Template pending Meta approval. Submit via INFORU portal and update templateId in WA_TEMPLATES.', pendingApproval: true };
+  }
+
+  const normalizedPhone = normalizePhoneLocal(phone);
+  if (!normalizedPhone) throw new Error('Invalid phone number');
+
+  const { firstName, visitDate, professionalType, developerName, bookingToken } = params;
+  if (!bookingToken) throw new Error('bookingToken is required');
+
+  // Body parameters: {{1}}–{{4}}
+  const templateParameters = [
+    { Name: '[#1#]', Type: 'Text', Value: firstName || '' },
+    { Name: '[#2#]', Type: 'Text', Value: visitDate || '' },
+    { Name: '[#3#]', Type: 'Text', Value: professionalType || 'שמאי' },
+    { Name: '[#4#]', Type: 'Text', Value: developerName || '' }
+  ];
+
+  // Button parameter: dynamic URL suffix (token appended after base URL)
+  const buttonParameters = [
+    { ButtonIndex: 0, Value: bookingToken }
+  ];
+
+  const payload = {
+    Data: {
+      TemplateId: tmpl.templateId,
+      TemplateParameters: templateParameters,
+      ButtonParameters: buttonParameters,
+      Recipients: [{ Phone: normalizedPhone }]
+    }
+  };
+
+  logger.info('[sendVisitInviteWithButton] Sending', {
+    phone: normalizedPhone,
+    firstName,
+    visitDate,
+    professionalType,
+    bookingToken,
+    fullUrl: tmpl.buttonBaseUrl + bookingToken
+  });
+
+  try {
+    const response = await axios.post(`${INFORU_CAPI_BASE}/WhatsApp/SendWhatsApp`, payload, {
+      headers: { 'Content-Type': 'application/json', 'Authorization': getBasicAuth() },
+      timeout: 30000,
+      validateStatus: () => true
+    });
+
+    const data = response.data;
+    const result = {
+      success: data.StatusId === 1,
+      status: data.StatusId,
+      description: data.StatusDescription,
+      phone: normalizedPhone,
+      bookingUrl: tmpl.buttonBaseUrl + bookingToken,
+      templateId: tmpl.templateId,
+      channel: 'whatsapp_button',
+      timestamp: new Date().toISOString()
+    };
+
+    const msgText = `[ביקור מקצועי] ${firstName} — ${visitDate} — ${professionalType} — ${tmpl.buttonBaseUrl + bookingToken}`;
+    await logMessage(result, msgText, [normalizedPhone], { channel: 'whatsapp_button', templateKey: 'visit_invite_button' });
+
+    if (data.StatusId === 1) logger.info('[sendVisitInviteWithButton] Sent', { phone: normalizedPhone, bookingToken });
+    else logger.warn('[sendVisitInviteWithButton] Failed', { status: data.StatusId, description: data.StatusDescription, errors: data.Data?.Errors });
+
+    return result;
+  } catch (err) {
+    logger.error('[sendVisitInviteWithButton] Error', { error: err.message, phone: normalizedPhone });
+    throw err;
+  }
+}
+
+// ==================== WHATSAPP CHAT ====================
+
 /**
  * Send WhatsApp chat message (only within 24h window)
- * Uses validateStatus to capture INFORU error responses for debugging
  */
 async function sendWhatsAppChat(phone, message, options = {}) {
   const normalizedPhone = normalizePhoneLocal(phone);
@@ -411,6 +549,7 @@ async function checkAccountStatus() {
 module.exports = {
   sendSms, fillTemplate,
   sendWhatsApp, sendWhatsAppChat, sendWhatsAppChatDebug,
+  sendVisitInviteWithButton,
   getWhatsAppTemplates, getWhatsAppTemplate,
   pullIncomingWhatsApp, pullWhatsAppDLR,
   sendDualChannel, bulkSend,
