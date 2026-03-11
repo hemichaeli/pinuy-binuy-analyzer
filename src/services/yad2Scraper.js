@@ -11,6 +11,7 @@
  */
 
 const axios = require('axios');
+const { enrichListing } = require('./adEnrichmentService');
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 const { detectKeywords } = require('./ssiCalculator');
@@ -432,7 +433,22 @@ async function processListing(listing, complexId, complexCity) {
       );
 
       if (result.rows.length > 0) {
-        return { action: 'inserted', id: result.rows[0].id };
+        // Trigger async enrichment (non-blocking)
+        const newListingId = result.rows[0].id;
+        setImmediate(async () => {
+          try {
+            const { rows: listingRows } = await pool.query(
+              `SELECT l.*, c.iai_score FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id WHERE l.id = $1`,
+              [newListingId]
+            );
+            if (listingRows.length > 0) {
+              await enrichListing(listingRows[0]);
+            }
+          } catch (enrichErr) {
+            logger.warn(`[yad2Scraper] Enrichment failed for listing ${newListingId}: ${enrichErr.message}`);
+          }
+        });
+        return { action: 'inserted', id: newListingId };
       }
       return { action: 'skipped' };
     }
