@@ -7,6 +7,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
+const { enrichNewListings } = require('../services/adEnrichmentService');
 
 // Redirect root to the new dashboard
 router.get('/', (req, res) => {
@@ -38,7 +39,21 @@ router.get('/ads/all', async (req, res) => {
         l.contact_phone as phone,
         l.created_at as date,
         l.title,
-        l.address
+        l.address,
+        l.gemini_urgency_flag,
+        l.gemini_urgency_reason,
+        l.gemini_hidden_info,
+        l.exact_address_enriched,
+        l.gemini_score_boost,
+        l.building_year,
+        l.building_age,
+        l.nearby_plans,
+        l.has_renewal_plan,
+        l.recent_transactions,
+        l.avg_price_sqm_area,
+        l.perplexity_public_notes,
+        l.gemini_enriched_at,
+        l.perplexity_enriched_at
       FROM listings l 
       LEFT JOIN complexes c ON l.complex_id = c.id 
       WHERE l.is_active = true 
@@ -495,6 +510,34 @@ router.get('/scheduling/overview', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+// API: Manually trigger enrichment for unenriched listings
+router.post('/ads/enrich', async (req, res) => {
+  try {
+    const limit = parseInt(req.body?.limit) || 20;
+    const result = await enrichNewListings(limit);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API: Enrich a specific listing
+router.post('/ads/enrich/:id', async (req, res) => {
+  try {
+    const { enrichListing } = require('../services/adEnrichmentService');
+    const { rows } = await pool.query(
+      'SELECT l.*, c.iai_score FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id WHERE l.id = $1',
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'Listing not found' });
+    const result = await enrichListing(rows[0]);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
