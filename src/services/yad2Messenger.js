@@ -375,10 +375,18 @@ function getStatus() {
   };
 }
 
+function _getPage() { return page; }
+async function _getCookies() { 
+  if (!page) return [];
+  try { return await page.cookies('https://www.yad2.co.il'); } catch(e) { return []; }
+}
+
 module.exports = {
   login,
   sendMessage,
   checkReplies,
   cleanup,
-  getStatus
+  getStatus,
+  _getPage,
+  _getCookies
 };
