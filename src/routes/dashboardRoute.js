@@ -438,21 +438,22 @@ function generateDashboardHTML(stats) {
             <div style="overflow-x:auto;">
             <table id="ads-table" style="width:100%;border-collapse:collapse;font-size:13px;display:none;">
                 <thead>
-                    <tr style="background:#1e293b;color:#94a3b8;text-align:right;">
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('title')">כותרת המודעה ▲▼</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('city')">עיר ▲▼</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('asking_price')">מחיר ▲▼</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">פרמייה עכשיו</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">פרמייה לאחר פרוייקט</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('area_sqm')">שטח (מ"ר) ▲▼</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('rooms')">חדרים ▲▼</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">קומה</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס מתחם</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">מאז מתי</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;" onclick="sortAdsBy('created_at')">פורסם ▲▼</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">מקור</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">SSI</th>
-                        <th style="padding:10px 12px;border-bottom:1px solid #334155;">פעולה</th>
+                    <tr style="background:#1e293b;color:#94a3b8;text-align:right;" id="ads-thead">
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('title')" data-sort-field="title">כותרת המודעה <span id="sort-title">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('city')" data-sort-field="city">עיר <span id="sort-city">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('asking_price')" data-sort-field="asking_price">מחיר <span id="sort-asking_price">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('premium_percent')" data-sort-field="premium_percent">פרמייה עכשיו <span id="sort-premium_percent">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;white-space:nowrap;">פרמייה לאחר פרוייקט</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('area_sqm')" data-sort-field="area_sqm">שטח (מ"ר) <span id="sort-area_sqm">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('rooms')" data-sort-field="rooms">חדרים <span id="sort-rooms">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('floor')" data-sort-field="floor">קומה <span id="sort-floor">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('complex_status')" data-sort-field="complex_status">סטטוס מתחם <span id="sort-complex_status">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;white-space:nowrap;">מאז מתי</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('published_at')" data-sort-field="published_at">פורסם <span id="sort-published_at">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('source')" data-sort-field="source">מקור <span id="sort-source">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortAdsBy('ssi_score')" data-sort-field="ssi_score">SSI <span id="sort-ssi_score">▲▼</span></th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;white-space:nowrap;">טלפון</th>
+                        <th style="padding:10px 12px;border-bottom:1px solid #334155;white-space:nowrap;">פעולה</th>
                     </tr>
                 </thead>
                 <tbody id="ads-tbody"></tbody>
@@ -495,6 +496,30 @@ function generateDashboardHTML(stats) {
     <div id="tab-leads" class="tab-content">
         <div class="section">
             <h2>👤 רשימת לידים</h2>
+            <div class="filters">
+                <input type="text" class="filter-input" id="leadsSearchFilter" placeholder="🔍 חיפוש שם / טלפון..." oninput="loadLeads()">
+                <select class="filter-select" id="leadsStatusFilter" onchange="loadLeads()">
+                    <option value="">כל הסטטוסים</option>
+                    <option value="new">🆕 חדש</option>
+                    <option value="qualified">✰ מוכשר</option>
+                    <option value="contacted">📞 בתהליך</option>
+                    <option value="closed">✅ סגור</option>
+                    <option value="rejected">❌ נדחה</option>
+                </select>
+                <select class="filter-select" id="leadsTypeFilter" onchange="loadLeads()">
+                    <option value="">כל הסוגים</option>
+                    <option value="owner">🏠 מוכר</option>
+                    <option value="investor">🏢 משקיע</option>
+                    <option value="contact">📩 פנייה</option>
+                </select>
+                <select class="filter-select" id="leadsSourceFilter" onchange="loadLeads()">
+                    <option value="">כל המקורות</option>
+                    <option value="dashboard">דשבורד</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="facebook">פייסבוק</option>
+                    <option value="website">אתר</option>
+                </select>
+            </div>
             <div class="actions-bar">
                 <button class="btn" data-onclick="loadLeads()">👤 כל הלידים</button>
                 <button class="btn btn-secondary" data-onclick="loadLeads('qualified')">✰ מוכשרים</button>
@@ -819,6 +844,7 @@ function generateDashboardHTML(stats) {
                 const ssiColor = ssi > 70 ? '#22c55e' : ssi > 40 ? '#f59e0b' : '#94a3b8';
                 const title = ad.title || ad.address || ('מודעה #' + (i+1));
                 const actionBtn = ad.url ? '<a href="' + ad.url + '" target="_blank" style="color:#3b82f6;font-size:12px;">פתח</a>' : '—';
+                const phoneCell = ad.phone ? '<a href="tel:' + ad.phone + '" style="color:#3b82f6;font-size:12px;">' + ad.phone + '</a>' : '—';
                 return '<tr style="border-bottom:1px solid #1e293b;transition:background 0.15s;" class="trow">'
                     + '<td style="padding:9px 12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + title + '">' + title + '</td>'
                     + '<td style="padding:9px 12px;">' + (ad.city || '—') + '</td>'
@@ -833,6 +859,7 @@ function generateDashboardHTML(stats) {
                     + '<td style="padding:9px 12px;font-size:12px;color:#94a3b8;">' + published + '</td>'
                     + '<td style="padding:9px 12px;font-size:12px;">' + (ad.source || '—') + '</td>'
                     + '<td style="padding:9px 12px;color:' + ssiColor + ';font-weight:600;">' + ssi + '</td>'
+                    + '<td style="padding:9px 12px;">' + phoneCell + '</td>'
                     + '<td style="padding:9px 12px;">' + actionBtn + '</td>'
                     + '</tr>';
             }).join('');
@@ -939,37 +966,55 @@ function generateDashboardHTML(stats) {
             }
         }
 
+        let _leadsData = [], _leadsSortField = 'created_at', _leadsSortDir = 'desc';
+        function sortLeadsBy(field) {
+            if (_leadsSortField === field) _leadsSortDir = _leadsSortDir === 'asc' ? 'desc' : 'asc';
+            else { _leadsSortField = field; _leadsSortDir = 'desc'; }
+            renderLeadsTable(_leadsData);
+        }
         async function loadLeads(filter) {
             const container = document.getElementById('leads-list');
             const badge = document.getElementById('leads-filter-badge');
             container.innerHTML = '<div class="loading">טוען לידים...</div>';
-            const filterLabels = { qualified: '✰ מסנן: לידים מוכשרים', contacted: '📞 מסנן: בתהליך', new: '🆕 מסנן: חדשים' };
-            if (badge) badge.innerHTML = filter && filterLabels[filter] ? '<span class="filter-active-badge">' + filterLabels[filter] + '</span>' : '';
             try {
-                const url = filter ? '/dashboard/api/leads?status=' + filter : '/dashboard/api/leads';
-                const data = await fetchJSON(url);
+                const params = new URLSearchParams();
+                const search = document.getElementById('leadsSearchFilter')?.value;
+                const status = filter || document.getElementById('leadsStatusFilter')?.value;
+                const type = document.getElementById('leadsTypeFilter')?.value;
+                const source = document.getElementById('leadsSourceFilter')?.value;
+                if (search) params.append('search', search);
+                if (status) params.append('status', status);
+                if (type) params.append('user_type', type);
+                if (source) params.append('source', source);
+                const data = await fetchJSON('/dashboard/api/leads?' + params);
                 if (!data.success) throw new Error(data.error);
-                if (!data.data.length) { container.innerHTML = '<div class="loading">👤 אין לידים בסינון הנ"ל</div>'; return; }
-                renderLeadsTable(data.data);
+                _leadsData = data.data || [];
+                if (!_leadsData.length) { container.innerHTML = '<div class="loading">👤 אין לידים בסינון הנ״ל</div>'; return; }
+                renderLeadsTable(_leadsData);
             } catch (e) { container.innerHTML = errorHTML(e.message, 'loadLeads()'); }
         }
 
         function renderLeadsTable(leads) {
             const container = document.getElementById('leads-list');
             if (!leads.length) { container.innerHTML = '<div class="loading">אין לידים בסינון זה</div>'; return; }
+            // Sort
+            const sf = _leadsSortField, sd = _leadsSortDir;
+            leads = [...leads].sort((a,b) => {
+                let va = a[sf], vb = b[sf];
+                if (va == null) va = ''; if (vb == null) vb = '';
+                if (!isNaN(parseFloat(va)) && !isNaN(parseFloat(vb))) { va = parseFloat(va); vb = parseFloat(vb); }
+                if (sd === 'asc') return va > vb ? 1 : va < vb ? -1 : 0;
+                return va < vb ? 1 : va > vb ? -1 : 0;
+            });
             const typeLabel = { investor: '🏢 משקיע', owner: '🏠 מוכר', contact: '📩 פנייה' };
             const statusColors = { new: '#3b82f6', qualified: '#22c55e', contacted: '#f59e0b', closed: '#6b7280', rejected: '#ef4444' };
             const statusHe = { new: 'חדש', qualified: 'מוכשר', contacted: 'בתהליך', closed: 'סגור', rejected: 'נדחה' };
+            const th = (label, field) => '<th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortLeadsBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'#fbbf24':'#475569') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
                 + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">שם</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">טלפון</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">אימייל</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">מקור</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">פניה / מוכר / משקיע</th>'
+                + th('שם','name') + th('טלפון','phone') + th('אימייל','email') + th('סטטוס','status') + th('מקור','source') + th('סוג','user_type')
                 + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">הערות</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">תאריך</th>'
+                + th('תאריך','created_at')
                 + '</tr></thead><tbody>'
                 + leads.map((lead, i) => {
                     const st = lead.status || 'new';
@@ -1018,21 +1063,31 @@ function generateDashboardHTML(stats) {
             } catch (e) { container.innerHTML = errorHTML(e.message, 'loadComplexes()'); }
         }
 
+        let _complexesData = [], _complexesSortField = 'iai_score', _complexesSortDir = 'desc';
+        function sortComplexesBy(field) {
+            if (_complexesSortField === field) _complexesSortDir = _complexesSortDir === 'asc' ? 'desc' : 'asc';
+            else { _complexesSortField = field; _complexesSortDir = 'desc'; }
+            renderComplexesTable(_complexesData);
+        }
         function renderComplexesTable(complexes) {
+            _complexesData = complexes;
             const container = document.getElementById('complexes-list');
             if (!complexes.length) { container.innerHTML = '<div class="loading">אין מתחמים בסינון זה</div>'; return; }
+            // Sort
+            const sf = _complexesSortField, sd = _complexesSortDir;
+            complexes = [...complexes].sort((a,b) => {
+                let va = a[sf], vb = b[sf];
+                if (va == null) va = ''; if (vb == null) vb = '';
+                if (!isNaN(parseFloat(va)) && !isNaN(parseFloat(vb))) { va = parseFloat(va); vb = parseFloat(vb); }
+                if (sd === 'asc') return va > vb ? 1 : va < vb ? -1 : 0;
+                return va < vb ? 1 : va > vb ? -1 : 0;
+            });
             const statusHe = { deposited: 'הופקדה', approved: 'אושרה', pre_deposit: 'להפקדה', planning: 'בתכנון', construction: 'בביצוע', declared: 'הוכרז', unknown: 'לא ידוע' };
-            const statusProjectHe = { permit: 'היתר בנייה', construction: 'בבנייה', planning: 'תכנון', deposited: 'הופקדה', approved: 'אושרה' };
+            const th = (label, field) => '<th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortComplexesBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'#fbbf24':'#475569') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
                 + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">שם מתחם</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">עיר</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס תכנון</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס הפרוייקט</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">יחידות קיים</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">יחידות מתוכנן</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">ציון IAI</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">פרמייה תיאורטית</th>'
+                + th('שם מתחם','name') + th('עיר','city') + th('סטטוס תכנון','status') + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס הפרוייקט</th>'
+                + th('יחידות קיים','units_count') + th('יחידות מתוכנן','planned_units') + th('ציון IAI','iai_score') + th('פרמייה תיאורטית','theoretical_premium_min')
                 + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כתובת</th>'
                 + '</tr></thead><tbody>'
                 + complexes.map((c, i) => {
@@ -1118,22 +1173,32 @@ function generateDashboardHTML(stats) {
             } catch (e) { container.innerHTML = errorHTML(e.message, 'loadKones()'); }
         }
 
+        let _konesData = [], _konesSortField = 'created_at', _konesSortDir = 'desc';
+        function sortKonesBy(field) {
+            if (_konesSortField === field) _konesSortDir = _konesSortDir === 'asc' ? 'desc' : 'asc';
+            else { _konesSortField = field; _konesSortDir = 'desc'; }
+            renderKonesTable(_konesData);
+        }
         function renderKonesTable(kones) {
+            _konesData = kones;
             const container = document.getElementById('kones-list');
             if (!kones.length) { container.innerHTML = '<div class="loading">אין כינוסי נכסים בסינון זה</div>'; return; }
+            // Sort
+            const sf = _konesSortField, sd = _konesSortDir;
+            kones = [...kones].sort((a,b) => {
+                let va = a[sf], vb = b[sf];
+                if (va == null) va = ''; if (vb == null) vb = '';
+                if (!isNaN(parseFloat(va)) && !isNaN(parseFloat(vb))) { va = parseFloat(va); vb = parseFloat(vb); }
+                if (sd === 'asc') return va > vb ? 1 : va < vb ? -1 : 0;
+                return va < vb ? 1 : va > vb ? -1 : 0;
+            });
             const statusLabel = { pending: 'ממתין', contacted: 'נוצר קשר', failed: 'נכשל', landline: 'קו ארץ', no_phone: 'אין טלפון' };
             const statusColors = { pending: '#f59e0b', contacted: '#22c55e', failed: '#ef4444', landline: '#6b7280', no_phone: '#374151' };
+            const th = (label, field) => '<th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortKonesBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'#fbbf24':'#475569') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
                 + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כותרת המודעה</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כתובת</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">עיר</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">טלפון</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">מחיר</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">סטטוס</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">כונס</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">ניסיונות</th>'
-                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">גוש/חלקה</th>'
+                + th('כותרת','title') + th('כתובת','address') + th('עיר','city') + th('טלפון','phone') + th('מחיר','price') + th('סטטוס','contact_status')
+                + th('כונס','contact_person') + th('ניסיונות','contact_attempts') + th('גוש/חלקה','gush_helka')
                 + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">קישור</th>'
                 + '</tr></thead><tbody>'
                 + kones.map((k, i) => {
@@ -1299,6 +1364,14 @@ function generateDashboardHTML(stats) {
             renderSchedulingTable(schedulingData, stateFilter, langFilter);
         }
 
+        let _schedSortField = 'last_message_at', _schedSortDir = 'desc';
+        function sortSchedBy(field) {
+            if (_schedSortField === field) _schedSortDir = _schedSortDir === 'asc' ? 'desc' : 'asc';
+            else { _schedSortField = field; _schedSortDir = 'desc'; }
+            const sf2 = document.getElementById('sched-filter-state')?.value || '';
+            const lf2 = document.getElementById('sched-filter-lang')?.value || '';
+            renderSchedulingTable(schedulingData, sf2, lf2);
+        }
         function renderSchedulingTable(rows, stateFilter, langFilter) {
             const list = document.getElementById('sched-list');
             const search = (document.getElementById('sched-search')?.value || '').toLowerCase();
@@ -1312,24 +1385,41 @@ function generateDashboardHTML(stats) {
                 }
                 return true;
             });
+            // Sort
+            const sf = _schedSortField, sd = _schedSortDir;
+            filtered = [...filtered].sort((a,b) => {
+                let va = a[sf], vb = b[sf];
+                if (va == null) va = ''; if (vb == null) vb = '';
+                if (!isNaN(parseFloat(va)) && !isNaN(parseFloat(vb))) { va = parseFloat(va); vb = parseFloat(vb); }
+                if (sd === 'asc') return va > vb ? 1 : va < vb ? -1 : 0;
+                return va < vb ? 1 : va > vb ? -1 : 0;
+            });
             if (!filtered.length) { list.innerHTML = '<div style="color:#64748b;padding:20px;text-align:center;">אין נתונים תואמים לסינון</div>'; return; }
-            const stateLabel = { confirmed: '<span style="color:#34d399;font-weight:700;">✅ מאושר</span>', pending: '<span style="color:#fbbf24;">⏳ ממתין</span>', declined: '<span style="color:#f87171;">❌ סירב</span>', cancelled: '<span style="color:#94a3b8;">🚫 בוטל</span>', no_answer: '<span style="color:#f87171;">📵 לא ענה</span>' };
+            const stateColors = { confirmed: '#22c55e', pending: '#f59e0b', declined: '#ef4444', cancelled: '#6b7280', no_answer: '#ef4444' };
+            const stateHe = { confirmed: '✅ מאושר', pending: '⏳ ממתין', declined: '❌ סירב', cancelled: '🚫 בוטל', no_answer: '📵 לא ענה' };
             const langLabel = { he: '🇮🇱', ru: '🇷🇺' };
+            const typeMap = { signing_ceremony: 'כנס חתימות', consultation: 'ייעוץ', appraiser: 'שמאי', surveyor: 'מודד', physical: 'פגישה' };
+            const th = (label, field) => '<th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortSchedBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'#fbbf24':'#475569') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             const rows_html = filtered.map(r => {
                 const phoneClean = (r.phone || '').replace(/\D/g,'');
                 const meetingType = r.meeting_type || r.campaign_meeting_type || '';
-                const typeMap = { signing_ceremony: 'כנס חתימות', consultation: 'ייעוץ', appraiser: 'שמאי', surveyor: 'מודד', physical: 'פגישה' };
-                return '<div class="data-item" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:center;padding:12px 16px;">'
-                    + '<div><div style="font-weight:600;font-size:14px;">' + (r.contact_name || 'לא ידוע') + '</div><div style="font-size:12px;color:#64748b;">' + (r.phone || '') + ' ' + (langLabel[r.language] || '') + '</div></div>'
-                    + '<div>' + (stateLabel[r.state] || '<span style="color:#94a3b8;">' + (r.state || '') + '</span>') + '</div>'
-                    + '<div style="font-size:12px;color:#94a3b8;">' + (typeMap[meetingType] || meetingType || '—') + '</div>'
-                    + '<div style="font-size:12px;color:#60a5fa;">' + (r.slot_display || (r.last_message_at ? new Date(r.last_message_at).toLocaleString('he-IL') : '—')) + '</div>'
-                    + '<button class="btn inforu-btn" data-phone="' + phoneClean + '" data-name="' + (r.contact_name||'') + '" style="padding:6px 12px;font-size:12px;background:#064e3b;border-color:#34d399;color:#34d399;white-space:nowrap;">📱 שלח</button>'
-                    + '</div>';
+                const stColor = stateColors[r.state] || '#6b7280';
+                const stHe = stateHe[r.state] || (r.state || '—');
+                const dateStr = r.slot_display || (r.last_message_at ? new Date(r.last_message_at).toLocaleString('he-IL') : '—');
+                return '<tr style="border-bottom:1px solid #1e293b;" class="trow">'
+                    + '<td style="padding:9px 12px;font-weight:600;">' + (r.contact_name || 'לא ידוע') + '</td>'
+                    + '<td style="padding:9px 12px;">' + (r.phone ? '<a href="tel:' + r.phone + '" style="color:#3b82f6;">' + r.phone + '</a>' : '—') + ' ' + (langLabel[r.language] || '') + '</td>'
+                    + '<td style="padding:9px 12px;"><span style="background:' + stColor + '22;color:' + stColor + ';padding:2px 8px;border-radius:4px;font-size:11px;">' + stHe + '</span></td>'
+                    + '<td style="padding:9px 12px;font-size:12px;color:#94a3b8;">' + (typeMap[meetingType] || meetingType || '—') + '</td>'
+                    + '<td style="padding:9px 12px;font-size:12px;color:#60a5fa;">' + dateStr + '</td>'
+                    + '<td style="padding:9px 12px;"><button class="btn inforu-btn" data-phone="' + phoneClean + '" data-name="' + (r.contact_name||'') + '" style="padding:6px 12px;font-size:12px;background:#064e3b;border-color:#34d399;color:#34d399;white-space:nowrap;">📱 שלח</button></td>'
+                    + '</tr>';
             }).join('');
-            const thead = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;font-size:12px;color:#94a3b8;font-weight:600;">'
-                + '<div>שם ושפה</div><div>סטטוס</div><div>סוג פגישה</div><div>מועד / עדכון אחרון</div><div>שליחה</div></div>';
-            list.innerHTML = '<div style="font-size:12px;color:#64748b;padding:8px 16px;border-bottom:1px solid #1e293b;">' + filtered.length + ' רשומות</div>' + thead + rows_html;
+            list.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+                + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
+                + th('שם','contact_name') + th('טלפון','phone') + th('סטטוס','state') + th('סוג פגישה','meeting_type') + th('מועד / עדכון','last_message_at')
+                + '<th style="padding:10px 12px;border-bottom:1px solid #334155;">שליחה</th>'
+                + '</tr></thead><tbody>' + rows_html + '</tbody></table></div>';
         }
 
         async function sendInforu(phone, name) {

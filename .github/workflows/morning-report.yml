@@ -1,0 +1,127 @@
+name: QUANTUM Morning Report
+
+on:
+  schedule:
+    # Daily at 05:30 UTC = 07:30 Israel time (UTC+2)
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual trigger'
+        required: false
+        default: 'Manual send'
+
+jobs:
+  send-morning-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Send QUANTUM Morning Intelligence Report
+        env:
+          RAILWAY_API_URL: ${{ secrets.RAILWAY_API_URL }}
+          INFORU_USERNAME: ${{ secrets.INFORU_USERNAME }}
+          INFORU_PASSWORD: ${{ secrets.INFORU_PASSWORD }}
+          QUANTUM_REPORT_PHONE: ${{ secrets.QUANTUM_REPORT_PHONE }}
+        run: |
+          python3 << 'PYEOF'
+          import urllib.request, json, os, sys, time
+
+          API_URL = os.environ.get('RAILWAY_API_URL', 'https://pinuy-binuy-analyzer-production.up.railway.app')
+          INFORU_USER = os.environ.get('INFORU_USERNAME', '')
+          INFORU_PASS = os.environ.get('INFORU_PASSWORD', '')
+          REPORT_PHONE = os.environ.get('QUANTUM_REPORT_PHONE', '')
+          import base64
+
+          def send_failure_alert(reason):
+              """Send WhatsApp alert when morning report fails"""
+              if not INFORU_USER or not INFORU_PASS or not REPORT_PHONE:
+                  print(f"[MorningReport] Cannot send failure alert - missing credentials")
+                  return
+              auth = base64.b64encode(f"{INFORU_USER}:{INFORU_PASS}".encode()).decode()
+              msg = (
+                  f"⚠️ *QUANTUM Morning Report - שגיאה*\n\n"
+                  f"הדוח היומי לא נשלח הבוקר.\n\n"
+                  f"*סיבה:* {reason}\n\n"
+                  f"בדוק את הלוגים ב-Railway:\n"
+                  f"{API_URL}/health"
+              )
+              payload = json.dumps({
+                  "Data": {
+                      "Message": msg,
+                      "Phone": REPORT_PHONE.replace('+', '').replace('-', '').replace(' ', ''),
+                      "Settings": {
+                          "CustomerMessageId": f"morning_fail_{int(time.time())}",
+                          "CustomerParameter": "QUANTUM_MORNING_FAIL"
+                      }
+                  }
+              }).encode('utf-8')
+              try:
+                  req = urllib.request.Request(
+                      'https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat',
+                      data=payload,
+                      headers={
+                          'Content-Type': 'application/json',
+                          'Authorization': f'Basic {auth}'
+                      },
+                      method='POST'
+                  )
+                  resp = urllib.request.urlopen(req, timeout=15)
+                  result = json.loads(resp.read().decode('utf-8'))
+                  print(f"[MorningReport] Failure alert sent: StatusId={result.get('StatusId')}")
+              except Exception as e:
+                  print(f"[MorningReport] Could not send failure alert: {e}")
+
+          print(f"[MorningReport] Triggering daily morning report via Railway API...")
+          print(f"[MorningReport] Target: {API_URL}/api/morning/send")
+
+          req = urllib.request.Request(
+              f"{API_URL}/api/morning/send",
+              data=b'{}',
+              headers={
+                  'Content-Type': 'application/json',
+                  'User-Agent': 'GitHub-Actions-MorningReport/1.0',
+              },
+              method='POST'
+          )
+
+          try:
+              resp = urllib.request.urlopen(req, timeout=60)
+              result = json.loads(resp.read().decode('utf-8'))
+
+              if result.get('success'):
+                  stats = result.get('stats', {})
+                  wa = result.get('whatsapp', {})
+                  print(f"[MorningReport] ✅ SUCCESS!")
+                  print(f"[MorningReport] Stats: {stats}")
+                  print(f"[MorningReport] WhatsApp: sent={wa.get('sent', 0)}, total={wa.get('total', 0)}")
+                  if wa.get('skipped'):
+                      print(f"[MorningReport] WhatsApp skipped: {wa.get('reason', 'unknown')}")
+              else:
+                  error = result.get('error', 'Unknown error')
+                  print(f"[MorningReport] ❌ FAILED: {error}")
+                  send_failure_alert(error)
+                  sys.exit(1)
+
+          except urllib.error.HTTPError as e:
+              body = e.read().decode('utf-8', errors='replace')[:300]
+              reason = f"HTTP {e.code}: {body}"
+              print(f"[MorningReport] ❌ HTTP Error: {reason}")
+              send_failure_alert(reason)
+              sys.exit(1)
+          except urllib.error.URLError as e:
+              reason = f"Connection error: {e.reason}"
+              print(f"[MorningReport] ❌ {reason}")
+              send_failure_alert(reason)
+              sys.exit(1)
+          except Exception as e:
+              reason = f"{type(e).__name__}: {e}"
+              print(f"[MorningReport] ❌ Unexpected error: {reason}")
+              send_failure_alert(reason)
+              sys.exit(1)
+          PYEOF
+
+      - name: Report completion
+        if: always()
+        run: |
+          echo "Morning report workflow completed at $(date -u) ($(TZ=Asia/Jerusalem date))"

@@ -399,6 +399,43 @@ async function start() {
     logger.info('Reminder queue: ACTIVE');
   } catch (e) {}
 
+  // ── Morning Intelligence Report — daily at 07:30 Israel time (05:30 UTC) ──────
+  try {
+    const cron = require('node-cron');
+    const axios = require('axios');
+    cron.schedule('30 5 * * *', async () => {
+      try {
+        logger.info('[MorningReport] Triggering daily morning report...');
+        const result = await axios.post(
+          `http://localhost:${PORT}/api/morning/send`,
+          {},
+          { timeout: 60000 }
+        );
+        if (result.data && result.data.success) {
+          const wa = result.data.whatsapp || {};
+          logger.info(`[MorningReport] SUCCESS. WhatsApp: ${wa.sent || 0}/${wa.total || 0}`);
+        } else {
+          logger.warn('[MorningReport] Report returned failure:', result.data && result.data.error);
+        }
+      } catch (e) {
+        logger.error('[MorningReport] Cron error:', e.message);
+        try {
+          const { INFORU_USERNAME, INFORU_PASSWORD, QUANTUM_REPORT_PHONE } = process.env;
+          if (INFORU_USERNAME && INFORU_PASSWORD && QUANTUM_REPORT_PHONE) {
+            const auth = Buffer.from(`${INFORU_USERNAME}:${INFORU_PASSWORD}`).toString('base64');
+            await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
+              Data: {
+                Message: `\u26a0\ufe0f *QUANTUM Morning Report - \u05e9\u05d2\u05d9\u05d0\u05d4*\n\n\u05d4\u05d3\u05d5\u05d7 \u05d4\u05d9\u05d5\u05de\u05d9 \u05dc\u05d0 \u05e0\u05e9\u05dc\u05d7.\n*\u05e1\u05d9\u05d1\u05d4:* ${e.message}`,
+                Phone: QUANTUM_REPORT_PHONE.replace(/\D/g, ''),
+                Settings: { CustomerMessageId: `morning_fail_${Date.now()}`, CustomerParameter: 'QUANTUM_MORNING_FAIL' }
+              }
+            }, { headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` }, timeout: 15000, validateStatus: () => true });
+          }
+        } catch (_) {}
+      }
+    }, { timezone: 'UTC' });
+    logger.info('[MorningReport] ACTIVE - daily at 07:30 Israel time (05:30 UTC)');
+  } catch (e) { logger.warn('[MorningReport] Failed to start cron:', e.message); }
   try { require('./jobs/weeklyScanner').startScheduler(); } catch (e) {}
   try { require('./jobs/stuckScanWatcher').startWatcher(); } catch (e) {}
   try { require('./jobs/discoveryScheduler').startDiscoveryScheduler(); } catch (e) {}
