@@ -125,6 +125,7 @@ function loadAllRoutes() {
     { path: '/api/chat', file: 'routes/chatRoutes.js' },
     { path: '/api/intelligence', file: 'routes/intelligenceRoutes.js' },
     { path: '/api/facebook', file: 'routes/facebookRoute.js' },
+    { path: '/api/facebook', file: 'routes/facebookRoutes.js' },
     { path: '/api/messaging', file: 'routes/messagingRoutes.js' },
     { path: '/api/morning', file: 'routes/morningReportRoutes.js' },
     { path: '/api/vapi', file: 'routes/vapiRoutes.js' },
