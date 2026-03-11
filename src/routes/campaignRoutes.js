@@ -116,10 +116,17 @@ router.get('/scripts/preview', (req, res) => {
 router.get('/settings', async (req, res) => {
   try {
     const { getEscalationMinutes, getEscalationStats } = require('../services/waBotEscalationService');
-    const [minutes, stats] = await Promise.all([getEscalationMinutes(), getEscalationStats()]);
+    const [minutes, rawStats] = await Promise.all([getEscalationMinutes(), getEscalationStats()]);
+    // Normalize stats keys for UI compatibility
+    const stats = {
+      pending_escalation: parseInt(rawStats?.active_bot_leads) || 0,
+      escalated_total:    parseInt(rawStats?.total_escalated)  || 0,
+      total_bot_leads:    parseInt(rawStats?.total_bot_leads)  || 0,
+    };
     res.json({
       success: true,
-      wa_bot_escalation_minutes: minutes,
+      escalation_minutes: minutes,          // UI expects this key
+      wa_bot_escalation_minutes: minutes,   // alias for backwards compat
       wa_bot_escalation_enabled: minutes > 0,
       stats,
     });
@@ -138,7 +145,7 @@ router.patch('/settings', async (req, res) => {
     const { setEscalationMinutes } = require('../services/waBotEscalationService');
     const val = await setEscalationMinutes(wa_bot_escalation_minutes);
     logger.info(`[Settings] wa_bot_escalation_minutes set to ${val}`);
-    res.json({ success: true, wa_bot_escalation_minutes: val });
+    res.json({ success: true, escalation_minutes: val, wa_bot_escalation_minutes: val });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
