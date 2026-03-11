@@ -916,6 +916,52 @@ router.post('/yad2-reveal-phones', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/scan/komo-direct - Run komo direct scraper with phone reveal API
+router.post('/komo-direct', async (req, res) => {
+  try {
+    const { cities, maxPages = 2 } = req.body;
+    const scanLog = await pool.query(`INSERT INTO scan_logs (scan_type, status) VALUES ('komo_direct', 'running') RETURNING *`);
+    const scanId = scanLog.rows[0].id;
+    res.json({ message: 'komo direct scan triggered', scan_id: scanId });
+    (async () => {
+      try {
+        const { scanAll } = require('../services/komoDirectScraper');
+        const result = await scanAll({ cities, maxPages });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(), complexes_scanned = $1, summary = $2 WHERE id = $3`,
+          [result.total_inserted, `komo direct: ${result.total_inserted} new, ${result.total_phone_updated} phones updated`, scanId]
+        );
+      } catch (err) {
+        await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]);
+        logger.error('[komoDirect] Scan failed', { error: err.message });
+      }
+    })();
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/scan/komo-enrich-phones - Enrich existing komo listings with phone numbers
+router.post('/komo-enrich-phones', async (req, res) => {
+  try {
+    const { limit = 500 } = req.body;
+    const scanLog = await pool.query(`INSERT INTO scan_logs (scan_type, status) VALUES ('komo_phone_enrich', 'running') RETURNING *`);
+    const scanId = scanLog.rows[0].id;
+    res.json({ message: 'komo phone enrichment triggered', scan_id: scanId, limit });
+    (async () => {
+      try {
+        const { enrichExistingListings } = require('../services/komoDirectScraper');
+        const result = await enrichExistingListings(limit);
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(), complexes_scanned = $1, summary = $2 WHERE id = $3`,
+          [result.total, `komo phone enrich: ${result.enriched}/${result.total} phones found`, scanId]
+        );
+      } catch (err) {
+        await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]);
+        logger.error('[komoEnrichPhones] Failed', { error: err.message });
+      }
+    })();
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/scan/:id - MUST BE LAST (catch-all for numeric scan IDs)
 router.get('/:id', async (req, res) => {
   try {
