@@ -1,5 +1,5 @@
--- QUANTUM Event Scheduler — DB Schema v1.0
--- כנסי החתמה / מדידות / שמאות
+-- QUANTUM Event Scheduler — DB Schema v1.1
+-- Fix: use md5+random instead of gen_random_bytes (no pgcrypto required)
 
 CREATE TABLE IF NOT EXISTS quantum_events (
   id              SERIAL PRIMARY KEY,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS event_stations (
   pro_phone       TEXT,
   pro_email       TEXT,
   station_number  INTEGER,
-  token           TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(16), 'hex'),
+  token           TEXT NOT NULL UNIQUE DEFAULT md5(random()::text || clock_timestamp()::text),
   notes           TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS event_attendees (
   building_name   TEXT,
   compound_name   TEXT,
   status          TEXT NOT NULL DEFAULT 'pending',  -- pending | confirmed | cancelled | rescheduled | arrived | no_show
-  token           TEXT NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(16), 'hex'),
+  token           TEXT NOT NULL UNIQUE DEFAULT md5(random()::text || clock_timestamp()::text || random()::text),
   notes           TEXT,
   pro_notes       TEXT,
   wa_sent_at      TIMESTAMPTZ,
