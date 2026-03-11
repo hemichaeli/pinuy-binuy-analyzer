@@ -1520,3 +1520,4 @@ function generateDashboardHTML(stats) {
 }
 
 module.exports = router;
+// v4.94.0 - fix: dashboard button syntax error resolved Wed Mar 11 09:24:46 EDT 2026
