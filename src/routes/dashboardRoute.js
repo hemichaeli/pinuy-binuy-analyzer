@@ -1009,7 +1009,7 @@ function generateDashboardHTML(stats) {
             const typeLabel = { investor: '🏢 משקיע', owner: '🏠 מוכר', contact: '📩 פנייה' };
             const statusColors = { new: '#3b82f6', qualified: '#22c55e', contacted: '#f59e0b', closed: '#6b7280', rejected: '#ef4444' };
             const statusHe = { new: 'חדש', qualified: 'מוכשר', contacted: 'בתהליך', closed: 'סגור', rejected: 'נדחה' };
-            const th = (label, field) => '<th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-onclick="sortLeadsBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'#fbbf24':'#475569') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th style="padding:10px 12px;border-bottom:1px solid #334155;cursor:pointer;white-space:nowrap;" data-sort="' + field + '" data-onclick="sortLeadsBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'#fbbf24':'#475569') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
                 + '<thead><tr style="background:#1e293b;color:#94a3b8;text-align:right;">'
                 + th('שם','name') + th('טלפון','phone') + th('אימייל','email') + th('סטטוס','status') + th('מקור','source') + th('סוג','user_type')
