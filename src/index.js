@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.94.0';
-const BUILD = '2026-03-11-v4.94.0-event-scheduler';
+const VERSION = '4.95.0';
+const BUILD = '2026-03-11-v4.95.0-event-admin-ui';
 
 async function runAutoMigrations() {
   try {
@@ -65,7 +65,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://unpkg.com", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://fonts.googleapis.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://unpkg.com", "https://cdnjs.cloudflare.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
       imgSrc: ["'self'", "data:", "https://*.tile.openstreetmap.org", "https://*.basemaps.cartocdn.com"],
@@ -148,6 +148,7 @@ function loadAllRoutes() {
     { path: '/api/campaigns', file: 'routes/campaignRoutes.js' },
     // ── Event Scheduler ─────────────────────────────────────────────────────
     { path: '/events', file: 'routes/eventSchedulerRoutes.js' },
+    { path: '/events', file: 'routes/eventAdminRoute.js' },
   ];
 
   for (const { path: routePath, file } of routeFiles) {
@@ -296,7 +297,7 @@ app.get('/api/debug', async (req, res) => {
     wa_bot_escalation: escalationStatus,
     campaigns: 'UI at /campaigns | API at /api/campaigns | followup cron: every 2min',
     campaign_admin_panel: 'active at GET /api/scheduling/admin',
-    event_scheduler: `active | UI at /events | API at /api/events | ${JSON.stringify(eventStats)}`,
+    event_scheduler: `active | Admin UI at /events/admin | API at /events | ${JSON.stringify(eventStats)}`,
     professional_visits: 'POST /api/scheduling/visits | POST /api/scheduling/pre-register (auto-fetches buildings from Zoho)',
     schedule_optimization: `active | ${JSON.stringify(optimizationStats)}`,
     google_calendar: gcalStatus,
@@ -345,7 +346,6 @@ async function start() {
     logger.info('[IncomingWA] ACTIVE - polling INFORU every 60s');
   } catch (e) { logger.warn('[IncomingWA] Failed to start:', e.message); }
 
-  // ── Campaign Follow-up Cron — every 2 minutes ──────────────────────────────
   try {
     const cron = require('node-cron');
     const axios = require('axios');
@@ -359,7 +359,6 @@ async function start() {
     logger.info('[CampaignFollowup] ACTIVE - checking every 2 min');
   } catch (e) { logger.warn('[CampaignFollowup] Failed to start:', e.message); }
 
-  // ── WA Bot Escalation Cron — every 5 minutes ──────────────────────────────
   try {
     const cron = require('node-cron');
     const { runEscalation } = require('./services/waBotEscalationService');
@@ -406,7 +405,6 @@ async function start() {
     logger.info('Reminder queue: ACTIVE');
   } catch (e) {}
 
-  // ── Morning Intelligence Report — daily at 07:30 Israel time (05:30 UTC) ──────
   try {
     const cron = require('node-cron');
     const axios = require('axios');
@@ -439,6 +437,7 @@ async function start() {
     }, { timezone: 'UTC' });
     logger.info('[MorningReport] ACTIVE - daily at 07:30 Israel time (05:30 UTC)');
   } catch (e) { logger.warn('[MorningReport] Failed to start cron:', e.message); }
+
   try { require('./jobs/weeklyScanner').startScheduler(); } catch (e) {}
   try { require('./jobs/stuckScanWatcher').startWatcher(); } catch (e) {}
   try { require('./jobs/discoveryScheduler').startDiscoveryScheduler(); } catch (e) {}
