@@ -7,6 +7,14 @@
  * POST /api/scheduling/calendar/set-project         - Set google_calendar_id on project
  * POST /api/scheduling/calendar/test-event          - Create a test GCal event
  *
+ * Ceremony Calendars (one calendar per building):
+ * POST   /api/scheduling/calendar/ceremony/:id/create-calendars
+ *        - Creates a Google Calendar per building in the ceremony
+ *        - Shares each calendar with CEREMONY_SHARE_EMAIL (default: hemi.michaeli@gmail.com)
+ *        - Saves calendar IDs to ceremony_stations rows for that building
+ * DELETE /api/scheduling/calendar/ceremony/:id/delete-calendars
+ *        - Deletes all Google Calendars associated with the ceremony
+ *
  * Zoho Calendar:
  * GET  /api/scheduling/calendar/zoho/status         - Check Zoho Calendar config
  * GET  /api/scheduling/calendar/zoho/list           - List available Zoho calendars
@@ -40,7 +48,7 @@ try {
 }
 
 // ════════════════════════════════════════════════════════════
-// GOOGLE CALENDAR
+// GOOGLE CALENDAR — BASIC
 // ════════════════════════════════════════════════════════════
 
 router.get('/status', async (req, res) => {
@@ -144,10 +152,223 @@ router.post('/test-event', async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════
+// CEREMONY CALENDARS — per building
+// POST /ceremony/:id/create-calendars
+// DELETE /ceremony/:id/delete-calendars
+// ════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/scheduling/calendar/ceremony/:ceremonyId/create-calendars
+ *
+ * Creates one Google Calendar per unique building in the ceremony.
+ * Calendar name: "{buildingAddress} | {DD/MM/YY}"
+ * Shares each calendar with CEREMONY_SHARE_EMAIL env var (default hemi.michaeli@gmail.com).
+ * Saves the calendar ID to all ceremony_stations rows for that building.
+ *
+ * Body (optional): { shareEmail: "someone@gmail.com" }
+ */
+router.post('/ceremony/:ceremonyId/create-calendars', async (req, res) => {
+  const ceremonyId = parseInt(req.params.ceremonyId);
+  if (isNaN(ceremonyId)) return res.status(400).json({ error: 'Invalid ceremony ID' });
+
+  if (!gcalService?.isConfigured()) {
+    return res.status(503).json({ error: 'Google Calendar not configured on this server' });
+  }
+
+  const shareEmail = req.body?.shareEmail
+    || process.env.CEREMONY_SHARE_EMAIL
+    || 'hemi.michaeli@gmail.com';
+
+  try {
+    // Load ceremony info
+    const cerRes = await pool.query(
+      `SELECT id, name, ceremony_date FROM signing_ceremonies WHERE id = $1`,
+      [ceremonyId]
+    );
+    if (!cerRes.rows.length) return res.status(404).json({ error: 'Ceremony not found' });
+    const ceremony = cerRes.rows[0];
+
+    // Format date for calendar name: DD/MM/YY
+    const d = new Date(ceremony.ceremony_date);
+    const dateLabel = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+
+    // Get all unique buildings in this ceremony (from ceremony_stations)
+    const stRes = await pool.query(
+      `SELECT DISTINCT building_address
+       FROM ceremony_stations
+       WHERE ceremony_id = $1
+         AND building_address IS NOT NULL
+       ORDER BY building_address`,
+      [ceremonyId]
+    );
+
+    if (!stRes.rows.length) {
+      return res.status(400).json({ error: 'No buildings found for this ceremony. Create stations first.' });
+    }
+
+    const buildings = stRes.rows.map(r => r.building_address);
+    const results = [];
+
+    for (const building of buildings) {
+      const calName = `${building} | ${dateLabel}`;
+
+      // Check if calendar already exists for this building in this ceremony
+      const existCheck = await pool.query(
+        `SELECT google_calendar_id FROM ceremony_stations
+         WHERE ceremony_id = $1 AND building_address = $2
+           AND google_calendar_id IS NOT NULL
+         LIMIT 1`,
+        [ceremonyId, building]
+      );
+
+      if (existCheck.rows.length && existCheck.rows[0].google_calendar_id) {
+        results.push({
+          building,
+          calendar_name: calName,
+          calendar_id: existCheck.rows[0].google_calendar_id,
+          status: 'already_exists'
+        });
+        continue;
+      }
+
+      // Create the calendar
+      const calendarId = await gcalService.createCalendar(calName);
+      if (!calendarId) {
+        results.push({ building, calendar_name: calName, status: 'error_creating' });
+        continue;
+      }
+
+      // Share with the configured email (as writer so they can see all details)
+      await gcalService.shareCalendar(calendarId, shareEmail, 'writer');
+
+      // Save calendar ID to all stations of this building in this ceremony
+      await pool.query(
+        `UPDATE ceremony_stations
+         SET google_calendar_id = $1
+         WHERE ceremony_id = $2 AND building_address = $3`,
+        [calendarId, ceremonyId, building]
+      );
+
+      results.push({
+        building,
+        calendar_name: calName,
+        calendar_id: calendarId,
+        shared_with: shareEmail,
+        status: 'created'
+      });
+
+      logger.info(`[CalendarRoutes] Created calendar "${calName}" → ${calendarId}, shared with ${shareEmail}`);
+    }
+
+    const created = results.filter(r => r.status === 'created').length;
+    const existing = results.filter(r => r.status === 'already_exists').length;
+
+    res.json({
+      success: true,
+      ceremony_id: ceremonyId,
+      ceremony_name: ceremony.name,
+      ceremony_date: ceremony.ceremony_date,
+      shared_with: shareEmail,
+      calendars_created: created,
+      calendars_existing: existing,
+      buildings: results
+    });
+
+  } catch (err) {
+    logger.error('[CalendarRoutes] create-calendars error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/scheduling/calendar/ceremony/:ceremonyId/delete-calendars
+ *
+ * Deletes all Google Calendars associated with a ceremony's buildings.
+ * Clears the google_calendar_id from ceremony_stations.
+ */
+router.delete('/ceremony/:ceremonyId/delete-calendars', async (req, res) => {
+  const ceremonyId = parseInt(req.params.ceremonyId);
+  if (isNaN(ceremonyId)) return res.status(400).json({ error: 'Invalid ceremony ID' });
+
+  if (!gcalService?.isConfigured()) {
+    return res.status(503).json({ error: 'Google Calendar not configured on this server' });
+  }
+
+  try {
+    // Get all unique calendar IDs for this ceremony
+    const calRes = await pool.query(
+      `SELECT DISTINCT building_address, google_calendar_id
+       FROM ceremony_stations
+       WHERE ceremony_id = $1
+         AND google_calendar_id IS NOT NULL`,
+      [ceremonyId]
+    );
+
+    if (!calRes.rows.length) {
+      return res.json({ success: true, message: 'No calendars found for this ceremony', deleted: 0 });
+    }
+
+    const results = [];
+    for (const row of calRes.rows) {
+      const deleted = await gcalService.deleteCalendar(row.google_calendar_id);
+      results.push({
+        building: row.building_address,
+        calendar_id: row.google_calendar_id,
+        deleted
+      });
+    }
+
+    // Clear calendar IDs from DB
+    await pool.query(
+      `UPDATE ceremony_stations SET google_calendar_id = NULL WHERE ceremony_id = $1`,
+      [ceremonyId]
+    );
+
+    res.json({
+      success: true,
+      ceremony_id: ceremonyId,
+      deleted: results.filter(r => r.deleted).length,
+      results
+    });
+
+  } catch (err) {
+    logger.error('[CalendarRoutes] delete-calendars error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/scheduling/calendar/ceremony/:ceremonyId/calendars
+ * Returns current calendar assignments for a ceremony.
+ */
+router.get('/ceremony/:ceremonyId/calendars', async (req, res) => {
+  const ceremonyId = parseInt(req.params.ceremonyId);
+  if (isNaN(ceremonyId)) return res.status(400).json({ error: 'Invalid ceremony ID' });
+
+  try {
+    const r = await pool.query(
+      `SELECT DISTINCT building_address, google_calendar_id,
+              COUNT(*) OVER (PARTITION BY building_address) AS station_count
+       FROM ceremony_stations
+       WHERE ceremony_id = $1
+       ORDER BY building_address`,
+      [ceremonyId]
+    );
+
+    res.json({
+      ceremony_id: ceremonyId,
+      buildings: r.rows,
+      share_email: process.env.CEREMONY_SHARE_EMAIL || 'hemi.michaeli@gmail.com'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
 // ZOHO CALENDAR
 // ════════════════════════════════════════════════════════════
 
-// GET /zoho/status
 router.get('/zoho/status', async (req, res) => {
   const configured = zcalService?.isConfigured() || false;
 
@@ -172,12 +393,10 @@ router.get('/zoho/status', async (req, res) => {
   });
 });
 
-// GET /zoho/list  - list all calendars in the Zoho account
 router.get('/zoho/list', async (req, res) => {
   if (!zcalService?.isConfigured()) {
     return res.status(503).json({ ok: false, error: 'Zoho Calendar not configured' });
   }
-
   try {
     const result = await zcalService.listCalendars();
     res.json(result);
@@ -186,17 +405,10 @@ router.get('/zoho/list', async (req, res) => {
   }
 });
 
-// GET /zoho/test?calendarId=xxx
 router.get('/zoho/test', async (req, res) => {
   const { calendarId } = req.query;
-  if (!calendarId) {
-    return res.status(400).json({ error: 'calendarId query param required' });
-  }
-
-  if (!zcalService?.isConfigured()) {
-    return res.status(503).json({ ok: false, error: 'Zoho Calendar not configured' });
-  }
-
+  if (!calendarId) return res.status(400).json({ error: 'calendarId query param required' });
+  if (!zcalService?.isConfigured()) return res.status(503).json({ ok: false, error: 'Zoho Calendar not configured' });
   try {
     const result = await zcalService.testCalendarAccess(calendarId);
     res.json(result);
@@ -205,55 +417,29 @@ router.get('/zoho/test', async (req, res) => {
   }
 });
 
-// POST /zoho/set-project  { projectId, calendarId }
 router.post('/zoho/set-project', async (req, res) => {
   const { projectId, calendarId } = req.body;
-  if (!projectId || !calendarId) {
-    return res.status(400).json({ error: 'projectId and calendarId required' });
-  }
-
+  if (!projectId || !calendarId) return res.status(400).json({ error: 'projectId and calendarId required' });
   try {
-    // Test access first (non-blocking - warn but still save)
     let accessOk = false;
     if (zcalService?.testCalendarAccess) {
-      try {
-        const test = await zcalService.testCalendarAccess(calendarId);
-        accessOk = test.ok;
-      } catch (e) { /* ok */ }
+      try { const test = await zcalService.testCalendarAccess(calendarId); accessOk = test.ok; } catch (e) { /* ok */ }
     }
-
-    await pool.query(
-      `UPDATE projects SET zoho_calendar_id = $1 WHERE id = $2`,
-      [calendarId, projectId]
-    );
-
-    const proj = await pool.query(
-      `SELECT id, name, zoho_calendar_id FROM projects WHERE id = $1`,
-      [projectId]
-    );
-
+    await pool.query(`UPDATE projects SET zoho_calendar_id = $1 WHERE id = $2`, [calendarId, projectId]);
+    const proj = await pool.query(`SELECT id, name, zoho_calendar_id FROM projects WHERE id = $1`, [projectId]);
     res.json({
-      success: true,
-      project: proj.rows[0],
-      calendar_accessible: accessOk,
-      warning: !accessOk
-        ? `Could not verify access to Zoho Calendar "${calendarId}". Saved anyway - verify manually.`
-        : null
+      success: true, project: proj.rows[0], calendar_accessible: accessOk,
+      warning: !accessOk ? `Could not verify access to Zoho Calendar "${calendarId}". Saved anyway.` : null
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /zoho/test-event  { calendarId }
 router.post('/zoho/test-event', async (req, res) => {
   const { calendarId } = req.body;
   if (!calendarId) return res.status(400).json({ error: 'calendarId required' });
-
-  if (!zcalService?.isConfigured()) {
-    return res.status(503).json({ ok: false, error: 'Zoho Calendar not configured' });
-  }
-
+  if (!zcalService?.isConfigured()) return res.status(503).json({ ok: false, error: 'Zoho Calendar not configured' });
   try {
     const start = new Date(Date.now() + 60 * 60 * 1000);
     const uid = await zcalService.createEvent(calendarId, {
@@ -262,7 +448,6 @@ router.post('/zoho/test-event', async (req, res) => {
       durationMins: 15,
       description: 'Test event created by QUANTUM system. Can be deleted.'
     });
-
     if (uid) {
       res.json({ ok: true, uid, calendarId, message: 'Zoho Calendar test event created!' });
     } else {
@@ -277,7 +462,6 @@ router.post('/zoho/test-event', async (req, res) => {
 // SCHEDULING PROJECTS MANAGEMENT
 // ════════════════════════════════════════════════════════════
 
-// GET /projects - list all scheduling projects
 router.get('/projects', async (req, res) => {
   try {
     const r = await pool.query(
@@ -300,14 +484,9 @@ router.get('/projects', async (req, res) => {
   }
 });
 
-// POST /projects - create a new scheduling project
-// Body: { name: "שם הפרויקט" }
 router.post('/projects', async (req, res) => {
   const { name } = req.body;
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: 'name required' });
-  }
-
+  if (!name || !name.trim()) return res.status(400).json({ error: 'name required' });
   try {
     const r = await pool.query(
       `INSERT INTO projects (name) VALUES ($1) RETURNING id, name, google_calendar_id, zoho_calendar_id`,
@@ -322,21 +501,15 @@ router.post('/projects', async (req, res) => {
       ]
     });
   } catch (err) {
-    // duplicate name check
-    if (err.code === '23505') {
-      return res.status(409).json({ error: `Project with name "${name.trim()}" already exists` });
-    }
+    if (err.code === '23505') return res.status(409).json({ error: `Project with name "${name.trim()}" already exists` });
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE /projects/:id - delete a scheduling project (only if no campaigns)
 router.delete('/projects/:id', async (req, res) => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project id' });
-
   try {
-    // Safety check: don't delete if campaigns are linked
     const campaigns = await pool.query(
       `SELECT COUNT(*) AS cnt FROM campaign_schedule_config WHERE project_id = $1`,
       [projectId]
@@ -346,14 +519,8 @@ router.delete('/projects/:id', async (req, res) => {
         error: `Cannot delete: project has ${campaigns.rows[0].cnt} campaign(s) linked. Unlink campaigns first.`
       });
     }
-
-    const result = await pool.query(
-      `DELETE FROM projects WHERE id = $1 RETURNING id, name`,
-      [projectId]
-    );
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
+    const result = await pool.query(`DELETE FROM projects WHERE id = $1 RETURNING id, name`, [projectId]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Project not found' });
     res.json({ success: true, deleted: result.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
