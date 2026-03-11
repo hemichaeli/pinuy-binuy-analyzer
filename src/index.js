@@ -100,6 +100,7 @@ function loadAllRoutes() {
   const routeFiles = [
     { path: '/dashboard', file: 'routes/dashboardRoute.js' },
     { path: '/sandbox', file: 'routes/sandboxRoute.js' },
+    { path: '/campaigns', file: 'routes/campaignDashboardRoute.js' },
     { path: '/booking', file: 'routes/bookingRoute.js' },
     { path: '/cal', file: 'routes/calRoute.js' },
     { path: '/api/projects', file: 'routes/projects.js' },
@@ -272,7 +273,7 @@ app.get('/api/debug', async (req, res) => {
   try { const zcal = require('./services/zohoCalendarService'); zcalStatus = zcal.isConfigured() ? 'configured (Zoho OAuth)' : 'credentials missing'; } catch (e) { zcalStatus = 'service error'; }
   res.json({
     version: VERSION, build: BUILD, timestamp: new Date().toISOString(),
-    campaigns: 'active at /api/campaigns | followup cron: every 2min',
+    campaigns: 'UI at /campaigns | API at /api/campaigns | followup cron: every 2min',
     campaign_admin_panel: 'active at GET /api/scheduling/admin',
     professional_visits: 'POST /api/scheduling/visits | POST /api/scheduling/pre-register (auto-fetches buildings from Zoho)',
     schedule_optimization: `active | ${JSON.stringify(optimizationStats)}`,
