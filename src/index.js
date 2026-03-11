@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.95.0';
-const BUILD = '2026-03-11-v4.95.0-event-admin-ui';
+const VERSION = '4.95.1';
+const BUILD = '2026-03-11-v4.95.1-event-admin-fix';
 
 async function runAutoMigrations() {
   try {
@@ -146,9 +146,9 @@ function loadAllRoutes() {
     { path: '/api/users', file: 'routes/userRoutes.js' },
     { path: '/api/docs', file: 'routes/docsRoute.js' },
     { path: '/api/campaigns', file: 'routes/campaignRoutes.js' },
-    // ── Event Scheduler ─────────────────────────────────────────────────────
-    { path: '/events', file: 'routes/eventSchedulerRoutes.js' },
+    // ── Event Scheduler — Admin UI MUST come before scheduler (avoids :id conflict) ──
     { path: '/events', file: 'routes/eventAdminRoute.js' },
+    { path: '/events', file: 'routes/eventSchedulerRoutes.js' },
   ];
 
   for (const { path: routePath, file } of routeFiles) {
@@ -241,10 +241,9 @@ async function checkVapiKeytermsSupport() {
     if (Array.isArray(returned) && returned.length > 0) {
       logger.info('[VapiKeyterms] SUPPORTED! Applying keyterms to all 5 agents...');
       const fullBody = { transcriber: { provider: 'deepgram', model: 'nova-3', language: 'he', keyterms: VAPI_QUANTUM_KEYTERMS } };
-      let success = 0;
       for (const agentId of VAPI_AGENT_IDS) {
         if (!agentId) continue;
-        try { await axios.patch(`https://api.vapi.ai/assistant/${agentId}`, fullBody, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }); success++; } catch (e) { logger.warn(`[VapiKeyterms] Failed to update agent ${agentId}:`, e.message); }
+        try { await axios.patch(`https://api.vapi.ai/assistant/${agentId}`, fullBody, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } }); } catch (e) { logger.warn(`[VapiKeyterms] Failed to update agent ${agentId}:`, e.message); }
       }
     } else {
       logger.info('[VapiKeyterms] Not yet supported - will check again in 3 days');
@@ -279,8 +278,6 @@ app.get('/api/debug', async (req, res) => {
   const failed = routeLoadResults.filter(r => r.status === 'failed');
   let backupStatus = 'unknown';
   try { const { getBackupStats } = require('./services/backupService'); const s = await getBackupStats(); backupStatus = `active (${s.totalBackups} backups, ${s.totalSizeMB}MB)`; } catch (e) { backupStatus = 'failed'; }
-  let notificationStats = {};
-  try { notificationStats = require('./services/notificationService').getStats(); } catch (e) {}
   let optimizationStats = {};
   try { const { rows } = await pool.query(`SELECT status, COUNT(*) AS total FROM reschedule_requests GROUP BY status`); optimizationStats = Object.fromEntries(rows.map(r => [r.status, parseInt(r.total)])); } catch (e) {}
   let gcalStatus = 'not configured';
@@ -296,9 +293,8 @@ app.get('/api/debug', async (req, res) => {
     wa_bot: 'רן מ-QUANTUM v7.0 | persona: רן | overlapping scripts with Vapi',
     wa_bot_escalation: escalationStatus,
     campaigns: 'UI at /campaigns | API at /api/campaigns | followup cron: every 2min',
-    campaign_admin_panel: 'active at GET /api/scheduling/admin',
     event_scheduler: `active | Admin UI at /events/admin | API at /events | ${JSON.stringify(eventStats)}`,
-    professional_visits: 'POST /api/scheduling/visits | POST /api/scheduling/pre-register (auto-fetches buildings from Zoho)',
+    professional_visits: 'POST /api/scheduling/visits | POST /api/scheduling/pre-register',
     schedule_optimization: `active | ${JSON.stringify(optimizationStats)}`,
     google_calendar: gcalStatus,
     zoho_calendar: zcalStatus,
@@ -350,11 +346,8 @@ async function start() {
     const cron = require('node-cron');
     const axios = require('axios');
     cron.schedule('*/2 * * * *', async () => {
-      try {
-        await axios.post(`http://localhost:${PORT}/api/campaigns/followup/run`, {}, { timeout: 30000 });
-      } catch (e) {
-        if (e.code !== 'ECONNREFUSED') { logger.warn('[CampaignFollowup] Cron error:', e.message); }
-      }
+      try { await axios.post(`http://localhost:${PORT}/api/campaigns/followup/run`, {}, { timeout: 30000 }); }
+      catch (e) { if (e.code !== 'ECONNREFUSED') { logger.warn('[CampaignFollowup] Cron error:', e.message); } }
     });
     logger.info('[CampaignFollowup] ACTIVE - checking every 2 min');
   } catch (e) { logger.warn('[CampaignFollowup] Failed to start:', e.message); }
@@ -363,12 +356,10 @@ async function start() {
     const cron = require('node-cron');
     const { runEscalation } = require('./services/waBotEscalationService');
     cron.schedule('*/5 * * * *', async () => {
-      try {
-        const result = await runEscalation();
-        if (result.called > 0) { logger.info(`[WaBotEscalation] Escalated ${result.called} leads to Vapi`); }
-      } catch (e) { logger.warn('[WaBotEscalation] Cron error:', e.message); }
+      try { const result = await runEscalation(); if (result.called > 0) { logger.info(`[WaBotEscalation] Escalated ${result.called} leads to Vapi`); } }
+      catch (e) { logger.warn('[WaBotEscalation] Cron error:', e.message); }
     });
-    logger.info('[WaBotEscalation] ACTIVE - checking every 5 min | רן calls silent WA leads');
+    logger.info('[WaBotEscalation] ACTIVE - checking every 5 min');
   } catch (e) { logger.warn('[WaBotEscalation] Failed to start:', e.message); }
 
   try {
