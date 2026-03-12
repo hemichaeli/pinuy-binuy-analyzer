@@ -1,0 +1,112 @@
+name: Daily Complex Address Scan
+
+on:
+  schedule:
+    # Daily at 06:00 UTC = 08:00 Israel time (UTC+2)
+    # Runs BEFORE morning report (07:30) so new listings are ready
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max complexes to scan (default: 729 = all)'
+        required: false
+        default: '729'
+      min_iai:
+        description: 'Minimum IAI score filter (default: 0 = all)'
+        required: false
+        default: '0'
+
+jobs:
+  scan-complex-addresses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Trigger Complex Address Scan
+        env:
+          RAILWAY_API_URL: ${{ secrets.RAILWAY_API_URL }}
+        run: |
+          python3 << 'PYEOF'
+          import urllib.request, json, os, sys, time
+
+          API_URL = os.environ.get('RAILWAY_API_URL', 'https://pinuy-binuy-analyzer-production.up.railway.app')
+          LIMIT = int('${{ github.event.inputs.limit || 729 }}')
+          MIN_IAI = int('${{ github.event.inputs.min_iai || 0 }}')
+
+          print(f"[ComplexScan] Starting daily complex address scan...")
+          print(f"[ComplexScan] Target: {API_URL}/api/scan/complex-address")
+          print(f"[ComplexScan] Limit: {LIMIT} complexes, MinIAI: {MIN_IAI}")
+
+          # Trigger the scan
+          payload = json.dumps({
+              "limit": LIMIT,
+              "minIai": MIN_IAI,
+              "onlyNew": False
+          }).encode('utf-8')
+
+          req = urllib.request.Request(
+              f"{API_URL}/api/scan/complex-address",
+              data=payload,
+              headers={
+                  'Content-Type': 'application/json',
+                  'User-Agent': 'GitHub-Actions-ComplexScan/1.0',
+              },
+              method='POST'
+          )
+
+          try:
+              resp = urllib.request.urlopen(req, timeout=30)
+              result = json.loads(resp.read().decode('utf-8'))
+              scan_id = result.get('scan_id')
+              print(f"[ComplexScan] ✅ Scan triggered! scan_id={scan_id}")
+          except Exception as e:
+              print(f"[ComplexScan] ❌ Failed to trigger scan: {e}")
+              sys.exit(1)
+
+          # Poll for completion (max 25 minutes)
+          max_wait = 25 * 60  # 25 minutes
+          poll_interval = 30  # check every 30 seconds
+          elapsed = 0
+
+          print(f"[ComplexScan] Polling for completion (scan_id={scan_id})...")
+
+          while elapsed < max_wait:
+              time.sleep(poll_interval)
+              elapsed += poll_interval
+
+              try:
+                  req = urllib.request.Request(
+                      f"{API_URL}/api/scan/{scan_id}",
+                      headers={'User-Agent': 'GitHub-Actions-ComplexScan/1.0'},
+                      method='GET'
+                  )
+                  resp = urllib.request.urlopen(req, timeout=20)
+                  status = json.loads(resp.read().decode('utf-8'))
+                  scan_status = status.get('status')
+                  complexes_done = status.get('complexes_scanned', 0)
+                  new_listings = status.get('new_listings', 0)
+                  summary = status.get('summary', '')
+
+                  print(f"[ComplexScan] [{elapsed}s] status={scan_status} complexes={complexes_done} new={new_listings} | {summary[:80]}")
+
+                  if scan_status == 'completed':
+                      print(f"[ComplexScan] ✅ COMPLETED!")
+                      print(f"[ComplexScan] Summary: {summary}")
+                      sys.exit(0)
+                  elif scan_status == 'failed':
+                      errors = status.get('errors', 'Unknown error')
+                      print(f"[ComplexScan] ❌ FAILED: {errors}")
+                      sys.exit(1)
+
+              except Exception as e:
+                  print(f"[ComplexScan] Poll error (will retry): {e}")
+                  continue
+
+          print(f"[ComplexScan] ⚠️ Timeout after {max_wait}s - scan may still be running")
+          sys.exit(0)  # Don't fail - scan continues in background
+          PYEOF
+
+      - name: Report completion
+        if: always()
+        run: |
+          echo "Complex address scan workflow completed at $(date -u) ($(TZ=Asia/Jerusalem date))"
