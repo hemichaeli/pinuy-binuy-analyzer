@@ -382,6 +382,19 @@ function initScheduler() {
     }, { timezone: 'Asia/Jerusalem' })
   );
 
+  // Complex Address Scan: Daily 06:00 (Homeless/Yad1/Winwin - before morning report)
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 6 * * *', async () => {
+      if (!isEnrichmentDay()) return;
+      logger.info('[SCHEDULER] Daily complex address scan (Homeless/Yad1/Winwin)');
+      try {
+        const complexScraper = require('../services/complexAddressScraper');
+        const result = await complexScraper.scanAll({ limit: 729, minIai: 0, onlyNew: false });
+        logger.info(`[SCHEDULER] Complex scan done: ${result.total_inserted} new, ${result.total_updated} updated across ${result.total_complexes} complexes`);
+      } catch (e) { logger.warn('[SCHEDULER] Complex address scan failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
   // Morning Intelligence Report: Daily 07:30 (after listings scan at 07:00)
   schedulerState.scheduledTasks.push(
     cron.schedule('30 7 * * *', async () => {
