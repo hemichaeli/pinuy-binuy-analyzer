@@ -1,37 +1,43 @@
 /**
- * QUANTUM Professional Visits Routes v1.1
+ * QUANTUM Professional Visits Routes v1.2
  *
  * POST /api/scheduling/pre-register
  *   Called by Zoho Workflow when WA is sent to a contact.
- *   Pre-populates bot_sessions with address + campaign info.
- *
- *   v1.1: If campaign_buildings is not sent (or empty), the backend
- *   automatically fetches buildings from Zoho relatedlist5.
- *   Results are cached in-memory for 10 minutes per campaign_id
- *   to avoid repeated Zoho API calls when many contacts are registered
- *   at the same time.
+ *   v1.1: Auto-fetches buildings from Zoho relatedlist5.
+ *   v1.2: Generates booking token + schedules no-reply follow-up reminders.
+ *         Returns booking_url so Zoho can embed it in the WA template.
  *
  * POST /api/scheduling/visits
  *   Admin creates a professional visit (appraiser/surveyor).
- *   Auto-generates meeting_slots per professional.
  *
  * GET  /api/scheduling/visits?campaign_id=xxx
  *   List visits for a campaign.
  *
  * GET  /api/scheduling/visits/:id/report
- *   Export booked slots for a visit (for admin/field use).
+ *   Export booked slots for a visit.
  *
  * GET  /api/scheduling/campaigns/:campaignId/buildings
  *   Returns buildings linked to a Zoho campaign (via relatedlist5).
  */
 
 const express = require('express');
-const router = express.Router();
-const pool = require('../db/pool');
+const router  = express.Router();
+const pool    = require('../db/pool');
 const { logger } = require('../services/logger');
-const axios = require('axios');
+const axios   = require('axios');
+const crypto  = require('crypto');
 
-// ── In-memory buildings cache ────────────────────────────
+const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : 'https://pinuy-binuy-analyzer-production.up.railway.app';
+
+// ── Lazy migration: vapi_call_after_hours column ────────────
+pool.query(
+  `ALTER TABLE campaign_schedule_config
+   ADD COLUMN IF NOT EXISTS vapi_call_after_hours INTEGER DEFAULT 72`
+).catch(() => {});
+
+// ── In-memory buildings cache ────────────────────────────────
 // Key: campaign_id  Value: { buildings: [...], expiresAt: timestamp }
 const buildingsCache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -39,41 +45,30 @@ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 function getCachedBuildings(campaignId) {
   const entry = buildingsCache.get(campaignId);
   if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    buildingsCache.delete(campaignId);
-    return null;
-  }
+  if (Date.now() > entry.expiresAt) { buildingsCache.delete(campaignId); return null; }
   return entry.buildings;
 }
 
 function setCachedBuildings(campaignId, buildings) {
-  buildingsCache.set(campaignId, {
-    buildings,
-    expiresAt: Date.now() + CACHE_TTL_MS
-  });
+  buildingsCache.set(campaignId, { buildings, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
-// ── Helpers ──────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────
 
 /**
  * Parse property_addresses textarea into structured object.
  * Input:  "סמילצ'נסקי 3 דירה 9, ראשון לציון"
- * Output: { street: "סמילצ'נסקי", building: "3", apartment: "9",
- *            city: "ראשון לציון", normalized: "סמילצ'נסקי 3" }
+ * Output: { street, building, apartment, city, normalized }
  */
 function parsePropertyAddress(raw) {
   if (!raw || !raw.trim()) return null;
   const line = raw.split('\n')[0].trim();
-
   const aptMatch = line.match(/דירה\s+(\d+)/i);
   const apartment = aptMatch ? aptMatch[1] : null;
-
   const commaIdx = line.indexOf(',');
   const city = commaIdx > -1 ? line.substring(commaIdx + 1).trim() : null;
-
   const beforeComma = commaIdx > -1 ? line.substring(0, commaIdx) : line;
   const stripped = beforeComma.replace(/דירה\s+\d+/i, '').trim();
-
   const tokens = stripped.split(/\s+/).filter(Boolean);
   let building = null;
   let streetTokens = tokens;
@@ -81,14 +76,12 @@ function parsePropertyAddress(raw) {
     building = tokens[tokens.length - 1];
     streetTokens = tokens.slice(0, -1);
   }
-
   const street = streetTokens.join(' ');
   const normalized = building ? `${street} ${building}`.trim() : street;
-
   return { street, building, apartment, city, normalized };
 }
 
-// ── Zoho helpers ─────────────────────────────────────────
+// ── Zoho helpers ─────────────────────────────────────────────
 
 async function getZohoAccessToken() {
   const response = await axios.post('https://accounts.zoho.com/oauth/v2/token', null, {
@@ -104,30 +97,21 @@ async function getZohoAccessToken() {
   return response.data.access_token;
 }
 
-/**
- * Fetch buildings for a campaign from Zoho relatedlist5.
- * Returns array of address strings.
- * Uses in-memory cache — safe to call per-contact.
- */
 async function fetchCampaignBuildings(campaignId) {
-  // Check cache first
   const cached = getCachedBuildings(campaignId);
   if (cached) {
     logger.debug('[buildings-cache] hit', { campaignId, count: cached.length });
     return cached;
   }
-
   try {
     const token = await getZohoAccessToken();
     const response = await axios.get(
       `https://www.zohoapis.com/crm/v7/Campaigns/${campaignId}/relatedlist5`,
       { headers: { Authorization: `Zoho-oauthtoken ${token}` }, timeout: 10000 }
     );
-
     const buildings = (response.data?.data || []).map(b =>
       b.Building_Address || b.address || b.Name || b.name || ''
     ).filter(Boolean);
-
     setCachedBuildings(campaignId, buildings);
     logger.info('[buildings-cache] fetched from Zoho', { campaignId, count: buildings.length });
     return buildings;
@@ -137,25 +121,22 @@ async function fetchCampaignBuildings(campaignId) {
   }
 }
 
-// ── POST /pre-register ────────────────────────────────────
-
+// ── POST /pre-register ────────────────────────────────────────
 /**
- * Called by Zoho Workflow immediately when WA is dispatched to a contact.
+ * Called by Zoho Workflow when WA is dispatched to a contact.
  *
- * Minimum required body (Zoho Workflow sends this):
+ * Minimum payload:
  * {
- *   phone:             "0503016454",
- *   campaign_id:       "3552793000001234567",
- *   zoho_contact_id:   "3552793000005678901",
- *   contact_name:      "יצחק כגן",
- *   property_addresses:"סמילצ'נסקי 3 דירה 9, ראשון לציון",  // may be null
- *   campaign_end_date: "2026-06-30",
- *   campaign_status:   "Active",
- *   language:          "he"
+ *   phone, campaign_id, zoho_contact_id, contact_name,
+ *   property_addresses, campaign_end_date, campaign_status, language
  * }
  *
- * campaign_buildings is OPTIONAL — if not sent or empty, the backend
- * fetches buildings automatically from Zoho relatedlist5.
+ * Returns:
+ * {
+ *   success, building_address, apartment_number, campaign_buildings,
+ *   booking_url,   ← embed this in the Zoho WA template
+ *   booking_token
+ * }
  */
 router.post('/pre-register', async (req, res) => {
   try {
@@ -163,20 +144,19 @@ router.post('/pre-register', async (req, res) => {
       phone,
       campaign_id,
       zoho_contact_id,
-      contact_name = '',
+      contact_name       = '',
       property_addresses = null,
-      campaign_buildings,          // optional — auto-fetched if missing
-      campaign_end_date = null,
-      campaign_status = 'Active',
-      language = 'he'
+      campaign_buildings,
+      campaign_end_date  = null,
+      campaign_status    = 'Active',
+      language           = 'he'
     } = req.body;
 
     if (!phone || !campaign_id) {
       return res.status(400).json({ error: 'phone and campaign_id are required' });
     }
 
-    // ── Resolve buildings ──────────────────────────────────
-    // Priority: explicit in body → fetch from Zoho → empty
+    // ── Resolve buildings ────────────────────────────────────
     let resolvedBuildings = [];
     const buildingSource = { source: 'none', count: 0 };
 
@@ -184,18 +164,17 @@ router.post('/pre-register', async (req, res) => {
       resolvedBuildings = campaign_buildings;
       buildingSource.source = 'body';
     } else {
-      // Auto-fetch from Zoho (cached)
       resolvedBuildings = await fetchCampaignBuildings(campaign_id);
       buildingSource.source = resolvedBuildings.length > 0 ? 'zoho' : 'none';
     }
     buildingSource.count = resolvedBuildings.length;
 
-    // ── Parse address ──────────────────────────────────────
+    // ── Parse address ────────────────────────────────────────
     const parsed = parsePropertyAddress(property_addresses);
     const buildingAddress = parsed ? parsed.normalized : null;
     const apartmentNumber = parsed ? parsed.apartment : null;
 
-    // ── Upsert bot_session ─────────────────────────────────
+    // ── Upsert bot_session ───────────────────────────────────
     await pool.query(`
       INSERT INTO bot_sessions
         (phone, zoho_campaign_id, zoho_contact_id, language, state, context,
@@ -227,20 +206,98 @@ router.post('/pre-register', async (req, res) => {
       parsed?.building || null
     ]);
 
+    // ── Generate / ensure booking token ─────────────────────
+    const candidateToken = crypto.randomBytes(16).toString('hex');
+    await pool.query(
+      `UPDATE bot_sessions
+       SET booking_token = COALESCE(booking_token, $1)
+       WHERE phone = $2 AND zoho_campaign_id = $3`,
+      [candidateToken, phone, campaign_id]
+    );
+    const tokenRow = await pool.query(
+      `SELECT booking_token FROM bot_sessions WHERE phone=$1 AND zoho_campaign_id=$2`,
+      [phone, campaign_id]
+    );
+    const bookingToken = tokenRow.rows[0]?.booking_token || null;
+    const bookingUrl   = bookingToken ? `${BASE_URL}/booking/${bookingToken}` : null;
+
+    // ── Fetch campaign config for reminder timing ────────────
+    let config = {};
+    try {
+      const cfgRes = await pool.query(
+        `SELECT reminder_delay_hours, bot_followup_delay_hours,
+                vapi_call_after_hours, meeting_type
+         FROM campaign_schedule_config WHERE zoho_campaign_id=$1`,
+        [campaign_id]
+      );
+      config = cfgRes.rows[0] || {};
+    } catch (_) {
+      try {
+        const cfgRes = await pool.query(
+          `SELECT reminder_delay_hours, bot_followup_delay_hours, meeting_type
+           FROM campaign_schedule_config WHERE zoho_campaign_id=$1`,
+          [campaign_id]
+        );
+        config = cfgRes.rows[0] || {};
+      } catch (__) { /* use defaults */ }
+    }
+
+    const r1Hours   = config.reminder_delay_hours    || 24;
+    const r2Hours   = config.bot_followup_delay_hours || 48;
+    const callHours = config.vapi_call_after_hours    || 72;
+
+    // ── Delete stale pending no-reply reminders ──────────────
+    // (handles re-registration of same contact)
+    await pool.query(
+      `DELETE FROM reminder_queue
+       WHERE phone=$1 AND zoho_campaign_id=$2
+         AND reminder_type IN ('no_reply_reminder_1','no_reply_reminder_2','no_reply_vapi_call')
+         AND status='pending'`,
+      [phone, campaign_id]
+    ).catch(() => {});
+
+    // ── Schedule follow-up reminders ─────────────────────────
+    const now = new Date();
+    const rPayload = JSON.stringify({
+      contactName:     contact_name,
+      language,
+      meetingType:     config.meeting_type || '',
+      campaignName:    campaign_id,
+      bookingUrl,
+      buildingAddress: buildingAddress || null,
+    });
+
+    for (const [type, hours] of [
+      ['no_reply_reminder_1', r1Hours],
+      ['no_reply_reminder_2', r2Hours],
+      ['no_reply_vapi_call',  callHours],
+    ]) {
+      await pool.query(
+        `INSERT INTO reminder_queue
+           (phone, zoho_contact_id, zoho_campaign_id, reminder_type, scheduled_at, payload)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [phone, zoho_contact_id || null, campaign_id, type,
+         new Date(now.getTime() + hours * 3_600_000), rPayload]
+      ).catch(e => logger.warn('[pre-register] reminder insert failed', { type, error: e.message }));
+    }
+
     logger.info('[pre-register] session ready', {
       phone, campaign_id,
       buildingAddress, apartmentNumber,
       hasAddress: !!buildingAddress,
-      buildings: buildingSource
+      buildings: buildingSource,
+      remindersAt: { r1: `+${r1Hours}h`, r2: `+${r2Hours}h`, call: `+${callHours}h` }
     });
 
     res.json({
       success: true,
-      building_address: buildingAddress,
-      apartment_number: apartmentNumber,
-      campaign_buildings: resolvedBuildings,
-      buildings_source: buildingSource.source,
-      needs_building_selection: !buildingAddress && resolvedBuildings.length > 0
+      building_address:        buildingAddress,
+      apartment_number:        apartmentNumber,
+      campaign_buildings:      resolvedBuildings,
+      buildings_source:        buildingSource.source,
+      needs_building_selection: !buildingAddress && resolvedBuildings.length > 0,
+      booking_url:   bookingUrl,    // ← embed in Zoho WA template: {{booking_url}}
+      booking_token: bookingToken,  // ← for reference
     });
 
   } catch (err) {
@@ -249,7 +306,7 @@ router.post('/pre-register', async (req, res) => {
   }
 });
 
-// ── POST /visits — Create professional visit ──────────────
+// ── POST /visits — Create professional visit ──────────────────
 
 router.post('/visits', async (req, res) => {
   const client = await pool.connect();
@@ -335,7 +392,7 @@ router.post('/visits', async (req, res) => {
   }
 });
 
-// ── GET /visits ───────────────────────────────────────────
+// ── GET /visits ───────────────────────────────────────────────
 
 router.get('/visits', async (req, res) => {
   try {
@@ -377,26 +434,20 @@ router.get('/visits', async (req, res) => {
   }
 });
 
-// ── GET /visits/:id/report ────────────────────────────────
+// ── GET /visits/:id/report ────────────────────────────────────
 
 router.get('/visits/:id/report', async (req, res) => {
   try {
     const { id } = req.params;
-
     const visit = await pool.query(`SELECT * FROM professional_visits WHERE id = $1`, [id]);
     if (!visit.rows.length) return res.status(404).json({ error: 'Visit not found' });
 
     const slots = await pool.query(`
-      SELECT
-        ms.slot_datetime,
+      SELECT ms.slot_datetime,
         TO_CHAR(ms.slot_datetime, 'HH24:MI') AS time_str,
-        ms.status,
-        ms.contact_name,
-        ms.contact_phone,
-        ms.apartment_number,
-        ms.contact_address,
-        vp.professional_name,
-        ms.zoho_contact_id
+        ms.status, ms.contact_name, ms.contact_phone,
+        ms.apartment_number, ms.contact_address,
+        vp.professional_name, ms.zoho_contact_id
       FROM meeting_slots ms
       JOIN visit_professionals vp ON ms.visit_professional_id = vp.id
       WHERE vp.visit_id = $1
@@ -414,9 +465,9 @@ router.get('/visits/:id/report', async (req, res) => {
       visit: visit.rows[0],
       report: grouped,
       summary: {
-        total: slots.rows.length,
+        total:  slots.rows.length,
         booked: slots.rows.filter(s => s.status === 'confirmed').length,
-        open: slots.rows.filter(s => s.status === 'open').length
+        open:   slots.rows.filter(s => s.status === 'open').length
       }
     });
   } catch (err) {
@@ -425,23 +476,18 @@ router.get('/visits/:id/report', async (req, res) => {
   }
 });
 
-// ── GET /campaigns/:campaignId/buildings ─────────────────
+// ── GET /campaigns/:campaignId/buildings ──────────────────────
 
 router.get('/campaigns/:campaignId/buildings', async (req, res) => {
   try {
     const { campaignId } = req.params;
     const { bust_cache } = req.query;
-
-    // Allow cache bust via ?bust_cache=1
     if (bust_cache) buildingsCache.delete(campaignId);
-
     const buildings = await fetchCampaignBuildings(campaignId);
-    const source = getCachedBuildings(campaignId) ? 'cache' : 'zoho';
-
     res.json({
       buildings: buildings.map(addr => ({ address: addr, name: addr })),
       count: buildings.length,
-      source
+      source: getCachedBuildings(campaignId) ? 'cache' : 'zoho'
     });
   } catch (err) {
     logger.error('[campaigns/buildings] error', { error: err.message });
@@ -449,23 +495,20 @@ router.get('/campaigns/:campaignId/buildings', async (req, res) => {
   }
 });
 
-// ── Helpers ───────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────
 
 function generateTimeSlots(visitDate, startTime, endTime, stepMinutes, durationMinutes) {
   const slots = [];
   const [startH, startM] = startTime.split(':').map(Number);
-  const [endH, endM] = endTime.split(':').map(Number);
-
-  let current = startH * 60 + startM;
+  const [endH, endM]     = endTime.split(':').map(Number);
+  let current  = startH * 60 + startM;
   const endTotal = endH * 60 + endM;
-
   while (current + durationMinutes <= endTotal) {
     const h = String(Math.floor(current / 60)).padStart(2, '0');
     const m = String(current % 60).padStart(2, '0');
     slots.push({ time: `${h}:${m}`, datetime: `${visitDate}T${h}:${m}:00` });
     current += stepMinutes;
   }
-
   return slots;
 }
 
