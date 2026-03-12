@@ -290,7 +290,7 @@ app.get('/api/complexes', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
     const { rows } = await pool.query(
-      `SELECT id, name, address, city, iai_score, ssi_score, status, units_count, property_type, enrichment_status, developer
+      `SELECT id, name, addresses as address, city, neighborhood, iai_score, enhanced_ssi_score as ssi_score, status, existing_units as units_count, developer
        FROM complexes ORDER BY iai_score DESC NULLS LAST LIMIT $1`, [limit]
     );
     res.json(rows);
