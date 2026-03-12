@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.98.0';
-const BUILD = '2026-03-12-v4.98.0-enrichment-fix';
+const VERSION = '4.99.0';
+const BUILD = '2026-03-12-v4.99.0-facebook-groups';
 
 async function runAutoMigrations() {
   try {
