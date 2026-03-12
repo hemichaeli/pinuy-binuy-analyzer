@@ -990,6 +990,33 @@ router.post('/complex-address', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/scan/enrich-ads - Async Gemini+Perplexity enrichment for new listings
+router.post('/enrich-ads', async (req, res) => {
+  try {
+    const { limit = 100 } = req.body;
+    const scanLog = await pool.query(`INSERT INTO scan_logs (scan_type, status) VALUES ('ad_enrichment', 'running') RETURNING *`);
+    const scanId = scanLog.rows[0].id;
+    res.json({ message: 'Ad enrichment started', scan_id: scanId, limit });
+    // Run async
+    (async () => {
+      try {
+        const { enrichNewListings } = require('../services/adEnrichmentService');
+        const result = await enrichNewListings(parseInt(limit));
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+           new_listings = $1, summary = $2 WHERE id = $3`,
+          [result.enriched,
+           `Ad enrichment: ${result.enriched}/${result.total || 0} listings enriched (Gemini+Perplexity)`,
+           scanId]
+        );
+      } catch (err) {
+        await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]);
+        logger.error('[enrich-ads] Failed', { error: err.message });
+      }
+    })();
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/scan/:id - MUST BE LAST (catch-all for numeric scan IDs)
 router.get('/:id', async (req, res) => {
   try {
