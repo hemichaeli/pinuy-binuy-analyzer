@@ -962,6 +962,34 @@ router.post('/komo-enrich-phones', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/scan/complex-address - Scan complexes for listings on Homeless, Yad1, Winwin
+// Uses Perplexity Sonar to search by exact complex address
+router.post('/complex-address', async (req, res) => {
+  try {
+    const { limit = 50, minIai = 0, onlyNew = false, complexIds = null } = req.body;
+    const scanLog = await pool.query(`INSERT INTO scan_logs (scan_type, status) VALUES ('complex_address', 'running') RETURNING *`);
+    const scanId = scanLog.rows[0].id;
+    res.json({ message: 'Complex address scan started', scan_id: scanId, limit, minIai, onlyNew });
+    // Run async
+    (async () => {
+      try {
+        const complexAddressScraper = require('../services/complexAddressScraper');
+        const results = await complexAddressScraper.scanAll({ limit, minIai, onlyNew, complexIds });
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
+           new_listings = $1, summary = $2 WHERE id = $3`,
+          [results.total_inserted,
+           `Complex address scan: ${results.total_inserted} inserted, ${results.total_updated} updated across ${results.total_complexes} complexes`,
+           scanId]
+        );
+      } catch (err) {
+        await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]);
+        logger.error('[complex-address] Failed', { error: err.message });
+      }
+    })();
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET /api/scan/:id - MUST BE LAST (catch-all for numeric scan IDs)
 router.get('/:id', async (req, res) => {
   try {

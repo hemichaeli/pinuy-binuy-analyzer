@@ -473,6 +473,7 @@ async function start() {
     { name: 'Kones2', module: './services/kones2Scraper', cron: '0 9 * * *', fn: 'scanAll' },
     { name: 'BidSpirit', module: './services/bidspiritScraper', cron: '15 9 * * *', fn: 'scanAll' },
     { name: 'Govmap', module: './services/govmapScraper', cron: '0 7 * * 1', fn: 'scanAll' },
+    { name: 'ComplexAddress', module: './services/complexAddressScraper', cron: '30 9 * * *', fn: 'scanAll' },
   ];
   for (const def of scraperDefs) {
     try { const scraper = require(def.module); const cron = require('node-cron'); cron.schedule(def.cron, async () => { try { await scraper[def.fn](); } catch (e) {} }); logger.info(`[${def.name}Scraper] ACTIVE`); } catch (e) {}
