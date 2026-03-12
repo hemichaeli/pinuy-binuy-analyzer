@@ -306,4 +306,21 @@ router.post('/ads/bulk-insert', express.json(), async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Diagnostic endpoint - check DB state
+router.get('/ads/diag', async (req, res) => {
+  try {
+    // Check if unique index exists
+    const idx = await pool.query(`SELECT indexname FROM pg_indexes WHERE tablename='listings' AND indexname='idx_listings_source_id'`);
+    const cols = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name='listings' ORDER BY ordinal_position`);
+    // Try raw insert
+    const ts = Date.now();
+    let insertErr = null, insertResult = null;
+    try {
+      const r = await pool.query(`INSERT INTO listings (source,source_listing_id,url,description_snippet,first_seen,last_seen,is_active) VALUES ($1,$2,$3,$4,CURRENT_DATE,CURRENT_DATE,TRUE) ON CONFLICT (source,source_listing_id) DO UPDATE SET last_seen=CURRENT_DATE RETURNING id,(xmax=0) as is_new`, ['diag_test', `diag_${ts}`, `https://diag.test/${ts}`, 'test']);
+      insertResult = r.rows[0];
+    } catch(e) { insertErr = e.message; }
+    res.json({ unique_index_exists: idx.rows.length > 0, columns: cols.rows.map(r=>r.column_name), insert_test: insertResult, insert_error: insertErr });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;
