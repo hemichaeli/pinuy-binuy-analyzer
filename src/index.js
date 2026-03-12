@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.95.1';
-const BUILD = '2026-03-11-v4.95.1-event-admin-fix';
+const VERSION = '4.96.1';
+const BUILD = '2026-03-12-v4.96.1-no-reply-flow';
 
 async function runAutoMigrations() {
   try {
@@ -26,6 +26,15 @@ async function runAutoMigrations() {
     await pool.query(sql);
     logger.info('[MIGRATIONS] Auto-migrations completed');
   } catch (err) { logger.error('[MIGRATIONS] Failed:', err.message); }
+}
+
+async function runOutreachMigration() {
+  try {
+    await pool.query(`
+      ALTER TABLE listings ADD COLUMN IF NOT EXISTS call_scheduled_at TIMESTAMPTZ;
+    `);
+    logger.info('[MIGRATIONS] Outreach columns applied');
+  } catch (err) { logger.error('[MIGRATIONS] Outreach migration failed:', err.message); }
 }
 
 async function runSchedulingMigrations() {
@@ -84,6 +93,7 @@ const limiter = rateLimit({
   skip: (req) =>
     req.path.startsWith('/api/intelligence') || req.path === '/health' || req.path === '/api/debug' ||
     req.path.startsWith('/api/whatsapp/') || req.path.startsWith('/api/vapi/webhook') ||
+    req.path.startsWith('/api/vapi/book-slot') ||
     req.path.startsWith('/api/scheduling/') || req.path.startsWith('/api/backup/') ||
     req.path.startsWith('/api/notifications/') || req.path.startsWith('/api/search/') ||
     req.path.startsWith('/api/docs') || req.path.startsWith('/api/auto-contact') ||
@@ -91,7 +101,8 @@ const limiter = rateLimit({
     req.path.startsWith('/api/appointments/') || req.path.startsWith('/api/test/') ||
     req.path.startsWith('/api/visits/') || req.path.startsWith('/api/campaigns/') ||
     req.path.startsWith('/events/') || req.path.startsWith('/api/events/') ||
-    req.path.startsWith('/pro/') || req.path.startsWith('/attend/'),
+    req.path.startsWith('/pro/') || req.path.startsWith('/attend/') ||
+    req.path.startsWith('/api/outreach/'),
   message: { error: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
@@ -147,6 +158,7 @@ function loadAllRoutes() {
     { path: '/api/users', file: 'routes/userRoutes.js' },
     { path: '/api/docs', file: 'routes/docsRoute.js' },
     { path: '/api/campaigns', file: 'routes/campaignRoutes.js' },
+    { path: '/api/outreach', file: 'routes/outreachRoutes.js' },
     // ── Event Scheduler — Admin UI MUST come before scheduler (avoids :id conflict) ──
     { path: '/events', file: 'routes/eventAdminRoute.js' },
     { path: '/events', file: 'routes/eventSchedulerRoutes.js' },
@@ -227,6 +239,7 @@ const VAPI_AGENT_IDS = [
   process.env.VAPI_ASSISTANT_REMINDER,
   process.env.VAPI_ASSISTANT_COLD,
   process.env.VAPI_ASSISTANT_INBOUND,
+  process.env.VAPI_ASSISTANT_SCHEDULING,
 ];
 
 async function checkVapiKeytermsSupport() {
@@ -240,7 +253,7 @@ async function checkVapiKeytermsSupport() {
     const resp = await axios.patch(`https://api.vapi.ai/assistant/${testId}`, testBody, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
     const returned = resp.data?.transcriber?.keyterms;
     if (Array.isArray(returned) && returned.length > 0) {
-      logger.info('[VapiKeyterms] SUPPORTED! Applying keyterms to all 5 agents...');
+      logger.info('[VapiKeyterms] SUPPORTED! Applying keyterms to all agents...');
       const fullBody = { transcriber: { provider: 'deepgram', model: 'nova-3', language: 'he', keyterms: VAPI_QUANTUM_KEYTERMS } };
       for (const agentId of VAPI_AGENT_IDS) {
         if (!agentId) continue;
@@ -289,14 +302,21 @@ app.get('/api/debug', async (req, res) => {
   try { const { getEscalationMinutes } = require('./services/waBotEscalationService'); const m = await getEscalationMinutes(); escalationStatus = m === 0 ? 'disabled (0 min)' : `active (${m} min silence → Vapi call)`; } catch (e) { escalationStatus = 'error'; }
   let eventStats = {};
   try { const { rows } = await pool.query('SELECT COUNT(*) AS total FROM quantum_events'); eventStats = { total_events: parseInt(rows[0].total) }; } catch (e) {}
+  let outreachStats = {};
+  try { const { rows } = await pool.query(`SELECT COUNT(*) FILTER (WHERE message_status='sent') as wa_sent, COUNT(*) FILTER (WHERE message_status='replied') as replied FROM listings WHERE is_active=TRUE`); outreachStats = rows[0]; } catch (e) {}
+  let noReplyStats = {};
+  try { const { rows } = await pool.query(`SELECT reminder_type, status, COUNT(*) FROM reminder_queue WHERE reminder_type LIKE 'no_reply%' GROUP BY reminder_type, status ORDER BY reminder_type, status`); noReplyStats = rows; } catch (e) {}
   res.json({
     version: VERSION, build: BUILD, timestamp: new Date().toISOString(),
     wa_bot: 'רן מ-QUANTUM v7.0 | persona: רן | overlapping scripts with Vapi',
     wa_bot_escalation: escalationStatus,
+    no_reply_flow: 'active | R1(24h) → R2(48h) → Vapi call(72h) | configurable per campaign',
     campaigns: 'UI at /campaigns | API at /api/campaigns | followup cron: every 2min',
     event_scheduler: `active | Admin UI at /events/admin | API at /events | ${JSON.stringify(eventStats)}`,
+    outreach: `active | POST /api/outreach/send | ${JSON.stringify(outreachStats)}`,
     professional_visits: 'POST /api/scheduling/visits | POST /api/scheduling/pre-register',
     schedule_optimization: `active | ${JSON.stringify(optimizationStats)}`,
+    no_reply_queue: noReplyStats,
     google_calendar: gcalStatus,
     zoho_calendar: zcalStatus,
     incoming_whatsapp_poll: 'active - every 60s via INFORU PullData',
@@ -309,6 +329,7 @@ app.get('/', (req, res) => res.redirect('/dashboard'));
 async function start() {
   logger.info(`=== QUANTUM ANALYZER ${VERSION} ===`);
   await runAutoMigrations();
+  await runOutreachMigration();
   await runSchedulingMigrations();
   await runCampaignsMigration();
   await runEventsMigration();
@@ -333,6 +354,17 @@ async function start() {
     cron.schedule('45 7 * * *', async () => { try { await runKonesAutoContact(); } catch (e) { logger.warn('[KonesContact] Cron error:', e.message); } });
     logger.info('[AutoContact] ACTIVE - every 30 min');
   } catch (e) { logger.warn('[AutoContact] Failed to start:', e.message); }
+
+  // Outreach: WA-then-call scheduler (every 30 min)
+  try {
+    const cron = require('node-cron');
+    const axios = require('axios');
+    cron.schedule('*/30 * * * *', async () => {
+      try { await axios.post(`http://localhost:${PORT}/api/outreach/wa-then-call-cron`, {}, { timeout: 30000 }); }
+      catch (e) { if (e.code !== 'ECONNREFUSED') logger.warn('[OutreachCron] Error:', e.message); }
+    });
+    logger.info('[OutreachCron] ACTIVE - wa-then-call every 30 min');
+  } catch (e) { logger.warn('[OutreachCron] Failed to start:', e.message); }
 
   try { const { startOptimizationCron } = require('./cron/optimizationCron'); startOptimizationCron(); logger.info('[ScheduleOptimization] ACTIVE'); } catch (e) { logger.warn('[ScheduleOptimization] Failed:', e.message); }
 
@@ -394,7 +426,7 @@ async function start() {
 
   try { const { processReminderQueue } = require('./jobs/reminderJob'); const cron = require('node-cron');
     cron.schedule('* * * * *', async () => { try { await processReminderQueue(); } catch (e) {} });
-    logger.info('Reminder queue: ACTIVE');
+    logger.info('Reminder queue: ACTIVE (includes no-reply flow)');
   } catch (e) {}
 
   try {
@@ -412,19 +444,6 @@ async function start() {
         }
       } catch (e) {
         logger.error('[MorningReport] Cron error:', e.message);
-        try {
-          const { INFORU_USERNAME, INFORU_PASSWORD, QUANTUM_REPORT_PHONE } = process.env;
-          if (INFORU_USERNAME && INFORU_PASSWORD && QUANTUM_REPORT_PHONE) {
-            const auth = Buffer.from(`${INFORU_USERNAME}:${INFORU_PASSWORD}`).toString('base64');
-            await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat', {
-              Data: {
-                Message: `\u26a0\ufe0f *QUANTUM Morning Report - \u05e9\u05d2\u05d9\u05d0\u05d4*\n\n\u05d4\u05d3\u05d5\u05d7 \u05d4\u05d9\u05d5\u05de\u05d9 \u05dc\u05d0 \u05e0\u05e9\u05dc\u05d7.\n*\u05e1\u05d9\u05d1\u05d4:* ${e.message}`,
-                Phone: QUANTUM_REPORT_PHONE.replace(/\D/g, ''),
-                Settings: { CustomerMessageId: `morning_fail_${Date.now()}`, CustomerParameter: 'QUANTUM_MORNING_FAIL' }
-              }
-            }, { headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` }, timeout: 15000, validateStatus: () => true });
-          }
-        } catch (_) {}
       }
     }, { timezone: 'UTC' });
     logger.info('[MorningReport] ACTIVE - daily at 07:30 Israel time (05:30 UTC)');

@@ -1,24 +1,28 @@
 /**
  * QUANTUM Voice AI - Vapi Integration Routes
- * v1.9.0 - server-ip endpoint, inforuService SMS, pre-fetched slots
+ * v2.0 - scheduling_followup agent + bookSlot tool endpoint
  */
 
 const express = require('express');
-const router = express.Router();
-const pool = require('../db/pool');
+const router  = express.Router();
+const pool    = require('../db/pool');
 const { logger } = require('../services/logger');
-const axios = require('axios');
+const axios   = require('axios');
 const { JWT } = require('google-auth-library');
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY || '';
 
-// ─── Google Service Account Auth ─────────────────────────────────────────────
+const BASE_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : 'https://pinuy-binuy-analyzer-production.up.railway.app';
+
+// ─── Google Service Account Auth ──────────────────────────────────────────────
 
 let _googleAuthClient = null;
 
 function getGoogleAuthClient() {
   if (_googleAuthClient) return _googleAuthClient;
-  const email = process.env.GOOGLE_SA_EMAIL;
+  const email  = process.env.GOOGLE_SA_EMAIL;
   const rawKey = process.env.GOOGLE_SA_PRIVATE_KEY;
   if (!email || !rawKey) { logger.warn('[VAPI] Google SA credentials not set'); return null; }
   const key = rawKey.replace(/\\n/g, '\n');
@@ -44,8 +48,8 @@ const QUANTUM_CALENDAR_ID = process.env.QUANTUM_CALENDAR_ID ||
 
 // Hebrew spoken hour labels
 const HOUR_LABELS = {
-  9: 'תשע בבוקר', 10: 'עשר בבוקר', 11: 'אחת עשרה בבוקר',
-  12: 'שתים עשרה', 13: 'אחת אחרי הצהריים', 14: 'שתיים אחרי הצהריים',
+  9:  'תשע בבוקר',   10: 'עשר בבוקר',        11: 'אחת עשרה בבוקר',
+  12: 'שתים עשרה',   13: 'אחת אחרי הצהריים',  14: 'שתיים אחרי הצהריים',
   15: 'שלוש אחרי הצהריים', 16: 'ארבע אחרי הצהריים', 17: 'חמש אחרי הצהריים',
 };
 
@@ -57,11 +61,11 @@ function hebrewDayLabel(dateStr, todayStr) {
   return 'ב' + days[new Date(dateStr).getDay()];
 }
 
-// ─── Pre-call free slot fetcher ───────────────────────────────────────────────
+// ─── Pre-call free slot fetcher ────────────────────────────────────────────────
 
 async function fetchFreeSlots() {
-  const TZ = 'Asia/Jerusalem';
-  const now = new Date();
+  const TZ      = 'Asia/Jerusalem';
+  const now     = new Date();
   const todayStr = now.toLocaleDateString('sv-SE', { timeZone: TZ });
 
   const candidates = [];
@@ -100,14 +104,14 @@ async function fetchFreeSlots() {
   for (const { dateStr, hour } of candidates) {
     if (free.length >= 4) break;
     const slotStart = new Date(`${dateStr}T${String(hour).padStart(2, '0')}:00:00+03:00`);
-    const slotEnd = new Date(slotStart.getTime() + 3600000);
+    const slotEnd   = new Date(slotStart.getTime() + 3600000);
     const isBusy = busyIntervals.some(b => slotStart < new Date(b.end) && slotEnd > new Date(b.start));
     if (!isBusy) {
       free.push({
-        iso: slotStart.toISOString(),
+        iso:   slotStart.toISOString(),
         label: `${hebrewDayLabel(dateStr, todayStr)} ב${HOUR_LABELS[hour]}`,
-        date: dateStr,
-        time: `${String(hour).padStart(2, '0')}:00`,
+        date:  dateStr,
+        time:  `${String(hour).padStart(2, '0')}:00`,
       });
     }
   }
@@ -124,18 +128,18 @@ function getFallbackSlots(todayStr) {
     if (dow === 'Fri' || dow === 'Sat') continue;
     const dateStr = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Jerusalem' });
     const day = hebrewDayLabel(dateStr, todayStr);
-    slots.push({ iso: new Date(`${dateStr}T10:00:00+03:00`).toISOString(), label: `${day} בעשר בבוקר`, date: dateStr, time: '10:00' });
-    slots.push({ iso: new Date(`${dateStr}T14:00:00+03:00`).toISOString(), label: `${day} בשתיים אחרי הצהריים`, date: dateStr, time: '14:00' });
+    slots.push({ iso: new Date(`${dateStr}T10:00:00+03:00`).toISOString(), label: `${day} בעשר בבוקר`,              date: dateStr, time: '10:00' });
+    slots.push({ iso: new Date(`${dateStr}T14:00:00+03:00`).toISOString(), label: `${day} בשתיים אחרי הצהריים`,  date: dateStr, time: '14:00' });
     added++;
   }
   return slots.slice(0, 4);
 }
 
-// ─── Vapi tool call parser ────────────────────────────────────────────────────
+// ─── Vapi tool call parser ─────────────────────────────────────────────────────
 
 function parseVapiToolCall(body, toolName) {
   const list = body?.message?.toolCallList || body?.message?.toolCalls || [];
-  const tc = list.find(t => t.function?.name === toolName);
+  const tc   = list.find(t => t.function?.name === toolName);
   if (!tc) return { toolCallId: null, args: null };
   const args = typeof tc.function.arguments === 'string'
     ? JSON.parse(tc.function.arguments)
@@ -147,36 +151,33 @@ function vapiToolResponse(res, toolCallId, resultText) {
   return res.json({ results: [{ toolCallId: toolCallId || 'unknown', result: resultText }] });
 }
 
-// ─── Calendar links ───────────────────────────────────────────────────────────
+// ─── Calendar links ────────────────────────────────────────────────────────────
 
 function generateCalendarLinks({ title, description, location, startISO, durationMinutes = 30 }) {
   const start = new Date(startISO);
-  const end = new Date(start.getTime() + durationMinutes * 60000);
-  const fmt = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const enc = encodeURIComponent;
+  const end   = new Date(start.getTime() + durationMinutes * 60000);
+  const fmt   = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const enc   = encodeURIComponent;
   return {
-    google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${enc(title)}&dates=${fmt(start)}/${fmt(end)}&details=${enc(description)}&location=${enc(location || '')}`,
+    google:  `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${enc(title)}&dates=${fmt(start)}/${fmt(end)}&details=${enc(description)}&location=${enc(location || '')}`,
     outlook: `https://outlook.live.com/calendar/0/deeplink/compose?subject=${enc(title)}&startdt=${start.toISOString()}&enddt=${end.toISOString()}&body=${enc(description)}&location=${enc(location || '')}&path=%2Fcalendar%2Faction%2Fcompose&rru=addevent`,
   };
 }
 
-// ─── Send meeting notification ────────────────────────────────────────────────
+// ─── Send meeting notification ─────────────────────────────────────────────────
 
 async function sendMeetingNotification({ phone, leadName, meetingDatetime, address }) {
   const inforuService = require('../services/inforuService');
-
-  const start = new Date(meetingDatetime);
+  const start   = new Date(meetingDatetime);
   const dateStr = start.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' });
   const timeStr = start.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
-
-  const links = generateCalendarLinks({
-    title: 'פגישה עם קוונטום נדלן',
-    description: `פגישת ייעוץ נדלן${address ? ' - ' + address : ''}`,
-    location: address || '',
-    startISO: meetingDatetime,
+  const links   = generateCalendarLinks({
+    title:           'פגישה עם קוונטום נדלן',
+    description:     `פגישת ייעוץ נדלן${address ? ' - ' + address : ''}`,
+    location:        address || '',
+    startISO:        meetingDatetime,
     durationMinutes: 30,
   });
-
   const msg = [
     `שלום${leadName ? ' ' + leadName : ''}!`,
     `פגישתך עם קוונטום נדלן אושרה:`,
@@ -207,39 +208,41 @@ async function sendMeetingNotification({ phone, leadName, meetingDatetime, addre
   }
 }
 
-// ─── Caller context ───────────────────────────────────────────────────────────
+// ─── Caller context ────────────────────────────────────────────────────────────
 
 async function buildCallerContext(phone) {
   const normalized = phone.replace(/\D/g, '').replace(/^972/, '0').replace(/^00972/, '0');
-  const variants = [normalized, `972${normalized.slice(1)}`, `+972${normalized.slice(1)}`, phone];
+  const variants   = [normalized, `972${normalized.slice(1)}`, `+972${normalized.slice(1)}`, phone];
   let lead = null;
   try {
     const placeholders = variants.map((_, i) => `$${i + 1}`).join(', ');
-    const result = await pool.query(`SELECT * FROM leads WHERE phone IN (${placeholders}) ORDER BY updated_at DESC LIMIT 1`, variants);
+    const result = await pool.query(
+      `SELECT * FROM leads WHERE phone IN (${placeholders}) ORDER BY updated_at DESC LIMIT 1`,
+      variants
+    );
     if (result.rows.length > 0) lead = result.rows[0];
   } catch (err) { logger.warn('[VAPI] Lead lookup error:', err.message); }
-
   return {
-    lead_name: lead?.name || 'אורח',
-    lead_id: lead?.id || null,
+    lead_name:    lead?.name || 'אורח',
+    lead_id:      lead?.id || null,
     lead_context: lead ? `שם: ${lead.name}, סוג: ${lead.user_type}, סטטוס: ${lead.status}` : null,
   };
 }
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+// ─── Routes ────────────────────────────────────────────────────────────────────
 
-// Get this server's public outbound IP (for INFORU whitelist)
 router.get('/server-ip', async (req, res) => {
   try {
     const r = await axios.get('https://api.ipify.org?format=json', { timeout: 5000 });
-    res.json({ success: true, server_ip: r.data.ip, note: 'Add this IP to INFORU whitelist: https://uapi.inforu.co.il → Settings → IP Whitelist' });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
+    res.json({ success: true, server_ip: r.data.ip });
+  } catch (err) { res.json({ success: false, error: err.message }); }
 });
 
 router.get('/agents', (req, res) => {
-  res.json({ success: true, agents: [{ id: 'cold_prospecting', name: 'Cold Prospecting', hasAssistantId: !!process.env.VAPI_ASSISTANT_COLD }] });
+  res.json({ success: true, agents: [
+    { id: 'cold_prospecting',    name: 'Cold Prospecting',    hasAssistantId: !!process.env.VAPI_ASSISTANT_COLD },
+    { id: 'scheduling_followup', name: 'Scheduling Follow-up', hasAssistantId: !!process.env.VAPI_ASSISTANT_SCHEDULING },
+  ]});
 });
 
 router.get('/google-auth-status', async (req, res) => {
@@ -250,36 +253,195 @@ router.get('/google-auth-status', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-// ─── Send Meeting SMS (Vapi tool endpoint) ────────────────────────────────────
+// ─── Send Meeting SMS (Vapi tool endpoint) ─────────────────────────────────────
 
 router.post('/send-meeting-sms', async (req, res) => {
   try {
     const body = req.body;
     logger.info('[VAPI] send-meeting-sms body:', JSON.stringify(body).substring(0, 500));
-
     const { toolCallId, args } = parseVapiToolCall(body, 'sendMeetingSMS');
-
-    const phone = args?.phone || body?.message?.call?.customer?.number || body.phone;
+    const phone           = args?.phone            || body?.message?.call?.customer?.number || body.phone;
     const leadName        = args?.lead_name        || body.lead_name;
-    const meetingDatetime = args?.meeting_datetime  || body.meeting_datetime;
-    const address         = args?.address           || body.address;
-
-    logger.info(`[VAPI] send-meeting-sms: phone=${phone} dt=${meetingDatetime} name=${leadName}`);
-
-    if (!phone || !meetingDatetime) {
-      return vapiToolResponse(res, toolCallId, 'CONFIRM:no_phone');
-    }
-
+    const meetingDatetime = args?.meeting_datetime || body.meeting_datetime;
+    const address         = args?.address          || body.address;
+    if (!phone || !meetingDatetime) return vapiToolResponse(res, toolCallId, 'CONFIRM:no_phone');
     const result = await sendMeetingNotification({ phone, leadName, meetingDatetime, address });
     return vapiToolResponse(res, toolCallId, result.success ? 'SMS_SENT' : 'SMS_FAILED');
-
   } catch (err) {
     logger.error('[VAPI] send-meeting-sms error:', err.message);
     return vapiToolResponse(res, null, 'SMS_FAILED');
   }
 });
 
-// ─── Debug: test SMS ──────────────────────────────────────────────────────────
+// ─── Book Slot (Vapi tool endpoint — called during scheduling phone call) ──────
+//
+// The Vapi scheduling assistant calls this when the contact chooses a time slot.
+// Accepts either slot_id (preferred) or time_str (HH:MM) + campaign_id + phone.
+// Locks the slot with FOR UPDATE SKIP LOCKED, marks confirmed, sends WA confirmation.
+//
+// Tool definition to add in Vapi assistant:
+// {
+//   name: "bookSlot",
+//   description: "Book a meeting slot for the contact after they choose a time",
+//   parameters: {
+//     type: "object",
+//     properties: {
+//       slot_id:     { type: "string",  description: "Slot ID (preferred)" },
+//       time_str:    { type: "string",  description: "Time HH:MM if slot_id unknown" },
+//       campaign_id: { type: "string",  description: "Campaign ID from variableValues" },
+//       phone:       { type: "string",  description: "Contact phone" }
+//     }
+//   }
+// }
+// Webhook URL: POST /api/vapi/book-slot
+
+router.post('/book-slot', async (req, res) => {
+  const body = req.body;
+  logger.info('[VAPI] book-slot body:', JSON.stringify(body).substring(0, 600));
+
+  const { toolCallId, args } = parseVapiToolCall(body, 'bookSlot');
+
+  // Support both Vapi tool call format and direct POST (for testing)
+  const slotId     = args?.slot_id     || body.slot_id;
+  const timeStr    = args?.time_str    || body.time_str;
+  const campaignId = args?.campaign_id || body.campaign_id
+    || body?.message?.call?.metadata?.campaign_id;
+  const phone      = args?.phone       || body?.message?.call?.customer?.number || body.phone;
+
+  if (!phone || !campaignId) {
+    return vapiToolResponse(res, toolCallId, 'ERROR: missing phone or campaign_id');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let slot = null;
+
+    if (slotId) {
+      // Lock by explicit slot_id
+      const r = await client.query(
+        `SELECT ms.*, vp.professional_name, pv.building_address
+         FROM meeting_slots ms
+         LEFT JOIN visit_professionals vp ON ms.visit_professional_id = vp.id
+         LEFT JOIN professional_visits pv ON vp.visit_id = pv.id
+         WHERE ms.id = $1 AND ms.status = 'open'
+         FOR UPDATE SKIP LOCKED`,
+        [slotId]
+      );
+      slot = r.rows[0] || null;
+    } else if (timeStr && campaignId) {
+      // Find the first open slot matching the time on the nearest upcoming date
+      const r = await client.query(
+        `SELECT ms.*, vp.professional_name, pv.building_address
+         FROM meeting_slots ms
+         LEFT JOIN visit_professionals vp ON ms.visit_professional_id = vp.id
+         LEFT JOIN professional_visits pv ON vp.visit_id = pv.id
+         WHERE ms.campaign_id = $1
+           AND TO_CHAR(ms.slot_datetime, 'HH24:MI') = $2
+           AND ms.status = 'open'
+           AND ms.slot_datetime > NOW()
+         ORDER BY ms.slot_datetime
+         FOR UPDATE SKIP LOCKED
+         LIMIT 1`,
+        [campaignId, timeStr]
+      );
+      slot = r.rows[0] || null;
+    }
+
+    if (!slot) {
+      await client.query('ROLLBACK');
+      logger.warn('[VAPI] book-slot: no available slot', { slotId, timeStr, campaignId });
+      return vapiToolResponse(res, toolCallId, 'NO_SLOT_AVAILABLE');
+    }
+
+    // Get session for contact info
+    const sessionRes = await client.query(
+      `SELECT * FROM bot_sessions WHERE phone = $1 AND zoho_campaign_id = $2 LIMIT 1`,
+      [phone, campaignId]
+    );
+    const session = sessionRes.rows[0];
+
+    // Mark slot confirmed
+    await client.query(
+      `UPDATE meeting_slots
+       SET status='confirmed', contact_phone=$1, contact_name=$2,
+           apartment_number=$3, contact_address=$4, updated_at=NOW()
+       WHERE id=$5`,
+      [
+        phone,
+        session?.context?.contactName || '',
+        session?.apartment_number || null,
+        session?.contact_address  || null,
+        slot.id
+      ]
+    );
+
+    // Mark bot session confirmed
+    if (session) {
+      const slotDt  = new Date(slot.slot_datetime);
+      const dateStr = slotDt.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'long' });
+      const timeOut = slotDt.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+      await client.query(
+        `UPDATE bot_sessions
+         SET state='confirmed',
+             context = context || $1::jsonb,
+             booking_completed_at = NOW()
+         WHERE phone=$2 AND zoho_campaign_id=$3`,
+        [
+          JSON.stringify({ confirmedSlot: {
+            slotId:   slot.id,
+            dateStr,
+            timeStr:  timeOut,
+            repName:  slot.professional_name || slot.representative_name || '',
+            building: slot.building_address || ''
+          }}),
+          phone, campaignId
+        ]
+      );
+
+      // Cancel pending no-reply reminders
+      await client.query(
+        `UPDATE reminder_queue
+         SET status='cancelled'
+         WHERE phone=$1 AND zoho_campaign_id=$2
+           AND reminder_type IN ('no_reply_reminder_1','no_reply_reminder_2','no_reply_vapi_call')
+           AND status='pending'`,
+        [phone, campaignId]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    // Send WA confirmation asynchronously
+    const slotDt  = new Date(slot.slot_datetime);
+    const dateStr = slotDt.toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long', day: 'numeric', month: 'long' });
+    const timeOut = slotDt.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+    const lang    = session?.language || 'he';
+    const name    = session?.context?.contactName || '';
+
+    const msg = lang === 'ru'
+      ? `✅ ${name ? name + ', ' : ''}встреча подтверждена!\n📅 ${dateStr} ⏰ ${timeOut}\n${slot.building_address ? `📍 ${slot.building_address}` : ''}\n\nQUANTUM недвижимость | 03-757-2229`
+      : `✅ ${name ? name + ', ' : ''}הזמנתך אושרה!\n📅 ${dateStr} ⏰ ${timeOut}\n${slot.building_address ? `📍 ${slot.building_address}` : ''}\n\nקוונטום נדלן | 03-757-2229`;
+
+    const inforuService = require('../services/inforuService');
+    inforuService.sendWhatsApp(phone, msg).catch(e =>
+      logger.warn('[VAPI] book-slot WA confirmation failed:', e.message)
+    );
+
+    logger.info('[VAPI] book-slot confirmed', { slotId: slot.id, phone, campaignId, datetime: slot.slot_datetime });
+    return vapiToolResponse(res, toolCallId, `BOOKED:${dateStr} ${timeOut}`);
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    logger.error('[VAPI] book-slot error:', err.message);
+    return vapiToolResponse(res, toolCallId, 'ERROR: ' + err.message);
+  } finally {
+    client.release();
+  }
+});
+
+// ─── Debug: test SMS ───────────────────────────────────────────────────────────
 
 router.post('/test-sms', async (req, res) => {
   try {
@@ -287,22 +449,23 @@ router.post('/test-sms', async (req, res) => {
     if (!phone) return res.status(400).json({ error: 'phone required' });
     const result = await sendMeetingNotification({
       phone,
-      leadName: 'בדיקה',
+      leadName:        'בדיקה',
       meetingDatetime: new Date(Date.now() + 86400000).toISOString(),
-      address: 'רחוב הבדיקה 1, תל אביב',
+      address:         'רחוב הבדיקה 1, תל אביב',
     });
     res.json(result);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── Outbound Call ────────────────────────────────────────────────────────────
+// ─── Outbound Call ─────────────────────────────────────────────────────────────
 
 const AGENTS_CONFIG = {
-  cold_prospecting:    process.env.VAPI_ASSISTANT_COLD     || null,
-  seller_followup:     process.env.VAPI_ASSISTANT_SELLER   || null,
-  buyer_qualification: process.env.VAPI_ASSISTANT_BUYER    || null,
-  meeting_reminder:    process.env.VAPI_ASSISTANT_REMINDER || null,
-  inbound_handler:     process.env.VAPI_ASSISTANT_INBOUND  || null,
+  cold_prospecting:    process.env.VAPI_ASSISTANT_COLD        || null,
+  seller_followup:     process.env.VAPI_ASSISTANT_SELLER      || null,
+  buyer_qualification: process.env.VAPI_ASSISTANT_BUYER       || null,
+  meeting_reminder:    process.env.VAPI_ASSISTANT_REMINDER    || null,
+  inbound_handler:     process.env.VAPI_ASSISTANT_INBOUND     || null,
+  scheduling_followup: process.env.VAPI_ASSISTANT_SCHEDULING  || null,  // NEW
 };
 
 router.post('/outbound', async (req, res) => {
@@ -314,7 +477,6 @@ router.post('/outbound', async (req, res) => {
     if (!VAPI_API_KEY) return res.status(503).json({ success: false, error: 'VAPI_API_KEY not configured' });
 
     const [context, slots] = await Promise.all([buildCallerContext(phone), fetchFreeSlots()]);
-
     const slotsText = slots.length >= 2
       ? slots.slice(0, 4).map(s => s.label).join(', ')
       : 'מחר בעשר בבוקר, מחרתיים בשתיים אחרי הצהריים';
@@ -326,21 +488,21 @@ router.post('/outbound', async (req, res) => {
       customer: { number: phone, name: context.lead_name !== 'אורח' ? context.lead_name : undefined },
       assistantOverrides: {
         variableValues: {
-          lead_name: context.lead_name,
-          lead_context: context.lead_context || 'לקוח חדש',
-          complex_city: metadata.city || '',
+          lead_name:       context.lead_name,
+          lead_context:    context.lead_context || 'לקוח חדש',
+          complex_city:    metadata.city || '',
           available_slots: slotsText,
-          slots_json: JSON.stringify(slots.slice(0, 4)),
+          slots_json:      JSON.stringify(slots.slice(0, 4)),
         },
         metadata: { agent_type, lead_id: lead_id || context.lead_id, complex_id, ...metadata },
       },
     };
     if (process.env.VAPI_PHONE_NUMBER_ID) payload.phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID;
 
-    const vapiRes = await fetch('https://api.vapi.ai/call/phone', {
-      method: 'POST',
+    const vapiRes  = await fetch('https://api.vapi.ai/call/phone', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${VAPI_API_KEY}` },
-      body: JSON.stringify(payload),
+      body:    JSON.stringify(payload),
     });
     const vapiData = await vapiRes.json();
     if (!vapiRes.ok) return res.status(vapiRes.status).json({ success: false, error: vapiData.message || 'Vapi error' });
@@ -349,7 +511,8 @@ router.post('/outbound', async (req, res) => {
       await pool.query(
         `INSERT INTO vapi_calls (call_id, phone, agent_type, lead_id, complex_id, status, metadata, created_at)
          VALUES ($1,$2,$3,$4,$5,'initiated',$6,NOW()) ON CONFLICT (call_id) DO NOTHING`,
-        [vapiData.id, phone, agent_type, lead_id || context.lead_id, complex_id, JSON.stringify({ ...metadata, available_slots: slotsText })]
+        [vapiData.id, phone, agent_type, lead_id || context.lead_id, complex_id,
+         JSON.stringify({ ...metadata, available_slots: slotsText })]
       );
     } catch (dbErr) { logger.warn('[VAPI] DB log error:', dbErr.message); }
 
@@ -365,9 +528,9 @@ router.post('/outbound/batch', async (req, res) => {
     const { calls = [] } = req.body;
     if (!Array.isArray(calls) || !calls.length) return res.status(400).json({ success: false, error: 'calls array required' });
     if (calls.length > 50) return res.status(400).json({ success: false, error: 'Max 50 calls' });
-    const slots = await fetchFreeSlots();
+    const slots     = await fetchFreeSlots();
     const slotsText = slots.length >= 2 ? slots.slice(0, 4).map(s => s.label).join(', ') : 'מחר בעשר בבוקר, מחרתיים בשתיים אחרי הצהריים';
-    const results = [];
+    const results   = [];
     for (const call of calls) {
       const { phone, agent_type = 'cold_prospecting', lead_id, complex_id, metadata = {} } = call;
       const assistantId = AGENTS_CONFIG[agent_type];
@@ -387,7 +550,7 @@ router.post('/outbound/batch', async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-// ─── Webhook ──────────────────────────────────────────────────────────────────
+// ─── Webhook ───────────────────────────────────────────────────────────────────
 
 router.post('/webhook', async (req, res) => {
   res.json({ received: true });
@@ -401,7 +564,8 @@ router.post('/webhook', async (req, res) => {
         `INSERT INTO vapi_calls (call_id, phone, agent_type, status, duration_seconds, summary, metadata, created_at, updated_at)
          VALUES ($1,$2,$3,'completed',$4,$5,$6,NOW(),NOW())
          ON CONFLICT (call_id) DO UPDATE SET status='completed',duration_seconds=$4,summary=$5,updated_at=NOW()`,
-        [call.id, call.customer?.number || 'unknown', call.metadata?.agent_type || 'unknown', duration, call.summary || '', JSON.stringify({ endedReason: call.endedReason })]
+        [call.id, call.customer?.number || 'unknown', call.metadata?.agent_type || 'unknown',
+         duration, call.summary || '', JSON.stringify({ endedReason: call.endedReason })]
       ).catch(() => {});
       logger.info(`[VAPI] call-ended: ${call.id} | ${duration}s | ${call.endedReason}`);
     }
@@ -413,10 +577,10 @@ router.get('/calls', async (req, res) => {
     const { agent_type, status, limit = 50, offset = 0 } = req.query;
     let where = [], params = [], p = 1;
     if (agent_type) { where.push(`agent_type = $${p++}`); params.push(agent_type); }
-    if (status) { where.push(`status = $${p++}`); params.push(status); }
+    if (status)     { where.push(`status = $${p++}`);     params.push(status); }
     const wc = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const result = await pool.query(`SELECT * FROM vapi_calls ${wc} ORDER BY created_at DESC LIMIT $${p++} OFFSET $${p++}`, [...params, parseInt(limit), parseInt(offset)]);
-    const cnt = await pool.query(`SELECT COUNT(*) FROM vapi_calls ${wc}`, params);
+    const cnt    = await pool.query(`SELECT COUNT(*) FROM vapi_calls ${wc}`, params);
     res.json({ success: true, total: parseInt(cnt.rows[0].count), calls: result.rows });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });

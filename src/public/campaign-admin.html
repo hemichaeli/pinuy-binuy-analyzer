@@ -11,6 +11,7 @@
   --text:#e2e8f0; --muted:#64748b; --input-bg:#0f172a;
   --purple:#8b5cf6; --purple-dark:#6d28d9;
   --teal:#0d9488; --teal-dark:#0f766e;
+  --orange:#f97316; --orange-dark:#ea580c;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--dark);color:var(--text);min-height:100vh;direction:rtl}
@@ -25,6 +26,7 @@ body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;background:var(--dark
 .tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
 .tab-btn.purple.active{color:var(--purple);border-bottom-color:var(--purple)}
 .tab-btn.teal.active{color:var(--teal);border-bottom-color:var(--teal)}
+.tab-btn.orange.active{color:var(--orange);border-bottom-color:var(--orange)}
 
 .tab-pane{display:none}
 .tab-pane.active{display:block}
@@ -144,6 +146,10 @@ select option{background:#1e293b}
 .building-option-label{font-size:14px;font-weight:600}
 .building-option-sub{font-size:11px;color:var(--muted)}
 .no-buildings-hint{font-size:13px;color:var(--muted);padding:12px;background:var(--input-bg);border-radius:10px;text-align:center}
+
+/* Outreach table */
+#orTable tr:hover td{background:#0d2035}
+#orTable th,#orTable td{border-bottom:1px solid var(--border)}
 </style>
 </head>
 <body>
@@ -160,11 +166,10 @@ select option{background:#1e293b}
   <button class="tab-btn active" onclick="switchTab('settings')">⚙️ הגדרות קמפיין</button>
   <button class="tab-btn purple" onclick="switchTab('visits')">🏠 ביקורי מקצועיים</button>
   <button class="tab-btn teal" onclick="switchTab('events')">📋 ניהול כנסים</button>
+  <button class="tab-btn orange" onclick="switchTab('outreach')">📤 פנייה ללידים</button>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
-     TAB 1: הגדרות קמפיין
-     ══════════════════════════════════════════════════════════════ -->
+<!-- TAB 1: הגדרות קמפיין -->
 <div id="tab-settings" class="tab-pane active">
 <div class="container">
 
@@ -238,7 +243,6 @@ select option{background:#1e293b}
     <button class="btn-add" onclick="addRep()">+ הוסף נציג / שמאי / מודד</button>
   </div>
 
-  <!-- ═══ CEREMONY SECTION ═══ -->
   <div id="ceremonySection" class="section" style="display:none">
     <div class="section-title">✍️ הגדרות כנס חתימות</div>
     <div class="notice warn">כנס חתימות הוא אירוע חד-פעמי עם עמדות מקבילות לכל בניין.</div>
@@ -270,26 +274,17 @@ select option{background:#1e293b}
       <label>מרווח בין כניסות (דק')</label>
       <input type="number" id="ceremonyBreak" value="0" min="0" max="30">
     </div>
-
     <div class="sep"></div>
     <div class="section-title">🏢 בניינים ועמדות</div>
     <div class="notice">
-      הבניינים נטענים אוטומטית מ-Zoho CRM לפי הקמפיין. לכל בניין — הגדר מספר עמדות (= עורכי דין חותמים במקביל).
+      הבניינים נטענים אוטומטית מ-Zoho CRM לפי הקמפיין. לכל בניין — הגדר מספר עמדות.
     </div>
-
-    <!-- Load from Zoho bar -->
     <div class="zoho-buildings-bar">
-      <button class="btn-load-zoho" onclick="loadCeremonyBuildings()">
-        🔄 טען בניינים מ-Zoho
-      </button>
+      <button class="btn-load-zoho" onclick="loadCeremonyBuildings()">🔄 טען בניינים מ-Zoho</button>
       <span id="ceremonyBuildingsStatus" class="zoho-buildings-status"></span>
     </div>
-
-    <!-- Buildings rendered here -->
     <div id="ceremonyBuildingsList" class="buildings-list"></div>
-
   </div>
-  <!-- ═══ END CEREMONY ═══ -->
 
   <div id="windowsSection" class="section">
     <div class="section-title">📅 ימים ושעות זמינות</div>
@@ -357,9 +352,7 @@ select option{background:#1e293b}
 </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
-     TAB 2: ביקורי מקצועיים
-     ══════════════════════════════════════════════════════════════ -->
+<!-- TAB 2: ביקורי מקצועיים -->
 <div id="tab-visits" class="tab-pane">
 <div class="container">
 
@@ -371,7 +364,7 @@ select option{background:#1e293b}
         <input type="text" id="vCampaignId" placeholder="הזן Campaign ID">
         <button class="btn-load" style="border-color:#7c3aed;color:#a78bfa" onclick="loadVisits()">טען ביקורים</button>
       </div>
-      <div class="hint">מזהה זהה לקמפיין בטאב הגדרות. לאחר הזנה — לחץ "טען ביקורים" לראות ביקורים קיימים ולשלוף בניינים.</div>
+      <div class="hint">מזהה זהה לקמפיין בטאב הגדרות.</div>
     </div>
     <div class="field">
       <label>פרויקט</label>
@@ -395,9 +388,7 @@ select option{background:#1e293b}
     <div class="section-title">➕ הוסף ביקור חדש</div>
     <div class="notice purple">
       ביקור מקצועי = שמאי/מודד שמגיע לבניין ספציפי ביום ספציפי.
-      כל איש מקצוע מקבל <strong>slots עצמאיים</strong> — דיירים מזמינים ישירות אצלו.
     </div>
-
     <div class="field">
       <label>סוג ביקור</label>
       <div class="vtype-grid">
@@ -413,21 +404,18 @@ select option{background:#1e293b}
         </div>
       </div>
     </div>
-
     <div class="field">
       <label>בניין</label>
       <div id="buildingPickerSection">
         <div id="buildingPicker" class="building-picker"></div>
-        <input type="text" id="vBuildingManual" placeholder="או הזן כתובת ידנית: סמילצ'נסקי 3" style="margin-top:8px;display:none">
-        <div class="hint">לאחר לחיצה על "טען ביקורים" — הבניינים הקשורים לקמפיין ב-Zoho יופיעו כאן לבחירה.</div>
+        <input type="text" id="vBuildingManual" placeholder="או הזן כתובת ידנית" style="margin-top:8px;display:none">
+        <div class="hint">לאחר טעינת ביקורים — הבניינים מ-Zoho יופיעו כאן.</div>
       </div>
     </div>
-
     <div class="field">
       <label>עיר</label>
       <input type="text" id="vCity" placeholder="ראשון לציון">
     </div>
-
     <div class="row3">
       <div class="field">
         <label>תאריך ביקור</label>
@@ -442,26 +430,21 @@ select option{background:#1e293b}
         <input type="time" id="vEnd" value="17:00">
       </div>
     </div>
-
     <div class="row">
       <div class="field">
         <label>משך כל slot (דקות)</label>
         <input type="number" id="vSlotDuration" value="30" min="5" max="120">
-        <div class="hint">לשמאי/מודד: 20-45 דק'</div>
       </div>
       <div class="field">
         <label>מרווח בין slots (דקות)</label>
         <input type="number" id="vBuffer" value="5" min="0" max="60">
-        <div class="hint">זמן מעבר בין דיירים</div>
       </div>
     </div>
-
     <div class="sep"></div>
     <div class="section-title">👤 אנשי מקצוע (עד 3)</div>
-    <div class="notice purple">כל איש מקצוע מקבל slots עצמאיים — אם שניים מגיעים, שניהם פועלים במקביל.</div>
+    <div class="notice purple">כל איש מקצוע מקבל slots עצמאיים.</div>
     <div id="profFormList"></div>
     <button class="btn-add" id="btnAddProf" onclick="addProfForm()" style="border-color:#7c3aed;color:#a78bfa">+ הוסף איש מקצוע</button>
-
     <div class="sep"></div>
     <div class="actions">
       <button class="btn-primary purple" onclick="createVisit()">✅ צור ביקור + Slots</button>
@@ -472,9 +455,7 @@ select option{background:#1e293b}
 </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
-     TAB 3: ניהול כנסים
-     ══════════════════════════════════════════════════════════════ -->
+<!-- TAB 3: ניהול כנסים -->
 <div id="tab-events" class="tab-pane">
 <div class="container">
 
@@ -486,7 +467,6 @@ select option{background:#1e293b}
         <select id="evCompound" style="flex:1"><option value="">-- טוען מתחמים... --</option></select>
         <button class="btn-load" onclick="loadEventsList()" style="border-color:#0d9488;color:#2dd4bf;white-space:nowrap">טען אירועים</button>
       </div>
-      <div class="hint">האירועים מסוננים לפי מתחם, או הצג הכל בלי בחירה</div>
     </div>
   </div>
 
@@ -506,8 +486,6 @@ select option{background:#1e293b}
     <div id="eventDetailBody"></div>
     <div class="sep"></div>
     <div class="actions" style="flex-wrap:wrap;gap:10px;margin-top:0">
-      <button onclick="importZohoResidents()" style="background:#0d9488;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer">📥 ייבא דיירים מ-Zoho</button>
-      <button onclick="sendEventNotifications()" style="background:var(--purple);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer">📱 שלח הזמנות WA</button>
       <a id="btnEventReport" href="#" target="_blank" style="background:#1e293b;color:#e2e8f0;border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;text-decoration:none">📊 דוח מלא</a>
     </div>
     <div id="eventActionResult" class="preview-box" style="margin-top:12px"></div>
@@ -516,7 +494,7 @@ select option{background:#1e293b}
   <div class="section" id="addStationSection" style="display:none">
     <div class="section-title">👤 הוסף עמדה לאירוע הנבחר</div>
     <div class="notice" style="background:#0d948822;border-color:#0d948840;color:#2dd4bf">
-      עמדה = איש מקצוע (עו"ד, שמאי וכד') שמקבל slot עצמאי. דיירים מזמינים אצלו ישירות.
+      עמדה = איש מקצוע שמקבל slot עצמאי. דיירים מזמינים אצלו ישירות.
     </div>
     <div class="row3">
       <div class="field">
@@ -543,7 +521,7 @@ select option{background:#1e293b}
   <div class="section">
     <div class="section-title">➕ צור אירוע חדש</div>
     <div class="notice" style="background:#0d948822;border-color:#0d948840;color:#2dd4bf">
-      לאחר יצירה — הוסף עמדות, ייבא דיירים מ-Zoho ושלח הזמנות WA.
+      לאחר יצירה — הוסף עמדות. הדיירים מיובאים אוטומטית מ-Zoho עם הוספת כל עמדה.
     </div>
     <div class="row">
       <div class="field">
@@ -580,6 +558,110 @@ select option{background:#1e293b}
 </div>
 </div>
 
+<!-- TAB 4: פנייה ללידים -->
+<div id="tab-outreach" class="tab-pane">
+<div class="container" style="max-width:1100px">
+
+  <div class="section">
+    <div class="section-title">🔍 סינון מודעות</div>
+    <div class="notice" style="background:#f9731622;border-color:#f9731640;color:#fdba74">
+      בחר פרמטרים לסינון — המודעות שיוצגו הן אלו שיקבלו את הפנייה. רק מודעות עם טלפון ניתן לבחור.
+    </div>
+    <div class="row4">
+      <div class="field">
+        <label>עיר</label>
+        <input type="text" id="orCity" placeholder="רמלה, ראשון לציון..." oninput="debounceSearch()">
+      </div>
+      <div class="field">
+        <label>מתחם</label>
+        <select id="orComplex" onchange="searchListings()">
+          <option value="">הכל</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>חדרים (מינ')</label>
+        <input type="number" id="orRooms" min="1" max="10" placeholder="3" oninput="debounceSearch()">
+      </div>
+      <div class="field">
+        <label>סטטוס פנייה</label>
+        <select id="orMsgStatus" onchange="searchListings()">
+          <option value="">הכל</option>
+          <option value="none">לא פונה</option>
+          <option value="sent">פנינו</option>
+          <option value="replied">ענה</option>
+          <option value="no_reply">ללא מענה</option>
+        </select>
+      </div>
+    </div>
+    <div class="row4">
+      <div class="field">
+        <label>מחיר מינ' (₪)</label>
+        <input type="number" id="orPriceMin" placeholder="0" oninput="debounceSearch()">
+      </div>
+      <div class="field">
+        <label>מחיר מקס' (₪)</label>
+        <input type="number" id="orPriceMax" placeholder="5,000,000" oninput="debounceSearch()">
+      </div>
+      <div class="field">
+        <label>SSI מינ'</label>
+        <input type="number" id="orSsi" min="0" max="100" placeholder="0" oninput="debounceSearch()">
+      </div>
+      <div class="field">
+        <label>IAI מינ'</label>
+        <input type="number" id="orIai" min="0" max="100" placeholder="0" oninput="debounceSearch()">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button onclick="searchListings()" style="background:var(--orange);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer">🔍 חפש</button>
+      <button onclick="resetOrFilters()" style="background:#1e293b;color:var(--muted);border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer">↺ אפס</button>
+      <span id="orResultCount" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+  </div>
+
+  <div class="section" id="orResultsSection" style="display:none">
+    <div class="section-title" style="justify-content:space-between;align-items:center">
+      <span>📋 תוצאות</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;margin:0">
+          <input type="checkbox" id="orSelectAll" onchange="toggleSelectAll(this.checked)" style="width:auto">
+          בחר הכל
+        </label>
+        <span id="orSelectedCount" class="badge" style="background:#f9731622;color:#fdba74;border-color:#f9731640;display:none"></span>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table id="orTable" style="width:100%;border-collapse:collapse;font-size:13px;min-width:800px">
+        <thead>
+          <tr style="background:#0d1a2a">
+            <th style="padding:10px 8px;text-align:center;border-bottom:1px solid var(--border);width:36px"></th>
+            <th style="padding:10px 12px;text-align:right;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">כתובת</th>
+            <th style="padding:10px 12px;text-align:right;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">מתחם</th>
+            <th style="padding:10px 12px;text-align:right;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">מחיר</th>
+            <th style="padding:10px 8px;text-align:center;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">חד'</th>
+            <th style="padding:10px 8px;text-align:center;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">SSI</th>
+            <th style="padding:10px 8px;text-align:center;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">IAI</th>
+            <th style="padding:10px 12px;text-align:right;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">סטטוס</th>
+            <th style="padding:10px 12px;text-align:right;border-bottom:1px solid var(--border);color:var(--muted);font-weight:600">טלפון</th>
+          </tr>
+        </thead>
+        <tbody id="orTableBody"></tbody>
+      </table>
+    </div>
+
+    <div id="orActionBar" style="display:none;margin-top:16px;background:#0d1a2a;border:1px solid var(--border);border-radius:12px;padding:14px 18px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">פעולה על <strong id="orActionCount" style="color:var(--orange)">0</strong> מודעות נבחרות:</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button onclick="runOutreach('wa')" style="background:#25d366;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer">📱 שלח WA</button>
+        <button onclick="runOutreach('call')" style="background:#1565c0;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer">📞 הוצא שיחה</button>
+        <button onclick="runOutreach('wa_then_call')" style="background:var(--orange);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer">🔁 WA → שיחה (אם אין מענה)</button>
+      </div>
+      <div id="orActionResult" class="preview-box" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+</div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -594,12 +676,14 @@ function switchTab(tab) {
     b.classList.toggle('active',
       (i===0 && tab==='settings') ||
       (i===1 && tab==='visits') ||
-      (i===2 && tab==='events')
+      (i===2 && tab==='events') ||
+      (i===3 && tab==='outreach')
     );
   });
   document.getElementById('tab-settings').classList.toggle('active', tab==='settings');
   document.getElementById('tab-visits').classList.toggle('active', tab==='visits');
   document.getElementById('tab-events').classList.toggle('active', tab==='events');
+  document.getElementById('tab-outreach').classList.toggle('active', tab==='outreach');
   if (tab === 'visits') {
     const mainId = document.getElementById('campaignId').value.trim();
     if (mainId && !document.getElementById('vCampaignId').value) {
@@ -607,6 +691,7 @@ function switchTab(tab) {
     }
   }
   if (tab === 'events') { initEventTab(); }
+  if (tab === 'outreach') { initOutreachTab(); }
 }
 
 function showToast(msg, type = 'success') {
@@ -614,6 +699,11 @@ function showToast(msg, type = 'success') {
   t.textContent = msg;
   t.className = `toast ${type} show`;
   setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ══════════════════════════════════════════════════
@@ -756,7 +846,6 @@ async function saveCampaign() {
           const data = await res.json();
           if (data.buildings?.length) {
             renderCeremonyBuildings(data.buildings);
-            document.getElementById('ceremonyBuildingsStatus').textContent = `${data.buildings.length} בניינים נטענו`;
             buildings = getBuildings();
           }
         } catch(e) {}
@@ -1075,11 +1164,6 @@ async function createVisit() {
   finally { btn.innerHTML = '✅ צור ביקור + Slots'; btn.disabled = false; }
 }
 
-function escHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
 // ══════════════════════════════════════════════════
 // TAB 3 — EVENTS (כנסים)
 // ══════════════════════════════════════════════════
@@ -1159,7 +1243,7 @@ async function selectEvent(id, title) {
     const res = await fetch('/events/' + id, { headers: { Authorization: EV_AUTH } });
     const data = await res.json();
     const ev = data.event || data;
-    const stations = data.stations || [];
+    const stations = data.stations || ev.stations || [];
     const dateStr = ev.event_date ? new Date(ev.event_date).toLocaleDateString('he-IL') : '—';
     document.getElementById('eventDetailTitle').textContent = '📋 ' + escHtml(ev.title||title);
     document.getElementById('btnEventReport').href = '/events/' + id + '/report';
@@ -1167,11 +1251,14 @@ async function selectEvent(id, title) {
     if (stations.length) {
       stHtml = '<div class="sep"></div><div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">👤 עמדות</div>' +
         stations.map(function(s) {
+          const att = (s.attendees||[]).length;
+          const conf = (s.attendees||[]).filter(a=>a.status==='confirmed').length;
           return '<div class="visit-prof-row" style="margin-bottom:6px">' +
             '<div class="visit-prof-name">' + escHtml(s.pro_name) + ' <span style="color:var(--muted);font-size:11px">' + escHtml(s.pro_role||'') + '</span></div>' +
             '<div class="visit-prof-stats">' +
-              '<span class="stat-chip open">פנוי: ' + (s.free_slots||0) + '</span>' +
-              (s.booked_slots ? '<span class="stat-chip booked">נקבע: ' + s.booked_slots + '</span>' : '') +
+              (att ? '<span class="stat-chip open">דיירים: ' + att + '</span>' : '') +
+              (conf ? '<span class="stat-chip booked">אישרו: ' + conf + '</span>' : '') +
+              '<a href="/events/pro/' + escHtml(s.token||'') + '" target="_blank" class="btn-report">🔗 רשימה</a>' +
             '</div>' +
           '</div>';
         }).join('');
@@ -1182,7 +1269,7 @@ async function selectEvent(id, title) {
         '<div><div style="font-size:11px;color:var(--muted)">מיקום</div><div style="font-size:16px;font-weight:700;margin-top:3px">📍 ' + escHtml(ev.location||'—') + '</div></div>' +
       '</div>' +
       '<div class="row" style="margin-bottom:8px">' +
-        '<div><div style="font-size:11px;color:var(--muted)">דיירים בסה"כ</div><div style="font-size:28px;font-weight:800;color:#2dd4bf">' + (data.attendees_count||0) + '</div></div>' +
+        '<div><div style="font-size:11px;color:var(--muted)">דיירים בסה"כ</div><div style="font-size:28px;font-weight:800;color:#2dd4bf">' + (data.attendee_count||0) + '</div></div>' +
         '<div><div style="font-size:11px;color:var(--muted)">אישרו הגעה</div><div style="font-size:28px;font-weight:800;color:#34d399">' + (data.confirmed_count||0) + '</div></div>' +
       '</div>' + stHtml;
     document.getElementById('eventDetailSection').style.display = '';
@@ -1198,47 +1285,6 @@ function closeEventDetail() {
   selectedEventId = null;
   document.getElementById('eventDetailSection').style.display = 'none';
   document.getElementById('addStationSection').style.display = 'none';
-}
-
-async function importZohoResidents() {
-  if (!selectedEventId) return showToast('בחר אירוע תחילה', 'error');
-  var btn = event.target;
-  btn.innerHTML = 'מייבא...<span class="spinner"></span>'; btn.disabled = true;
-  try {
-    var res = await fetch('/events/' + selectedEventId + '/import-zoho', {
-      method: 'POST', headers: { Authorization: EV_AUTH, 'Content-Type': 'application/json' }, body: '{}'
-    });
-    var data = await res.json();
-    var box = document.getElementById('eventActionResult');
-    box.style.display = 'block';
-    if (data.success || typeof data.imported === 'number') {
-      box.textContent = '✅ ייבוא הושלם\nדיירים חדשים: ' + (data.imported||0) + '\nכבר קיימים: ' + (data.skipped||0) + '\nסה"כ: ' + (data.total||0);
-      showToast((data.imported||0) + ' דיירים יובאו מ-Zoho', 'success');
-      setTimeout(function(){ selectEvent(selectedEventId, ''); }, 400);
-    } else {
-      box.textContent = 'שגיאה: ' + (data.error||'לא ידוע');
-      showToast('שגיאה בייבוא', 'error');
-    }
-  } catch(e) { showToast('שגיאת רשת: ' + e.message, 'error'); }
-  finally { btn.innerHTML = '📥 ייבא דיירים מ-Zoho'; btn.disabled = false; }
-}
-
-async function sendEventNotifications() {
-  if (!selectedEventId) return showToast('בחר אירוע תחילה', 'error');
-  if (!confirm('לשלוח הזמנות WhatsApp לכל דיירי האירוע?')) return;
-  var btn = event.target;
-  btn.innerHTML = 'שולח...<span class="spinner"></span>'; btn.disabled = true;
-  try {
-    var res = await fetch('/events/' + selectedEventId + '/notify', {
-      method: 'POST', headers: { Authorization: EV_AUTH, 'Content-Type': 'application/json' }, body: '{}'
-    });
-    var data = await res.json();
-    var box = document.getElementById('eventActionResult');
-    box.style.display = 'block';
-    box.textContent = '📱 שליחה הושלמה\nנשלחו: ' + (data.sent||0) + '\nנכשלו: ' + (data.failed||0);
-    showToast((data.sent||0) + ' הזמנות נשלחו', 'success');
-  } catch(e) { showToast('שגיאת רשת: ' + e.message, 'error'); }
-  finally { btn.innerHTML = '📱 שלח הזמנות WA'; btn.disabled = false; }
 }
 
 async function addStationToEvent() {
@@ -1257,12 +1303,12 @@ async function addStationToEvent() {
     var box = document.getElementById('addStationResult');
     box.style.display = 'block';
     if (data.id || data.station_id || data.success) {
-      box.textContent = '✅ עמדה נוספה — ' + name;
-      showToast('עמדה נוספה בהצלחה', 'success');
+      box.textContent = '✅ עמדה נוספה — ' + name + '\nהדיירים מיובאים אוטומטית מ-Zoho ברקע...';
+      showToast('עמדה נוספה — דיירים מיובאים מ-Zoho', 'success');
       document.getElementById('stName').value = '';
       document.getElementById('stPhone').value = '';
       document.getElementById('stEmail').value = '';
-      setTimeout(function(){ selectEvent(selectedEventId, ''); }, 400);
+      setTimeout(function(){ selectEvent(selectedEventId, ''); }, 2000);
     } else {
       box.textContent = 'שגיאה: ' + (data.error||'לא ידוע');
       showToast('שגיאה בהוספת עמדה', 'error');
@@ -1289,9 +1335,9 @@ async function createEvent() {
     var data = await res.json();
     var box = document.getElementById('createEventResult');
     box.style.display = 'block';
-    var evId = data.id || data.event_id;
+    var evId = data.id || data.event_id || (data.event && data.event.id);
     if (evId || data.success) {
-      box.textContent = '✅ אירוע נוצר! ID: ' + evId + '\n' + title + '\n📅 ' + date;
+      box.textContent = '✅ אירוע נוצר! ID: ' + evId + '\n' + title + '\n📅 ' + date + '\n\nהוסף עמדות — הדיירים ייובאו אוטומטית מ-Zoho עם כל עמדה.';
       showToast('אירוע נוצר בהצלחה!', 'success');
       document.getElementById('evTitle').value = '';
       document.getElementById('evDate').value = '';
@@ -1304,6 +1350,172 @@ async function createEvent() {
     }
   } catch(e) { showToast('שגיאת רשת: ' + e.message, 'error'); }
   finally { btn.innerHTML = '🗓️ צור אירוע'; btn.disabled = false; }
+}
+
+// ══════════════════════════════════════════════════
+// TAB 4 — OUTREACH (פנייה ללידים)
+// ══════════════════════════════════════════════════
+let orResults = [];
+let orSelected = new Set();
+let orTabInited = false;
+let orDebounceTimer = null;
+
+async function initOutreachTab() {
+  if (orTabInited) return;
+  orTabInited = true;
+  try {
+    const res = await fetch('/api/opportunities?limit=200');
+    const data = await res.json();
+    const opps = data.opportunities || data.data || [];
+    const sel = document.getElementById('orComplex');
+    sel.innerHTML = '<option value="">הכל</option>' +
+      [...new Map(opps.map(o => [o.slug, o])).values()]
+      .sort((a,b) => (a.name||'').localeCompare(b.name||''))
+      .map(o => `<option value="${escHtml(o.slug)}">${escHtml(o.name)} — ${escHtml(o.city||'')}</option>`)
+      .join('');
+  } catch(e) {}
+  searchListings();
+}
+
+function debounceSearch() {
+  clearTimeout(orDebounceTimer);
+  orDebounceTimer = setTimeout(searchListings, 500);
+}
+
+async function searchListings() {
+  const params = new URLSearchParams();
+  const city = document.getElementById('orCity').value.trim();
+  const complex = document.getElementById('orComplex').value;
+  const rooms = document.getElementById('orRooms').value;
+  const msgStatus = document.getElementById('orMsgStatus').value;
+  const priceMin = document.getElementById('orPriceMin').value;
+  const priceMax = document.getElementById('orPriceMax').value;
+  const ssi = document.getElementById('orSsi').value;
+  const iai = document.getElementById('orIai').value;
+  if (city) params.set('city', city);
+  if (complex) params.set('complex_slug', complex);
+  if (rooms) params.set('min_rooms', rooms);
+  if (msgStatus) params.set('message_status', msgStatus);
+  if (priceMin) params.set('min_price', priceMin);
+  if (priceMax) params.set('max_price', priceMax);
+  if (ssi) params.set('min_ssi', ssi);
+  if (iai) params.set('min_iai', iai);
+  params.set('limit', '200');
+  params.set('is_active', 'true');
+  document.getElementById('orResultCount').textContent = 'טוען...';
+  try {
+    const res = await fetch('/api/dashboard/listings?' + params.toString());
+    const data = await res.json();
+    orResults = data.listings || data.data || [];
+    orSelected.clear();
+    renderOrTable();
+    document.getElementById('orResultCount').textContent = orResults.length + ' תוצאות';
+    document.getElementById('orResultsSection').style.display = '';
+  } catch(e) {
+    document.getElementById('orResultCount').textContent = 'שגיאה בטעינה';
+  }
+}
+
+function resetOrFilters() {
+  ['orCity','orRooms','orPriceMin','orPriceMax','orSsi','orIai'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('orComplex').value = '';
+  document.getElementById('orMsgStatus').value = '';
+  searchListings();
+}
+
+const MSG_STATUS_LABEL = { sent:'פנינו', replied:'ענה', no_reply:'ללא מענה', none:'לא פונה', null:'לא פונה', '':'לא פונה' };
+const MSG_STATUS_COLOR = { sent:'#1a3a5c', replied:'#064e3b', no_reply:'#451a03', none:'#1e293b', '':'#1e293b' };
+
+function renderOrTable() {
+  const tbody = document.getElementById('orTableBody');
+  if (!orResults.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="padding:24px;text-align:center;color:var(--muted)">לא נמצאו מודעות — שנה פרמטרי חיפוש</td></tr>';
+    updateOrActionBar();
+    return;
+  }
+  tbody.innerHTML = orResults.map(l => {
+    const checked = orSelected.has(l.id) ? 'checked' : '';
+    const price = l.asking_price ? '₪' + Number(l.asking_price).toLocaleString('he-IL') : '—';
+    const ssiColor = l.ssi_score > 70 ? '#ef4444' : l.ssi_score > 40 ? '#f59e0b' : '#64748b';
+    const iaiColor = l.iai_score > 70 ? '#10b981' : l.iai_score > 40 ? '#3b82f6' : '#64748b';
+    const st = l.message_status || 'none';
+    const noPhone = !l.phone;
+    return `<tr style="border-bottom:1px solid #11202f;${noPhone?'opacity:.45;':''}" onmouseenter="this.style.background='#0d2035'" onmouseleave="this.style.background=''">
+      <td style="text-align:center;padding:10px 8px">
+        <input type="checkbox" ${checked} ${noPhone?'disabled title="אין טלפון"':''} onchange="toggleOrRow(${l.id},this.checked)" style="width:auto;cursor:pointer">
+      </td>
+      <td style="padding:10px 12px">
+        <div style="font-weight:600;font-size:13px">${escHtml(l.address||l.title||'—')}</div>
+        <div style="font-size:11px;color:var(--muted)">${escHtml(l.city||'')}</div>
+      </td>
+      <td style="padding:10px 12px;font-size:12px;color:#94a3b8">${escHtml(l.complex_name||'—')}</td>
+      <td style="padding:10px 12px;font-size:13px;font-weight:600">${price}</td>
+      <td style="padding:10px 8px;text-align:center;font-size:13px">${l.rooms||'—'}</td>
+      <td style="padding:10px 8px;text-align:center;font-size:13px;font-weight:700;color:${ssiColor}">${l.ssi_score!=null?Math.round(l.ssi_score):'—'}</td>
+      <td style="padding:10px 8px;text-align:center;font-size:13px;font-weight:700;color:${iaiColor}">${l.iai_score!=null?Math.round(l.iai_score):'—'}</td>
+      <td style="padding:10px 12px">
+        <span style="background:${MSG_STATUS_COLOR[st]||'#1e293b'};color:#94a3b8;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:600">
+          ${MSG_STATUS_LABEL[st]||st}
+        </span>
+      </td>
+      <td style="padding:10px 12px;direction:ltr;font-size:12px;color:#64748b">${escHtml(l.phone||'אין')}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('orSelectAll').checked = false;
+  updateOrActionBar();
+}
+
+function toggleOrRow(id, checked) {
+  checked ? orSelected.add(id) : orSelected.delete(id);
+  updateOrActionBar();
+  const all = orResults.filter(l=>l.phone).every(l=>orSelected.has(l.id));
+  document.getElementById('orSelectAll').checked = all;
+}
+
+function toggleSelectAll(checked) {
+  orResults.filter(l=>l.phone).forEach(l => checked ? orSelected.add(l.id) : orSelected.delete(l.id));
+  document.querySelectorAll('#orTableBody input[type=checkbox]:not(:disabled)').forEach(cb => cb.checked = checked);
+  updateOrActionBar();
+}
+
+function updateOrActionBar() {
+  const n = orSelected.size;
+  const bar = document.getElementById('orActionBar');
+  const cnt = document.getElementById('orSelectedCount');
+  const acnt = document.getElementById('orActionCount');
+  bar.style.display = n > 0 ? '' : 'none';
+  cnt.style.display = n > 0 ? '' : 'none';
+  cnt.textContent = n + ' נבחרו';
+  acnt.textContent = n;
+  document.getElementById('orActionResult').style.display = 'none';
+}
+
+async function runOutreach(action) {
+  if (!orSelected.size) return showToast('לא נבחרו מודעות', 'error');
+  const actionLabel = { wa:'שליחת WA', call:'שיחת טלפון', wa_then_call:'WA ואם אין מענה שיחה' }[action];
+  if (!confirm(`לבצע ${actionLabel} ל-${orSelected.size} מודעות נבחרות?`)) return;
+  const btn = event.target;
+  const origText = btn.textContent;
+  btn.innerHTML = 'מבצע...<span class="spinner"></span>'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/outreach/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listing_ids: [...orSelected], action })
+    });
+    const data = await res.json();
+    const box = document.getElementById('orActionResult');
+    box.style.display = 'block';
+    if (data.success) {
+      box.textContent = `✅ ${actionLabel}\nהצלחות: ${data.sent||0} | נכשלו: ${data.failed||0}\n${data.details||''}`;
+      showToast(`${data.sent||0} נשלחו בהצלחה`, 'success');
+      setTimeout(searchListings, 1500);
+    } else {
+      box.textContent = 'שגיאה: ' + (data.error||'לא ידוע');
+      showToast('שגיאה: ' + (data.error||''), 'error');
+    }
+  } catch(e) { showToast('שגיאת רשת: ' + e.message, 'error'); }
+  finally { btn.textContent = origText; btn.disabled = false; }
 }
 
 // ── Init ──

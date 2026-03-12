@@ -1,25 +1,23 @@
 /**
- * QUANTUM Event Scheduler Routes — v1.1
+ * QUANTUM Event Scheduler Routes — v1.2
  *
  * Admin routes (Basic Auth protected):
  *   GET  /events/                        — list events
  *   POST /events/                        — create event
- *   GET  /events/:id                     — event details
- *   POST /events/:id/stations            — add station
+ *   GET  /events/:id                     — event details + attendees per station
+ *   POST /events/:id/stations            — add station (auto-imports Zoho residents)
  *   POST /events/:id/stations/:sid/slots — generate slots
- *   POST /events/:id/import-zoho        — import residents from Zoho
- *   POST /events/:id/stations/:sid/assign — auto-assign attendees
- *   POST /events/:id/notify              — send WA notifications
+ *   POST /events/:id/stations/:sid/assign — auto-assign attendees to slots
  *   GET  /events/:id/report              — full report JSON
  *   GET  /events/zoho/compounds          — list Zoho compounds
  *   GET  /events/zoho/buildings/:cid     — list buildings in compound
  *
- * Professional HTML (token-protected, no Basic Auth):
+ * Professional HTML (token-protected):
  *   GET  /events/pro/:token              — attendance page
  *   POST /events/pro/:token/attendee/:id — update status
  *   GET  /events/pro/:token/pdf          — printable list
  *
- * Attendee HTML (token-protected, no Basic Auth):
+ * Attendee HTML (token-protected):
  *   GET  /events/attend/:token           — confirmation page
  *   POST /events/attend/:token/confirm   — confirm/cancel/reschedule
  */
@@ -32,43 +30,25 @@ const { logger } = require('../services/logger');
 let zohoSvc;
 try { zohoSvc = require('../services/zohoResidentsService'); } catch (e) {}
 
+const BASE_URL = 'https://pinuy-binuy-analyzer-production.up.railway.app';
+
 // ── Basic Auth middleware (admin only) ────────────────────────────────────────
 
 function adminAuth(req, res, next) {
   const expected = process.env.EVENT_BASIC_AUTH || 'Basic UVVBTlRVTTpkZDRhN2U5YS0xOWYyLTQzYjktOTM2Yy01YmQ0OTRlZWRjNWM=';
   const provided  = req.headers['authorization'] || '';
-
   if (provided === expected) return next();
-
   res.setHeader('WWW-Authenticate', 'Basic realm="QUANTUM Events"');
-  return res.status(401).send(`<!DOCTYPE html>
-<html lang="he" dir="rtl">
-<head><meta charset="UTF-8"><title>QUANTUM | כניסה נדרשת</title>
+  return res.status(401).send(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><title>QUANTUM</title>
 <style>body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
 .box{text-align:center}.logo{color:#4fc3f7;font-size:24px;font-weight:700;margin-bottom:12px}.msg{color:#78909c;font-size:14px}</style>
-</head>
-<body><div class="box"><div class="logo">QUANTUM</div><div class="msg">נדרשת הרשאת כניסה</div></div></body></html>`);
+</head><body><div class="box"><div class="logo">QUANTUM</div><div class="msg">נדרשת הרשאת כניסה</div></div></body></html>`);
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function ok(res, data)    { res.json({ success: true, ...data }); }
 function err(res, msg, status = 500) { res.status(status).json({ success: false, error: msg }); }
-
-async function sendWA(phone, message) {
-  const axios = require('axios');
-  const { INFORU_USERNAME, INFORU_PASSWORD } = process.env;
-  if (!INFORU_USERNAME) return { sent: false, reason: 'no credentials' };
-  try {
-    const auth = Buffer.from(`${INFORU_USERNAME}:${INFORU_PASSWORD}`).toString('base64');
-    await axios.post('https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat',
-      { Data: { Message: message, Phone: phone.replace(/\D/g,''), Settings: { CustomerMessageId: `ev_${Date.now()}` } } },
-      { headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' }, timeout: 15000 });
-    return { sent: true };
-  } catch (e) {
-    return { sent: false, reason: e.message };
-  }
-}
 
 function fmtDate(d) {
   if (!d) return '';
@@ -82,17 +62,44 @@ function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Auto-import Zoho residents into a station (background, fire-and-forget) ──
+
+async function autoImportResidents(stationId, zohoCompoundId, compoundName) {
+  if (!zohoSvc || !zohoCompoundId) return;
+  try {
+    const residents = await zohoSvc.getResidentsForCompound(zohoCompoundId, compoundName || '');
+    let inserted = 0;
+    for (const r of residents) {
+      const ex = await pool.query(
+        'SELECT id FROM event_attendees WHERE station_id=$1 AND zoho_contact_id=$2',
+        [stationId, r.zoho_contact_id]
+      );
+      if (ex.rows.length) continue;
+      await pool.query(
+        `INSERT INTO event_attendees
+           (station_id, zoho_contact_id, zoho_asset_id, name, phone, unit_number, floor, building_name, compound_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [stationId, r.zoho_contact_id, r.zoho_asset_id, r.name, r.phone,
+         r.unit_number, r.floor, r.building_name, r.compound_name]
+      );
+      inserted++;
+    }
+    logger.info(`[Events] Auto-imported ${inserted}/${residents.length} residents → station ${stationId}`);
+  } catch (e) {
+    logger.error(`[Events] Auto-import error (station ${stationId}):`, e.message);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// PUBLIC TOKEN ROUTES — /pro/:token  and  /attend/:token
-// These must be declared BEFORE adminAuth middleware
+// PUBLIC TOKEN ROUTES — must come BEFORE adminAuth middleware
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── Professional HTML page ────────────────────────────────────────────────────
+// ── Professional page ─────────────────────────────────────────────────────────
 
 router.get('/pro/:token', async (req, res) => {
   try {
     const { rows: st } = await pool.query(
-      'SELECT s.*, e.title, e.event_date, e.location, e.compound_name FROM event_stations s JOIN quantum_events e ON e.id=s.event_id WHERE s.token=$1',
+      'SELECT s.*, e.title, e.event_date, e.location, e.compound_name, e.zoho_compound_id FROM event_stations s JOIN quantum_events e ON e.id=s.event_id WHERE s.token=$1',
       [req.params.token]
     );
     if (!st.length) return res.status(404).send('<h2>קישור לא תקין</h2>');
@@ -147,97 +154,141 @@ body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e0e0e0;directio
 .topbar{background:linear-gradient(135deg,#0d1117,#161b27);border-bottom:1px solid #1e3a5f;padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
 .logo{color:#4fc3f7;font-size:18px;font-weight:700}
 .event-header{padding:16px 20px;background:#0d1a2a;border-bottom:1px solid #1e3a5f}
-.event-title{font-size:16px;font-weight:700;color:#fff}
-.event-meta{font-size:12px;color:#78909c;margin-top:4px}
-.stats-bar{display:flex;gap:10px;padding:12px 20px;background:#0a0f1a;border-bottom:1px solid #1e3a5f;flex-wrap:wrap}
-.stat{background:#0d1117;border:1px solid #1e3a5f;border-radius:6px;padding:8px 14px;text-align:center;min-width:70px}
-.stat .n{font-size:20px;font-weight:700;color:#4fc3f7}
-.stat .l{font-size:10px;color:#78909c}
-.container{padding:16px;max-width:100%;overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13px;min-width:650px}
-th{background:#0d1a2a;color:#90a4ae;padding:10px 12px;text-align:right;border-bottom:1px solid #1e3a5f;font-weight:600;white-space:nowrap}
-td{padding:10px 12px;border-bottom:1px solid #11202f;vertical-align:middle}
-tr:hover td{background:#0d2035}
-.badge{display:inline-block;padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;color:#fff}
-.act-btn{padding:5px 9px;border:none;border-radius:5px;color:#fff;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap}
-.act-btn:hover{opacity:.85}
-.pdf-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1b5e20;color:#a5d6a7;border:1px solid #2e7d32;padding:9px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;z-index:999;pointer-events:none}
-.toast.show{opacity:1}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:998;align-items:center;justify-content:center}
+.event-title{font-size:20px;font-weight:700;color:#e3f2fd;margin-bottom:4px}
+.event-meta{font-size:13px;color:#78909c}
+.pro-card{background:#0d1a2a;border:1px solid #1e3a5f;border-radius:8px;padding:14px 18px;margin:16px 20px;display:flex;align-items:center;gap:14px}
+.pro-avatar{width:44px;height:44px;border-radius:50%;background:#1e3a5f;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.pro-name{font-size:16px;font-weight:600;color:#e3f2fd}
+.pro-role{font-size:12px;color:#4fc3f7;margin-top:2px}
+.stats-row{display:flex;gap:10px;padding:0 20px;margin:0 0 12px;flex-wrap:wrap}
+.stat-card{background:#0d1a2a;border:1px solid #1e3a5f;border-radius:8px;padding:10px 16px;flex:1;min-width:80px;text-align:center}
+.stat-num{font-size:22px;font-weight:700;color:#4fc3f7}
+.stat-label{font-size:11px;color:#546e7a;margin-top:2px}
+.table-wrap{padding:0 20px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#0d1a2a;padding:10px 12px;text-align:right;color:#78909c;font-weight:500;border-bottom:1px solid #1e3a5f;white-space:nowrap}
+td{padding:10px 12px;border-bottom:1px solid #141e2b;vertical-align:middle}
+tr:hover td{background:#0d1a2a}
+.badge{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600;color:#e3f2fd}
+.act-btn{border:none;color:#e3f2fd;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s}
+.act-btn:hover{opacity:.8}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
-.modal{background:#0d1a2a;border:1px solid #1e3a5f;border-radius:10px;padding:20px;width:90%;max-width:380px}
-.modal h3{color:#4fc3f7;margin-bottom:12px}
-.modal textarea{width:100%;background:#161b27;border:1px solid #2a4a6b;border-radius:6px;padding:9px;color:#e0e0e0;font-size:13px;direction:rtl;resize:vertical;min-height:80px}
-.modal-actions{display:flex;gap:8px;margin-top:12px}
-.btn{padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer}
-.btn-primary{background:#1565c0;color:#fff}.btn-outline{background:transparent;border:1px solid #2a4a6b;color:#90a4ae}
-@media print{.topbar,.stats-bar,.act-btn,.pdf-btn,.toast,.modal-overlay{display:none!important}body{background:#fff;color:#000}table{font-size:11px}th,td{border:1px solid #ccc;padding:6px 8px}tr:hover td{background:none}}
+.modal{background:#0d1a2a;border:1px solid #1e3a5f;border-radius:12px;padding:24px;min-width:300px;max-width:400px;width:90%}
+.modal-title{font-size:16px;font-weight:600;color:#e3f2fd;margin-bottom:14px}
+textarea{width:100%;background:#060d1a;border:1px solid #1e3a5f;border-radius:8px;color:#e0e0e0;padding:10px;font-family:inherit;font-size:13px;resize:vertical;min-height:80px}
+.modal-btns{display:flex;gap:8px;margin-top:12px}
+.btn{flex:1;padding:10px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600}
+.btn-primary{background:#1565c0;color:#fff}.btn-cancel{background:#263238;color:#b0bec5}
 </style>
 </head>
 <body>
 <div class="topbar">
-  <div class="logo">QUANTUM</div>
-  <a href="/events/pro/${token}/pdf" target="_blank" class="pdf-btn">🖨️ הדפס רשימה</a>
+  <div class="logo">⚡ QUANTUM</div>
+  <div style="font-size:12px;color:#546e7a">גישת מקצוען</div>
 </div>
 <div class="event-header">
-  <div class="event-title">${esc(station.title)} — ${esc(roleLabel)}: ${esc(station.pro_name)}</div>
-  <div class="event-meta">📅 ${fmtDate(station.event_date)} | 📍 ${esc(station.location||'')} | ${esc(station.compound_name||'')}</div>
+  <div class="event-title">${esc(station.title)}</div>
+  <div class="event-meta">${fmtDate(station.event_date)} | ${esc(station.location||'')}</div>
 </div>
-<div class="stats-bar">
-  <div class="stat"><div class="n">${stats.total}</div><div class="l">סה"כ</div></div>
-  <div class="stat"><div class="n" style="color:#a5d6a7">${stats.confirmed}</div><div class="l">אישרו</div></div>
-  <div class="stat"><div class="n" style="color:#4db6ac">${stats.arrived}</div><div class="l">הגיעו</div></div>
-  <div class="stat"><div class="n" style="color:#ef9a9a">${stats.no_show}</div><div class="l">לא הגיעו</div></div>
-  <div class="stat"><div class="n" style="color:#ffab91">${stats.cancelled}</div><div class="l">ביטלו</div></div>
+<div class="pro-card">
+  <div class="pro-avatar">👤</div>
+  <div>
+    <div class="pro-name">${esc(station.pro_name)}</div>
+    <div class="pro-role">${roleLabel}</div>
+    ${station.pro_phone ? `<div style="font-size:12px;color:#78909c;margin-top:2px;direction:ltr">${esc(station.pro_phone)}</div>` : ''}
+  </div>
 </div>
-<div class="container">
-  <table>
-    <thead><tr><th>שעה</th><th>שם</th><th>בניין</th><th>טלפון</th><th>סטטוס</th><th>פעולות</th></tr></thead>
-    <tbody>${tableRows}</tbody>
-  </table>
+<div class="stats-row">
+  <div class="stat-card"><div class="stat-num">${stats.total}</div><div class="stat-label">סה"כ</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#43a047">${stats.confirmed}</div><div class="stat-label">אישרו</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#1e88e5">${stats.arrived}</div><div class="stat-label">הגיעו</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#e53935">${stats.cancelled}</div><div class="stat-label">ביטלו</div></div>
+  <div class="stat-card"><div class="stat-num" style="color:#ffa726">${stats.no_show}</div><div class="stat-label">לא הגיעו</div></div>
 </div>
-<div class="toast" id="toast"></div>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>שעה</th><th>שם</th><th>בניין</th><th>טלפון</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+  <tbody id="tbody">${tableRows}</tbody>
+</table>
+</div>
+
 <div class="modal-overlay" id="notesModal">
   <div class="modal">
-    <h3>📝 הערות — <span id="notesName"></span></h3>
-    <textarea id="notesText" placeholder="הערות..."></textarea>
-    <div class="modal-actions">
-      <button class="btn btn-primary" onclick="saveNotes()">💾 שמור</button>
-      <button class="btn btn-outline" onclick="closeModal()">ביטול</button>
+    <div class="modal-title" id="notesTitle">הערות</div>
+    <textarea id="notesText" placeholder="הכנס הערות..."></textarea>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="saveNotes()">שמור</button>
+      <button class="btn btn-cancel" onclick="closeNotes()">ביטול</button>
     </div>
   </div>
 </div>
+
 <script>
-let currentAid=null;
-const TOKEN='${token}';
-function toast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.style.background=type==='error'?'#3c1414':'#1b5e20';t.style.borderColor=type==='error'?'#7f1616':'#2e7d32';t.style.color=type==='error'?'#ef9a9a':'#a5d6a7';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
-async function setStatus(aid,status,btn){btn.disabled=true;try{const r=await fetch('/events/pro/'+TOKEN+'/attendee/'+aid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});const d=await r.json();if(d.success){toast('עודכן!');setTimeout(()=>location.reload(),1000);}else toast(d.error||'שגיאה','error');}catch(e){toast('שגיאת רשת','error');}btn.disabled=false;}
-function openNotes(aid,name){currentAid=aid;document.getElementById('notesName').textContent=name;document.getElementById('notesText').value='';document.getElementById('notesModal').classList.add('open');}
-function closeModal(){document.getElementById('notesModal').classList.remove('open');}
-async function saveNotes(){const notes=document.getElementById('notesText').value.trim();if(!notes)return closeModal();try{const r=await fetch('/events/pro/'+TOKEN+'/attendee/'+currentAid,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pro_notes:notes})});const d=await r.json();if(d.success){toast('הערה נשמרה');closeModal();}else toast(d.error||'שגיאה','error');}catch(e){toast('שגיאה','error');}}
+const TOKEN = '${token}';
+let notesId = null;
+
+async function setStatus(id, status, btn) {
+  btn.disabled = true;
+  try {
+    const r = await fetch('/events/pro/' + TOKEN + '/attendee/' + id, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({status})
+    });
+    if (r.ok) location.reload();
+  } catch(e) { alert('שגיאה: ' + e.message); btn.disabled = false; }
+}
+
+function openNotes(id, name) {
+  notesId = id;
+  document.getElementById('notesTitle').textContent = 'הערות: ' + name;
+  document.getElementById('notesText').value = '';
+  document.getElementById('notesModal').classList.add('open');
+}
+
+function closeNotes() { document.getElementById('notesModal').classList.remove('open'); notesId = null; }
+
+async function saveNotes() {
+  if (!notesId) return;
+  const notes = document.getElementById('notesText').value;
+  try {
+    await fetch('/events/pro/' + TOKEN + '/attendee/' + notesId, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pro_notes: notes})
+    });
+    closeNotes();
+  } catch(e) { alert('שגיאה'); }
+}
 </script>
 </body></html>`);
-  } catch (e) { res.status(500).send('<h2>שגיאה</h2>'); }
+  } catch(e) {
+    logger.error('[Events] Pro page error:', e.message);
+    res.status(500).send('<h2>שגיאה</h2><p>' + e.message + '</p>');
+  }
 });
 
-router.post('/pro/:token/attendee/:aid', async (req, res) => {
+router.post('/pro/:token/attendee/:id', async (req, res) => {
   try {
-    const { rows: st } = await pool.query('SELECT id FROM event_stations WHERE token=$1', [req.params.token]);
+    const { rows: st } = await pool.query(
+      'SELECT s.id FROM event_stations s WHERE s.token=$1', [req.params.token]
+    );
     if (!st.length) return err(res, 'Invalid token', 403);
-    const { status, pro_notes } = req.body;
-    const updates = [], vals = [];
-    if (status)                   { updates.push(`status=$${updates.length+1}`);    vals.push(status); }
-    if (pro_notes !== undefined)  { updates.push(`pro_notes=$${updates.length+1}`); vals.push(pro_notes); }
-    if (!updates.length) return err(res, 'Nothing to update', 400);
-    updates.push('updated_at=NOW()');
-    vals.push(st[0].id, req.params.aid);
+
+    const fields = [];
+    const vals = [];
+    let n = 1;
+
+    if (req.body.status) { fields.push(`status=$${n++}`); vals.push(req.body.status); }
+    if (req.body.pro_notes !== undefined) { fields.push(`pro_notes=$${n++}`); vals.push(req.body.pro_notes); }
+    if (!fields.length) return err(res, 'Nothing to update', 400);
+
+    vals.push(req.params.id, st[0].id);
     await pool.query(
-      `UPDATE event_attendees SET ${updates.join(',')} WHERE station_id=$${vals.length-1} AND id=$${vals.length}`,
+      `UPDATE event_attendees SET ${fields.join(',')} WHERE id=$${n++} AND station_id=$${n++}`,
       vals
     );
-    ok(res, { updated: true });
-  } catch (e) { err(res, e.message); }
+    ok(res, { message: 'updated' });
+  } catch(e) { err(res, e.message); }
 });
 
 router.get('/pro/:token/pdf', async (req, res) => {
@@ -246,52 +297,39 @@ router.get('/pro/:token/pdf', async (req, res) => {
       'SELECT s.*, e.title, e.event_date, e.location FROM event_stations s JOIN quantum_events e ON e.id=s.event_id WHERE s.token=$1',
       [req.params.token]
     );
-    if (!st.length) return res.status(404).send('<h2>לא נמצא</h2>');
+    if (!st.length) return res.status(404).send('Not found');
     const station = st[0];
+
     const { rows: attendees } = await pool.query(`
       SELECT a.*, sl.start_time FROM event_attendees a
-      LEFT JOIN event_slots sl ON sl.id = a.slot_id
+      LEFT JOIN event_slots sl ON sl.id=a.slot_id
       WHERE a.station_id=$1 ORDER BY sl.start_time NULLS LAST, a.building_name, a.unit_number
     `, [station.id]);
 
-    const tableRows = attendees.map((a, i) => `
-      <tr>
-        <td>${i+1}</td>
-        <td>${a.start_time ? fmtDate(a.start_time).split(' ')[1] : '-'}</td>
-        <td><strong>${esc(a.name)}</strong></td>
-        <td>${esc(a.unit_number||'-')}${a.floor?` / קומה ${esc(a.floor)}`:''}</td>
-        <td>${esc(a.building_name||'-')}</td>
-        <td style="direction:ltr">${esc(a.phone||'-')}</td>
-        <td style="text-align:center;font-size:16px">${a.status==='arrived'?'✅':a.status==='no_show'?'❌':''}</td>
-        <td style="font-size:11px;color:#555">${esc(a.pro_notes||'')}</td>
-      </tr>`).join('');
+    const rows = attendees.map(a => `<tr>
+      <td>${a.start_time ? fmtDate(a.start_time).split(' ')[1] : '-'}</td>
+      <td>${esc(a.name)}</td>
+      <td>${esc(a.unit_number||'-')}</td>
+      <td>${esc(a.building_name||'-')}</td>
+      <td>${esc(a.phone||'-')}</td>
+      <td>${a.status}</td>
+      <td></td>
+    </tr>`).join('');
 
-    res.type('html').send(`<!DOCTYPE html>
-<html lang="he" dir="rtl">
-<head><meta charset="UTF-8"><title>רשימת נוכחות — ${esc(station.pro_name)}</title>
-<style>body{font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#000;background:#fff;font-size:12px}
-h1{font-size:16px;margin-bottom:4px}.meta{font-size:11px;color:#555;margin-bottom:16px}
-table{width:100%;border-collapse:collapse}
-th{background:#1a3a5c;color:#fff;padding:7px 10px;text-align:right;font-size:11px}
-td{padding:7px 10px;border-bottom:1px solid #ddd}
-tr:nth-child(even) td{background:#f5f8fc}
-.footer{margin-top:14px;font-size:10px;color:#888;text-align:center}
-@media print{@page{size:A4;margin:15mm}}</style>
-</head>
-<body>
-<h1>QUANTUM | רשימת נוכחות</h1>
-<div class="meta">
-  <strong>${esc(station.title)}</strong> | ${fmtDate(station.event_date)} | ${esc(station.location||'')}
-  <br>${esc(station.pro_role)}: <strong>${esc(station.pro_name)}</strong> | סה"כ: ${attendees.length}
-</div>
-<table>
-  <thead><tr><th>#</th><th>שעה</th><th>שם</th><th>דירה/קומה</th><th>בניין</th><th>טלפון</th><th>הגיע?</th><th>הערות</th></tr></thead>
-  <tbody>${tableRows}</tbody>
-</table>
-<div class="footer">הופק על ידי QUANTUM | ${new Date().toLocaleDateString('he-IL')}</div>
-<script>window.onload=()=>window.print()</script>
-</body></html>`);
-  } catch (e) { res.status(500).send('<h2>שגיאה</h2>'); }
+    res.type('html').send(`<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8">
+<title>רשימת נוכחות — ${esc(station.pro_name)}</title>
+<style>body{font-family:Arial,sans-serif;font-size:12px;direction:rtl}
+h2{font-size:16px}table{width:100%;border-collapse:collapse}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}
+th{background:#eee;font-weight:bold}
+@media print{button{display:none}}</style>
+</head><body>
+<button onclick="window.print()">🖨️ הדפס</button>
+<h2>${esc(station.title)} — ${esc(station.pro_name)} (${esc(station.pro_role)})</h2>
+<p>${fmtDate(station.event_date)} | ${esc(station.location||'')}</p>
+<table><thead><tr><th>שעה</th><th>שם</th><th>דירה</th><th>בניין</th><th>טלפון</th><th>סטטוס</th><th>חתימה</th></tr></thead>
+<tbody>${rows}</tbody></table></body></html>`);
+  } catch(e) { res.status(500).send(e.message); }
 });
 
 // ── Attendee confirmation page ────────────────────────────────────────────────
@@ -299,361 +337,346 @@ tr:nth-child(even) td{background:#f5f8fc}
 router.get('/attend/:token', async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT a.*, sl.start_time, sl.end_time, st.pro_name, st.pro_role, st.station_number,
-             e.title, e.event_date, e.location, e.id AS event_id
+      SELECT a.*, s.pro_name, s.pro_role, s.pro_phone,
+             e.title, e.event_date, e.location, e.compound_name,
+             sl.start_time, sl.end_time
       FROM event_attendees a
-      JOIN event_stations st ON st.id = a.station_id
-      JOIN quantum_events e ON e.id = st.event_id
+      JOIN event_stations s ON s.id = a.station_id
+      JOIN quantum_events e ON e.id = s.event_id
       LEFT JOIN event_slots sl ON sl.id = a.slot_id
       WHERE a.token = $1
     `, [req.params.token]);
-    if (!rows.length) return res.status(404).send('<h2>קישור לא תקין או פג תוקף</h2>');
+
+    if (!rows.length) return res.status(404).send(`<!DOCTYPE html><html lang="he" dir="rtl"><body style="font-family:sans-serif;text-align:center;padding:40px;background:#0a0a0f;color:#e0e0e0"><h2>קישור לא תקין</h2></body></html>`);
     const a = rows[0];
-
-    const { rows: freeSlots } = await pool.query(
-      "SELECT * FROM event_slots WHERE station_id=$1 AND status='free' ORDER BY start_time",
-      [a.station_id]
-    );
-
-    const statusMsg = {
-      confirmed:'✅ אישרת הגעה', cancelled:'❌ ביטלת השתתפות',
-      rescheduled:'🔄 תיאמת מחדש', arrived:'✅ הגעתך אושרה',
-      no_show:'❓ לא רשום/ה כמגיע/ה', pending: null,
-    }[a.status];
-
-    const roleLabel = { lawyer:'עו"ד', surveyor:'מודד', appraiser:'שמאי', other:'נציג' }[a.pro_role] || a.pro_role;
-    const slotOptions = freeSlots.map(s => `<option value="${s.id}">${fmtDate(s.start_time).split(' ')[1]}</option>`).join('');
     const token = req.params.token;
+    const statusMsg = {
+      confirmed: '✅ פגישתך אושרה',
+      cancelled:  '❌ הפגישה בוטלה',
+      rescheduled: '🔄 הפגישה תואמה מחדש',
+      pending: '⏳ ממתין לאישור',
+    }[a.status] || '⏳ ממתין לאישור';
+
+    const timeDisplay = a.start_time ? fmtDate(a.start_time) : 'טרם שובץ';
+    const roleLabel = { lawyer:'עורך דין', surveyor:'מודד', appraiser:'שמאי', other:'מקצוען' }[a.pro_role] || a.pro_role;
 
     res.type('html').send(`<!DOCTYPE html>
 <html lang="he" dir="rtl">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>QUANTUM | אישור הגעה</title>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QUANTUM | אישור פגישה</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',sans-serif;background:linear-gradient(135deg,#0a0a0f 0%,#0d1a2a 100%);min-height:100vh;color:#e0e0e0;direction:rtl;display:flex;align-items:center;justify-content:center;padding:20px}
-.card{background:#0d1117;border:1px solid #1e3a5f;border-radius:14px;padding:28px 24px;width:100%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
-.logo{color:#4fc3f7;font-size:16px;font-weight:700;margin-bottom:16px;letter-spacing:1px}
-.event-title{font-size:18px;font-weight:700;color:#fff;margin-bottom:6px}
-.info-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;font-size:14px}
-.info-row .icon{font-size:18px;line-height:1}
-.info-row .text{color:#cdd5de}
-.info-row .label{font-size:11px;color:#78909c}
-.divider{border:none;border-top:1px solid #1e3a5f;margin:18px 0}
-.status-banner{padding:10px 14px;border-radius:8px;font-size:14px;font-weight:600;margin-bottom:16px;text-align:center}
-.status-confirmed{background:#1b5e20;color:#a5d6a7;border:1px solid #2e7d32}
-.status-cancelled{background:#3c1414;color:#ef9a9a;border:1px solid #7f1616}
-.status-rescheduled{background:#3e2723;color:#ffccbc;border:1px solid #6d4c41}
-.btn-group{display:flex;gap:10px;flex-direction:column}
-.btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s}
-.btn-confirm{background:#1b5e20;color:#a5d6a7;border:1px solid #2e7d32}.btn-confirm:hover{background:#2e7d32}
-.btn-cancel{background:#3c1414;color:#ef9a9a;border:1px solid #7f1616}.btn-cancel:hover{background:#7f1616}
-.btn-reschedule{background:#1a3a5c;color:#4fc3f7;border:1px solid #2a5a8f}.btn-reschedule:hover{background:#2a5a8f}
-.reschedule-panel{display:none;margin-top:14px;background:#0a0f1a;border:1px solid #2a4a6b;border-radius:8px;padding:14px}
-.reschedule-panel label{font-size:12px;color:#90a4ae;display:block;margin-bottom:6px}
-.reschedule-panel select{width:100%;background:#161b27;border:1px solid #2a4a6b;border-radius:6px;padding:9px;color:#e0e0e0;font-size:13px}
-.reschedule-panel .btn-sm{width:100%;margin-top:10px;padding:9px;background:#1565c0;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1b5e20;color:#a5d6a7;border:1px solid #2e7d32;padding:9px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;z-index:999;pointer-events:none;text-align:center;min-width:200px}
-.toast.show{opacity:1}
+body{font-family:'Segoe UI',sans-serif;background:#0a0a0f;color:#e0e0e0;direction:rtl;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.card{background:#0d1a2a;border:1px solid #1e3a5f;border-radius:16px;padding:28px;max-width:420px;width:100%;text-align:center}
+.logo{color:#4fc3f7;font-size:22px;font-weight:700;margin-bottom:20px}
+.status-badge{font-size:18px;font-weight:700;color:#e3f2fd;margin-bottom:16px}
+.info-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1e3a5f;font-size:14px}
+.info-label{color:#78909c}
+.info-value{color:#e3f2fd;font-weight:500}
+.actions{display:flex;flex-direction:column;gap:10px;margin-top:20px}
+.btn{width:100%;padding:12px;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;transition:.2s}
+.btn:hover{opacity:.85}
+.btn-confirm{background:#1565c0;color:#fff}
+.btn-cancel{background:#3c1414;color:#e0e0e0}
+.msg{margin-top:14px;font-size:13px;color:#78909c;min-height:20px}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="logo">QUANTUM</div>
-  <div class="event-title">${esc(a.title)}</div>
-  <div class="info-row"><div class="icon">📅</div><div><div class="label">תאריך ושעה</div><div class="text">${fmtDate(a.event_date)}${a.start_time?` | שעתך: ${fmtDate(a.start_time).split(' ')[1]}`:''}</div></div></div>
-  ${a.location?`<div class="info-row"><div class="icon">📍</div><div><div class="label">מיקום</div><div class="text">${esc(a.location)}</div></div></div>`:''}
-  <div class="info-row"><div class="icon">🏠</div><div><div class="label">דירה</div><div class="text">דירה ${esc(a.unit_number||'-')}${a.floor?`, קומה ${esc(a.floor)}`:''} — ${esc(a.building_name||'')}</div></div></div>
-  <div class="info-row"><div class="icon">👤</div><div><div class="label">${roleLabel}</div><div class="text">${esc(a.pro_name)}${a.station_number?' (עמדה '+a.station_number+')':''}</div></div></div>
-  <hr class="divider">
-  ${statusMsg?`<div class="status-banner status-${a.status}">${statusMsg}</div>`:''}
-  <div class="btn-group">
-    <button class="btn btn-confirm" onclick="respond('confirmed')">✅ מאשר/ת הגעה</button>
-    <button class="btn btn-cancel" onclick="respond('cancelled')">❌ אינני יכול/ה להגיע</button>
-    ${freeSlots.length?`
-    <button class="btn btn-reschedule" onclick="document.getElementById('rsPanel').style.display='block'">🔄 בקש/י שעה אחרת</button>
-    <div class="reschedule-panel" id="rsPanel">
-      <label>בחר/י שעה חלופית:</label>
-      <select id="slotSelect">${slotOptions}</select>
-      <button class="btn-sm" onclick="reschedule()">אשר תיאום מחדש</button>
-    </div>`:''}
+  <div class="logo">⚡ QUANTUM</div>
+  <div class="status-badge" id="statusMsg">${statusMsg}</div>
+  <div class="info-row"><span class="info-label">שם</span><span class="info-value">${esc(a.name)}</span></div>
+  <div class="info-row"><span class="info-label">אירוע</span><span class="info-value">${esc(a.title)}</span></div>
+  <div class="info-row"><span class="info-label">כתובת</span><span class="info-value">${esc(a.location||'-')}</span></div>
+  <div class="info-row"><span class="info-label">מקצוען</span><span class="info-value">${esc(a.pro_name)} (${roleLabel})</span></div>
+  <div class="info-row"><span class="info-label">שעה</span><span class="info-value">${timeDisplay}</span></div>
+  ${a.unit_number ? `<div class="info-row"><span class="info-label">דירה</span><span class="info-value">${esc(a.unit_number)}</span></div>` : ''}
+  <div class="actions">
+    <button class="btn btn-confirm" onclick="doAction('confirmed')">✅ אני מאשר הגעה</button>
+    <button class="btn btn-cancel" onclick="doAction('cancelled')">❌ לא יכול להגיע</button>
   </div>
+  <div class="msg" id="msg"></div>
 </div>
-<div class="toast" id="toast"></div>
 <script>
-const TOKEN='${token}';
-function toast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.style.background=type==='error'?'#3c1414':'#1b5e20';t.style.borderColor=type==='error'?'#7f1616':'#2e7d32';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000);}
-async function respond(status){try{const r=await fetch('/events/attend/'+TOKEN+'/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});const d=await r.json();if(d.success){toast(status==='confirmed'?'✅ אושרת הגעה! תודה':'❌ הביטול נרשם');setTimeout(()=>location.reload(),2000);}else toast(d.error||'שגיאה','error');}catch(e){toast('שגיאת רשת','error');}}
-async function reschedule(){const slotId=document.getElementById('slotSelect').value;try{const r=await fetch('/events/attend/'+TOKEN+'/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'rescheduled',slot_id:slotId})});const d=await r.json();if(d.success){toast('🔄 תיאום החדש נרשם!');setTimeout(()=>location.reload(),2000);}else toast(d.error||'שגיאה','error');}catch(e){toast('שגיאת רשת','error');}}
+const TOKEN = '${token}';
+async function doAction(action) {
+  const msgEl = document.getElementById('msg');
+  const statusEl = document.getElementById('statusMsg');
+  msgEl.textContent = 'שולח...';
+  try {
+    const r = await fetch('/events/attend/' + TOKEN + '/confirm', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action})
+    });
+    const d = await r.json();
+    if (d.success) {
+      statusEl.textContent = action === 'confirmed' ? '✅ אישור נשמר — תודה!' : '❌ ביטול נשמר';
+      msgEl.textContent = '';
+    } else { msgEl.textContent = 'שגיאה: ' + (d.error||''); }
+  } catch(e) { msgEl.textContent = 'שגיאת רשת'; }
+}
 </script>
 </body></html>`);
-  } catch (e) { res.status(500).send('<h2>שגיאה</h2>'); }
+  } catch(e) {
+    logger.error('[Events] Attend page error:', e.message);
+    res.status(500).send('<h2>שגיאה</h2><p>' + e.message + '</p>');
+  }
 });
 
 router.post('/attend/:token/confirm', async (req, res) => {
   try {
+    const { action } = req.body;
+    const allowed = ['confirmed', 'cancelled', 'rescheduled'];
+    if (!allowed.includes(action)) return err(res, 'Invalid action', 400);
+
     const { rows } = await pool.query(
-      'SELECT a.*, st.event_id FROM event_attendees a JOIN event_stations st ON st.id=a.station_id WHERE a.token=$1',
-      [req.params.token]
+      'SELECT id FROM event_attendees WHERE token=$1', [req.params.token]
     );
-    if (!rows.length) return err(res, 'Invalid token', 404);
-    const a = rows[0];
-    const { status, slot_id } = req.body;
+    if (!rows.length) return err(res, 'Not found', 404);
 
-    if (slot_id) {
-      if (a.slot_id) await pool.query("UPDATE event_slots SET status='free' WHERE id=$1", [a.slot_id]);
-      await pool.query("UPDATE event_slots SET status='booked' WHERE id=$1", [slot_id]);
-      await pool.query(
-        "UPDATE event_attendees SET status='rescheduled', slot_id=$1, responded_at=NOW(), updated_at=NOW() WHERE id=$2",
-        [slot_id, a.id]
-      );
-    } else {
-      await pool.query(
-        "UPDATE event_attendees SET status=$1, responded_at=NOW(), updated_at=NOW() WHERE id=$2",
-        [status, a.id]
-      );
-      if (status === 'cancelled' && a.slot_id)
-        await pool.query("UPDATE event_slots SET status='free' WHERE id=$1", [a.slot_id]);
-    }
-    ok(res, { updated: true });
-  } catch (e) { err(res, e.message); }
+    await pool.query(
+      'UPDATE event_attendees SET status=$1 WHERE token=$2',
+      [action, req.params.token]
+    );
+    ok(res, { action });
+  } catch(e) { err(res, e.message); }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ADMIN ROUTES — Basic Auth required from here on
+// ADMIN ROUTES — Basic Auth protected
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.use(adminAuth);
+// ── Zoho lookup (no :id conflict) ─────────────────────────────────────────────
 
-// ── Zoho data ─────────────────────────────────────────────────────────────────
-
-router.get('/zoho/compounds', async (req, res) => {
+router.get('/zoho/compounds', adminAuth, async (req, res) => {
   try {
     if (!zohoSvc) return err(res, 'Zoho service not available');
-    const compounds = await zohoSvc.getCompounds();
+    const compounds = await zohoSvc.getActiveCompounds();
     ok(res, { compounds });
-  } catch (e) { err(res, e.message); }
+  } catch(e) { err(res, e.message); }
 });
 
-router.get('/zoho/buildings/:compoundId', async (req, res) => {
+router.get('/zoho/buildings/:cid', adminAuth, async (req, res) => {
   try {
     if (!zohoSvc) return err(res, 'Zoho service not available');
-    const buildings = await zohoSvc.getBuildingsByCompound(req.params.compoundId);
+    const buildings = await zohoSvc.getBuildingsForCompound(req.params.cid);
     ok(res, { buildings });
-  } catch (e) { err(res, e.message); }
+  } catch(e) { err(res, e.message); }
 });
 
-// ── Events CRUD ───────────────────────────────────────────────────────────────
+// ── List events ───────────────────────────────────────────────────────────────
 
-router.get('/', async (req, res) => {
+router.get('/', adminAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT e.*,
-        COUNT(DISTINCT s.id)::int AS station_count,
-        COUNT(DISTINCT a.id)::int AS attendee_count,
-        COUNT(DISTINCT CASE WHEN a.status='confirmed'  THEN a.id END)::int AS confirmed_count,
-        COUNT(DISTINCT CASE WHEN a.status='cancelled'  THEN a.id END)::int AS cancelled_count,
-        COUNT(DISTINCT CASE WHEN a.status='arrived'    THEN a.id END)::int AS arrived_count
-      FROM quantum_events e
-      LEFT JOIN event_stations s ON s.event_id = e.id
-      LEFT JOIN event_attendees a ON a.station_id = s.id
-      GROUP BY e.id
-      ORDER BY e.event_date DESC
+        (SELECT COUNT(*) FROM event_stations WHERE event_id=e.id) AS station_count,
+        (SELECT COUNT(*) FROM event_attendees a JOIN event_stations s ON s.id=a.station_id WHERE s.event_id=e.id) AS attendee_count
+      FROM quantum_events e ORDER BY e.event_date DESC LIMIT 50
     `);
     ok(res, { events: rows });
-  } catch (e) { err(res, e.message); }
+  } catch(e) { err(res, e.message); }
 });
 
-router.post('/', async (req, res) => {
+// ── Create event ──────────────────────────────────────────────────────────────
+
+router.post('/', adminAuth, async (req, res) => {
   try {
-    const { title, event_type = 'signing', event_date, location, zoho_compound_id, compound_name, notes } = req.body;
+    const { title, event_type, event_date, location, zoho_compound_id, compound_name, notes } = req.body;
     if (!title || !event_date) return err(res, 'title and event_date required', 400);
+
     const { rows } = await pool.query(
-      `INSERT INTO quantum_events (title, event_type, event_date, location, zoho_compound_id, compound_name, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [title, event_type, event_date, location, zoho_compound_id, compound_name, notes]
+      `INSERT INTO quantum_events (title, event_type, event_date, location, zoho_compound_id, compound_name, notes, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'upcoming') RETURNING *`,
+      [title, event_type||'signing', event_date, location||'', zoho_compound_id||null, compound_name||'', notes||'']
     );
     ok(res, { event: rows[0] });
-  } catch (e) { err(res, e.message); }
+  } catch(e) { err(res, e.message); }
 });
 
-router.get('/:id', async (req, res) => {
+// ── Get event details ─────────────────────────────────────────────────────────
+
+router.get('/:id', adminAuth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM quantum_events WHERE id=$1', [req.params.id]);
-    if (!rows.length) return err(res, 'Event not found', 404);
-    const event = rows[0];
+    const { rows: ev } = await pool.query('SELECT * FROM quantum_events WHERE id=$1', [req.params.id]);
+    if (!ev.length) return err(res, 'Not found', 404);
+
     const { rows: stations } = await pool.query(
-      'SELECT * FROM event_stations WHERE event_id=$1 ORDER BY station_number', [event.id]);
-    for (const st of stations) {
-      const { rows: slots }     = await pool.query('SELECT * FROM event_slots WHERE station_id=$1 ORDER BY start_time', [st.id]);
-      const { rows: attendees } = await pool.query(
-        `SELECT a.*, s.start_time, s.end_time FROM event_attendees a
-         LEFT JOIN event_slots s ON s.id = a.slot_id
-         WHERE a.station_id=$1 ORDER BY s.start_time NULLS LAST, a.name`, [st.id]);
-      st.slots = slots; st.attendees = attendees;
-    }
-    event.stations = stations;
-    ok(res, { event });
-  } catch (e) { err(res, e.message); }
-});
-
-// ── Stations ──────────────────────────────────────────────────────────────────
-
-router.post('/:id/stations', async (req, res) => {
-  try {
-    const { pro_name, pro_role = 'lawyer', pro_phone, pro_email, station_number, notes } = req.body;
-    if (!pro_name) return err(res, 'pro_name required', 400);
-    const { rows } = await pool.query(
-      `INSERT INTO event_stations (event_id, pro_name, pro_role, pro_phone, pro_email, station_number, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [req.params.id, pro_name, pro_role, pro_phone, pro_email, station_number, notes]
+      'SELECT * FROM event_stations WHERE event_id=$1 ORDER BY station_number', [req.params.id]
     );
-    ok(res, { station: rows[0] });
-  } catch (e) { err(res, e.message); }
+
+    const result = [];
+    for (const s of stations) {
+      const { rows: attendees } = await pool.query(
+        `SELECT a.*, sl.start_time, sl.end_time FROM event_attendees a
+         LEFT JOIN event_slots sl ON sl.id=a.slot_id
+         WHERE a.station_id=$1 ORDER BY sl.start_time NULLS LAST, a.name`,
+        [s.id]
+      );
+      const { rows: slots } = await pool.query(
+        'SELECT * FROM event_slots WHERE station_id=$1 ORDER BY start_time', [s.id]
+      );
+      result.push({ ...s, attendees, slots });
+    }
+    ok(res, { event: ev[0], stations: result });
+  } catch(e) { err(res, e.message); }
 });
 
-// ── Slots ─────────────────────────────────────────────────────────────────────
+// ── Add station — auto-imports Zoho residents in background ──────────────────
 
-router.post('/:id/stations/:sid/slots', async (req, res) => {
+router.post('/:id/stations', adminAuth, async (req, res) => {
+  try {
+    const { rows: ev } = await pool.query('SELECT * FROM quantum_events WHERE id=$1', [req.params.id]);
+    if (!ev.length) return err(res, 'Event not found', 404);
+
+    const { pro_name, pro_role, pro_phone, pro_email } = req.body;
+    if (!pro_name || !pro_role) return err(res, 'pro_name and pro_role required', 400);
+
+    // Count existing stations for this event
+    const { rows: cnt } = await pool.query(
+      'SELECT COUNT(*) FROM event_stations WHERE event_id=$1', [req.params.id]
+    );
+    const stationNumber = parseInt(cnt[0].count) + 1;
+
+    // Generate token
+    const crypto = require('crypto');
+    const token = crypto.createHash('md5').update(`${req.params.id}-${pro_name}-${Date.now()}`).digest('hex');
+
+    const { rows } = await pool.query(
+      `INSERT INTO event_stations (event_id, pro_name, pro_role, pro_phone, pro_email, station_number, token)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [req.params.id, pro_name, pro_role, pro_phone||'', pro_email||'', stationNumber, token]
+    );
+    const station = rows[0];
+    const proUrl = `${BASE_URL}/events/pro/${token}`;
+
+    // Auto-import Zoho residents in background (fire-and-forget)
+    setImmediate(() => {
+      autoImportResidents(station.id, ev[0].zoho_compound_id, ev[0].compound_name)
+        .catch(e => logger.warn('[Events] Background import error:', e.message));
+    });
+
+    ok(res, {
+      station,
+      pro_url: proUrl,
+      message: `עמדה נוספה. דיירים מיובאים ברקע מ-Zoho.`,
+    });
+  } catch(e) { err(res, e.message); }
+});
+
+// ── Generate slots ────────────────────────────────────────────────────────────
+
+router.post('/:id/stations/:sid/slots', adminAuth, async (req, res) => {
   try {
     const { start_time, end_time, slot_duration_minutes = 15 } = req.body;
     if (!start_time || !end_time) return err(res, 'start_time and end_time required', 400);
-    let current = new Date(start_time);
-    const end = new Date(end_time), dur = parseInt(slot_duration_minutes);
+
+    const { rows: st } = await pool.query(
+      'SELECT * FROM event_stations WHERE id=$1 AND event_id=$2',
+      [req.params.sid, req.params.id]
+    );
+    if (!st.length) return err(res, 'Station not found', 404);
+
+    // Remove existing free slots
+    await pool.query(
+      "DELETE FROM event_slots WHERE station_id=$1 AND status='free'", [req.params.sid]
+    );
+
+    const start = new Date(start_time);
+    const end   = new Date(end_time);
+    const dur   = parseInt(slot_duration_minutes) * 60000;
     const created = [];
-    while (current < end) {
-      const slotEnd = new Date(current.getTime() + dur * 60000);
+
+    let cur = start;
+    while (cur < end) {
+      const slotEnd = new Date(cur.getTime() + dur);
       if (slotEnd > end) break;
       const { rows } = await pool.query(
-        'INSERT INTO event_slots (station_id, start_time, end_time) VALUES ($1,$2,$3) RETURNING *',
-        [req.params.sid, current.toISOString(), slotEnd.toISOString()]
+        `INSERT INTO event_slots (station_id, start_time, end_time, status)
+         VALUES ($1,$2,$3,'free') RETURNING *`,
+        [req.params.sid, cur.toISOString(), slotEnd.toISOString()]
       );
       created.push(rows[0]);
-      current = slotEnd;
+      cur = slotEnd;
     }
-    ok(res, { slots: created, count: created.length });
-  } catch (e) { err(res, e.message); }
+
+    ok(res, { slots_created: created.length, slots: created });
+  } catch(e) { err(res, e.message); }
 });
 
-// ── Import from Zoho ──────────────────────────────────────────────────────────
+// ── Auto-assign attendees to slots ────────────────────────────────────────────
 
-router.post('/:id/import-zoho', async (req, res) => {
+router.post('/:id/stations/:sid/assign', adminAuth, async (req, res) => {
   try {
-    if (!zohoSvc) return err(res, 'Zoho service not available');
-    const { building_ids, compound_id, compound_name, station_id } = req.body;
-    if (!station_id) return err(res, 'station_id required', 400);
+    const { rows: freeSlots } = await pool.query(
+      "SELECT * FROM event_slots WHERE station_id=$1 AND status='free' ORDER BY start_time",
+      [req.params.sid]
+    );
+    const { rows: unassigned } = await pool.query(
+      "SELECT * FROM event_attendees WHERE station_id=$1 AND slot_id IS NULL AND status NOT IN ('cancelled') ORDER BY building_name, unit_number",
+      [req.params.sid]
+    );
 
-    const residents = compound_id
-      ? await zohoSvc.getResidentsForCompound(compound_id, compound_name || '')
-      : building_ids && building_ids.length
-        ? await zohoSvc.getResidentsForEvent(building_ids, compound_name || '')
-        : null;
-
-    if (!residents) return err(res, 'compound_id or building_ids required', 400);
-
-    let inserted = 0;
-    for (const r of residents) {
-      const ex = await pool.query(
-        'SELECT id FROM event_attendees WHERE station_id=$1 AND zoho_contact_id=$2',
-        [station_id, r.zoho_contact_id]
-      );
-      if (ex.rows.length) continue;
-      await pool.query(
-        `INSERT INTO event_attendees (station_id,zoho_contact_id,zoho_asset_id,name,phone,unit_number,floor,building_name,compound_name)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [station_id, r.zoho_contact_id, r.zoho_asset_id, r.name, r.phone,
-         r.unit_number, r.floor, r.building_name, r.compound_name]
-      );
-      inserted++;
-    }
-    ok(res, { imported: residents.length, inserted, duplicates: residents.length - inserted });
-  } catch (e) { err(res, e.message); }
-});
-
-// ── Auto-assign ───────────────────────────────────────────────────────────────
-
-router.post('/:id/stations/:sid/assign', async (req, res) => {
-  try {
-    const { rows: slots }     = await pool.query("SELECT * FROM event_slots WHERE station_id=$1 AND status='free' ORDER BY start_time", [req.params.sid]);
-    const { rows: attendees } = await pool.query("SELECT * FROM event_attendees WHERE station_id=$1 AND slot_id IS NULL ORDER BY building_name, unit_number", [req.params.sid]);
     let assigned = 0;
-    for (let i = 0; i < Math.min(slots.length, attendees.length); i++) {
-      await pool.query("UPDATE event_attendees SET slot_id=$1 WHERE id=$2", [slots[i].id, attendees[i].id]);
-      await pool.query("UPDATE event_slots SET status='booked' WHERE id=$1", [slots[i].id]);
+    for (let i = 0; i < Math.min(freeSlots.length, unassigned.length); i++) {
+      const slot = freeSlots[i];
+      const attendee = unassigned[i];
+
+      // Generate attendee token
+      const crypto = require('crypto');
+      const aToken = crypto.createHash('md5').update(`${attendee.id}-${slot.id}-${Date.now()}`).digest('hex');
+
+      await pool.query(
+        `UPDATE event_attendees SET slot_id=$1, token=$2, status='assigned' WHERE id=$3`,
+        [slot.id, aToken, attendee.id]
+      );
+      await pool.query(
+        "UPDATE event_slots SET status='booked' WHERE id=$1", [slot.id]
+      );
       assigned++;
     }
-    ok(res, { assigned, unassigned: attendees.length - assigned });
-  } catch (e) { err(res, e.message); }
+
+    ok(res, {
+      assigned,
+      total_attendees: unassigned.length,
+      total_slots: freeSlots.length,
+      remaining_unassigned: Math.max(0, unassigned.length - assigned),
+    });
+  } catch(e) { err(res, e.message); }
 });
 
-// ── Notify ────────────────────────────────────────────────────────────────────
+// ── Full report ───────────────────────────────────────────────────────────────
 
-router.post('/:id/notify', async (req, res) => {
+router.get('/:id/report', adminAuth, async (req, res) => {
   try {
-    const { target = 'attendees' } = req.body;
-    const base = `https://pinuy-binuy-analyzer-production.up.railway.app`;
-    const { rows: event } = await pool.query('SELECT * FROM quantum_events WHERE id=$1', [req.params.id]);
-    if (!event.length) return err(res, 'Event not found', 404);
-    const ev = event[0];
-    let waSent = 0, waFailed = 0;
+    const { rows: ev } = await pool.query('SELECT * FROM quantum_events WHERE id=$1', [req.params.id]);
+    if (!ev.length) return err(res, 'Not found', 404);
 
-    if (target === 'attendees' || target === 'all') {
-      const { rows: attendees } = await pool.query(`
-        SELECT a.*, s.start_time, st.pro_name FROM event_attendees a
-        LEFT JOIN event_slots s ON s.id = a.slot_id
-        LEFT JOIN event_stations st ON st.id = a.station_id
-        WHERE st.event_id=$1 AND a.status='pending' AND a.wa_sent_at IS NULL AND a.phone IS NOT NULL
-      `, [req.params.id]);
-      for (const a of attendees) {
-        const link = `${base}/events/attend/${a.token}`;
-        const timeStr = a.start_time ? `בשעה ${fmtDate(a.start_time).split(' ')[1]}` : 'בשעה שתיקבע בקרוב';
-        const msg = `שלום ${a.name} 👋\n\nנקבעה לך פגישה ב*${ev.title}*\n📅 ${fmtDate(ev.event_date).split(' ')[0]} ${timeStr}\n📍 ${ev.location||''}` +
-          (a.unit_number?`\n🏠 דירה ${a.unit_number}${a.floor?', קומה '+a.floor:''}`:'')+`\n\nאנא אשר/י הגעה:\n${link}`;
-        const result = await sendWA(a.phone, msg);
-        if (result.sent) { await pool.query("UPDATE event_attendees SET wa_sent_at=NOW() WHERE id=$1", [a.id]); waSent++; }
-        else waFailed++;
-        await new Promise(r => setTimeout(r, 300));
-      }
+    const { rows: stations } = await pool.query(
+      'SELECT * FROM event_stations WHERE event_id=$1 ORDER BY station_number', [req.params.id]
+    );
+
+    const stationsReport = [];
+    for (const s of stations) {
+      const { rows: attendees } = await pool.query(
+        `SELECT a.*, sl.start_time FROM event_attendees a
+         LEFT JOIN event_slots sl ON sl.id=a.slot_id
+         WHERE a.station_id=$1 ORDER BY sl.start_time NULLS LAST`,
+        [s.id]
+      );
+      const summary = {
+        total:     attendees.length,
+        confirmed: attendees.filter(a => a.status === 'confirmed').length,
+        cancelled: attendees.filter(a => a.status === 'cancelled').length,
+        arrived:   attendees.filter(a => a.status === 'arrived').length,
+        no_show:   attendees.filter(a => a.status === 'no_show').length,
+        pending:   attendees.filter(a => ['pending','assigned'].includes(a.status)).length,
+      };
+      stationsReport.push({ ...s, summary, attendees, pro_url: `${BASE_URL}/events/pro/${s.token}` });
     }
 
-    if (target === 'pros' || target === 'all') {
-      const { rows: stations } = await pool.query('SELECT * FROM event_stations WHERE event_id=$1 AND pro_phone IS NOT NULL', [req.params.id]);
-      for (const st of stations) {
-        const msg = `שלום ${st.pro_name} 👋\n\nקישור לרשימת הנוכחות שלך:\n*${ev.title}*\n📅 ${fmtDate(ev.event_date)}\n\n${base}/events/pro/${st.token}`;
-        const result = await sendWA(st.pro_phone, msg);
-        if (result.sent) waSent++; else waFailed++;
-        await new Promise(r => setTimeout(r, 300));
-      }
-    }
-    ok(res, { wa_sent: waSent, wa_failed: waFailed });
-  } catch (e) { err(res, e.message); }
-});
-
-// ── Report ────────────────────────────────────────────────────────────────────
-
-router.get('/:id/report', async (req, res) => {
-  try {
-    const { rows: event } = await pool.query('SELECT * FROM quantum_events WHERE id=$1', [req.params.id]);
-    if (!event.length) return err(res, 'Event not found', 404);
-    const ev = event[0];
-    const { rows: stations } = await pool.query('SELECT * FROM event_stations WHERE event_id=$1 ORDER BY station_number', [ev.id]);
-    for (const st of stations) {
-      const { rows } = await pool.query(`
-        SELECT a.*, s.start_time, s.end_time FROM event_attendees a
-        LEFT JOIN event_slots s ON s.id = a.slot_id
-        WHERE a.station_id=$1 ORDER BY s.start_time NULLS LAST, a.building_name, a.unit_number
-      `, [st.id]);
-      st.attendees = rows;
-      st.total     = rows.length;
-      st.confirmed = rows.filter(r => r.status === 'confirmed').length;
-      st.arrived   = rows.filter(r => r.status === 'arrived').length;
-      st.no_show   = rows.filter(r => r.status === 'no_show').length;
-      st.cancelled = rows.filter(r => r.status === 'cancelled').length;
-    }
-    ev.stations = stations;
-    ok(res, { report: ev });
-  } catch (e) { err(res, e.message); }
+    ok(res, { event: ev[0], stations: stationsReport });
+  } catch(e) { err(res, e.message); }
 });
 
 module.exports = router;
