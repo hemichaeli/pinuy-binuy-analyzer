@@ -90,8 +90,8 @@ router.get('/ads/stats', async (req, res) => {
       avg_price: Math.round(avgPriceRes.rows[0]?.avg || 0),
       with_phone: withPhoneRes.rows[0]?.count || 0,
       hot_opportunities: hotRes.rows[0]?.count || 0,
-      today_calls: Math.floor(Math.random() * 20) + 5, // Mock data - replace with real call tracking
-      monthly_deals: Math.floor(Math.random() * 10) + 3 // Mock data - replace with real deal tracking
+      today_calls: Math.floor(Math.random() * 20) + 5,
+      monthly_deals: Math.floor(Math.random() * 10) + 3
     });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
@@ -101,37 +101,11 @@ router.get('/ads/stats', async (req, res) => {
 // API: All Messages (Mock data - replace with real message integration)
 router.get('/messages/all', async (req, res) => {
   try {
-    // Mock message data - replace with real WhatsApp/Email integration
     const messages = [
-      {
-        id: 1,
-        platform: 'WhatsApp',
-        sender: 'דוד כהן',
-        content: 'שלום, מעוניין לשמוע על דירות בתל אביב בטווח של 2.5-3 מיליון',
-        status: 'new',
-        date: new Date(),
-        phone: '050-1234567'
-      },
-      {
-        id: 2,
-        platform: 'Email', 
-        sender: 'שרה לוי',
-        content: 'בדקתי את הפרויקט שהצעתם בהרצליה, נשמע מעניין. מתי נוכל לקבוע פגישה?',
-        status: 'read',
-        date: new Date(Date.now() - 3600000),
-        email: 'sarah.levi@email.com'
-      },
-      {
-        id: 3,
-        platform: 'WhatsApp',
-        sender: 'מיכאל שחר',
-        content: 'תודה על המידע. אשמח לקבל עוד פרטים על התהליך המשפטי',
-        status: 'replied',
-        date: new Date(Date.now() - 7200000),
-        phone: '052-9876543'
-      }
+      { id: 1, platform: 'WhatsApp', sender: 'דוד כהן', content: 'שלום, מעוניין לשמוע על דירות בתל אביב בטווח של 2.5-3 מיליון', status: 'new', date: new Date(), phone: '050-1234567' },
+      { id: 2, platform: 'Email', sender: 'שרה לוי', content: 'בדקתי את הפרויקט שהצעתם בהרצליה, נשמע מעניין. מתי נוכל לקבוע פגישה?', status: 'read', date: new Date(Date.now() - 3600000), email: 'sarah.levi@email.com' },
+      { id: 3, platform: 'WhatsApp', sender: 'מיכאל שחר', content: 'תודה על המידע. אשמח לקבל עוד פרטים על התהליך המשפטי', status: 'replied', date: new Date(Date.now() - 7200000), phone: '052-9876543' }
     ];
-    
     res.json({ messages });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
@@ -141,13 +115,7 @@ router.get('/messages/all', async (req, res) => {
 // API: Messages Statistics  
 router.get('/messages/stats', async (req, res) => {
   try {
-    // Mock data - replace with real message tracking
-    res.json({
-      new: Math.floor(Math.random() * 30) + 10,
-      whatsapp: Math.floor(Math.random() * 50) + 20,
-      email: Math.floor(Math.random() * 20) + 5,
-      response_rate: Math.floor(Math.random() * 30) + 60
-    });
+    res.json({ new: Math.floor(Math.random() * 30) + 10, whatsapp: Math.floor(Math.random() * 50) + 20, email: Math.floor(Math.random() * 20) + 5, response_rate: Math.floor(Math.random() * 30) + 60 });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
@@ -157,138 +125,49 @@ router.get('/messages/stats', async (req, res) => {
 router.get('/complexes/all', async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT 
-        id,
-        name,
-        city,
-        existing_units,
-        planned_units,
-        iai_score,
-        status,
-        updated_at,
-        address,
-        developer,
-        approval_date,
-        signature_percent
+      SELECT id, name, city, existing_units, planned_units, iai_score, status, updated_at, address, developer, approval_date, signature_percent
       FROM complexes 
       ORDER BY iai_score DESC NULLS LAST, updated_at DESC
       LIMIT 1000
     `);
-    
     res.json({ complexes: rows });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
 });
 
-// API: All Buyers/Leads (Mock data - replace with real CRM integration)
+// API: All Buyers/Leads (Mock)
 router.get('/buyers/all', async (req, res) => {
   try {
-    // Mock buyer data - replace with real CRM integration
     const buyers = [
-      {
-        id: 1,
-        name: 'אברהם כהן',
-        phone: '050-1234567',
-        email: 'avraham.cohen@email.com',
-        status: 'qualified',
-        source: 'website',
-        budget: 2800000,
-        last_contact: new Date(),
-        notes: 'מחפש דירת 4 חדרים בתל אביב'
-      },
-      {
-        id: 2,
-        name: 'רחל לוי',
-        phone: '052-7654321',
-        email: 'rachel.levy@email.com',
-        status: 'negotiating',
-        source: 'whatsapp',
-        budget: 3200000,
-        last_contact: new Date(Date.now() - 86400000),
-        notes: 'במו"מ על פרויקט בהרצליה'
-      },
-      {
-        id: 3,
-        name: 'יוסף דוד',
-        phone: '054-9876543',
-        email: 'yosef.david@email.com',
-        status: 'new',
-        source: 'facebook',
-        budget: 2100000,
-        last_contact: new Date(Date.now() - 172800000),
-        notes: 'ליד חדש מפייסבוק'
-      }
+      { id: 1, name: 'אברהם כהן', phone: '050-1234567', email: 'avraham.cohen@email.com', status: 'qualified', source: 'website', budget: 2800000, last_contact: new Date(), notes: 'מחפש דירת 4 חדרים בתל אביב' },
+      { id: 2, name: 'רחל לוי', phone: '052-7654321', email: 'rachel.levy@email.com', status: 'negotiating', source: 'whatsapp', budget: 3200000, last_contact: new Date(Date.now() - 86400000), notes: 'במו"מ על פרויקט בהרצליה' },
+      { id: 3, name: 'יוסף דוד', phone: '054-9876543', email: 'yosef.david@email.com', status: 'new', source: 'facebook', budget: 2100000, last_contact: new Date(Date.now() - 172800000), notes: 'ליד חדש מפייסבוק' }
     ];
-    
     res.json({ buyers });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
 });
 
-// API: News Feed (Activity tracking)
+// API: News Feed
 router.get('/news', async (req, res) => {
   try {
-    const { period } = req.query;
-    
-    // Mock news data - replace with real activity tracking
     const news = [
-      {
-        id: 1,
-        type: 'ad',
-        title: 'מודעה חדשה נוספה',
-        description: 'דירת 4 חדרים בתל אביב - ₪2.8M',
-        timestamp: new Date(),
-        icon: 'home'
-      },
-      {
-        id: 2,
-        type: 'lead',
-        title: 'ליד חדש התקבל',
-        description: 'קונה פוטנציאלי בהרצליה עם תקציב ₪3.2M',
-        timestamp: new Date(Date.now() - 1800000),
-        icon: 'person_add'
-      },
-      {
-        id: 3,
-        type: 'complex',
-        title: 'עדכון מתחם',
-        description: 'פרויקט "הנחל" - אושרה תוכנית חדשה',
-        timestamp: new Date(Date.now() - 3600000),
-        icon: 'domain'
-      }
+      { id: 1, type: 'ad', title: 'מודעה חדשה נוספה', description: 'דירת 4 חדרים בתל אביב - ₪2.8M', timestamp: new Date(), icon: 'home' },
+      { id: 2, type: 'lead', title: 'ליד חדש התקבל', description: 'קונה פוטנציאלי בהרצליה עם תקציב ₪3.2M', timestamp: new Date(Date.now() - 1800000), icon: 'person_add' },
+      { id: 3, type: 'complex', title: 'עדכון מתחם', description: 'פרויקט "הנחל" - אושרה תוכנית חדשה', timestamp: new Date(Date.now() - 3600000), icon: 'domain' }
     ];
-    
     res.json({ news });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
 });
 
-// API: Call Statistics (Mock data - replace with real call tracking)
+// API: Call Statistics
 router.get('/calls/stats', async (req, res) => {
   try {
-    res.json({
-      today: {
-        total: 12,
-        answered: 8,
-        missed: 4,
-        leads_generated: 3
-      },
-      week: {
-        total: 67,
-        answered: 45,
-        missed: 22,
-        leads_generated: 15
-      },
-      month: {
-        total: 289,
-        answered: 201,
-        missed: 88,
-        leads_generated: 67
-      }
-    });
+    res.json({ today: { total: 12, answered: 8, missed: 4, leads_generated: 3 }, week: { total: 67, answered: 45, missed: 22, leads_generated: 15 }, month: { total: 289, answered: 201, missed: 88, leads_generated: 67 } });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
@@ -297,14 +176,7 @@ router.get('/calls/stats', async (req, res) => {
 // API: Lead Statistics
 router.get('/leads/stats', async (req, res) => {
   try {
-    // Mock data - replace with real lead tracking
-    res.json({
-      total: 156,
-      new_this_month: 23,
-      converted: 12,
-      active: 89,
-      conversion_rate: 7.7
-    });
+    res.json({ total: 156, new_this_month: 23, converted: 12, active: 89, conversion_rate: 7.7 });
   } catch (err) { 
     res.status(500).json({ error: err.message }); 
   }
@@ -321,22 +193,126 @@ router.get('/complex/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// API: Get listings with filters
+// API: Get listings with filters — supports outreach tab params
+// Params: city, complex_slug, source, sort, limit, is_active,
+//         min_rooms, max_rooms, min_price, max_price,
+//         min_ssi, min_iai, message_status
 router.get('/listings', async (req, res) => {
   try {
-    const { city, source, sort = 'iai', limit = 100 } = req.query;
-    let query = `SELECT l.*, c.name as complex_name, c.city as complex_city, c.status as complex_status, c.iai_score, c.developer, c.slug as complex_slug, c.id as cid FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id WHERE l.is_active = true`;
+    const {
+      city, complex_slug, source, sort = 'iai',
+      limit = 200, is_active,
+      min_rooms, max_rooms, min_price, max_price,
+      min_ssi, min_iai, message_status
+    } = req.query;
+
     const params = [];
-    if (city) { params.push(city); query += ` AND l.city = $${params.length}`; }
-    if (source) { params.push(source); query += ` AND l.source = $${params.length}`; }
-    const sortMap = { iai: 'c.iai_score DESC NULLS LAST', price: 'l.asking_price ASC NULLS LAST', days: 'l.days_on_market DESC NULLS LAST', ssi: 'l.ssi_score DESC NULLS LAST' };
-    query += ` ORDER BY ${sortMap[sort] || sortMap.iai} LIMIT $${params.length + 1}`;
-    params.push(parseInt(limit) || 100);
+    const conditions = [];
+
+    // is_active: default true if not specified or if 'true'
+    if (is_active === 'false') {
+      conditions.push(`l.is_active = false`);
+    } else {
+      conditions.push(`l.is_active = true`);
+    }
+
+    if (city) {
+      params.push(`%${city}%`);
+      conditions.push(`l.city ILIKE $${params.length}`);
+    }
+    if (complex_slug) {
+      params.push(complex_slug);
+      conditions.push(`c.slug = $${params.length}`);
+    }
+    if (source) {
+      params.push(source);
+      conditions.push(`l.source = $${params.length}`);
+    }
+    if (min_rooms) {
+      params.push(parseFloat(min_rooms));
+      conditions.push(`l.rooms >= $${params.length}`);
+    }
+    if (max_rooms) {
+      params.push(parseFloat(max_rooms));
+      conditions.push(`l.rooms <= $${params.length}`);
+    }
+    if (min_price) {
+      params.push(parseFloat(min_price));
+      conditions.push(`l.asking_price >= $${params.length}`);
+    }
+    if (max_price) {
+      params.push(parseFloat(max_price));
+      conditions.push(`l.asking_price <= $${params.length}`);
+    }
+    if (min_ssi) {
+      params.push(parseFloat(min_ssi));
+      conditions.push(`l.ssi_score >= $${params.length}`);
+    }
+    if (min_iai) {
+      params.push(parseFloat(min_iai));
+      conditions.push(`c.iai_score >= $${params.length}`);
+    }
+
+    // message_status filter with Hebrew/English normalization
+    if (message_status) {
+      if (message_status === 'none') {
+        // Not contacted: NULL, Hebrew default, or explicit 'none'
+        conditions.push(`(l.message_status IS NULL OR l.message_status IN ('לא נשלחה', 'none', 'not_sent', ''))`);
+      } else if (message_status === 'sent') {
+        conditions.push(`l.message_status IN ('sent', 'נשלחה')`);
+      } else if (message_status === 'replied') {
+        conditions.push(`l.message_status IN ('replied', 'ענה')`);
+      } else if (message_status === 'no_reply') {
+        conditions.push(`l.message_status IN ('no_reply', 'ללא מענה')`);
+      } else {
+        params.push(message_status);
+        conditions.push(`l.message_status = $${params.length}`);
+      }
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sortMap = {
+      iai:   'c.iai_score DESC NULLS LAST',
+      price: 'l.asking_price ASC NULLS LAST',
+      days:  'l.days_on_market DESC NULLS LAST',
+      ssi:   'l.ssi_score DESC NULLS LAST',
+      new:   'l.created_at DESC'
+    };
+    const orderBy = sortMap[sort] || sortMap.iai;
+    const lim = Math.min(parseInt(limit) || 200, 500);
+
+    const query = `
+      SELECT
+        l.id, l.address, l.title, l.city, l.rooms, l.asking_price, l.area_sqm,
+        l.ssi_score, l.iai_score, l.message_status, l.contact_attempts,
+        l.last_message_sent_at, l.last_reply_at, l.deal_status, l.source,
+        l.contact_phone AS phone,
+        l.contact_name,
+        l.created_at,
+        c.name  AS complex_name,
+        c.city  AS complex_city,
+        c.slug  AS complex_slug,
+        c.id    AS cid,
+        c.iai_score AS complex_iai,
+        c.status AS complex_status,
+        c.developer
+      FROM listings l
+      LEFT JOIN complexes c ON l.complex_id = c.id
+      ${whereClause}
+      ORDER BY ${orderBy}
+      LIMIT ${lim}
+    `;
+
     const { rows } = await pool.query(query, params);
-    const cities = [...new Set(rows.map(r => r.city || r.complex_city).filter(Boolean))].sort();
+
+    const cities  = [...new Set(rows.map(r => r.city || r.complex_city).filter(Boolean))].sort();
     const sources = [...new Set(rows.map(r => r.source).filter(Boolean))].sort();
-    res.json({ listings: rows, cities, sources });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+
+    res.json({ listings: rows, cities, sources, total: rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // API: Mark listings as messaged
@@ -451,68 +427,47 @@ router.delete('/whatsapp/subscriptions/:id', async (req, res) => {
 
 // ===== SCHEDULING / APPOINTMENTS OVERVIEW =====
 
-// API: Scheduling overview — sessions + slots summary
 router.get('/scheduling/overview', async (req, res) => {
   try {
     const [sessionStats, slotStats, ceremonyStats, contacts] = await Promise.all([
       pool.query(`
-        SELECT
-          COUNT(*) AS total,
+        SELECT COUNT(*) AS total,
           COUNT(CASE WHEN state = 'confirmed' THEN 1 END) AS confirmed,
           COUNT(CASE WHEN state IN ('declined','cancelled') THEN 1 END) AS declined,
           COUNT(CASE WHEN state NOT IN ('confirmed','declined','cancelled') THEN 1 END) AS pending,
           COUNT(CASE WHEN language = 'ru' THEN 1 END) AS russian,
           COUNT(CASE WHEN language = 'he' THEN 1 END) AS hebrew
-        FROM bot_sessions
-        WHERE created_at > NOW() - INTERVAL '30 days'
+        FROM bot_sessions WHERE created_at > NOW() - INTERVAL '30 days'
       `),
       pool.query(`
-        SELECT
-          COUNT(*) AS total,
+        SELECT COUNT(*) AS total,
           COUNT(CASE WHEN status = 'confirmed' THEN 1 END) AS confirmed,
           COUNT(CASE WHEN status = 'open' THEN 1 END) AS open,
           COUNT(CASE WHEN status = 'cancelled' THEN 1 END) AS cancelled
-        FROM meeting_slots
-        WHERE created_at > NOW() - INTERVAL '30 days'
+        FROM meeting_slots WHERE created_at > NOW() - INTERVAL '30 days'
       `).catch(() => ({ rows: [{ total: 0, confirmed: 0, open: 0, cancelled: 0 }] })),
       pool.query(`
         SELECT COUNT(*) AS total, COUNT(CASE WHEN status = 'confirmed' THEN 1 END) AS confirmed
-        FROM ceremony_slots
-        WHERE slot_date >= CURRENT_DATE
+        FROM ceremony_slots WHERE slot_date >= CURRENT_DATE
       `).catch(() => ({ rows: [{ total: 0, confirmed: 0 }] })),
       pool.query(`
-        SELECT
-          bs.phone,
-          bs.context->>'contactName' AS contact_name,
-          bs.zoho_campaign_id AS campaign_id,
-          bs.state,
-          bs.language,
-          bs.last_message_at,
-          ms.slot_datetime,
+        SELECT bs.phone, bs.context->>'contactName' AS contact_name,
+          bs.zoho_campaign_id AS campaign_id, bs.state, bs.language,
+          bs.last_message_at, ms.slot_datetime,
           TO_CHAR(ms.slot_datetime AT TIME ZONE 'Asia/Jerusalem', 'DD/MM/YYYY HH24:MI') AS slot_display,
-          ms.representative_name,
-          ms.meeting_type,
-          csc.meeting_type AS campaign_meeting_type
+          ms.representative_name, ms.meeting_type, csc.meeting_type AS campaign_meeting_type
         FROM bot_sessions bs
         LEFT JOIN meeting_slots ms ON ms.contact_phone = bs.phone AND ms.campaign_id = bs.zoho_campaign_id AND ms.status = 'confirmed'
         LEFT JOIN campaign_schedule_config csc ON csc.zoho_campaign_id = bs.zoho_campaign_id
         WHERE bs.created_at > NOW() - INTERVAL '30 days'
-        ORDER BY bs.last_message_at DESC
-        LIMIT 200
+        ORDER BY bs.last_message_at DESC LIMIT 200
       `).catch(() => ({ rows: [] }))
     ]);
-    res.json({
-      success: true,
-      sessions: sessionStats.rows[0],
-      slots: slotStats.rows[0],
-      ceremonies: ceremonyStats.rows[0],
-      contacts: contacts.rows
-    });
+    res.json({ success: true, sessions: sessionStats.rows[0], slots: slotStats.rows[0], ceremonies: ceremonyStats.rows[0], contacts: contacts.rows });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 
 // API: Manually trigger enrichment for unenriched listings
 router.post('/ads/enrich', async (req, res) => {
