@@ -14,8 +14,8 @@ const pool = require('./db/pool');
 const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
-const VERSION = '4.96.1';
-const BUILD = '2026-03-12-v4.96.1-no-reply-flow';
+const VERSION = '4.97.0';
+const BUILD = '2026-03-12-v4.97.0-chrome-ext-api';
 
 async function runAutoMigrations() {
   try {
