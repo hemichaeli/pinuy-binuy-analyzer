@@ -1,0 +1,62 @@
+{
+  "manifest_version": 3,
+  "name": "פינוי-בינוי Phone Collector",
+  "version": "1.0.0",
+  "description": "מחלץ מספרי טלפון מאתרי נדל\"ן ישראליים ושולח לדאשבורד",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://*.komo.co.il/*",
+    "https://*.yad2.co.il/*",
+    "https://*.yad1.co.il/*",
+    "https://*.dira.moch.gov.il/*",
+    "https://*.homeless.co.il/*",
+    "https://*.madlan.co.il/*",
+    "https://*.banknadlan.co.il/*",
+    "https://pinuy-binuy-analyzer-production.up.railway.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.komo.co.il/*"],
+      "js": ["content/komo.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.yad2.co.il/*"],
+      "js": ["content/yad2.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.yad1.co.il/*"],
+      "js": ["content/yad1.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.homeless.co.il/*"],
+      "js": ["content/homeless.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.madlan.co.il/*"],
+      "js": ["content/madlan.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "פינוי-בינוי Phone Collector"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

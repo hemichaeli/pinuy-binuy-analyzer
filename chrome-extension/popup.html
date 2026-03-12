@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      margin: 0;
+    }
+    h2 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      color: #60a5fa;
+      text-align: center;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #1e293b;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .stat-label { color: #94a3b8; font-size: 13px; }
+    .stat-value { color: #34d399; font-weight: bold; font-size: 14px; }
+    .status-bar {
+      background: #1e293b;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .status-active { color: #34d399; }
+    .btn {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover { background: #475569; }
+    .sites {
+      font-size: 11px;
+      color: #64748b;
+      text-align: center;
+      margin-top: 8px;
+    }
+    .log {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 11px;
+      color: #64748b;
+      max-height: 80px;
+      overflow-y: auto;
+      margin-top: 8px;
+      direction: ltr;
+    }
+  </style>
+</head>
+<body>
+  <h2>📞 פינוי-בינוי Phone Collector</h2>
+  
+  <div class="status-bar">
+    סטטוס: <span class="status-active" id="status">פעיל ✓</span>
+  </div>
+  
+  <div class="stat-row">
+    <span class="stat-label">טלפונים שנשלחו</span>
+    <span class="stat-value" id="sent">0</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">שגיאות</span>
+    <span class="stat-value" id="errors" style="color: #f87171">0</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">נשלח לאחרונה</span>
+    <span class="stat-value" id="lastSent" style="font-size:11px">-</span>
+  </div>
+  
+  <button class="btn btn-primary" id="scrapeBtn">🔍 סרוק עמוד נוכחי</button>
+  <button class="btn btn-secondary" id="dashboardBtn">📊 פתח דאשבורד</button>
+  
+  <div class="sites">
+    פועל על: komo.co.il | yad2.co.il | yad1.co.il | homeless.co.il | madlan.co.il
+  </div>
+  
+  <div class="log" id="log">מוכן לסריקה...</div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
