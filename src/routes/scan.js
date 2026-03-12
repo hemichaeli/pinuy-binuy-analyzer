@@ -974,7 +974,7 @@ router.post('/complex-address', async (req, res) => {
     (async () => {
       try {
         const complexAddressScraper = require('../services/complexAddressScraper');
-        const results = await complexAddressScraper.scanAll({ limit, minIai, onlyNew, complexIds });
+        const results = await complexAddressScraper.scanAll({ limit, minIai, onlyNew, complexIds, scanId });
         await pool.query(
           `UPDATE scan_logs SET status = 'completed', completed_at = NOW(),
            new_listings = $1, summary = $2 WHERE id = $3`,

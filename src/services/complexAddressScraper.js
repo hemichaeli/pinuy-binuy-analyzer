@@ -19,9 +19,9 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 const PERPLEXITY_API = 'https://api.perplexity.ai/chat/completions';
-const DELAY_MS = 500;  // delay between batches
-const ENRICH_DELAY_MS = 1000; // delay between enrichments
-const BATCH_SIZE = 10; // parallel requests per batch
+const DELAY_MS = 1000;  // delay between batches
+const ENRICH_DELAY_MS = 500; // delay between enrichments
+const BATCH_SIZE = 5; // parallel requests per batch (reduced to avoid overloading Railway)
 
 // Sources to search
 const SOURCES = ['homeless', 'yad1', 'winwin'];
@@ -83,7 +83,7 @@ async function searchListingsForComplex(complex) {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      timeout: 45000
+      timeout: 20000
     });
 
     const content = res.data.choices?.[0]?.message?.content || '';
@@ -313,7 +313,9 @@ async function scanAll(options = {}) {
   // Process in parallel batches
   for (let i = 0; i < complexes.length; i += BATCH_SIZE) {
     const batch = complexes.slice(i, i + BATCH_SIZE);
-    logger.info(`[ComplexScraper] Processing batch ${Math.floor(i/BATCH_SIZE)+1}/${Math.ceil(complexes.length/BATCH_SIZE)} (complexes ${i+1}-${Math.min(i+BATCH_SIZE, complexes.length)})`);
+    const batchNum = Math.floor(i/BATCH_SIZE)+1;
+    const totalBatches = Math.ceil(complexes.length/BATCH_SIZE);
+    logger.info(`[ComplexScraper] Processing batch ${batchNum}/${totalBatches} (complexes ${i+1}-${Math.min(i+BATCH_SIZE, complexes.length)})`);
 
     const batchResults = await Promise.allSettled(
       batch.map(complex => scanComplex(complex))
@@ -328,6 +330,18 @@ async function scanAll(options = {}) {
         logger.error(`[ComplexScraper] Batch error: ${br.reason?.message}`);
         results.push({ error: br.reason?.message });
       }
+    }
+
+    // Update scan progress in DB if scanId provided
+    if (options.scanId) {
+      try {
+        await pool.query(
+          `UPDATE scan_logs SET complexes_scanned = $1, new_listings = $2, summary = $3 WHERE id = $4`,
+          [Math.min(i + BATCH_SIZE, complexes.length), totalInserted,
+           `Progress: batch ${batchNum}/${totalBatches}, ${totalInserted} inserted, ${totalUpdated} updated`,
+           options.scanId]
+        );
+      } catch (e) { /* ignore progress update errors */ }
     }
 
     // Small delay between batches
