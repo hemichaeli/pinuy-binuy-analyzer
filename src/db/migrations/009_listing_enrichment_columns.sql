@@ -1,12 +1,24 @@
 -- Migration 009: Listing enrichment columns (Gemini + Perplexity)
 -- Adds AI enrichment fields to the listings table
 
--- Add unique constraint for bulk-insert ON CONFLICT to work
+-- Add missing columns first
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS title VARCHAR(500);
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS contact_name VARCHAR(200);
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_id ON listings(source, source_listing_id) WHERE source_listing_id IS NOT NULL;
 
+-- Remove duplicate (source, source_listing_id) rows before creating unique index
+-- Keep the row with the highest id (most recent) for each duplicate group
+DELETE FROM listings
+WHERE id NOT IN (
+  SELECT MAX(id)
+  FROM listings
+  WHERE source_listing_id IS NOT NULL
+  GROUP BY source, source_listing_id
+)
+AND source_listing_id IS NOT NULL;
+
+-- Now create unique index safely
+CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_source_id ON listings(source, source_listing_id) WHERE source_listing_id IS NOT NULL;
 
 -- Gemini enrichment columns
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS gemini_urgency_flag TEXT;
