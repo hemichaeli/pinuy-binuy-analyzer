@@ -277,7 +277,7 @@ router.post('/ads/bulk-insert', express.json(), async (req, res) => {
           [l.source, l.source_listing_id||l.url, l.url, l.phone||null, l.contact_name||null, l.price?parseFloat(l.price):null, l.rooms?parseFloat(l.rooms):null, l.area?parseFloat(l.area):null, l.floor?parseInt(l.floor):null, l.address||null, l.city||null, (l.description||'').substring(0,500)]
         );
         if (r.rows[0]?.is_new) { inserted++; newListingIds.push(r.rows[0].id); } else updated++;
-      } catch(e) {}
+      } catch(e) { console.error('[bulk-insert] Row error:', e.message); }
     }
     res.json({ success: true, inserted, updated, total: listings.length });
     // Trigger async Perplexity+Gemini enrichment for newly inserted listings (non-blocking)
