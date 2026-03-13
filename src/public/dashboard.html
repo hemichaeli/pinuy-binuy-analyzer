@@ -271,7 +271,42 @@
                 </div>
                 <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
                     <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🤖 Pipeline יומי</div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);סטטוס">סטטוס:</span><span style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">פעיל (06:00)</span></div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">סטטוס:</span><span style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">פעיל (06:00)</span></div>
+                </div>
+                <!-- NEW: Vapi -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🎙️ Vapi</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">שיחות היום:</span><span id="status-vapi-calls" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: INFORU -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">📨 INFORU</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">הודעות היום:</span><span id="status-inforu-msgs" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Appointments Today -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🗓️ תיאומים היום</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">נקבעו:</span><span id="status-appointments" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Pending Reminders -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #e8b84b;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🔔 תזכורות ממתינות</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">ממתינות:</span><span id="status-reminders" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(232,184,75,0.15);color:#e8b84b;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Hot Leads -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #f87171;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🔥 לידים חמים</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">לא טופלו:</span><span id="status-hot-leads" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(248,113,113,0.15);color:#f87171;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Pipeline Last Run -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">⚡ Pipeline אחרון</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">ריצה:</span><span id="status-pipeline-last" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Zoho CRM -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🏢 Zoho CRM</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">סטטוס:</span><span id="status-zoho" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">מחובר</span></div>
                 </div>
             </div>
         </div>
@@ -715,6 +750,7 @@
             setInterval(checkReminders, 60000);
             setTimeout(initDashboardCharts, 250);
             setTimeout(initSourceCharts, 500);
+            setTimeout(loadSystemStatus, 600);
 
             document.querySelectorAll('.nav-tab[data-tab]').forEach(function(el) {
                 el.addEventListener('click', function() {
@@ -2032,6 +2068,74 @@
             if (!_qrLink) return;
             const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(_qrLink);
             const a = document.createElement('a'); a.href = qrUrl; a.download = 'qr_campaign.png'; a.click();
+        }
+
+        // -- SYSTEM STATUS LOADER --
+        async function loadSystemStatus() {
+            try {
+                const d = await fetchJSON('/api/dashboard/system-status').catch(() => null);
+                if (!d) return;
+
+                // Vapi calls today
+                const vapiEl = document.getElementById('status-vapi-calls');
+                if (vapiEl) {
+                    vapiEl.textContent = d.vapi_calls_today !== undefined ? d.vapi_calls_today + ' שיחות' : 'פעיל';
+                }
+
+                // INFORU messages today
+                const inforuEl = document.getElementById('status-inforu-msgs');
+                if (inforuEl) {
+                    inforuEl.textContent = d.inforu_msgs_today !== undefined ? d.inforu_msgs_today + ' הודעות' : 'פעיל';
+                }
+
+                // Appointments today
+                const apptEl = document.getElementById('status-appointments');
+                if (apptEl) {
+                    const count = d.appointments_today || 0;
+                    apptEl.textContent = count + ' תיאומים';
+                    apptEl.style.background = count > 0 ? 'rgba(74,222,128,0.15)' : 'rgba(148,163,184,0.1)';
+                    apptEl.style.color = count > 0 ? '#4ade80' : '#9aa0b0';
+                }
+
+                // Pending reminders
+                const remEl = document.getElementById('status-reminders');
+                if (remEl) {
+                    const count = d.pending_reminders || 0;
+                    remEl.textContent = count + ' ממתינות';
+                    remEl.style.background = count > 0 ? 'rgba(232,184,75,0.15)' : 'rgba(148,163,184,0.1)';
+                    remEl.style.color = count > 0 ? '#e8b84b' : '#9aa0b0';
+                }
+
+                // Hot leads
+                const hotEl = document.getElementById('status-hot-leads');
+                if (hotEl) {
+                    const count = d.hot_leads_untreated || 0;
+                    hotEl.textContent = count + ' לידים';
+                    hotEl.style.background = count > 0 ? 'rgba(248,113,113,0.15)' : 'rgba(148,163,184,0.1)';
+                    hotEl.style.color = count > 0 ? '#f87171' : '#9aa0b0';
+                }
+
+                // Pipeline last run
+                const pipeEl = document.getElementById('status-pipeline-last');
+                if (pipeEl && d.pipeline_last_run) {
+                    const dt = new Date(d.pipeline_last_run);
+                    const timeStr = dt.toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'});
+                    const status = d.pipeline_last_status === 'success' ? '✅ ' + timeStr : d.pipeline_last_status === 'running' ? '⏳ רץ' : '❌ שגיאה';
+                    pipeEl.textContent = status;
+                    pipeEl.style.color = d.pipeline_last_status === 'success' ? '#4ade80' : d.pipeline_last_status === 'running' ? '#e8b84b' : '#f87171';
+                } else if (pipeEl) {
+                    pipeEl.textContent = 'טרם רץ';
+                    pipeEl.style.color = '#9aa0b0';
+                }
+
+                // Zoho CRM
+                const zohoEl = document.getElementById('status-zoho');
+                if (zohoEl) {
+                    zohoEl.textContent = d.zoho_connected ? 'מחובר' : 'לא מחובר';
+                    zohoEl.style.background = d.zoho_connected ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)';
+                    zohoEl.style.color = d.zoho_connected ? '#4ade80' : '#f87171';
+                }
+            } catch(e) { console.warn('System status load error:', e); }
         }
 
         // -- UTILITIES --

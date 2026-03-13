@@ -350,5 +350,91 @@ router.post('/api/trello/create-task-card', async (req, res) => {
     }
 });
 
+router.get('/api/dashboard/system-status', async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString();
+
+    // Vapi calls today
+    let vapi_calls_today = 0;
+    try {
+      const vapiRes = await pool.query(
+        `SELECT COUNT(*) as cnt FROM vapi_calls WHERE created_at >= $1`, [todayStr]
+      );
+      vapi_calls_today = parseInt(vapiRes.rows[0]?.cnt || 0);
+    } catch(e) { /* table may not exist yet */ }
+
+    // INFORU messages today
+    let inforu_msgs_today = 0;
+    try {
+      const inforuRes = await pool.query(
+        `SELECT COUNT(*) as cnt FROM inforu_messages WHERE created_at >= $1`, [todayStr]
+      );
+      inforu_msgs_today = parseInt(inforuRes.rows[0]?.cnt || 0);
+    } catch(e) { /* table may not exist yet */ }
+
+    // Appointments today (from scheduling)
+    let appointments_today = 0;
+    try {
+      const apptRes = await pool.query(
+        `SELECT COUNT(*) as cnt FROM booking_sessions WHERE status = 'confirmed' AND created_at >= $1`, [todayStr]
+      );
+      appointments_today = parseInt(apptRes.rows[0]?.cnt || 0);
+    } catch(e) { /* table may not exist yet */ }
+
+    // Pending reminders (tasks with reminder_at in future)
+    let pending_reminders = 0;
+    try {
+      const remRes = await pool.query(
+        `SELECT COUNT(*) as cnt FROM tasks WHERE reminder_at > NOW() AND status != 'done'`
+      );
+      pending_reminders = parseInt(remRes.rows[0]?.cnt || 0);
+    } catch(e) { /* table may not exist yet */ }
+
+    // Hot leads untreated (score >= 70, status = new/pending)
+    let hot_leads_untreated = 0;
+    try {
+      const hotRes = await pool.query(
+        `SELECT COUNT(*) as cnt FROM website_leads WHERE status IN ('new','pending') AND created_at >= NOW() - INTERVAL '7 days'`
+      );
+      hot_leads_untreated = parseInt(hotRes.rows[0]?.cnt || 0);
+    } catch(e) { /* table may not exist yet */ }
+
+    // Pipeline last run
+    let pipeline_last_run = null;
+    let pipeline_last_status = null;
+    try {
+      const pipeRes = await pool.query(
+        `SELECT last_run, status FROM pipeline_runs ORDER BY last_run DESC LIMIT 1`
+      );
+      if (pipeRes.rows[0]) {
+        pipeline_last_run = pipeRes.rows[0].last_run;
+        pipeline_last_status = pipeRes.rows[0].status;
+      }
+    } catch(e) { /* table may not exist yet */ }
+
+    // Zoho CRM - check if token exists
+    let zoho_connected = false;
+    try {
+      const zohoRes = await pool.query(`SELECT value FROM system_config WHERE key = 'zoho_access_token' LIMIT 1`);
+      zoho_connected = !!(zohoRes.rows[0]?.value);
+    } catch(e) { zoho_connected = !!(process.env.ZOHO_ACCESS_TOKEN); }
+
+    res.json({
+      vapi_calls_today,
+      inforu_msgs_today,
+      appointments_today,
+      pending_reminders,
+      hot_leads_untreated,
+      pipeline_last_run,
+      pipeline_last_status,
+      zoho_connected
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
-// v5.1.1 - fix broken buttons: removed newlines from alert/confirm strings in template literal
+// v5.3.0 - static dashboard.html, system status API
