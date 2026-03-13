@@ -1218,7 +1218,7 @@ function generateDashboardHTML(stats) {
                     + '<td style="color:' + ssiColor + ';font-weight:600;">' + (ssi || '\u2014') + '</td>'
                     + '<td>' + (ad.phone ? '<a href="tel:' + ad.phone + '" style="color:var(--blue);font-size:12px;">' + ad.phone + '</a>' : '<span style="color:var(--text-muted);font-size:11px;">אין</span>') + '</td>'
                     + '<td><div style="display:flex;gap:6px;">'
-                    + '<button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="alert('עריכה בקרוב')">ערוך</button>'
+                    + '<button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="return false">ערוך</button>'
                     + (ad.url ? '<a href="' + ad.url + '" target="_blank" class="btn" style="padding:5px 12px;font-size:12px;">צפה</a>' : '')
                     + '</div></td>'
                     + '</tr>';
