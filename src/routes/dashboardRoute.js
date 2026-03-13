@@ -291,46 +291,46 @@ function generateDashboardHTML(stats) {
     <title>QUANTUM DASHBOARD</title>
     <style>
         :root {
-            --bg-primary: #0f1117;
-            --bg-secondary: #161b27;
-            --bg-card: #1c2333;
-            --bg-card-hover: #222d42;
-            --bg-table-head: #182030;
-            --bg-table-row-alt: #19202e;
-            --border-subtle: rgba(255,255,255,0.06);
-            --border-medium: rgba(255,255,255,0.11);
-            --teal: #2dd4bf;
-            --teal-dim: rgba(45,212,191,0.12);
-            --teal-glow: rgba(45,212,191,0.25);
-            --gold: #f59e0b;
-            --gold-dim: rgba(245,158,11,0.12);
-            --gold-glow: rgba(245,158,11,0.25);
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --green: #22c55e;
-            --red: #ef4444;
-            --blue: #3b82f6;
+            --bg-primary: #2a2d35;
+            --bg-secondary: #32363f;
+            --bg-card: #32363f;
+            --bg-card-hover: #3a3f4a;
+            --bg-table-head: #2e3240;
+            --bg-table-row-alt: #2e323b;
+            --border-subtle: rgba(255,255,255,0.07);
+            --border-medium: rgba(255,255,255,0.13);
+            --teal: #4ecdc4;
+            --teal-dim: rgba(78,205,196,0.13);
+            --teal-glow: rgba(78,205,196,0.28);
+            --gold: #e8b84b;
+            --gold-dim: rgba(232,184,75,0.13);
+            --gold-glow: rgba(232,184,75,0.28);
+            --text-primary: #e8eaf0;
+            --text-secondary: #9aa0b0;
+            --text-muted: #6b7280;
+            --green: #4ade80;
+            --red: #f87171;
+            --blue: #60a5fa;
             --purple: #8b5cf6;
         }
         * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; }
         body { background:var(--bg-primary); color:var(--text-primary); font-size:15px; line-height:1.5; overflow-x:hidden; }
 
         /* ── HEADER ── */
-        .header { background:var(--bg-secondary); border-bottom:1px solid var(--border-subtle); padding:16px 24px; text-align:center; position:sticky; top:0; z-index:100; }
-        .header h1 { font-size:22px; font-weight:900; letter-spacing:3px; margin-bottom:3px; color:var(--text-primary); }
+        .header { background:var(--bg-secondary); border-bottom:1px solid var(--border-subtle); padding:22px 24px 18px; text-align:center; position:sticky; top:0; z-index:100; }
+        .header h1 { font-size:26px; font-weight:800; letter-spacing:4px; margin-bottom:5px; color:var(--text-primary); text-transform:uppercase; }
         .header h1 span.teal { color:var(--teal); }
-        .header h1 span.gold { color:var(--gold); }
-        .status { color:var(--green); font-size:12px; font-weight:500; display:flex; align-items:center; justify-content:center; gap:6px; }
-        .status-dot { width:7px; height:7px; background:var(--green); border-radius:50%; box-shadow:0 0 6px var(--green); animation:blink 2s infinite; }
+        .header h1 span.gold { color:var(--text-primary); }
+        .status { color:var(--text-secondary); font-size:12px; font-weight:400; display:flex; align-items:center; justify-content:center; gap:6px; }
+        .status-dot { width:8px; height:8px; background:var(--green); border-radius:50%; box-shadow:0 0 6px var(--green); animation:blink 2s infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
         /* ── NAV TABS ── */
-        .nav-tabs { background:var(--bg-secondary); padding:10px 20px; border-bottom:1px solid var(--border-subtle); display:flex; overflow-x:auto; gap:5px; position:sticky; top:62px; z-index:99; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+        .nav-tabs { background:var(--bg-secondary); padding:12px 24px; border-bottom:1px solid var(--border-subtle); display:flex; overflow-x:auto; gap:8px; position:sticky; top:72px; z-index:99; -webkit-overflow-scrolling:touch; scrollbar-width:none; justify-content:center; flex-wrap:wrap; }
         .nav-tabs::-webkit-scrollbar { display:none; }
-        .nav-tab { background:transparent; border:1.5px solid var(--border-medium); border-radius:8px; padding:8px 16px; color:var(--text-muted); font-weight:500; font-size:12px; cursor:pointer; transition:all 0.18s ease; white-space:nowrap; user-select:none; -webkit-tap-highlight-color:transparent; }
-        .nav-tab.active { background:var(--teal-dim); border-color:var(--teal); color:var(--teal); font-weight:700; }
-        .nav-tab:hover:not(.active) { border-color:rgba(255,255,255,0.2); color:var(--text-secondary); background:rgba(255,255,255,0.04); }
+        .nav-tab { background:transparent; border:1px solid var(--border-medium); border-radius:6px; padding:9px 18px; color:var(--text-secondary); font-weight:500; font-size:13px; cursor:pointer; transition:all 0.15s ease; white-space:nowrap; user-select:none; -webkit-tap-highlight-color:transparent; letter-spacing:0.3px; }
+        .nav-tab.active { background:var(--bg-primary); border-color:rgba(255,255,255,0.25); color:var(--text-primary); font-weight:600; }
+        .nav-tab:hover:not(.active) { border-color:rgba(255,255,255,0.18); color:var(--text-primary); background:rgba(255,255,255,0.04); }
 
         /* ── TAB CONTENT ── */
         .tab-content { display:none; padding:18px 20px; min-height:calc(100vh - 120px); }
@@ -338,45 +338,43 @@ function generateDashboardHTML(stats) {
 
         /* ── STAT CARDS ── */
         .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:18px; }
-        .stat-card { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px; padding:18px 16px; cursor:pointer; transition:all 0.18s ease; user-select:none; position:relative; overflow:hidden; }
-        .stat-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--teal),var(--gold)); transform:scaleX(0); transition:transform 0.2s; transform-origin:right; }
-        .stat-card:hover::after { transform:scaleX(1); }
-        .stat-card:hover { background:var(--bg-card-hover); border-color:var(--border-medium); transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,0.35); }
-        .stat-number { font-size:2rem; font-weight:800; color:var(--text-primary); margin-bottom:4px; line-height:1; }
-        .stat-label { font-size:12px; color:var(--text-secondary); font-weight:500; margin-bottom:5px; }
+        .stat-card { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:8px; padding:20px 22px; cursor:pointer; transition:all 0.15s ease; user-select:none; position:relative; overflow:hidden; }
+        .stat-card:hover { background:var(--bg-card-hover); border-color:var(--border-medium); }
+        .stat-number { font-size:2.4rem; font-weight:700; color:var(--text-primary); margin-bottom:6px; line-height:1; letter-spacing:-0.5px; }
+        .stat-label { font-size:13px; color:var(--text-secondary); font-weight:400; margin-bottom:5px; }
         .stat-hint { font-size:11px; color:var(--text-muted); margin-bottom:5px; }
-        .stat-change { font-size:10px; padding:2px 7px; border-radius:20px; font-weight:600; background:rgba(34,197,94,0.12); color:var(--green); display:inline-block; border:1px solid rgba(34,197,94,0.25); }
+        .stat-change { font-size:11px; padding:2px 8px; border-radius:4px; font-weight:500; background:rgba(74,222,128,0.1); color:var(--green); display:inline-block; }
 
         /* ── SECTION CARDS ── */
-        .section { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:14px; }
-        .section h2 { color:var(--text-primary); font-size:15px; margin-bottom:14px; font-weight:700; display:flex; align-items:center; gap:8px; }
+        .section { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:8px; padding:20px 22px; margin-bottom:16px; }
+        .section h2 { color:var(--text-primary); font-size:15px; margin-bottom:16px; font-weight:600; display:flex; align-items:center; gap:8px; }
 
         /* ── FILTERS ── */
         .filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin-bottom:14px; }
-        .filter-input,.filter-select { background:rgba(255,255,255,0.04); border:1.5px solid var(--border-medium); color:var(--text-primary); padding:8px 11px; border-radius:7px; font-size:13px; width:100%; transition:border-color 0.18s; }
+        .filter-input,.filter-select { background:rgba(255,255,255,0.05); border:1px solid var(--border-medium); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:13px; width:100%; transition:border-color 0.15s; }
         .filter-input:focus,.filter-select:focus { outline:none; border-color:var(--teal); background:rgba(45,212,191,0.04); }
         .filter-input::placeholder { color:var(--text-muted); }
         .filter-select option { background:var(--bg-card); color:var(--text-primary); }
 
         /* ── BUTTONS ── */
-        .btn { background:var(--teal); color:#0f172a; border:none; padding:8px 16px; border-radius:7px; font-weight:700; font-size:13px; cursor:pointer; transition:all 0.18s ease; display:inline-flex; align-items:center; gap:5px; }
-        .btn:hover { background:#5eead4; box-shadow:0 3px 12px var(--teal-glow); transform:translateY(-1px); }
-        .btn-outline { background:transparent; color:var(--text-primary); border:1.5px solid var(--border-medium); }
-        .btn-outline:hover { border-color:var(--teal); color:var(--teal); background:var(--teal-dim); box-shadow:none; transform:none; }
-        .btn-secondary { background:rgba(255,255,255,0.06); color:var(--text-secondary); border:1.5px solid var(--border-medium); }
-        .btn-secondary:hover { background:rgba(255,255,255,0.1); border-color:var(--teal); color:var(--teal); box-shadow:none; transform:none; }
-        .btn-gold { background:var(--gold); color:#0f172a; border:none; }
-        .btn-gold:hover { background:#fbbf24; box-shadow:0 3px 12px var(--gold-glow); }
-        .btn-green { background:var(--green); color:#0f172a; border:none; }
-        .btn-green:hover { background:#4ade80; box-shadow:0 3px 12px rgba(34,197,94,0.3); }
-        .btn-intel { background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border:none; }
-        .btn-intel:hover { box-shadow:0 3px 12px rgba(99,102,241,0.35); }
+        .btn { background:var(--teal); color:#1a1d24; border:none; padding:8px 18px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; transition:all 0.15s ease; display:inline-flex; align-items:center; gap:5px; }
+        .btn:hover { opacity:0.88; }
+        .btn-outline { background:transparent; color:var(--text-primary); border:1px solid var(--border-medium); }
+        .btn-outline:hover { border-color:rgba(255,255,255,0.3); color:var(--text-primary); background:rgba(255,255,255,0.06); }
+        .btn-secondary { background:rgba(255,255,255,0.07); color:var(--text-secondary); border:1px solid var(--border-medium); }
+        .btn-secondary:hover { background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.22); color:var(--text-primary); }
+        .btn-gold { background:var(--gold); color:#1a1d24; border:none; }
+        .btn-gold:hover { opacity:0.88; }
+        .btn-green { background:var(--green); color:#1a1d24; border:none; }
+        .btn-green:hover { opacity:0.88; }
+        .btn-intel { background:rgba(99,102,241,0.85); color:#fff; border:none; }
+        .btn-intel:hover { opacity:0.88; }
         .btn-red { background:var(--red); color:#fff; border:none; }
-        .btn-red:hover { background:#f87171; box-shadow:0 3px 12px rgba(239,68,68,0.3); }
+        .btn-red:hover { opacity:0.88; }
 
         /* ── DATA LIST ── */
         .data-list { display:grid; gap:10px; }
-        .data-item { background:rgba(255,255,255,0.04); border:1px solid var(--border-subtle); border-radius:8px; padding:14px; border-right:3px solid var(--gold); transition:all 0.18s ease; }
+        .data-item { background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:6px; padding:14px; border-right:3px solid var(--gold); transition:all 0.15s ease; }
         .data-item:hover { background:rgba(255,255,255,0.07); }
         .data-item h3 { color:var(--gold); margin-bottom:8px; font-size:15px; }
         .data-meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; margin-top:10px; font-size:13px; }
@@ -387,31 +385,29 @@ function generateDashboardHTML(stats) {
         /* ── TABLE ── */
         .tbl { width:100%; border-collapse:collapse; font-size:13px; }
         .tbl thead tr { background:var(--bg-table-head); }
-        .tbl th { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.08); color:var(--text-secondary); font-weight:600; text-align:right; white-space:nowrap; cursor:pointer; }
-        .tbl th:hover { color:var(--teal); }
-        .tbl tbody tr { border-bottom:1px solid rgba(255,255,255,0.04); transition:background 0.12s; }
-        .tbl tbody tr:nth-child(even) { background:var(--bg-table-row-alt); }
-        .tbl tbody tr:hover { background:rgba(45,212,191,0.05) !important; cursor:pointer; }
-        .tbl td { padding:9px 12px; }
-        .trow:hover { background:rgba(45,212,191,0.05) !important; cursor:pointer; }
-
+        .tbl th { padding:11px 14px; border-bottom:1px solid var(--border-subtle); color:var(--text-secondary); font-weight:500; text-align:right; white-space:nowrap; cursor:pointer; font-size:12px; letter-spacing:0.3px; }
+        .tbl th:hover { color:var(--text-primary); }
+        .tbl tbody tr { border-bottom:1px solid var(--border-subtle); transition:background 0.1s; }
+        .tbl tbody tr:hover { background:rgba(255,255,255,0.04) !important; cursor:pointer; }
+        .tbl td { padding:12px 14px; vertical-align:middle; }
+        .trow:hover { background:rgba(255,255,255,0.04) !important; cursor:pointer; }
         /* ── BADGES ── */
-        .badge { padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; display:inline-block; }
-        .badge-green { background:rgba(34,197,94,0.15); color:var(--green); border:1px solid rgba(34,197,94,0.25); }
-        .badge-blue { background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.25); }
-        .badge-gold { background:rgba(245,158,11,0.15); color:var(--gold); border:1px solid rgba(245,158,11,0.25); }
-        .badge-red { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.25); }
-        .badge-purple { background:rgba(139,92,246,0.15); color:#a78bfa; border:1px solid rgba(139,92,246,0.25); }
-        .badge-gray { background:rgba(100,116,139,0.15); color:var(--text-muted); border:1px solid rgba(100,116,139,0.25); }
-        .status-badge { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
-        .status-new { background:rgba(59,130,246,0.15); color:#60a5fa; }
-        .status-contacted { background:rgba(245,158,11,0.15); color:var(--gold); }
-        .status-qualified { background:rgba(34,197,94,0.15); color:var(--green); }
-        .status-closed { background:rgba(139,92,246,0.15); color:#a78bfa; }
-        .status-pending { background:rgba(245,158,11,0.15); color:var(--gold); }
-        .status-landline { background:rgba(100,116,139,0.15); color:var(--text-muted); }
-        .status-nophone { background:rgba(55,65,81,0.3); color:var(--text-muted); }
-        .filter-active-badge { background:var(--teal-dim); border:1px solid var(--teal); color:var(--teal); padding:3px 10px; border-radius:20px; font-size:11px; margin-left:8px; display:inline-block; }
+        .badge { padding:4px 12px; border-radius:6px; font-size:12px; font-weight:500; display:inline-block; }
+        .badge-green { background:rgba(74,222,128,0.15); color:var(--green); }
+        .badge-blue { background:rgba(96,165,250,0.15); color:var(--blue); }
+        .badge-gold { background:rgba(232,184,75,0.15); color:var(--gold); }
+        .badge-red { background:rgba(248,113,113,0.15); color:var(--red); }
+        .badge-purple { background:rgba(139,92,246,0.15); color:#a78bfa; }
+        .badge-gray { background:rgba(107,114,128,0.15); color:var(--text-muted); }
+        .status-badge { padding:5px 14px; border-radius:6px; font-size:12px; font-weight:500; }
+        .status-new { background:rgba(96,165,250,0.15); color:var(--blue); }
+        .status-contacted { background:rgba(232,184,75,0.15); color:var(--gold); }
+        .status-qualified { background:rgba(74,222,128,0.15); color:var(--green); }
+        .status-closed { background:rgba(107,114,128,0.15); color:var(--text-muted); }
+        .status-pending { background:rgba(232,184,75,0.15); color:var(--gold); }
+        .status-landline { background:rgba(107,114,128,0.15); color:var(--text-muted); }
+        .status-nophone { background:rgba(55,65,81,0.2); color:var(--text-muted); }
+        .filter-active-badge { background:var(--teal-dim); border:1px solid var(--teal); color:var(--teal); padding:3px 10px; border-radius:6px; font-size:11px; margin-left:8px; display:inline-block; }
 
         /* ── MISC ── */
         .loading { text-align:center; padding:40px; color:var(--text-muted); }
@@ -464,7 +460,7 @@ function generateDashboardHTML(stats) {
 </head>
 <body>
     <div class="header">
-        <h1><span class="teal">QUANTUM</span> <span class="gold">DASHBOARD</span></h1>
+        <h1>QUANTUM DASHBOARD 💎</h1>
         <div class="status"><span class="status-dot"></span> מחובר ופעיל &bull; <span id="time"></span></div>
     </div>
 
@@ -596,21 +592,16 @@ function generateDashboardHTML(stats) {
             <table id="ads-table" class="tbl" style="display:none;">
                 <thead>
                     <tr id="ads-thead">
-                        <th data-onclick="sortAdsBy('title')" data-sort-field="title">כותרת המודעה <span id="sort-title">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('city')" data-sort-field="city">עיר <span id="sort-city">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('asking_price')" data-sort-field="asking_price">מחיר <span id="sort-asking_price">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('premium_percent')" data-sort-field="premium_percent">פרמייה עכשיו <span id="sort-premium_percent">▲▼</span></th>
-                        <th>פרמייה לאחר פרוייקט</th>
-                        <th data-onclick="sortAdsBy('area_sqm')" data-sort-field="area_sqm">שטח (מ"ר) <span id="sort-area_sqm">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('rooms')" data-sort-field="rooms">חדרים <span id="sort-rooms">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('floor')" data-sort-field="floor">קומה <span id="sort-floor">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('complex_status')" data-sort-field="complex_status">סטטוס מתחם <span id="sort-complex_status">▲▼</span></th>
-                        <th>מאז מתי</th>
-                        <th data-onclick="sortAdsBy('published_at')" data-sort-field="published_at">פורסם <span id="sort-published_at">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('source')" data-sort-field="source">מקור <span id="sort-source">▲▼</span></th>
-                        <th data-onclick="sortAdsBy('ssi_score')" data-sort-field="ssi_score">SSI <span id="sort-ssi_score">▲▼</span></th>
+                        <th data-onclick="sortAdsBy('title')" data-sort-field="title">Property</th>
+                        <th data-onclick="sortAdsBy('complex_status')" data-sort-field="complex_status">Status</th>
+                        <th>Performance Trend</th>
+                        <th data-onclick="sortAdsBy('asking_price')" data-sort-field="asking_price">Price</th>
+                        <th data-onclick="sortAdsBy('premium_percent')" data-sort-field="premium_percent">פרמייה</th>
+                        <th data-onclick="sortAdsBy('area_sqm')" data-sort-field="area_sqm">שטח</th>
+                        <th data-onclick="sortAdsBy('rooms')" data-sort-field="rooms">חדרים</th>
+                        <th data-onclick="sortAdsBy('ssi_score')" data-sort-field="ssi_score">SSI</th>
                         <th>טלפון</th>
-                        <th>פעולה</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="ads-tbody"></tbody>
@@ -1173,6 +1164,29 @@ function generateDashboardHTML(stats) {
             oldList.style.display = 'none';
             if (gridContainer) gridContainer.style.display = 'none';
             const premiumColor = (pct) => parseFloat(pct) > 30 ? 'var(--green)' : parseFloat(pct) > 15 ? 'var(--gold)' : 'var(--red)';
+            const statusBadge = (status) => {
+                const map = { 'active': ['פעיל','rgba(74,222,128,0.18)','var(--green)'], 'pending': ['ממתין','rgba(232,184,75,0.18)','var(--gold)'], 'sold': ['נמכר','rgba(107,114,128,0.18)','var(--text-muted)'], 'closed': ['סגור','rgba(107,114,128,0.18)','var(--text-muted)'] };
+                const s = (status || '').toLowerCase();
+                const [label, bg, color] = map[s] || [status || '—', 'rgba(107,114,128,0.15)', 'var(--text-muted)'];
+                return '<span style="background:' + bg + ';color:' + color + ';padding:5px 14px;border-radius:6px;font-size:12px;font-weight:500;">' + label + '</span>';
+            };
+            const miniSparkline = (color) => {
+                const pts = Array.from({length:8}, () => 20 + Math.random()*60);
+                const max = Math.max(...pts), min = Math.min(...pts);
+                const norm = pts.map(p => 55 - ((p-min)/(max-min||1))*45);
+                const path = norm.map((y,x) => (x===0?'M':'L') + (x*14+2) + ',' + y.toFixed(1)).join(' ');
+                const area = path + ' L' + (7*14+2) + ',60 L2,60 Z';
+                return '<svg width="100" height="60" style="display:block;">'
+                    + '<defs><linearGradient id="sg' + color.replace('#','') + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + color + '" stop-opacity="0.35"/><stop offset="100%" stop-color="' + color + '" stop-opacity="0.03"/></linearGradient></defs>'
+                    + '<path d="' + area + '" fill="url(#sg' + color.replace('#','') + ')"/>'
+                    + '<path d="' + path + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round"/>'
+                    + '</svg>';
+            };
+            const imgThumb = (ad) => {
+                const img = ad.image_url || ad.thumbnail_url || '';
+                if (img) return '<img src="' + img + '" style="width:90px;height:60px;object-fit:cover;border-radius:5px;display:block;" onerror="this.style.display='none'">';
+                return '<div style="width:90px;height:60px;border-radius:5px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:20px;">🏠</div>';
+            };
             tbody.innerHTML = ads.map((ad, i) => {
                 const price = ad.price_current ? '\u20AA' + parseInt(ad.price_current).toLocaleString() : '\u2014';
                 const premNow = ad.premium_percent && parseFloat(ad.premium_percent) > 0 ? parseFloat(ad.premium_percent).toFixed(1) + '%' : '\u2014';
@@ -1183,25 +1197,30 @@ function generateDashboardHTML(stats) {
                 const created = ad.created_at ? new Date(ad.created_at).toLocaleDateString('he-IL') : '\u2014';
                 const ssi = ad.ssi_score || 0;
                 const ssiColor = ssi > 70 ? 'var(--green)' : ssi > 40 ? 'var(--gold)' : 'var(--text-muted)';
-                const title = (ad.title || ad.address || ('\u05de\u05d5\u05d3\u05e2\u05d4 #' + (i+1))).substring(0, 60);
+                const title = (ad.title || ad.address || ('\u05de\u05d5\u05d3\u05e2\u05d4 #' + (i+1))).substring(0, 55);
                 const premNowColor = premiumColor(ad.premium_percent);
+                const adStatus = ad.status || (ad.complex_status === 'sold' ? 'sold' : 'active');
+                const sparkColor = adStatus === 'sold' ? '#6b7280' : adStatus === 'pending' ? '#e8b84b' : '#4ecdc4';
                 return '<tr class="trow">'
-                    + '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (ad.title || '') + '">'
-                    + (ad.url ? '<a href="' + ad.url + '" target="_blank" style="color:var(--text-primary);text-decoration:none;">' + title + '</a>' : title) + '</td>'
-                    + '<td>' + (ad.city || '\u2014') + '</td>'
-                    + '<td style="color:var(--gold);font-weight:600;">' + price + '</td>'
+                    + '<td style="min-width:220px;">'
+                    + '<div style="display:flex;align-items:center;gap:10px;">'
+                    + imgThumb(ad)
+                    + '<div><div style="font-weight:600;font-size:13px;color:var(--text-primary);margin-bottom:2px;">'
+                    + (ad.url ? '<a href="' + ad.url + '" target="_blank" style="color:var(--text-primary);text-decoration:none;">' + title + '</a>' : title)
+                    + '</div><div style="font-size:11px;color:var(--text-muted);">' + (ad.city || '') + (ad.address ? ' | ' + ad.address.substring(0,30) : '') + '</div></div>'
+                    + '</div></td>'
+                    + '<td>' + statusBadge(adStatus) + '</td>'
+                    + '<td>' + miniSparkline(sparkColor) + '</td>'
+                    + '<td style="color:var(--text-primary);font-weight:600;font-size:14px;">' + price + '</td>'
                     + '<td style="color:' + premNowColor + ';font-weight:600;">' + premNow + '</td>'
-                    + '<td style="color:#60a5fa;">' + premAfter + '</td>'
-                    + '<td>' + (ad.area_sqm ? parseFloat(ad.area_sqm).toFixed(0) : '\u2014') + '</td>'
+                    + '<td>' + (ad.area_sqm ? parseFloat(ad.area_sqm).toFixed(0) + ' מ"ר' : '\u2014') + '</td>'
                     + '<td>' + (ad.rooms || '\u2014') + '</td>'
-                    + '<td>' + (ad.floor != null ? ad.floor : '\u2014') + '</td>'
-                    + '<td><span class="badge badge-blue">' + statusHe + '</span></td>'
-                    + '<td style="font-size:11px;color:var(--text-muted);">' + created + '</td>'
-                    + '<td style="font-size:11px;color:var(--text-muted);">' + published + '</td>'
-                    + '<td style="font-size:11px;">' + (ad.source || '\u2014') + '</td>'
                     + '<td style="color:' + ssiColor + ';font-weight:600;">' + (ssi || '\u2014') + '</td>'
                     + '<td>' + (ad.phone ? '<a href="tel:' + ad.phone + '" style="color:var(--blue);font-size:12px;">' + ad.phone + '</a>' : '<span style="color:var(--text-muted);font-size:11px;">אין</span>') + '</td>'
-                    + '<td>' + (ad.url ? '<a href="' + ad.url + '" target="_blank" class="btn btn-secondary" style="padding:3px 8px;font-size:11px;">פתח</a>' : '') + '</td>'
+                    + '<td><div style="display:flex;gap:6px;">'
+                    + '<button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="alert('עריכה בקרוב')">ערוך</button>'
+                    + (ad.url ? '<a href="' + ad.url + '" target="_blank" class="btn" style="padding:5px 12px;font-size:12px;">צפה</a>' : '')
+                    + '</div></td>'
                     + '</tr>';
             }).join('');
         }
