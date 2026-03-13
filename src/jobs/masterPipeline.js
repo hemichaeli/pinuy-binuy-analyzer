@@ -655,6 +655,18 @@ async function runMasterPipeline(options = {}) {
     result.phase4_iai = await runIAIAndRanking();
     logger.info('[MasterPipeline] PHASE 4 complete');
 
+    // ── PHASE 4b: SSI recalculation for all active listings ─────────────────
+    logger.info('[MasterPipeline] PHASE 4b: Recalculating SSI scores...');
+    try {
+      const { calculateAllSSI } = require('../services/ssiCalculator');
+      const ssiResult = await calculateAllSSI();
+      result.phase4b_ssi = ssiResult;
+      logger.info(`[MasterPipeline] PHASE 4b complete: ${ssiResult.updated}/${ssiResult.total} SSI scores updated, ${ssiResult.highStress} high-stress`);
+    } catch (ssiErr) {
+      logger.warn(`[MasterPipeline] PHASE 4b SSI failed (non-fatal): ${ssiErr.message}`);
+      result.phase4b_ssi = { updated: 0, total: 0, error: ssiErr.message };
+    }
+
     result.duration_ms = Date.now() - startTime;
     result.completed_at = new Date().toISOString();
 
@@ -662,7 +674,8 @@ async function runMasterPipeline(options = {}) {
       `${result.phase1_scrapers.totalNew} new listings | ` +
       `${(result.phase1b_phones||{}).enriched||0} phones revealed | ` +
       `${result.phase2_statutory.enriched} statutory enriched | ` +
-      `${result.phase3_synthesis.synthesized} synthesized`;
+      `${result.phase3_synthesis.synthesized} synthesized | ` +
+      `${(result.phase4b_ssi||{}).updated||0} SSI scored`;
 
     await pool.query(
       `UPDATE scan_logs SET status = 'completed', completed_at = NOW(), summary = $1 WHERE id = $2`,

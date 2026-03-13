@@ -334,6 +334,27 @@
             </div>
         </div>
 
+        <!-- Conversion Rate Chart + SSI Backfill -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px;">
+            <div class="section">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <h2 style="font-size:13px;font-weight:600;color:var(--text-primary);margin:0;">📉 שיעור המרה חודשי (לידים / מודעות %)</h2>
+                </div>
+                <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">כמה לידים נוצרו מכל 100 מודעות פעילות באותו חודש</p>
+                <div style="position:relative;height:180px;"><canvas id="chart-conversion-rate"></canvas></div>
+            </div>
+            <div class="section" style="display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                    <h2 style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">📊 SSI סטטוס</h2>
+                    <div id="ssi-stats-display" style="font-size:12px;color:var(--text-secondary);line-height:1.8;">טוען...</div>
+                </div>
+                <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+                    <button class="btn btn-secondary" onclick="runSSIBackfill()" id="ssi-backfill-btn" style="font-size:12px;padding:8px 12px;width:100%;justify-content:center;">⚙️ חשב SSI לכל המודעות</button>
+                    <div id="ssi-backfill-msg" style="font-size:11px;color:var(--text-muted);text-align:center;"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- QR Campaign Generator -->
         <div class="section" style="margin-bottom:16px;">
             <h2 style="font-size:13px;margin-bottom:10px;">📷 יצירת לינק QR לקמפיין פלאייר</h2>
@@ -638,6 +659,22 @@
             </div>
             <div id="tasks-list"><div class="loading">טוען משימות...</div></div>
         </div>
+
+        <!-- Trello Board Sync Panel -->
+        <div class="section" id="trello-board-panel" style="margin-top:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                <h2 style="margin:0;">📌 לוח Trello</h2>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <select id="trello-board-filter" class="filter-select" style="min-width:140px;font-size:12px;padding:6px 10px;" onchange="renderTrelloBoardCards()">
+                        <option value="">כל הרשימות</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="_trelloBoardCards=[];loadTrelloBoardCards()" style="padding:7px 12px;font-size:12px;">🔄 רענן</button>
+                    <button class="btn" onclick="openNewTaskModal()" style="padding:7px 12px;font-size:12px;">➕ כרטיס חדש</button>
+                </div>
+            </div>
+            <div id="trello-board-status" style="font-size:12px;color:var(--text-muted);margin-bottom:10px;"></div>
+            <div id="trello-board-cards"><div class="loading">📌 טוען כרטיסים מטרלו...</div></div>
+        </div>
     </div>
 
     <!-- TRELLO MODAL -->
@@ -753,6 +790,8 @@
             setInterval(checkReminders, 60000);
             setTimeout(initDashboardCharts, 250);
             setTimeout(initSourceCharts, 500);
+            setTimeout(loadConversionRateChart, 700);
+            setTimeout(loadSSIStats, 900);
             setTimeout(loadSystemStatus, 600);
 
             document.querySelectorAll('.nav-tab[data-tab]').forEach(function(el) {
@@ -798,7 +837,7 @@
             else if (tabName === 'scheduling') loadScheduling();
             else if (tabName === 'scrapers') loadScraperStatus();
             else if (tabName === 'news') loadNews();
-            else if (tabName === 'tasks') loadTasks('all');
+            else if (tabName === 'tasks') { loadTasks('all'); loadTrelloBoardCards(); loadSSIStats(); }
         }
 
         async function loadMorningIntelligence() {
@@ -1817,6 +1856,163 @@
                 closeTaskModal();
                 loadTasks(_currentTaskFilter);
             } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        // -- TRELLO BOARD SYNC --
+        let _trelloBoardCards = [];
+        let _trelloBoardLists = [];
+
+        async function loadTrelloBoardCards() {
+            const container = document.getElementById('trello-board-cards');
+            const statusEl = document.getElementById('trello-board-status');
+            if (!container) return;
+            container.innerHTML = '<div class="loading">📌 טוען כרטיסים מטרלו...</div>';
+            try {
+                const data = await fetchJSON('/dashboard/api/trello/cards');
+                if (!data.success) {
+                    if (!data.configured) {
+                        container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">⚠️ Trello לא מוגדר. הגדר TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID ב-Railway.</div>';
+                        return;
+                    }
+                    throw new Error(data.error);
+                }
+                _trelloBoardCards = data.cards || [];
+                _trelloBoardLists = data.lists || [];
+                // Populate filter
+                const filterSel = document.getElementById('trello-board-filter');
+                if (filterSel) {
+                    const currentVal = filterSel.value;
+                    filterSel.innerHTML = '<option value="">כל הרשימות</option>' +
+                        _trelloBoardLists.map(l => '<option value="' + l.id + '">' + l.name + '</option>').join('');
+                    filterSel.value = currentVal;
+                }
+                if (statusEl) statusEl.textContent = _trelloBoardCards.length + ' כרטיסים פעילים';
+                renderTrelloBoardCards();
+            } catch (e) {
+                container.innerHTML = '<div class="error">שגיאה בטעינת Trello: ' + e.message + '</div>';
+            }
+        }
+
+        function renderTrelloBoardCards() {
+            const container = document.getElementById('trello-board-cards');
+            if (!container) return;
+            const filterSel = document.getElementById('trello-board-filter');
+            const filterListId = filterSel ? filterSel.value : '';
+            const cards = filterListId ? _trelloBoardCards.filter(c => c.idList === filterListId) : _trelloBoardCards;
+            if (!cards.length) {
+                container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">אין כרטיסים להצגה</div>';
+                return;
+            }
+            // Group by list
+            const byList = {};
+            cards.forEach(c => {
+                const ln = c.listName || 'ללא רשימה';
+                if (!byList[ln]) byList[ln] = [];
+                byList[ln].push(c);
+            });
+            let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">';
+            for (const [listName, listCards] of Object.entries(byList)) {
+                html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:8px;padding:12px;">';
+                html += '<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;border-bottom:1px solid var(--border-subtle);padding-bottom:6px;">' + listName + ' <span style="color:var(--text-muted);font-weight:400;">(' + listCards.length + ')</span></div>';
+                listCards.forEach(c => {
+                    const dueStr = c.due ? new Date(c.due).toLocaleDateString('he-IL') : '';
+                    const labels = (c.labels || []).map(l => '<span style="background:' + (l.color ? l.color : '#555') + ';color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:3px;">' + (l.name || '') + '</span>').join('');
+                    html += '<div style="background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);border-radius:6px;padding:10px;margin-bottom:8px;cursor:pointer;" onclick="window.open(\'' + c.url + '\',\'_blank\')">';
+                    html += '<div style="font-size:13px;color:var(--text-primary);font-weight:500;margin-bottom:4px;">' + c.name + '</div>';
+                    if (labels) html += '<div style="margin-bottom:4px;">' + labels + '</div>';
+                    if (dueStr) html += '<div style="font-size:11px;color:var(--text-muted);">⏰ ' + dueStr + '</div>';
+                    html += '<div style="display:flex;gap:6px;margin-top:8px;">';
+                    html += '<button class="btn btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="event.stopPropagation();moveTrelloCard(\'' + c.id + '\')">↔️ הזז</button>';
+                    html += '<a href="' + c.url + '" target="_blank" class="btn btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="event.stopPropagation();">🔗 פתח</a>';
+                    html += '</div></div>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function moveTrelloCard(cardId) {
+            const listName = prompt('שם הרשימה להזזה (לדוגמא: Done):');
+            if (!listName) return;
+            try {
+                const resp = await fetch('/dashboard/api/trello/move-card', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ cardId, listName }) });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                loadTrelloBoardCards();
+            } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        // -- SSI BACKFILL --
+        async function runSSIBackfill() {
+            const btn = document.getElementById('ssi-backfill-btn');
+            const msg = document.getElementById('ssi-backfill-msg');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ מחשב...'; }
+            if (msg) msg.textContent = 'SSI backfill רץ ברקע...';
+            try {
+                const resp = await fetch('/dashboard/api/ssi/backfill', { method: 'POST' });
+                const data = await resp.json();
+                if (msg) msg.textContent = data.success ? '✅ ' + data.message : '❌ ' + data.error;
+                setTimeout(() => { loadSSIStats(); }, 3000);
+            } catch (e) {
+                if (msg) msg.textContent = '❌ שגיאה: ' + e.message;
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '⚙️ חשב SSI לכל המודעות'; }
+            }
+        }
+
+        async function loadSSIStats() {
+            const el = document.getElementById('ssi-stats-display');
+            if (!el) return;
+            try {
+                const data = await fetchJSON('/dashboard/api/ssi/stats');
+                if (data.success) {
+                    el.innerHTML =
+                        '<div>סה"כ מודעות: <strong>' + (data.total || 0) + '</strong></div>' +
+                        '<div>עם ציון SSI: <strong>' + (data.scored || 0) + '</strong></div>' +
+                        '<div style="color:var(--red);">לחץ גבוה (≥70): <strong>' + (data.high_stress || 0) + '</strong></div>' +
+                        '<div style="color:var(--gold);">לחץ בינוני (40-70): <strong>' + (data.medium_stress || 0) + '</strong></div>' +
+                        '<div>ממוצע SSI: <strong>' + (data.avg_score || 0) + '</strong></div>';
+                }
+            } catch (e) { el.textContent = 'שגיאה בטעינת SSI'; }
+        }
+
+        // -- CONVERSION RATE CHART --
+        async function loadConversionRateChart() {
+            const canvas = document.getElementById('chart-conversion-rate');
+            if (!canvas || canvas._ci) return;
+            try {
+                const data = await fetchJSON('/dashboard/api/chart/conversion-rate');
+                if (!data.success) return;
+                const heMonths = ['ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ'];
+                const labels = data.months.map(m => {
+                    const d = new Date(m.month + '-01');
+                    return heMonths[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
+                });
+                const rates = data.months.map(m => m.rate);
+                canvas._ci = new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'שיעור המרה (%)',
+                            data: rates,
+                            backgroundColor: rates.map(r => r > 5 ? 'rgba(74,222,128,0.7)' : r > 2 ? 'rgba(232,184,75,0.7)' : 'rgba(248,113,113,0.5)'),
+                            borderColor: rates.map(r => r > 5 ? '#4ade80' : r > 2 ? '#e8b84b' : '#f87171'),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + '%' } } },
+                        scales: {
+                            x: { ticks: { color: '#9aa0b0', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: { ticks: { color: '#9aa0b0', font: { size: 10 }, callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                        }
+                    }
+                });
+            } catch (e) { console.error('Conversion rate chart error:', e); }
         }
 
         async function loadTrelloBoard() {

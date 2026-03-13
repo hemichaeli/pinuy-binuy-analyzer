@@ -446,5 +446,121 @@ router.get('/api/dashboard/system-status', async (req, res) => {
   }
 });
 
+// POST /dashboard/api/ssi/backfill — run SSI for all active listings (background)
+router.post('/api/ssi/backfill', async (req, res) => {
+  try {
+    const { calculateAllSSI } = require('../services/ssiCalculator');
+    res.json({ success: true, message: 'SSI backfill started in background' });
+    calculateAllSSI()
+      .then(r => require('../services/logger').logger.info(`[Dashboard] SSI backfill complete: ${r.updated}/${r.total}`))
+      .catch(e => require('../services/logger').logger.warn(`[Dashboard] SSI backfill failed: ${e.message}`));
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /dashboard/api/ssi/stats — quick SSI stats
+router.get('/api/ssi/stats', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE ssi_score > 0) as scored,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE ssi_score >= 70) as high_stress,
+        COUNT(*) FILTER (WHERE ssi_score >= 40 AND ssi_score < 70) as medium_stress,
+        ROUND(AVG(ssi_score) FILTER (WHERE ssi_score > 0), 1) as avg_score
+      FROM listings WHERE is_active = TRUE
+    `);
+    res.json({ success: true, ...r.rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /dashboard/api/chart/conversion-rate — monthly conversion rate (leads/listings %)
+router.get('/api/chart/conversion-rate', async (req, res) => {
+  try {
+    const [listingsResult, leadsResult] = await Promise.all([
+      pool.query(`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as month,
+               COUNT(*) as count
+        FROM listings
+        WHERE created_at >= NOW() - INTERVAL '13 months'
+        GROUP BY month ORDER BY month
+      `),
+      pool.query(`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') as month,
+               COUNT(*) as count
+        FROM website_leads
+        WHERE created_at >= NOW() - INTERVAL '13 months'
+        GROUP BY month ORDER BY month
+      `)
+    ]);
+    const listingsMap = {};
+    const leadsMap = {};
+    listingsResult.rows.forEach(r => { listingsMap[r.month] = parseInt(r.count); });
+    leadsResult.rows.forEach(r => { leadsMap[r.month] = parseInt(r.count); });
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+      const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+      const listings = listingsMap[key] || 0;
+      const leads = leadsMap[key] || 0;
+      const rate = listings > 0 ? Math.round((leads / listings) * 100 * 10) / 10 : 0;
+      months.push({ month: key, listings, leads, rate });
+    }
+    res.json({ success: true, months });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /dashboard/api/trello/cards — fetch all open cards from Trello board
+router.get('/api/trello/cards', async (req, res) => {
+  try {
+    const trelloService = require('../services/trelloService');
+    if (!trelloService.isConfigured()) {
+      return res.json({ success: false, configured: false, cards: [], lists: [] });
+    }
+    const TRELLO_API_KEY = process.env.TRELLO_API_KEY;
+    const TRELLO_TOKEN = process.env.TRELLO_TOKEN;
+    const TRELLO_BOARD_ID = process.env.TRELLO_BOARD_ID;
+    const [cardsResp, listsResp] = await Promise.all([
+      fetch(`https://api.trello.com/1/boards/${TRELLO_BOARD_ID}/cards?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=id,name,desc,due,url,idList,labels,closed&filter=open`),
+      fetch(`https://api.trello.com/1/boards/${TRELLO_BOARD_ID}/lists?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=id,name`)
+    ]);
+    if (!cardsResp.ok) throw new Error(`Trello cards API ${cardsResp.status}`);
+    const cards = await cardsResp.json();
+    const lists = listsResp.ok ? await listsResp.json() : [];
+    const listMap = {};
+    lists.forEach(l => { listMap[l.id] = l.name; });
+    const enriched = cards.map(c => ({ ...c, listName: listMap[c.idList] || c.idList }));
+    res.json({ success: true, configured: true, cards: enriched, lists });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST /dashboard/api/trello/move-card — move a Trello card to a different list
+router.post('/api/trello/move-card', async (req, res) => {
+  try {
+    const { cardId, listName } = req.body;
+    if (!cardId || !listName) return res.status(400).json({ success: false, error: 'cardId and listName required' });
+    const trelloService = require('../services/trelloService');
+    const listId = await trelloService.getListId(listName);
+    const TRELLO_API_KEY = process.env.TRELLO_API_KEY;
+    const TRELLO_TOKEN = process.env.TRELLO_TOKEN;
+    const resp = await fetch(
+      `https://api.trello.com/1/cards/${cardId}?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}`,
+      { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idList: listId }) }
+    );
+    if (!resp.ok) throw new Error(`Trello API ${resp.status}`);
+    const card = await resp.json();
+    res.json({ success: true, card });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;
-// v5.3.0 - static dashboard.html, system status API
+// v5.4.0 - SSI backfill, conversion rate chart, Trello board sync
