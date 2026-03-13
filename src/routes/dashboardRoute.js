@@ -535,15 +535,7 @@ function generateDashboardHTML(stats) {
             </div>
         </div>
 
-        <div class="section" id="morning-section">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                <h2 style="margin:0;">🧠 ינטליגנציה יומית</h2>
-                <button class="btn btn-secondary" data-onclick="loadMorningIntelligence()" style="padding:5px 10px;font-size:11px;">🔄 רענן</button>
-            </div>
-            <div id="morning-content"><div class="loading">טוען...</div></div>
-        </div>
-
-        <div class="section" style="max-width:60%;">
+         <div class="section" style="max-width:60%;">
             <h2>📊 סטטוס מערכת</h2>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;">
                 <div class="data-item"><h3>📾 סריקה אוטומטית</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל</span></span></div></div></div>
@@ -567,8 +559,17 @@ function generateDashboardHTML(stats) {
                 <div style="position:relative;height:220px;"><canvas id="chart-donut"></canvas></div>
             </div>
         </div>
+        <div class="section" id="morning-section" style="margin-top:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                <h2 style="margin:0;">🧠 דוח אינטליגנציה יומי</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary" data-onclick="loadMorningIntelligence()" style="padding:5px 10px;font-size:11px;">🔄 רענן</button>
+                    <button class="btn btn-intel" data-onclick="sendMorningReport()" style="padding:5px 10px;font-size:11px;">📧 שלח באימייל</button>
+                </div>
+            </div>
+            <div id="morning-content"><div class="loading">🧠 טוען דוח אינטליגנציה...</div></div>
+        </div>
     </div>
-
     <!-- ADS TAB -->
     <div id="tab-ads" class="tab-content">
         <div class="section">
@@ -987,10 +988,9 @@ function generateDashboardHTML(stats) {
         }
 
         async function loadMorningIntelligence() {
-            const section = document.getElementById('morning-section');
             const content = document.getElementById('morning-content');
-            section.style.display = 'block';
-            content.innerHTML = '<div class="loading">טוען ינטליגנציה יומית...</div>';
+            if (!content) return;
+            content.innerHTML = '<div class="loading">🧠 טוען דוח אינטליגנציה...</div>';
             try {
                 const data = await fetchJSON('/api/morning/preview');
                 const opps = data.opportunities || [];
@@ -1048,6 +1048,13 @@ function generateDashboardHTML(stats) {
             }
         }
 
+        async function sendMorningReport() {
+            if (!confirm('לשלוח דוח אינטליגנציה באימייל?')) return;
+            try {
+                const d = await fetchJSON('/api/morning/send', { method: 'POST' });
+                alert(d.success ? '✅ הדוח נשלח בהצלחה!' : '❌ שגיאה: ' + (d.error || 'נכשל'));
+            } catch (e) { alert('❌ שגיאה: ' + e.message); }
+        }
         async function loadAds() {
             const container = document.getElementById('ads-list');
             container.innerHTML = '<div class="loading">טוען מודעות...</div>';
@@ -2001,7 +2008,11 @@ function generateDashboardHTML(stats) {
                 _trelloLists = data.lists || [];
                 _trelloLabels = data.labels || [];
                 const listSel = document.getElementById('trello-list');
-                listSel.innerHTML = _trelloLists.map(function(l) { return '<option value="' + l + '">' + l + '</option>'; }).join('');
+                // lists are objects {name, id} from getBoardDetails
+                listSel.innerHTML = _trelloLists.map(function(l) {
+                    const name = l.name || l;
+                    return '<option value="' + name + '">' + name + '</option>';
+                }).join('');
                 const labelSel = document.getElementById('trello-label');
                 labelSel.innerHTML = '<option value="">ללא תווית</option>' + _trelloLabels.filter(function(l) { return l.name; }).map(function(l) { return '<option value="' + l.name + '">' + l.name + '</option>'; }).join('');
             } catch (e) { console.error('Trello board load error:', e.message); }

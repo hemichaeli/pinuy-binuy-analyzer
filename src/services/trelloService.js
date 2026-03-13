@@ -311,7 +311,24 @@ async function getStatus() {
   }
 }
 
+async function getBoardDetails() {
+  await loadBoardData();
+  // Deduplicate labels (we store both original and lowercase keys)
+  const seen = new Set();
+  const labels = [];
+  for (const [name, id] of Object.entries(labelCache)) {
+    if (!seen.has(id) && name && name.trim()) {
+      seen.add(id);
+      labels.push({ name, id });
+    }
+  }
+  return {
+    lists: Object.keys(listCache).map(name => ({ name, id: listCache[name] })),
+    labels
+  };
+}
+
 module.exports = {
   createCard, createInvestorCard, createSellerCard, createContactCard, createNotificationCard,
-  isConfigured, getStatus, loadBoardData, getListId, getLabelId, getLeadPriority
+  isConfigured, getStatus, loadBoardData, getListId, getLabelId, getLeadPriority, getBoardDetails
 };
