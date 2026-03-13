@@ -129,6 +129,17 @@ function buildStatutoryQuery(complex) {
     "decision_date": "YYYY-MM-DD או null",
     "notes": "פרטים - האם זה תמ\"ל? מה הסטטוס?"
   },
+  "vatmal": {
+    "is_vatmal": true/false,
+    "plan_number": "מספר תכנית ות\"מל או null",
+    "status": "not_submitted|submitted|in_review|approved|rejected|unknown",
+    "submission_date": "YYYY-MM-DD או null",
+    "approval_date": "YYYY-MM-DD או null",
+    "next_hearing_date": "YYYY-MM-DD או null",
+    "committee_sessions": 0,
+    "objections_filed": true/false,
+    "notes": "פרטים על הדיון בות\"מל (הוועדה לתכנון מתחמים מועדפים לדיור)"
+  },
   "objections": {
     "filed": true/false,
     "count": 0,
@@ -149,7 +160,8 @@ function buildStatutoryQuery(complex) {
   "sources": ["מקורות המידע"]
 }
 
-חפש ב: mavat.moin.gov.il, iplan.gov.il, tamar.gov.il, globes.co.il, calcalist.co.il, themarker.com, ynet.co.il
+חפש ב: mavat.moin.gov.il, iplan.gov.il, tamar.gov.il, vatmal.gov.il, globes.co.il, calcalist.co.il, themarker.com, ynet.co.il
+שים לב: ות\"מל = הוועדה לתכנון מתחמים מועדפים לדיור (שונה מתמ\"ל). חפש אם המתחם מקודם על ידי ות\"מל.
 החזר JSON בלבד.`;
 }
 
@@ -263,6 +275,38 @@ async function storeStatutoryData(complexId, data) {
     params.push(!!data.national_committee.is_tamal);
   }
 
+  // VATMAL (ות"מל — הוועדה לתכנון מתחמים מועדפים לדיור)
+  if (data.vatmal) {
+    if (data.vatmal.is_vatmal !== undefined) {
+      updates.push(`is_vatmal = $${idx++}`);
+      params.push(!!data.vatmal.is_vatmal);
+    }
+    if (data.vatmal.status && data.vatmal.status !== 'unknown') {
+      updates.push(`vatmal_status = $${idx++}`);
+      params.push(data.vatmal.status);
+    }
+    if (data.vatmal.plan_number) {
+      updates.push(`vatmal_plan_number = $${idx++}`);
+      params.push(data.vatmal.plan_number);
+    }
+    if (data.vatmal.submission_date) {
+      updates.push(`vatmal_submission_date = $${idx++}`);
+      params.push(data.vatmal.submission_date);
+    }
+    if (data.vatmal.approval_date) {
+      updates.push(`vatmal_approval_date = $${idx++}`);
+      params.push(data.vatmal.approval_date);
+    }
+    if (data.vatmal.next_hearing_date) {
+      updates.push(`vatmal_next_hearing = $${idx++}`);
+      params.push(data.vatmal.next_hearing_date);
+    }
+    if (data.vatmal.notes) {
+      updates.push(`vatmal_notes = $${idx++}`);
+      params.push(data.vatmal.notes);
+    }
+  }
+
   // Realization timeline
   if (data.realization_timeline?.estimated_months_to_permit) {
     updates.push(`estimated_months_to_permit = $${idx++}`);
@@ -322,6 +366,14 @@ async function runStatutoryMigrations() {
     `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS premium_potential_score NUMERIC(5,2)`,
     `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS realization_speed_score INTEGER`,
     `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS investment_rank INTEGER`,
+    // VATMAL columns
+    `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS is_vatmal BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS vatmal_status VARCHAR(50)`,
+    `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS vatmal_plan_number VARCHAR(100)`,
+    `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS vatmal_submission_date DATE`,
+    `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS vatmal_approval_date DATE`,
+    `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS vatmal_next_hearing DATE`,
+    `ALTER TABLE complexes ADD COLUMN IF NOT EXISTS vatmal_notes TEXT`,
   ];
 
   for (const sql of migrations) {
@@ -370,6 +422,9 @@ function buildSynthesisPrompt(complex) {
   const localCommittee = complex.local_committee_date ? `אושר בוועדה מקומית: ${complex.local_committee_date}` : 'לא אושר עדיין בוועדה מקומית';
   const districtCommittee = complex.district_committee_date ? `אושר בוועדה מחוזית: ${complex.district_committee_date}` : 'לא אושר עדיין בוועדה מחוזית';
   const tamal = complex.is_tamal ? 'כן — תמ"ל (תכנית מתאר ארצית לדיור)' : 'לא';
+  const vatmal = complex.is_vatmal 
+    ? `כן — ות"מל | סטטוס: ${complex.vatmal_status || 'לא ידוע'}${complex.vatmal_plan_number ? ' | תכנית: ' + complex.vatmal_plan_number : ''}${complex.vatmal_next_hearing ? ' | דיון הבא: ' + complex.vatmal_next_hearing : ''}`
+    : 'לא';
   const monthsToPermit = complex.estimated_months_to_permit ? `${complex.estimated_months_to_permit} חודשים` : 'לא ידוע';
   const monthsToConstruction = complex.estimated_months_to_construction ? `${complex.estimated_months_to_construction} חודשים` : 'לא ידוע';
 
@@ -385,6 +440,7 @@ function buildSynthesisPrompt(complex) {
 - ${localCommittee}
 - ${districtCommittee}
 - **תמ"ל:** ${tamal}
+- **ות"מל:** ${vatmal}
 
 ## ציר זמן מוערך:
 - עד היתר בנייה: ${monthsToPermit}
@@ -479,7 +535,8 @@ async function runClaudeSynthesis() {
            c.city_avg_price_sqm, c.price_per_sqm,
            c.planned_units, c.existing_units, c.signature_percent,
            c.local_committee_date, c.district_committee_date,
-           c.is_tamal, c.estimated_months_to_permit, c.estimated_months_to_construction,
+           c.is_tamal, c.is_vatmal, c.vatmal_status, c.vatmal_plan_number, c.vatmal_next_hearing,
+           c.estimated_months_to_permit, c.estimated_months_to_construction,
            c.statutory_data
     FROM complexes c
     WHERE c.statutory_enriched_at IS NOT NULL

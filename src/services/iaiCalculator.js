@@ -322,6 +322,12 @@ function calcStatutoryBonus(complex) {
   if (complex.district_committee_date || complex.district_committee_status === 'approved') bonus += 5;
   // TAMAL (national plan): +4 — fast-tracked projects
   if (complex.is_tamal === true || complex.is_tamal === 'true') bonus += 4;
+  // VATMAL (ות"מל): +3 if submitted, +6 if approved — highest acceleration factor
+  if (complex.is_vatmal === true || complex.is_vatmal === 'true') {
+    if (complex.vatmal_status === 'approved') bonus += 6;
+    else if (['submitted', 'in_review'].includes(complex.vatmal_status)) bonus += 3;
+    else bonus += 2; // is_vatmal=true but status unknown
+  }
   // Realization speed: +0-3 based on estimated months to construction
   const months = parseInt(complex.estimated_months_to_construction) || 0;
   if (months > 0 && months <= 18) bonus += 3;
@@ -332,7 +338,7 @@ function calcStatutoryBonus(complex) {
   if (synthScore >= 80) bonus += 3;
   else if (synthScore >= 60) bonus += 2;
   else if (synthScore >= 40) bonus += 1;
-  return Math.min(15, bonus);
+  return Math.min(21, bonus); // max 21: local(3)+district(5)+tamal(4)+vatmal(6)+speed(3)
 }
 
 // === MAIN CALCULATION ===
