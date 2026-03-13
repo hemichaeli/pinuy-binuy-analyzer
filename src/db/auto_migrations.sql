@@ -270,3 +270,24 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 INSERT INTO system_settings (key, value, label)
 VALUES ('wa_bot_escalation_minutes', '60', 'ז
+-- ========================================================
+-- QUANTUM v4.95+ - Dashboard Tasks (with Trello integration)
+-- ========================================================
+CREATE TABLE IF NOT EXISTS dashboard_tasks (
+  id              SERIAL PRIMARY KEY,
+  title           TEXT NOT NULL,
+  description     TEXT,
+  status          TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','doing','done')),
+  priority        TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('urgent','high','normal','low')),
+  due_date        TIMESTAMPTZ,
+  reminder_at     TIMESTAMPTZ,
+  reminder_snoozed BOOLEAN DEFAULT FALSE,
+  trello_card_id  TEXT,
+  trello_card_url TEXT,
+  source          TEXT DEFAULT 'manual',
+  source_ref      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_dashboard_tasks_status ON dashboard_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_dashboard_tasks_due ON dashboard_tasks(due_date) WHERE due_date IS NOT NULL;

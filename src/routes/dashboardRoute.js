@@ -220,6 +220,116 @@ router.get('/api/facebook/ads', async (req, res) => {
     ]});
 });
 
+// ============================================================
+// TASKS API - Dashboard tasks with Trello integration
+// ============================================================
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dashboard_tasks (
+        id SERIAL PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        status VARCHAR(20) DEFAULT 'todo',
+        priority VARCHAR(20) DEFAULT 'normal',
+        due_date TIMESTAMPTZ,
+        reminder_at TIMESTAMPTZ,
+        reminder_snoozed BOOLEAN DEFAULT FALSE,
+        source VARCHAR(50) DEFAULT 'manual',
+        source_ref TEXT,
+        trello_card_id TEXT,
+        trello_card_url TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { console.error('Tasks table init error:', e.message); }
+})();
+
+router.get('/api/tasks', async (req, res) => {
+  try {
+    const { status } = req.query;
+    let q = 'SELECT * FROM dashboard_tasks';
+    const params = [];
+    if (status && status !== 'all') { q += ' WHERE status = $1'; params.push(status); }
+    q += ' ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, created_at DESC';
+    const result = await pool.query(q, params);
+    res.json({ success: true, tasks: result.rows });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+router.post('/api/tasks', async (req, res) => {
+  try {
+    const { title, description, status = 'todo', priority = 'normal', due_date, reminder_at, source = 'manual', source_ref } = req.body;
+    if (!title) return res.status(400).json({ success: false, error: 'title required' });
+    const result = await pool.query(
+      'INSERT INTO dashboard_tasks (title, description, status, priority, due_date, reminder_at, source, source_ref) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [title, description || null, status, priority, due_date || null, reminder_at || null, source, source_ref || null]
+    );
+    res.json({ success: true, task: result.rows[0] });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+router.put('/api/tasks/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fields = req.body;
+    const sets = [];
+    const vals = [];
+    let n = 1;
+    const allowed = ['title','description','status','priority','due_date','reminder_at','reminder_snoozed','trello_card_id','trello_card_url'];
+    for (const k of allowed) {
+      if (fields[k] !== undefined) { sets.push(`${k}=$${n}`); vals.push(fields[k]); n++; }
+    }
+    if (!sets.length) return res.status(400).json({ success: false, error: 'no fields' });
+    sets.push(`updated_at=NOW()`);
+    vals.push(id);
+    const result = await pool.query(`UPDATE dashboard_tasks SET ${sets.join(',')} WHERE id=$${n} RETURNING *`, vals);
+    res.json({ success: true, task: result.rows[0] });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+router.delete('/api/tasks/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM dashboard_tasks WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+router.get('/api/trello/board', async (req, res) => {
+  try {
+    const trelloService = require('../services/trelloService');
+    const status = await trelloService.getStatus();
+    res.json({ success: true, ...status });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+router.post('/api/trello/create-task-card', async (req, res) => {
+  try {
+    const trelloService = require('../services/trelloService');
+    const { title, description, listName, labelName, dueDate, taskId } = req.body;
+    if (!title || !listName) return res.status(400).json({ success: false, error: 'title and listName required' });
+    const cardData = { listName, title, description: description || '', labels: labelName ? [labelName] : [] };
+    const result = await trelloService.createCard(cardData);
+    if (result.success) {
+      if (taskId) {
+        await pool.query('UPDATE dashboard_tasks SET trello_card_id=$1, trello_card_url=$2 WHERE id=$3', [result.cardId, result.url, taskId]);
+      }
+      if (dueDate) {
+        const TRELLO_API_KEY = process.env.TRELLO_API_KEY;
+        const TRELLO_TOKEN = process.env.TRELLO_TOKEN;
+        if (TRELLO_API_KEY && TRELLO_TOKEN) {
+          await fetch(`https://api.trello.com/1/cards/${result.cardId}?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ due: dueDate })
+          });
+        }
+      }
+    }
+    res.json(result);
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 function generateDashboardHTML(stats) {
     return `<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -329,6 +439,7 @@ function generateDashboardHTML(stats) {
         <div class="nav-tab" data-tab="news">📰 חדשות</div>
         <div class="nav-tab" data-tab="scheduling">📅 תיאומים</div>
         <div class="nav-tab" data-tab="scrapers">🔍 סריקות</div>
+        <div class="nav-tab" data-tab="tasks">✅ משימות</div>
     </div>
 
     <div id="tab-dashboard" class="tab-content active">
@@ -387,10 +498,10 @@ function generateDashboardHTML(stats) {
             </div>
         </div>
 
-        <div class="section" id="morning-section" style="display:none;">
+        <div class="section" id="morning-section" style="display:block;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
                 <h2 style="margin:0;">🧠 ינטליגנציה יומית</h2>
-                <button class="btn btn-secondary" data-onclick="document.getElementById('morning-section').style.display='none'" style="padding:6px 12px;font-size:12px;">✕ סגור</button>
+                <button class="btn btn-secondary" data-onclick="loadMorningIntelligence()" style="padding:6px 12px;font-size:12px;">🔄 רענן</button>
             </div>
             <div id="morning-content"><div class="loading">טוען...</div></div>
         </div>
@@ -655,6 +766,108 @@ function generateDashboardHTML(stats) {
         </div>
     </div>
 
+    <!-- TASKS TAB -->
+    <div id="tab-tasks" class="tab-content">
+        <div class="section">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px;">
+                <h2 style="margin:0;">✅ משימות</h2>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button class="btn btn-secondary" id="tasks-filter-all" data-onclick="loadTasks('all')" style="padding:8px 14px;font-size:13px;">הכל</button>
+                    <button class="btn btn-secondary" id="tasks-filter-todo" data-onclick="loadTasks('todo')" style="padding:8px 14px;font-size:13px;">📋 To Do</button>
+                    <button class="btn btn-secondary" id="tasks-filter-doing" data-onclick="loadTasks('doing')" style="padding:8px 14px;font-size:13px;">⚡ Doing</button>
+                    <button class="btn btn-secondary" id="tasks-filter-done" data-onclick="loadTasks('done')" style="padding:8px 14px;font-size:13px;">✅ Done</button>
+                    <button class="btn" data-onclick="openNewTaskModal()" style="padding:8px 14px;font-size:13px;">➕ משימה חדשה</button>
+                </div>
+            </div>
+            <div id="tasks-list"><div class="loading">טוען משימות...</div></div>
+        </div>
+    </div>
+
+    <!-- TRELLO EXPORT MODAL -->
+    <div id="trello-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:none;align-items:center;justify-content:center;">
+        <div style="background:#1a1b1e;border:2px solid #d4af37;border-radius:16px;padding:28px;max-width:480px;width:90%;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h3 style="color:#d4af37;font-size:18px;">📌 ייצוא ל-Trello</h3>
+                <button data-onclick="closeTrelloModal()" style="background:none;border:none;color:#9ca3af;font-size:22px;cursor:pointer;">✕</button>
+            </div>
+            <div id="trello-modal-body">
+                <div style="margin-bottom:14px;">
+                    <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">כותרת הכרטיס</label>
+                    <input type="text" id="trello-title" class="filter-input" style="width:100%;">
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">תיאור</label>
+                    <textarea id="trello-desc" class="filter-input" rows="3" style="width:100%;resize:vertical;"></textarea>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">רשימה (List)</label>
+                    <select id="trello-list" class="filter-select" style="width:100%;"></select>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">תווית (Label)</label>
+                    <select id="trello-label" class="filter-select" style="width:100%;"><option value="">ללא תווית</option></select>
+                </div>
+                <div style="margin-bottom:20px;">
+                    <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">תאריך ושעת ביצוע</label>
+                    <input type="datetime-local" id="trello-due" class="filter-input" style="width:100%;">
+                </div>
+                <div style="display:flex;gap:10px;justify-content:flex-end;">
+                    <button class="btn btn-secondary" data-onclick="closeTrelloModal()" style="padding:10px 18px;">ביטול</button>
+                    <button class="btn" id="trello-submit-btn" data-onclick="submitTrelloCard()" style="padding:10px 18px;">📌 שלח ל-Trello</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW TASK MODAL -->
+    <div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;">
+        <div style="background:#1a1b1e;border:2px solid #d4af37;border-radius:16px;padding:28px;max-width:480px;width:90%;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h3 style="color:#d4af37;font-size:18px;" id="task-modal-title">➕ משימה חדשה</h3>
+                <button data-onclick="closeTaskModal()" style="background:none;border:none;color:#9ca3af;font-size:22px;cursor:pointer;">✕</button>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">כותרת *</label>
+                <input type="text" id="task-form-title" class="filter-input" style="width:100%;" placeholder="כותרת המשימה">
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">תיאור</label>
+                <textarea id="task-form-desc" class="filter-input" rows="3" style="width:100%;resize:vertical;" placeholder="תיאור אופציונלי"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+                <div>
+                    <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">סטטוס</label>
+                    <select id="task-form-status" class="filter-select" style="width:100%;">
+                        <option value="todo">📋 To Do</option>
+                        <option value="doing">⚡ Doing</option>
+                        <option value="done">✅ Done</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">עדיפות</label>
+                    <select id="task-form-priority" class="filter-select" style="width:100%;">
+                        <option value="normal">רגיל</option>
+                        <option value="high">🔴 גבוה</option>
+                        <option value="urgent">🚨 דחוף</option>
+                        <option value="low">🟢 נמוך</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">מועד לביצוע</label>
+                <input type="datetime-local" id="task-form-due" class="filter-input" style="width:100%;">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="color:#9ca3af;font-size:13px;display:block;margin-bottom:6px;">תזכורת</label>
+                <input type="datetime-local" id="task-form-reminder" class="filter-input" style="width:100%;">
+            </div>
+            <input type="hidden" id="task-form-id">
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button class="btn btn-secondary" data-onclick="closeTaskModal()" style="padding:10px 18px;">ביטול</button>
+                <button class="btn" data-onclick="saveTask()" style="padding:10px 18px;">💾 שמור</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         let currentTab = 'dashboard';
@@ -664,6 +877,10 @@ function generateDashboardHTML(stats) {
         document.addEventListener('DOMContentLoaded', function() {
             updateTime();
             setInterval(updateTime, 1000);
+            // Auto-load morning intelligence on dashboard load
+            setTimeout(loadMorningIntelligence, 800);
+            // Check reminders every minute
+            setInterval(checkReminders, 60000);
             
             // Event delegation for nav-tabs (data-tab attribute)
             document.querySelectorAll('.nav-tab[data-tab]').forEach(function(el) {
@@ -719,6 +936,7 @@ function generateDashboardHTML(stats) {
             else if (tabName === 'scheduling') loadScheduling();
             else if (tabName === 'scrapers') loadScraperStatus();
             else if (tabName === 'news') loadNews();
+            else if (tabName === 'tasks') loadTasks('all');
         }
 
         async function loadMorningIntelligence() {
@@ -726,7 +944,6 @@ function generateDashboardHTML(stats) {
             const content = document.getElementById('morning-content');
             section.style.display = 'block';
             content.innerHTML = '<div class="loading">טוען ינטליגנציה יומית...</div>';
-            section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             try {
                 const data = await fetchJSON('/api/morning/preview');
                 const opps = data.opportunities || [];
@@ -745,13 +962,18 @@ function generateDashboardHTML(stats) {
                     for (const op of opps.slice(0, 8)) {
                         const iai = op.iai_score || 0;
                         const clr = iai > 85 ? '#22c55e' : iai > 70 ? '#f59e0b' : '#9ca3af';
-                        html += '<div class="intel-item">' +
+                        const opTitle = (op.name || op.city || 'מתחם') + (op.city ? ' - ' + op.city : '');
+                        const opDesc = 'IAI: ' + iai + (op.developer ? ' | יזם: ' + op.developer : '') + (op.actual_premium ? ' | פרמייה: ' + op.actual_premium + '%' : '');
+                        html += '<div class="intel-item" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+                            '<div style="flex:1;">' +
                             '<div class="name">' + (op.name || op.city || 'מתחם') + '</div>' +
                             '<div class="meta">' +
                             '<span class="intel-score" style="background:' + clr + ';color:#000;">IAI ' + iai + '</span>' +
                             (op.city ? op.city : '') +
                             (op.developer ? ' | ' + op.developer : '') +
-                            '</div></div>';
+                            '</div></div>' +
+                            '<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;white-space:nowrap;flex-shrink:0;" data-onclick="openTrelloModal(' + JSON.stringify(opTitle) + ',' + JSON.stringify(opDesc) + ')">📌 Trello</button>' +
+                            '</div>';
                     }
                 }
                 html += '</div>';
@@ -764,13 +986,18 @@ function generateDashboardHTML(stats) {
                 } else {
                     for (const s of sellers.slice(0, 8)) {
                         const ssi = s.ssi_score || 0;
-                        html += '<div class="intel-item" style="border-right-color:#f59e0b;">' +
+                        const sTitle = ('מוכר במצוקה: ') + (s.address || s.city || 'נכס');
+                        const sDesc = 'SSI: ' + ssi + (s.city ? ' | ' + s.city : '') + (s.asking_price ? ' | מחיר: ₪' + parseInt(s.asking_price).toLocaleString() : '');
+                        html += '<div class="intel-item" style="border-right-color:#f59e0b;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+                            '<div style="flex:1;">' +
                             '<div class="name">' + (s.address || s.city || 'מוכר') + '</div>' +
                             '<div class="meta">' +
                             '<span class="intel-score" style="background:#f59e0b;color:#000;">SSI ' + ssi + '</span>' +
                             (s.city ? s.city : '') +
                             (s.asking_price ? ' | \u20AA' + parseInt(s.asking_price).toLocaleString() : '') +
-                            '</div></div>';
+                            '</div></div>' +
+                            '<button class="btn btn-secondary" style="padding:4px 8px;font-size:11px;white-space:nowrap;flex-shrink:0;" data-onclick="openTrelloModal(' + JSON.stringify(sTitle) + ',' + JSON.stringify(sDesc) + ')">📌 Trello</button>' +
+                            '</div>';
                     }
                 }
                 html += '</div>';
@@ -1606,7 +1833,6 @@ function generateDashboardHTML(stats) {
         }
 
         async function runAllScrapers() {
-            if (!confirm('להפעיל את כל הסורקים? הפעולה עשויה לקחת מספר דקות.')) return;
             for (var i = 0; i < SCRAPERS_CONFIG.length; i++) {
                 var s = SCRAPERS_CONFIG[i];
                 runScraper(s.id, s.endpoint);
@@ -1616,6 +1842,251 @@ function generateDashboardHTML(stats) {
 
         function loadScraperStatus() {
             renderScraperCards();
+        }
+
+        // ============================================================
+        // TASKS FUNCTIONS
+        // ============================================================
+        let _currentTaskFilter = 'all';
+        let _trelloLists = [];
+        let _trelloLabels = [];
+        let _trelloTaskContext = null;
+
+        async function loadTasks(filter) {
+            _currentTaskFilter = filter || 'all';
+            // Update filter button styles
+            ['all','todo','doing','done'].forEach(function(f) {
+                const btn = document.getElementById('tasks-filter-' + f);
+                if (btn) btn.className = f === _currentTaskFilter ? 'btn' : 'btn btn-secondary';
+            });
+            const container = document.getElementById('tasks-list');
+            container.innerHTML = '<div class="loading">טוען משימות...</div>';
+            try {
+                const url = '/dashboard/api/tasks' + (_currentTaskFilter !== 'all' ? '?status=' + _currentTaskFilter : '');
+                const data = await fetchJSON(url);
+                if (!data.success) throw new Error(data.error);
+                renderTasksList(data.tasks);
+            } catch (e) {
+                container.innerHTML = '<div class="error">שגיאה: ' + e.message + '</div>';
+            }
+        }
+
+        function renderTasksList(tasks) {
+            const container = document.getElementById('tasks-list');
+            if (!tasks.length) {
+                container.innerHTML = '<div class="loading">📋 אין משימות</div>';
+                return;
+            }
+            const statusColors = { todo: '#3b82f6', doing: '#f59e0b', done: '#22c55e' };
+            const statusLabels = { todo: '📋 To Do', doing: '⚡ Doing', done: '✅ Done' };
+            const priorityColors = { urgent: '#ef4444', high: '#f97316', normal: '#6b7280', low: '#22c55e' };
+            const priorityLabels = { urgent: '🚨 דחוף', high: '🔴 גבוה', normal: 'רגיל', low: '🟢 נמוך' };
+            container.innerHTML = tasks.map(function(t) {
+                const due = t.due_date ? new Date(t.due_date) : null;
+                const dueStr = due ? due.toLocaleString('he-IL') : null;
+                const isOverdue = due && due < new Date() && t.status !== 'done';
+                const reminder = t.reminder_at ? new Date(t.reminder_at) : null;
+                const reminderStr = reminder ? reminder.toLocaleString('he-IL') : null;
+                return '<div class="data-item" style="border-right-color:' + (statusColors[t.status] || '#6b7280') + ';">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">' +
+                    '<div style="flex:1;">' +
+                    '<div style="font-weight:700;font-size:16px;color:#f0f0f0;margin-bottom:6px;">' + t.title + '</div>' +
+                    (t.description ? '<div style="font-size:13px;color:#9ca3af;margin-bottom:8px;">' + t.description + '</div>' : '') +
+                    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' +
+                    '<span class="status-badge" style="background:' + (statusColors[t.status] || '#6b7280') + ';color:#000;">' + (statusLabels[t.status] || t.status) + '</span>' +
+                    '<span class="status-badge" style="background:' + (priorityColors[t.priority] || '#6b7280') + ';color:#fff;">' + (priorityLabels[t.priority] || t.priority) + '</span>' +
+                    (dueStr ? '<span style="font-size:12px;color:' + (isOverdue ? '#ef4444' : '#9ca3af') + ';">' + (isOverdue ? '⚠️ ' : '📅 ') + dueStr + '</span>' : '') +
+                    (reminderStr ? '<span style="font-size:12px;color:#6366f1;">🔔 ' + reminderStr + '</span>' : '') +
+                    (t.trello_card_url ? '<a href="' + t.trello_card_url + '" target="_blank" style="font-size:12px;color:#d4af37;">📌 Trello</a>' : '') +
+                    '</div></div>' +
+                    '<div style="display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;">' +
+                    (t.status !== 'done' ? '<button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;" data-onclick="updateTaskStatus(' + t.id + ',\"' + (t.status === 'todo' ? 'doing' : 'done') + '\")">'
+                        + (t.status === 'todo' ? '▶️ התחל' : '✅ סיים') + '</button>' : '') +
+                    '<button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;" data-onclick="editTask(' + t.id + ')">✏️ ערוך</button>' +
+                    (!t.trello_card_id ? '<button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;" data-onclick="openTrelloModalForTask(' + t.id + ',\"' + t.title.replace(/"/g, '') + '\",' + JSON.stringify(t.description || '') + ')">📌 Trello</button>' : '') +
+                    (t.reminder_at && !t.reminder_snoozed ? '<button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;" data-onclick="snoozeReminder(' + t.id + ')">⏰ Snooze</button>' : '') +
+                    '<button class="btn btn-secondary" style="padding:5px 10px;font-size:12px;color:#ef4444;" data-onclick="deleteTask(' + t.id + ')">🗑️</button>' +
+                    '</div></div></div>';
+            }).join('');
+        }
+
+        async function updateTaskStatus(id, newStatus) {
+            try {
+                const resp = await fetch('/dashboard/api/tasks/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: newStatus }) });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                loadTasks(_currentTaskFilter);
+            } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        async function deleteTask(id) {
+            try {
+                const resp = await fetch('/dashboard/api/tasks/' + id, { method: 'DELETE' });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                loadTasks(_currentTaskFilter);
+            } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        async function snoozeReminder(id) {
+            try {
+                // Snooze by 30 minutes
+                const newReminder = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+                const resp = await fetch('/dashboard/api/tasks/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ reminder_at: newReminder, reminder_snoozed: false }) });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                loadTasks(_currentTaskFilter);
+            } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        function checkReminders() {
+            // Check for due reminders and show browser notification
+            if (!('Notification' in window)) return;
+            fetchJSON('/dashboard/api/tasks').then(function(data) {
+                if (!data.success) return;
+                const now = new Date();
+                data.tasks.forEach(function(t) {
+                    if (!t.reminder_at || t.reminder_snoozed || t.status === 'done') return;
+                    const rem = new Date(t.reminder_at);
+                    const diff = (rem - now) / 1000 / 60; // minutes
+                    if (diff >= -1 && diff <= 1) {
+                        if (Notification.permission === 'granted') {
+                            new Notification('🔔 תזכורת: ' + t.title, { body: t.description || 'משימה דורשת תשומתך' });
+                        } else if (Notification.permission !== 'denied') {
+                            Notification.requestPermission();
+                        }
+                    }
+                });
+            }).catch(function() {});
+        }
+
+        function openNewTaskModal() {
+            document.getElementById('task-form-id').value = '';
+            document.getElementById('task-form-title').value = '';
+            document.getElementById('task-form-desc').value = '';
+            document.getElementById('task-form-status').value = 'todo';
+            document.getElementById('task-form-priority').value = 'normal';
+            document.getElementById('task-form-due').value = '';
+            document.getElementById('task-form-reminder').value = '';
+            document.getElementById('task-modal-title').textContent = '➕ משימה חדשה';
+            document.getElementById('task-modal').style.display = 'flex';
+        }
+
+        async function editTask(id) {
+            try {
+                const data = await fetchJSON('/dashboard/api/tasks');
+                const t = data.tasks.find(function(x) { return x.id === id; });
+                if (!t) return;
+                document.getElementById('task-form-id').value = t.id;
+                document.getElementById('task-form-title').value = t.title;
+                document.getElementById('task-form-desc').value = t.description || '';
+                document.getElementById('task-form-status').value = t.status;
+                document.getElementById('task-form-priority').value = t.priority;
+                document.getElementById('task-form-due').value = t.due_date ? new Date(t.due_date).toISOString().slice(0,16) : '';
+                document.getElementById('task-form-reminder').value = t.reminder_at ? new Date(t.reminder_at).toISOString().slice(0,16) : '';
+                document.getElementById('task-modal-title').textContent = '✏️ עריכת משימה';
+                document.getElementById('task-modal').style.display = 'flex';
+            } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        function closeTaskModal() {
+            document.getElementById('task-modal').style.display = 'none';
+        }
+
+        async function saveTask() {
+            const id = document.getElementById('task-form-id').value;
+            const title = document.getElementById('task-form-title').value.trim();
+            if (!title) { alert('נא הזן כותרת'); return; }
+            const body = {
+                title: title,
+                description: document.getElementById('task-form-desc').value.trim() || null,
+                status: document.getElementById('task-form-status').value,
+                priority: document.getElementById('task-form-priority').value,
+                due_date: document.getElementById('task-form-due').value || null,
+                reminder_at: document.getElementById('task-form-reminder').value || null
+            };
+            try {
+                let resp;
+                if (id) {
+                    resp = await fetch('/dashboard/api/tasks/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                } else {
+                    resp = await fetch('/dashboard/api/tasks', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                }
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                closeTaskModal();
+                loadTasks(_currentTaskFilter);
+            } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        // ============================================================
+        // TRELLO MODAL FUNCTIONS
+        // ============================================================
+        async function loadTrelloBoard() {
+            if (_trelloLists.length) return;
+            try {
+                const data = await fetchJSON('/dashboard/api/trello/board');
+                _trelloLists = data.lists || [];
+                _trelloLabels = data.labels || [];
+                const listSel = document.getElementById('trello-list');
+                listSel.innerHTML = _trelloLists.map(function(l) { return '<option value="' + l + '">' + l + '</option>'; }).join('');
+                const labelSel = document.getElementById('trello-label');
+                labelSel.innerHTML = '<option value="">ללא תווית</option>' + _trelloLabels.filter(function(l) { return l.name; }).map(function(l) { return '<option value="' + l.name + '">' + l.name + '</option>'; }).join('');
+            } catch (e) { console.error('Trello board load error:', e.message); }
+        }
+
+        function openTrelloModal(title, desc) {
+            _trelloTaskContext = null;
+            document.getElementById('trello-title').value = title || '';
+            document.getElementById('trello-desc').value = desc || '';
+            document.getElementById('trello-due').value = '';
+            document.getElementById('trello-modal').style.display = 'flex';
+            loadTrelloBoard();
+        }
+
+        function openTrelloModalForTask(taskId, title, desc) {
+            _trelloTaskContext = taskId;
+            document.getElementById('trello-title').value = title || '';
+            document.getElementById('trello-desc').value = desc || '';
+            document.getElementById('trello-due').value = '';
+            document.getElementById('trello-modal').style.display = 'flex';
+            loadTrelloBoard();
+        }
+
+        function closeTrelloModal() {
+            document.getElementById('trello-modal').style.display = 'none';
+            _trelloTaskContext = null;
+        }
+
+        async function submitTrelloCard() {
+            const title = document.getElementById('trello-title').value.trim();
+            const desc = document.getElementById('trello-desc').value.trim();
+            const listName = document.getElementById('trello-list').value;
+            const labelName = document.getElementById('trello-label').value;
+            const dueDate = document.getElementById('trello-due').value;
+            if (!title || !listName) { alert('נא מלא כותרת ורשימה'); return; }
+            const btn = document.getElementById('trello-submit-btn');
+            btn.textContent = 'שולח...';
+            btn.disabled = true;
+            try {
+                const body = { title, description: desc, listName, labelName: labelName || null, dueDate: dueDate || null, taskId: _trelloTaskContext };
+                const resp = await fetch('/dashboard/api/trello/create-task-card', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                closeTrelloModal();
+                if (data.url) {
+                    const a = document.createElement('a');
+                    a.href = data.url;
+                    a.target = '_blank';
+                    a.click();
+                }
+                if (_currentTaskFilter) loadTasks(_currentTaskFilter);
+            } catch (e) {
+                alert('שגיאה: ' + e.message);
+            } finally {
+                btn.textContent = '📌 שלח ל-Trello';
+                btn.disabled = false;
+            }
         }
 
     </script>
