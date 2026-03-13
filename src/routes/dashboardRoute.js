@@ -1860,16 +1860,21 @@ function generateDashboardHTML(stats) {
                     + (t.trello_card_url ? '<a href="' + t.trello_card_url + '" target="_blank" style="font-size:11px;color:var(--teal);">📌 Trello</a>' : '')
                     + '</div></div>'
                     + '<div style="display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;">'
-                    + (t.status !== 'done' ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="updateTaskStatus(' + t.id + ',\'' + (t.status === 'todo' ? 'doing' : 'done') + '\')">'
+                    + (t.status !== 'done' ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-new-status="' + (t.status === 'todo' ? 'doing' : 'done') + '" data-onclick="updateTaskStatusFromEl(this)">'
                         + (t.status === 'todo' ? '▶️ התחל' : '✅ סיים') + '</button>' : '')
                     + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="editTask(' + t.id + ')">✏️ ערוך</button>'
-                    + (!t.trello_card_id ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="openTrelloModalForTask(' + t.id + ',\'' + t.title.replace(/'/g, '') + '\',' + JSON.stringify(t.description || '') + ')">📌 Trello</button>' : '')
+                    + (!t.trello_card_id ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-onclick="openTrelloModalForTask(' + t.id + ',encodeURIComponent(' + JSON.stringify(t.title || '') + '),' + JSON.stringify(t.description || '') + ')">📌 Trello</button>' : '')
                     + (t.reminder_at && !t.reminder_snoozed ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="snoozeReminder(' + t.id + ')">⏰ Snooze</button>' : '')
                     + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;color:var(--red);" data-onclick="deleteTask(' + t.id + ')">🗑️</button>'
                     + '</div></div></div>';
             }).join('');
         }
 
+        function updateTaskStatusFromEl(el) {
+            const id = parseInt(el.getAttribute('data-task-id'));
+            const newStatus = el.getAttribute('data-new-status');
+            updateTaskStatus(id, newStatus);
+        }
         async function updateTaskStatus(id, newStatus) {
             try {
                 const resp = await fetch('/dashboard/api/tasks/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: newStatus }) });
