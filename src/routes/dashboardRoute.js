@@ -528,14 +528,14 @@ function generateDashboardHTML(stats) {
         <div class="section">
             <h2>⚡ פעולות מהירות</h2>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-                <button class="btn btn-intel" data-onclick="loadMorningIntelligence()">🧠 ינטליגנציה יומית</button>
-                <button class="btn btn-green" data-onclick="runFullScan()" style="font-weight:700;">🔍 סריקה מלאה + Enrichment</button>
-                <button class="btn" data-onclick="refreshStats()">🔄 רענן נתונים</button>
-                <button class="btn btn-secondary" data-onclick="window.open('/api/docs','_blank')">📋 API Docs</button>
+                <button class="btn btn-intel" onclick="loadMorningIntelligence()">🧠 ינטליגנציה יומית</button>
+                <button class="btn btn-green" onclick="runFullScan()" style="font-weight:700;">🔍 סריקה מלאה + Enrichment</button>
+                <button class="btn" onclick="refreshStats()">🔄 רענן נתונים</button>
+                <button class="btn btn-secondary" onclick="window.open('/api/docs','_blank')">📋 API Docs</button>
             </div>
         </div>
 
-         <div class="section" style="max-width:60%;">
+        <div class="section" style="max-width:60%;">
             <h2>📊 סטטוס מערכת</h2>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;">
                 <div class="data-item"><h3>📾 סריקה אוטומטית</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל</span></span></div></div></div>
@@ -563,8 +563,8 @@ function generateDashboardHTML(stats) {
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
                 <h2 style="margin:0;">🧠 דוח אינטליגנציה יומי</h2>
                 <div style="display:flex;gap:8px;">
-                    <button class="btn btn-secondary" data-onclick="loadMorningIntelligence()" style="padding:5px 10px;font-size:11px;">🔄 רענן</button>
-                    <button class="btn btn-intel" data-onclick="sendMorningReport()" style="padding:5px 10px;font-size:11px;">📧 שלח באימייל</button>
+                    <button class="btn btn-secondary" onclick="loadMorningIntelligence()" style="padding:5px 10px;font-size:11px;">🔄 רענן</button>
+                    <button class="btn btn-intel" onclick="sendMorningReport()" style="padding:5px 10px;font-size:11px;">📧 שלח באימייל</button>
                 </div>
             </div>
             <div id="morning-content"><div class="loading">🧠 טוען דוח אינטליגנציה...</div></div>
@@ -596,11 +596,11 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadAds()">🔍 טען מודעות</button>
-                <button class="btn btn-secondary" data-onclick="exportData('ads')">📊 ייצוא לאקסל</button>
+                <button class="btn" onclick="loadAds()">🔍 טען מודעות</button>
+                <button class="btn btn-secondary" onclick="exportData('ads')">📊 ייצוא לאקסל</button>
                 <div style="margin-right:auto;display:flex;gap:4px;">
-                    <button id="ads-view-table" class="btn" style="padding:6px 10px;font-size:12px;" data-onclick="setAdsView('table')" title="תצוגת שורות">☰ שורות</button>
-                    <button id="ads-view-grid" class="btn btn-secondary" style="padding:6px 10px;font-size:12px;" data-onclick="setAdsView('grid')" title="תצוגת ריבועים">⊞ ריבועים</button>
+                    <button id="ads-view-table" class="btn" style="padding:6px 10px;font-size:12px;" onclick="setAdsView('table')" title="תצוגת שורות">☰ שורות</button>
+                    <button id="ads-view-grid" class="btn btn-secondary" style="padding:6px 10px;font-size:12px;" onclick="setAdsView('grid')" title="תצוגת ריבועים">⊞ ריבועים</button>
                 </div>
             </div>
             <div id="ads-pagination" style="margin-bottom:6px;font-size:12px;color:var(--text-muted);"></div>
@@ -609,14 +609,14 @@ function generateDashboardHTML(stats) {
             <table id="ads-table" class="tbl" style="display:none;">
                 <thead>
                     <tr id="ads-thead">
-                        <th data-onclick="sortAdsBy('title')" data-sort-field="title">Property</th>
-                        <th data-onclick="sortAdsBy('complex_status')" data-sort-field="complex_status">Status</th>
+                        <th onclick="sortAdsBy('title')" data-sort-field="title">Property</th>
+                        <th onclick="sortAdsBy('complex_status')" data-sort-field="complex_status">Status</th>
                         <th>Performance Trend</th>
-                        <th data-onclick="sortAdsBy('asking_price')" data-sort-field="asking_price">Price</th>
-                        <th data-onclick="sortAdsBy('premium_percent')" data-sort-field="premium_percent">פרמייה</th>
-                        <th data-onclick="sortAdsBy('area_sqm')" data-sort-field="area_sqm">שטח</th>
-                        <th data-onclick="sortAdsBy('rooms')" data-sort-field="rooms">חדרים</th>
-                        <th data-onclick="sortAdsBy('ssi_score')" data-sort-field="ssi_score">SSI</th>
+                        <th onclick="sortAdsBy('asking_price')" data-sort-field="asking_price">Price</th>
+                        <th onclick="sortAdsBy('premium_percent')" data-sort-field="premium_percent">פרמייה</th>
+                        <th onclick="sortAdsBy('area_sqm')" data-sort-field="area_sqm">שטח</th>
+                        <th onclick="sortAdsBy('rooms')" data-sort-field="rooms">חדרים</th>
+                        <th onclick="sortAdsBy('ssi_score')" data-sort-field="ssi_score">SSI</th>
                         <th>טלפון</th>
                         <th>Actions</th>
                     </tr>
@@ -641,8 +641,8 @@ function generateDashboardHTML(stats) {
                         <option value="closed">סגורות</option>
                         <option value="agent_needed">דורש טיפול</option>
                     </select>
-                    <button class="btn" data-onclick="loadConversations()">🔄 רענן</button>
-                    <button class="btn btn-secondary" data-onclick="exportData('messages')">📊 ייצוא</button>
+                    <button class="btn" onclick="loadConversations()">🔄 רענן</button>
+                    <button class="btn btn-secondary" onclick="exportData('messages')">📊 ייצוא</button>
                 </div>
             </div>
         </div>
@@ -688,11 +688,11 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadLeads()">👤 כל הלידים</button>
-                <button class="btn btn-secondary" data-onclick="loadLeads('qualified')">✰ מוכשרים</button>
-                <button class="btn btn-secondary" data-onclick="loadLeads('contacted')">📞 בתהליך</button>
-                <button class="btn btn-secondary" data-onclick="loadLeads('new')">🆕 חדשים</button>
-                <button class="btn btn-green" data-onclick="exportData('leads')">📊 ייצוא לאקסל</button>
+                <button class="btn" onclick="loadLeads()">👤 כל הלידים</button>
+                <button class="btn btn-secondary" onclick="loadLeads('qualified')">✰ מוכשרים</button>
+                <button class="btn btn-secondary" onclick="loadLeads('contacted')">📞 בתהליך</button>
+                <button class="btn btn-secondary" onclick="loadLeads('new')">🆕 חדשים</button>
+                <button class="btn btn-green" onclick="exportData('leads')">📊 ייצוא לאקסל</button>
             </div>
             <div id="leads-filter-badge" style="margin-bottom:8px;"></div>
             <div id="leads-list" class="data-list"><div class="loading">טוען לידים...</div></div>
@@ -716,9 +716,9 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadComplexes()">🔍 טען מתחמים</button>
-                <button class="btn btn-secondary" data-onclick="loadComplexes('hot')">🔥 הזדמנויות חמות</button>
-                <button class="btn btn-secondary" data-onclick="exportData('complexes')">📊 ייצוא</button>
+                <button class="btn" onclick="loadComplexes()">🔍 טען מתחמים</button>
+                <button class="btn btn-secondary" onclick="loadComplexes('hot')">🔥 הזדמנויות חמות</button>
+                <button class="btn btn-secondary" onclick="exportData('complexes')">📊 ייצוא</button>
             </div>
             <div id="complexes-filter-badge" style="margin-bottom:8px;"></div>
             <div id="complexes-list" class="data-list"><div class="loading">טוען מתחמים...</div></div>
@@ -742,11 +742,11 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadKones()">🔍 טען כינוסים</button>
-                <button class="btn btn-secondary" data-onclick="loadKones('landline')">📞 קווי ארץ</button>
-                <button class="btn btn-secondary" data-onclick="loadKones('pending')">⏳ ממתינים</button>
-                <button class="btn btn-green" data-onclick="runKonesAutoContact()">📱 הפעל Auto Contact</button>
-                <button class="btn btn-secondary" data-onclick="exportData('kones')">📊 ייצוא</button>
+                <button class="btn" onclick="loadKones()">🔍 טען כינוסים</button>
+                <button class="btn btn-secondary" onclick="loadKones('landline')">📞 קווי ארץ</button>
+                <button class="btn btn-secondary" onclick="loadKones('pending')">⏳ ממתינים</button>
+                <button class="btn btn-green" onclick="runKonesAutoContact()">📱 הפעל Auto Contact</button>
+                <button class="btn btn-secondary" onclick="exportData('kones')">📊 ייצוא</button>
             </div>
             <div id="kones-filter-badge" style="margin-bottom:8px;"></div>
             <div id="kones-stats-bar" style="margin-bottom:10px;display:none;"></div>
@@ -759,8 +759,8 @@ function generateDashboardHTML(stats) {
         <div class="section">
             <h2>📰 חדשות שוק הנדלן</h2>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadNews()">🔄 רענן חדשות</button>
-                <button class="btn btn-secondary" data-onclick="loadFacebookAds()">📱 מודעות פייסבוק</button>
+                <button class="btn" onclick="loadNews()">🔄 רענן חדשות</button>
+                <button class="btn btn-secondary" onclick="loadFacebookAds()">📱 מודעות פייסבוק</button>
             </div>
             <div id="news-table-container" style="overflow-x:auto;margin-top:14px;">
                 <table class="tbl">
@@ -800,7 +800,7 @@ function generateDashboardHTML(stats) {
                     <option value="ru">🇷🇺 רוסית</option>
                 </select>
                 <input id="sched-search" type="text" placeholder="🔍 חיפוש שם / טלפון..." oninput="filterSchedulingTable()" class="filter-input" style="min-width:190px;width:auto;">
-                <button class="btn" data-onclick="loadScheduling()" style="margin-right:auto;">🔄 רענן</button>
+                <button class="btn" onclick="loadScheduling()" style="margin-right:auto;">🔄 רענן</button>
                 <a href="/api/scheduling/campaign" target="_blank" class="btn btn-secondary">📊 דוח קמפיין</a>
             </div>
             <div id="sched-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px;"></div>
@@ -813,9 +813,9 @@ function generateDashboardHTML(stats) {
         <div class="section">
             <h2>🔍 מקורות סריקה — Real Estate Data Sources</h2>
             <div class="actions-bar" style="margin-bottom:14px;">
-                <button class="btn btn-green" data-onclick="runAllScrapers()">▶️ הפעל את כולם</button>
-                <button class="btn btn-intel" data-onclick="runFullScan()">🚀 סריקה מלאה + Enrichment</button>
-                <button class="btn btn-secondary" data-onclick="loadScraperStatus()">🔄 רענן סטטוס</button>
+                <button class="btn btn-green" onclick="runAllScrapers()">▶️ הפעל את כולם</button>
+                <button class="btn btn-intel" onclick="runFullScan()">🚀 סריקה מלאה + Enrichment</button>
+                <button class="btn btn-secondary" onclick="loadScraperStatus()">🔄 רענן סטטוס</button>
             </div>
             <div id="scrapers-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-top:14px;"></div>
         </div>
@@ -827,11 +827,11 @@ function generateDashboardHTML(stats) {
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
                 <h2 style="margin:0;">✅ משימות</h2>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="btn btn-secondary" id="tasks-filter-all" data-onclick="loadTasks('all')" style="padding:7px 12px;font-size:12px;">הכל</button>
-                    <button class="btn btn-secondary" id="tasks-filter-todo" data-onclick="loadTasks('todo')" style="padding:7px 12px;font-size:12px;">📋 To Do</button>
-                    <button class="btn btn-secondary" id="tasks-filter-doing" data-onclick="loadTasks('doing')" style="padding:7px 12px;font-size:12px;">⚡ Doing</button>
-                    <button class="btn btn-secondary" id="tasks-filter-done" data-onclick="loadTasks('done')" style="padding:7px 12px;font-size:12px;">✅ Done</button>
-                    <button class="btn" data-onclick="openNewTaskModal()" style="padding:7px 12px;font-size:12px;">➕ משימה חדשה</button>
+                    <button class="btn btn-secondary" id="tasks-filter-all" onclick="loadTasks('all')" style="padding:7px 12px;font-size:12px;">הכל</button>
+                    <button class="btn btn-secondary" id="tasks-filter-todo" onclick="loadTasks('todo')" style="padding:7px 12px;font-size:12px;">📋 To Do</button>
+                    <button class="btn btn-secondary" id="tasks-filter-doing" onclick="loadTasks('doing')" style="padding:7px 12px;font-size:12px;">⚡ Doing</button>
+                    <button class="btn btn-secondary" id="tasks-filter-done" onclick="loadTasks('done')" style="padding:7px 12px;font-size:12px;">✅ Done</button>
+                    <button class="btn" onclick="openNewTaskModal()" style="padding:7px 12px;font-size:12px;">➕ משימה חדשה</button>
                 </div>
             </div>
             <div id="tasks-list"><div class="loading">טוען משימות...</div></div>
@@ -843,7 +843,7 @@ function generateDashboardHTML(stats) {
         <div class="modal-box">
             <div class="modal-title">
                 📌 ייצוא ל-Trello
-                <button class="modal-close" data-onclick="closeTrelloModal()">✕</button>
+                <button class="modal-close" onclick="closeTrelloModal()">✕</button>
             </div>
             <div id="trello-modal-body">
                 <div class="form-group">
@@ -867,8 +867,8 @@ function generateDashboardHTML(stats) {
                     <input type="datetime-local" id="trello-due" class="filter-input" style="width:100%;">
                 </div>
                 <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
-                    <button class="btn btn-secondary" data-onclick="closeTrelloModal()" style="padding:9px 16px;">ביטול</button>
-                    <button class="btn" id="trello-submit-btn" data-onclick="submitTrelloCard()" style="padding:9px 16px;">📌 שלח ל-Trello</button>
+                    <button class="btn btn-secondary" onclick="closeTrelloModal()" style="padding:9px 16px;">ביטול</button>
+                    <button class="btn" id="trello-submit-btn" onclick="submitTrelloCard()" style="padding:9px 16px;">📌 שלח ל-Trello</button>
                 </div>
             </div>
         </div>
@@ -879,7 +879,7 @@ function generateDashboardHTML(stats) {
         <div class="modal-box">
             <div class="modal-title">
                 <span id="task-modal-title">➕ משימה חדשה</span>
-                <button class="modal-close" data-onclick="closeTaskModal()">✕</button>
+                <button class="modal-close" onclick="closeTaskModal()">✕</button>
             </div>
             <div class="form-group">
                 <label class="form-label">כותרת *</label>
@@ -918,8 +918,8 @@ function generateDashboardHTML(stats) {
             </div>
             <input type="hidden" id="task-form-id">
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
-                <button class="btn btn-secondary" data-onclick="closeTaskModal()" style="padding:9px 16px;">ביטול</button>
-                <button class="btn" data-onclick="saveTask()" style="padding:9px 16px;">💾 שמור</button>
+                <button class="btn btn-secondary" onclick="closeTaskModal()" style="padding:9px 16px;">ביטול</button>
+                <button class="btn" onclick="saveTask()" style="padding:9px 16px;">💾 שמור</button>
             </div>
         </div>
     </div>
@@ -949,11 +949,6 @@ function generateDashboardHTML(stats) {
             });
 
             document.addEventListener('click', function(e) {
-                const btn = e.target.closest('[data-onclick]');
-                if (btn) {
-                    var fn = btn.getAttribute('data-onclick');
-                    try { eval(fn); } catch(err) { console.error('Action error:', fn, err); }
-                }
                 const inforuBtn = e.target.closest('.inforu-btn');
                 if (inforuBtn) {
                     sendInforu(inforuBtn.dataset.phone, inforuBtn.dataset.name);
@@ -1012,7 +1007,7 @@ function generateDashboardHTML(stats) {
                             + '<div style="flex:1;"><div class="name">' + (op.name || op.city || 'מתחם') + '</div>'
                             + '<div class="meta"><span class="intel-score" style="background:' + clr + ';color:#000;">IAI ' + iai + '</span>'
                             + (op.city ? op.city : '') + (op.developer ? ' | ' + op.developer : '') + '</div></div>'
-                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" data-onclick="openTrelloModal(' + JSON.stringify(opTitle) + ',' + JSON.stringify(opDesc) + ')">📌 Trello</button>'
+                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" onclick="openTrelloModal(' + JSON.stringify(opTitle) + ',' + JSON.stringify(opDesc) + ')">📌 Trello</button>'
                             + '</div>';
                     }
                 }
@@ -1030,7 +1025,7 @@ function generateDashboardHTML(stats) {
                             + '<div style="flex:1;"><div class="name">' + (s.address || s.city || 'מוכר') + '</div>'
                             + '<div class="meta"><span class="intel-score" style="background:var(--gold);color:#000;">SSI ' + ssi + '</span>'
                             + (s.city ? s.city : '') + (s.asking_price ? ' | \u20AA' + parseInt(s.asking_price).toLocaleString() : '') + '</div></div>'
-                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" data-onclick="openTrelloModal(' + JSON.stringify(sTitle) + ',' + JSON.stringify(sDesc) + ')">📌 Trello</button>'
+                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" onclick="openTrelloModal(' + JSON.stringify(sTitle) + ',' + JSON.stringify(sDesc) + ')">📌 Trello</button>'
                             + '</div>';
                     }
                 }
@@ -1372,7 +1367,7 @@ function generateDashboardHTML(stats) {
             const typeLabel = { investor: '🏢 משקיע', owner: '🏠 מוכר', contact: '📩 פנייה' };
             const statusColors = { new: 'var(--blue)', qualified: 'var(--green)', contacted: 'var(--gold)', closed: 'var(--text-muted)', rejected: 'var(--red)' };
             const statusHe = { new: 'חדש', qualified: 'מוכשר', contacted: 'בתהליך', closed: 'סגור', rejected: 'נדחה' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortLeadsBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortLeadsBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table class="tbl">'
                 + '<thead><tr>'
                 + th('שם','name') + th('טלפון','phone') + th('אימייל','email') + th('סטטוס','status') + th('מקור','source') + th('סוג','user_type')
@@ -1441,7 +1436,7 @@ function generateDashboardHTML(stats) {
                 return va < vb ? 1 : va > vb ? -1 : 0;
             });
             const statusHe = { deposited: 'הופקדה', approved: 'אושרה', pre_deposit: 'להפקדה', planning: 'בתכנון', construction: 'בביצוע', declared: 'הוכרז', unknown: 'לא ידוע' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortComplexesBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortComplexesBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table class="tbl">'
                 + '<thead><tr>'
                 + th('שם מתחם','name') + th('עיר','city') + th('סטטוס תכנון','status') + '<th>סטטוס הפרוייקט</th>'
@@ -1503,10 +1498,10 @@ function generateDashboardHTML(stats) {
                             statsBar.style.flexWrap = 'wrap';
                             statsBar.style.gap = '7px';
                             statsBar.innerHTML =
-                                '<span class="filter-active-badge" style="cursor:pointer;" data-onclick="loadKones(&quot;contacted&quot;)">✅ נוצר קשר: ' + s.contacted + '</span>'
-                                + '<span class="filter-active-badge" style="background:rgba(100,116,139,0.15);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" data-onclick="loadKones(&quot;landline&quot;)">📞 קו ארץ: ' + s.landline + '</span>'
-                                + '<span class="filter-active-badge" style="background:rgba(55,65,81,0.2);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" data-onclick="loadKones(&quot;no_phone&quot;)">🚫 אין טלפון: ' + s.no_phone + '</span>'
-                                + '<span class="filter-active-badge" style="background:rgba(239,68,68,0.12);border-color:var(--red);color:#fca5a5;cursor:pointer;" data-onclick="loadKones(&quot;failed&quot;)">❌ נכשל: ' + s.failed + '</span>';
+                                '<span class="filter-active-badge" style="cursor:pointer;" onclick="loadKones(\'contacted\')">✅ נוצר קשר: ' + s.contacted + '</span>'
+                                + '<span class="filter-active-badge" style="background:rgba(100,116,139,0.15);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" onclick="loadKones(\'landline\')">📞 קו ארץ: ' + s.landline + '</span>'
+                                + '<span class="filter-active-badge" style="background:rgba(55,65,81,0.2);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" onclick="loadKones(\'no_phone\')">🚫 אין טלפון: ' + s.no_phone + '</span>'
+                                + '<span class="filter-active-badge" style="background:rgba(239,68,68,0.12);border-color:var(--red);color:#fca5a5;cursor:pointer;" onclick="loadKones(\'failed\')">❌ נכשל: ' + s.failed + '</span>';
                         }
                     } catch(e) { /* ignore */ }
                 } else if (statsBar) { statsBar.style.display = 'none'; }
@@ -1535,7 +1530,7 @@ function generateDashboardHTML(stats) {
             });
             const statusLabel = { pending: 'ממתין', contacted: 'נוצר קשר', failed: 'נכשל', landline: 'קו ארץ', no_phone: 'אין טלפון' };
             const statusColors = { pending: 'var(--gold)', contacted: 'var(--green)', failed: 'var(--red)', landline: 'var(--text-muted)', no_phone: 'var(--text-muted)' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortKonesBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortKonesBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table class="tbl">'
                 + '<thead><tr>'
                 + th('כותרת','title') + th('כתובת','address') + th('עיר','city') + th('טלפון','phone') + th('מחיר','price') + th('סטטוס','contact_status')
@@ -1633,7 +1628,7 @@ function generateDashboardHTML(stats) {
 
         async function runFullScan() {
             if (!confirm('להפעיל סריקה מלאה כולל Enrichment (טלפון + AI)?')) return;
-            const btn = document.querySelector('[data-onclick="runFullScan()"]');
+            const btn = document.querySelector('[onclick="runFullScan()"]');
             if (btn) { btn.textContent = '⏳ סורק...'; btn.disabled = true; }
             try {
                 const res = await fetch('/api/scan/full', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 50 }) });
@@ -1644,7 +1639,8 @@ function generateDashboardHTML(stats) {
                 } else throw new Error(d.error || 'HTTP ' + res.status);
             } catch (e) { alert('❌ שגיאה: ' + e.message); }
             finally {
-                if (btn) { btn.textContent = '🚀 סריקה מלאה + Enrichment'; btn.disabled = false; }
+                const btn2 = document.querySelector('[onclick="runFullScan()"]');
+                if (btn2) { btn2.textContent = '🚀 סריקה מלאה + Enrichment'; btn2.disabled = false; }
             }
         }
 
@@ -1685,7 +1681,7 @@ function generateDashboardHTML(stats) {
                     + '<div>🕐 הפעלה אחרונה:<br><span style="color:var(--text-primary);">' + lastRun + '</span></div>'
                     + '<div>📦 מודעות:<br><span style="color:var(--gold);font-weight:700;font-size:15px;">' + count + '</span></div></div>'
                     + (st.error ? '<div style="font-size:10px;color:var(--red);margin-bottom:7px;padding:5px 8px;background:rgba(239,68,68,0.08);border-radius:4px;">⚠️ ' + st.error + '</div>' : '')
-                    + '<button class="btn btn-green" data-id="' + s.id + '" data-endpoint="' + s.endpoint + '" data-onclick="runScraper(this.dataset.id, this.dataset.endpoint)" '
+                    + '<button class="btn btn-green" data-id="' + s.id + '" data-endpoint="' + s.endpoint + '" onclick="runScraper(this.dataset.id, this.dataset.endpoint)" '
                     + (running ? 'disabled' : '') + ' style="width:100%;padding:7px;font-size:12px;">'
                     + (running ? '⏳ פועל...' : '▶️ סרוק עכשיו') + '</button></div>';
             }).join('');
@@ -1791,9 +1787,9 @@ function generateDashboardHTML(stats) {
             const stateHe = { confirmed: '✅ מאושר', pending: '⏳ ממתין', declined: '❌ סירב', cancelled: '🚫 בוטל', no_answer: '📵 לא ענה' };
             const langLabel = { he: '🇮🇱', ru: '🇷🇺' };
             const typeMap = { signing_ceremony: 'כנס חתימות', consultation: 'ייעוץ', appraiser: 'שמאי', surveyor: 'מודד', physical: 'פגישה' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortSchedBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortSchedBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             const rows_html = filtered.map(r => {
-                const phoneClean = (r.phone || '').replace(/\\D/g,'');
+                const phoneClean = (r.phone || '').replace(/\D/g,'');
                 const meetingType = r.meeting_type || r.campaign_meeting_type || '';
                 const stColor = stateColors[r.state] || 'var(--text-muted)';
                 const stHe = stateHe[r.state] || (r.state || '\u2014');
@@ -1879,12 +1875,12 @@ function generateDashboardHTML(stats) {
                     + (t.trello_card_url ? '<a href="' + t.trello_card_url + '" target="_blank" style="font-size:11px;color:var(--teal);">📌 Trello</a>' : '')
                     + '</div></div>'
                     + '<div style="display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;">'
-                    + (t.status !== 'done' ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-new-status="' + (t.status === 'todo' ? 'doing' : 'done') + '" data-onclick="updateTaskStatusFromEl(this)">'
+                    + (t.status !== 'done' ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-new-status="' + (t.status === 'todo' ? 'doing' : 'done') + '" onclick="updateTaskStatusFromEl(this)">'
                         + (t.status === 'todo' ? '▶️ התחל' : '✅ סיים') + '</button>' : '')
-                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="editTask(' + t.id + ')">✏️ ערוך</button>'
-                    + (!t.trello_card_id ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-onclick="openTrelloModalForTask(' + t.id + ',encodeURIComponent(' + JSON.stringify(t.title || '') + '),' + JSON.stringify(t.description || '') + ')">📌 Trello</button>' : '')
-                    + (t.reminder_at && !t.reminder_snoozed ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="snoozeReminder(' + t.id + ')">⏰ Snooze</button>' : '')
-                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;color:var(--red);" data-onclick="deleteTask(' + t.id + ')">🗑️</button>'
+                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" onclick="editTask(' + t.id + ')">✏️ ערוך</button>'
+                    + (!t.trello_card_id ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" onclick="openTrelloModalForTask(' + t.id + ',encodeURIComponent(' + JSON.stringify(t.title || '') + '),' + JSON.stringify(t.description || '') + ')">📌 Trello</button>' : '')
+                    + (t.reminder_at && !t.reminder_snoozed ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" onclick="snoozeReminder(' + t.id + ')">⏰ Snooze</button>' : '')
+                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;color:var(--red);" onclick="deleteTask(' + t.id + ')">🗑️</button>'
                     + '</div></div></div>';
             }).join('');
         }
@@ -2185,7 +2181,7 @@ function generateDashboardHTML(stats) {
         }
 
         function errorHTML(msg, retryFn) {
-            return '<div class="error"><p>❌ שגיאה: ' + msg + '</p><button class="btn" data-onclick="' + retryFn + '" style="margin-top:8px;">נסה שוב</button></div>';
+            return '<div class="error"><p>❌ שגיאה: ' + msg + '</p><button class="btn" onclick="' + retryFn + '" style="margin-top:8px;">נסה שוב</button></div>';
         }
 
     </script>
