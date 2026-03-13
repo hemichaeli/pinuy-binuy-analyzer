@@ -234,6 +234,35 @@ router.delete('/api/tasks/:id', async (req, res) => {
     }
 });
 
+// Monthly listings count for chart (last 13 months)
+router.get('/api/chart/listings-monthly', async (req, res) => {
+  try {
+    const [listingsResult, leadsResult] = await Promise.all([
+      pool.query(`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YY') AS month,
+               TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS sort_key,
+               COUNT(*) AS count
+        FROM listings
+        WHERE created_at >= NOW() - INTERVAL '13 months'
+        GROUP BY DATE_TRUNC('month', created_at)
+        ORDER BY DATE_TRUNC('month', created_at) ASC
+      `),
+      pool.query(`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YY') AS month,
+               TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS sort_key,
+               COUNT(*) AS count
+        FROM website_leads
+        WHERE created_at >= NOW() - INTERVAL '13 months'
+        GROUP BY DATE_TRUNC('month', created_at)
+        ORDER BY DATE_TRUNC('month', created_at) ASC
+      `).catch(() => ({ rows: [] }))
+    ]);
+    res.json({ success: true, listings: listingsResult.rows, leads: leadsResult.rows });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 router.get('/api/trello/board', async (req, res) => {
     try {
         const trelloService = require('../services/trelloService');

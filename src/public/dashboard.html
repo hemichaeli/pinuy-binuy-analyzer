@@ -250,24 +250,21 @@
             </div>
         </div>
 
-        <div class="section" style="max-width:60%;">
-            <h2>📊 סטטוס מערכת</h2>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;">
-                <div class="data-item"><h3>📾 סריקה אוטומטית</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל</span></span></div></div></div>
-                <div class="data-item"><h3>📱 WhatsApp</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">מחובר</span></span></div></div></div>
-                <div class="data-item"><h3>📆 Auto Contact</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל (כל 30 דק)</span></span></div></div></div>
-                <div class="data-item"><h3>🏗️ כינוס נכסים</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל (07:45 יומי)</span></span></div></div></div>
+        <div class="section" style="padding:10px 16px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:12px;font-weight:600;color:var(--text-secondary);סטטוס מערכת:">&#x1F4CA; סטטוס:</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:20px;padding:3px 10px;font-size:12px;"><span style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>📾 סריקה אוטומטית</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:20px;padding:3px 10px;font-size:12px;"><span style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>📱 WhatsApp מחובר</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:20px;padding:3px 10px;font-size:12px;"><span style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>📆 Auto Contact כל 30דק</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:20px;padding:3px 10px;font-size:12px;"><span style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>🏗️ כינוס 07:45</span>
+                <span style="display:inline-flex;align-items:center;gap:4px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.25);border-radius:20px;padding:3px 10px;font-size:12px;"><span style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>🤖 Pipeline 06:00</span>
             </div>
         </div>
 
-        <div class="section" style="margin-top:16px;">
-            <h2 style="text-align:center;font-size:16px;font-weight:600;color:var(--text-primary);letter-spacing:0.5px;margin-bottom:18px;">צפיות ולידים לאורך זמן</h2>
-            <div style="position:relative;height:260px;"><canvas id="chart-views-leads"></canvas></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px;margin-top:16px;">
             <div class="section">
-                <h2 style="text-align:center;font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">ביצועים לפי סוג נכס</h2>
-                <div style="position:relative;height:220px;"><canvas id="chart-radar"></canvas></div>
+                <h2 style="text-align:center;font-size:14px;font-weight:600;color:var(--text-primary);letter-spacing:0.5px;margin-bottom:14px;">📈 מודעות חדשות לאורך זמן</h2>
+                <div style="position:relative;height:220px;"><canvas id="chart-views-leads"></canvas></div>
             </div>
             <div class="section">
                 <h2 style="text-align:center;font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">התפלגות סטטוס מודעות</h2>
@@ -1801,66 +1798,55 @@
 
         // -- DASHBOARD CHARTS --
         function initDashboardCharts() {
-            const months = ['ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ','ינו'];
-            const views  = [160000,180000,290000,200000,190000,310000,300000,480000,270000,220000,390000,370000,450000];
-            const leads  = [15000, 18000, 28000, 22000, 17000, 31000, 29000, 46000, 25000, 20000, 37000, 35000, 42000];
-
-            const cVL = document.getElementById('chart-views-leads');
-            if (cVL && !cVL._ci) {
-                cVL._ci = new Chart(cVL, {
-                    type:'line',
-                    data:{
-                        labels: months,
-                        datasets:[
-                            { label:'views', data:views, fill:true,
-                              backgroundColor:'rgba(78,205,196,0.18)', borderColor:'#4ecdc4',
-                              tension:0.3, pointRadius:3, pointBackgroundColor:'#4ecdc4', borderWidth:2 },
-                            { label:'leads', data:leads, fill:true,
-                              backgroundColor:'rgba(148,163,184,0.13)', borderColor:'rgba(148,163,184,0.6)',
-                              tension:0.3, pointRadius:3, pointBackgroundColor:'rgba(148,163,184,0.8)', borderWidth:1.5 }
-                        ]
-                    },
-                    options:{
-                        responsive:true, maintainAspectRatio:false,
-                        plugins:{ legend:{ position:'bottom', labels:{ color:'#9aa0b0', font:{size:11} } } },
-                        scales:{
-                            x:{ ticks:{ color:'#9aa0b0', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } },
-                            y:{ ticks:{ color:'#9aa0b0', font:{size:10}, callback:v=>v>=1000?Math.round(v/1000)+'k':v }, grid:{ color:'rgba(255,255,255,0.06)' } }
-                        }
+            // Load real listings chart data from API
+            (async () => {
+                const cVL = document.getElementById('chart-views-leads');
+                if (!cVL || cVL._ci) return;
+                try {
+                    const r = await fetch('/api/chart/listings-monthly');
+                    const d = await r.json();
+                    const listingsMap = {};
+                    const leadsMap = {};
+                    if (d.success) {
+                        d.listings.forEach(row => { listingsMap[row.sort_key] = parseInt(row.count); });
+                        d.leads.forEach(row => { leadsMap[row.sort_key] = parseInt(row.count); });
                     }
-                });
-            }
-
-            const cR = document.getElementById('chart-radar');
-            if (cR && !cR._ci) {
-                cR._ci = new Chart(cR, {
-                    type:'radar',
-                    data:{
-                        labels:['וילה','עסק','דקה','דירה','חחון','טוסר'],
-                        datasets:[{
-                            label:'ביצועים',
-                            data:[82,68,71,90,58,74],
-                            fill:true,
-                            backgroundColor:'rgba(78,205,196,0.18)',
-                            borderColor:'#4ecdc4',
-                            pointBackgroundColor:'#4ecdc4',
-                            borderWidth:1.5
-                        }]
-                    },
-                    options:{
-                        responsive:true, maintainAspectRatio:false,
-                        plugins:{ legend:{ display:false } },
-                        scales:{
-                            r:{
-                                ticks:{ display:false },
-                                grid:{ color:'rgba(255,255,255,0.1)' },
-                                pointLabels:{ color:'#9aa0b0', font:{size:11} },
-                                min:0, max:100
+                    // Build last 12 months labels
+                    const labels = [], listingsData = [], leadsData = [];
+                    const heMonths = ['ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ'];
+                    for (let i = 11; i >= 0; i--) {
+                        const d2 = new Date(); d2.setDate(1); d2.setMonth(d2.getMonth() - i);
+                        const key = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+                        labels.push(heMonths[d2.getMonth()] + ' ' + String(d2.getFullYear()).slice(2));
+                        listingsData.push(listingsMap[key] || 0);
+                        leadsData.push(leadsMap[key] || 0);
+                    }
+                    cVL._ci = new Chart(cVL, {
+                        type:'line',
+                        data:{
+                            labels,
+                            datasets:[
+                                { label:'מודעות', data:listingsData, fill:true,
+                                  backgroundColor:'rgba(78,205,196,0.18)', borderColor:'#4ecdc4',
+                                  tension:0.3, pointRadius:3, pointBackgroundColor:'#4ecdc4', borderWidth:2 },
+                                { label:'לידים', data:leadsData, fill:true,
+                                  backgroundColor:'rgba(148,163,184,0.13)', borderColor:'rgba(148,163,184,0.6)',
+                                  tension:0.3, pointRadius:3, pointBackgroundColor:'rgba(148,163,184,0.8)', borderWidth:1.5 }
+                            ]
+                        },
+                        options:{
+                            responsive:true, maintainAspectRatio:false,
+                            plugins:{ legend:{ position:'bottom', labels:{ color:'#9aa0b0', font:{size:11} } } },
+                            scales:{
+                                x:{ ticks:{ color:'#9aa0b0', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } },
+                                y:{ ticks:{ color:'#9aa0b0', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.06)' }, beginAtZero:true }
                             }
                         }
-                    }
-                });
-            }
+                    });
+                } catch(e) {
+                    if (cVL) cVL.parentElement.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;font-size:12px;">אין נתוני גרף עדיין</div>';
+                }
+            })();
 
             const cD = document.getElementById('chart-donut');
             if (cD && !cD._ci) {
