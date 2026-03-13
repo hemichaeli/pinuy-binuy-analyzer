@@ -1184,7 +1184,7 @@ function generateDashboardHTML(stats) {
             };
             const imgThumb = (ad) => {
                 const img = ad.image_url || ad.thumbnail_url || '';
-                if (img) return '<img src="' + img + '" style="width:90px;height:60px;object-fit:cover;border-radius:5px;display:block;" onerror="this.style.display='none'">';
+                if (img) return '<img src="' + img + '" style="width:90px;height:60px;object-fit:cover;border-radius:5px;display:block;" onerror="this.onerror=null">';
                 return '<div style="width:90px;height:60px;border-radius:5px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:20px;">🏠</div>';
             };
             tbody.innerHTML = ads.map((ad, i) => {
