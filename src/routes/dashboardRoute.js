@@ -493,7 +493,7 @@ function generateDashboardHTML(stats) {
         <div class="nav-tab" data-tab="scheduling">📅 תיאומים</div>
         <div class="nav-tab" data-tab="scrapers">🔍 סריקות</div>
         <div class="nav-tab" data-tab="tasks">✅ משימות</div>
-        <a href="/campaigns" class="nav-tab" target="_blank" style="text-decoration:none;">📣 קמפיינים</a>
+        <div class="nav-tab" data-tab="campaigns">📣 קמפיינים</div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════ DASHBOARD TAB -->
@@ -845,6 +845,11 @@ function generateDashboardHTML(stats) {
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════ CAMPAIGNS TAB -->
+    <div id="tab-campaigns" class="tab-content">
+        <iframe id="campaigns-iframe" src="" style="width:100%;height:calc(100vh - 140px);border:none;border-radius:8px;background:var(--bg-secondary);" loading="lazy"></iframe>
+    </div>
+
     <!-- ═══════════════════════════════════════════════════════ TRELLO MODAL -->
     <div id="trello-modal" class="modal-overlay">
         <div class="modal-box">
@@ -1010,6 +1015,10 @@ function generateDashboardHTML(stats) {
             else if (tabName === 'scrapers') loadScraperStatus();
             else if (tabName === 'news') loadNews();
             else if (tabName === 'tasks') loadTasks('all');
+            else if (tabName === 'campaigns') {
+                var iframe = document.getElementById('campaigns-iframe');
+                if (iframe && !iframe.src) iframe.src = '/campaigns';
+            }
         }
 
         async function loadMorningIntelligence() {
