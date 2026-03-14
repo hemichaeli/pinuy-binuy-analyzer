@@ -493,6 +493,7 @@ function generateDashboardHTML(stats) {
         <div class="nav-tab" data-tab="scheduling">📅 תיאומים</div>
         <div class="nav-tab" data-tab="scrapers">🔍 סריקות</div>
         <div class="nav-tab" data-tab="tasks">✅ משימות</div>
+        <a href="/campaigns" class="nav-tab" target="_blank" style="text-decoration:none;">📣 קמפיינים</a>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════ DASHBOARD TAB -->
