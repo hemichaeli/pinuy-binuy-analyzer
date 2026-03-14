@@ -459,11 +459,24 @@ async function start() {
     }, { timezone: 'UTC' });
     logger.info('[MorningReport] ACTIVE - daily at 07:30 Israel time (05:30 UTC)');
   } catch (e) { logger.warn('[MorningReport] Failed to start cron:', e.message); }
-
   try { require('./jobs/weeklyScanner').startScheduler(); } catch (e) {}
   try { require('./jobs/stuckScanWatcher').startWatcher(); } catch (e) {}
   try { require('./jobs/discoveryScheduler').startDiscoveryScheduler(); } catch (e) {}
   try { require('./jobs/appointmentFallbackJob').initialize(); } catch (e) {}
+
+  // Master Pipeline: all scrapers + statutory enrichment + Claude synthesis + IAI ranking
+  try {
+    const masterPipeline = require('./jobs/masterPipeline');
+    masterPipeline.startScheduler();
+    app.post('/api/pipeline/run', async (req, res) => {
+      const status = masterPipeline.getStatus();
+      if (status.isRunning) return res.json({ ok: false, message: 'Pipeline already running' });
+      res.json({ ok: true, message: 'Master pipeline started in background' });
+      masterPipeline.runMasterPipeline().catch(e => logger.error('Manual pipeline error', e));
+    });
+    app.get('/api/pipeline/status', (req, res) => res.json(masterPipeline.getStatus()));
+    logger.info('[MasterPipeline] Registered — daily 06:00 Israel time');
+  } catch (e) { logger.warn('[MasterPipeline] init failed', { error: e.message }); }
 
   const scraperDefs = [
     { name: 'Komo', module: './services/komoScraper', cron: '0 8 * * *', fn: 'scanAll' },

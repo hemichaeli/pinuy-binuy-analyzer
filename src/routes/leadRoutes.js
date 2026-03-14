@@ -36,7 +36,13 @@ router.post('/submit', async (req, res) => {
     }
 
     const { name, email, phone, userType, user_type, phoneVerified, phone_verified,
-            mailingListConsent, mailing_list_consent, formData, form_data, source } = req.body;
+            mailingListConsent, mailing_list_consent, formData, form_data, source,
+            campaign_tag, utm_source, utm_campaign } = req.body;
+
+    // Also check query params for UTM (for QR/link-based flows)
+    const utmSourceFinal = utm_source || req.query.utm_source || req.query.src || null;
+    const utmCampaignFinal = utm_campaign || req.query.utm_campaign || req.query.campaign || null;
+    const campaignTagFinal = campaign_tag || req.query.campaign_tag || utmCampaignFinal || null;
 
     const leadData = {
       name: name || 'Unknown',
@@ -46,7 +52,10 @@ router.post('/submit', async (req, res) => {
       user_type: userType || user_type || 'investor',
       form_data: formData || form_data || {},
       mailing_list_consent: mailingListConsent || mailing_list_consent || false,
-      source: source || 'website'
+      source: utmSourceFinal === 'flyer' ? 'flyer' : (source || 'website'),
+      campaign_tag: campaignTagFinal,
+      utm_source: utmSourceFinal,
+      utm_campaign: utmCampaignFinal
     };
 
     // Validate required fields

@@ -1,304 +1,4 @@
-const express = require('express');
-const router = express.Router();
-const pool = require('../db/pool');
-
-const path = require('path');
-router.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/dashboard.html'));
-});
-
-
-router.get('/api/stats', async (req, res) => {
-    try {
-        const [complexes, listings, opportunities, messages, leads, deals, kones] = await Promise.all([
-            pool.query('SELECT COUNT(*) as total FROM complexes'),
-            pool.query('SELECT COUNT(*) as total FROM listings WHERE is_active = TRUE'),
-            pool.query('SELECT COUNT(*) as total FROM complexes WHERE iai_score > 75'),
-            pool.query("SELECT COUNT(*) as total FROM whatsapp_conversations WHERE status = 'active'").catch(() => ({ rows: [{ total: 0 }] })),
-            pool.query("SELECT COUNT(*) as total FROM website_leads WHERE status IN ('contacted','qualified')"),
-            pool.query("SELECT COUNT(*) as total FROM listings WHERE deal_status IN ('תיווך','סגור')"),
-            pool.query('SELECT COUNT(*) as total FROM kones_assets').catch(() => ({ rows: [{ total: 0 }] }))
-        ]);
-        res.json({ success: true, data: {
-            totalComplexes: parseInt(complexes.rows[0]?.total) || 0,
-            newListings: parseInt(listings.rows[0]?.total) || 0,
-            hotOpportunities: parseInt(opportunities.rows[0]?.total) || 0,
-            activeMessages: parseInt(messages.rows[0]?.total) || 0,
-            qualifiedLeads: parseInt(leads.rows[0]?.total) || 0,
-            closedDeals: parseInt(deals.rows[0]?.total) || 0,
-            konesCount: parseInt(kones.rows[0]?.total) || 0
-        }});
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.get('/api/kones', async (req, res) => {
-    try {
-        const { city, status, search } = req.query;
-        let query = `SELECT id, COALESCE(address, city, 'כינוס נכסים') as title, address, city, price, phone,
-                            contact_status, contact_attempts, last_contact_at,
-                            source, contact_person, email, url, gush_helka,
-                            submission_deadline, property_type, created_at
-                     FROM kones_listings WHERE is_active = TRUE`;
-        const params = [];
-        let n = 1;
-        if (city?.trim()) { query += ` AND city ILIKE $${n}`; params.push('%' + city.trim() + '%'); n++; }
-        if (status) { query += ` AND contact_status = $${n}`; params.push(status); n++; }
-        if (search?.trim()) { query += ` AND (address ILIKE $${n} OR city ILIKE $${n} OR COALESCE(contact_person,'') ILIKE $${n})`; params.push('%' + search.trim() + '%'); n++; }
-        query += ` ORDER BY created_at DESC LIMIT 100`;
-        const result = await pool.query(query, params);
-        res.json({ success: true, data: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.get('/api/whatsapp/messages', async (req, res) => {
-    try {
-        const query = `
-            SELECT lm.id, lm.listing_id, l.phone as sender_phone, l.contact_name as sender_name,
-                   lm.message_text as message_content, lm.status, lm.direction,
-                   lm.created_at, NULL::integer as lead_id, l.source as source_platform
-            FROM listing_messages lm
-            LEFT JOIN listings l ON lm.listing_id = l.id
-            WHERE lm.direction = 'received'
-            ORDER BY lm.created_at DESC LIMIT 100`;
-        const result = await pool.query(query);
-        res.json({ success: true, data: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.get('/api/leads', async (req, res) => {
-    try {
-        const { status } = req.query;
-        let query = `SELECT id, name, phone, email, user_type, status, source, notes, is_urgent, created_at FROM website_leads WHERE 1=1`;
-        const params = [];
-        if (status) { query += ` AND status = $1`; params.push(status); }
-        query += ` ORDER BY created_at DESC LIMIT 100`;
-        const result = await pool.query(query, params);
-        res.json({ success: true, data: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.get('/api/complexes', async (req, res) => {
-    try {
-        const { city, minIAI, maxIAI, status, sortBy, sortOrder } = req.query;
-        let query = `SELECT id, name, city, address, existing_units as units_count, planned_units, iai_score, status, developer, theoretical_premium_min, theoretical_premium_max, permit_date, approval_date, deposit_date, declaration_date FROM complexes WHERE 1=1`;
-        const params = [];
-        let n = 1;
-        if (city?.trim()) { query += ` AND city ILIKE $${n}`; params.push('%' + city.trim() + '%'); n++; }
-        if (minIAI && !isNaN(minIAI)) { query += ` AND iai_score >= $${n}`; params.push(parseFloat(minIAI)); n++; }
-        if (maxIAI && !isNaN(maxIAI)) { query += ` AND iai_score <= $${n}`; params.push(parseFloat(maxIAI)); n++; }
-        if (status) { query += ` AND status = $${n}`; params.push(status); n++; }
-        const validSort = ['name', 'city', 'iai_score', 'existing_units'];
-        const sortField = validSort.includes(sortBy) ? sortBy : 'iai_score';
-        const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
-        query += ` ORDER BY ${sortField} ${order} NULLS LAST LIMIT 100`;
-        const result = await pool.query(query, params);
-        res.json({ success: true, data: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.get('/api/ads', async (req, res) => {
-    try {
-        const { city, minPrice, maxPrice, search, sortBy, sortOrder, phoneFilter, contactStatus, page = 1, limit = 50 } = req.query;
-        let query = `
-            SELECT l.id,
-                   COALESCE(l.description_snippet, l.address, 'מודעה') as title,
-                   l.city, l.address,
-                   l.asking_price as price_current,
-                   l.area_sqm, l.rooms, l.floor,
-                   l.source,
-                   l.first_seen as published_at,
-                   ROUND(((COALESCE(c.theoretical_premium_min,0) + COALESCE(c.theoretical_premium_max,0)) / 2.0), 1) as premium_percent,
-                   ROUND(COALESCE(c.theoretical_premium_min,0), 1) as premium_min,
-                   ROUND(COALESCE(c.theoretical_premium_max,0), 1) as premium_max,
-                   c.name as complex_name, c.status as complex_status,
-                   GREATEST(c.deposit_date, c.approval_date, c.permit_date, c.declaration_date) as complex_status_date,
-                   NULL::numeric as avg_price_sqm,
-                   l.phone, l.message_status as contact_status, l.deal_status,
-                   l.created_at, l.url, l.ssi_score,
-                   -- Estimated sale price after project (using avg premium)
-                   CASE WHEN l.asking_price > 0 AND (c.theoretical_premium_min IS NOT NULL OR c.theoretical_premium_max IS NOT NULL)
-                        THEN ROUND(l.asking_price * (1 + (COALESCE(c.theoretical_premium_min,0) + COALESCE(c.theoretical_premium_max,0)) / 200.0))
-                        ELSE NULL END as estimated_sale_price,
-                   -- Profit delta in ₪
-                   CASE WHEN l.asking_price > 0 AND (c.theoretical_premium_min IS NOT NULL OR c.theoretical_premium_max IS NOT NULL)
-                        THEN ROUND(l.asking_price * (COALESCE(c.theoretical_premium_min,0) + COALESCE(c.theoretical_premium_max,0)) / 200.0)
-                        ELSE NULL END as profit_delta_ils,
-                   -- SSI breakdown
-                   l.ssi_time_score, l.ssi_price_score, l.ssi_indicator_score
-            FROM listings l
-            LEFT JOIN complexes c ON l.complex_id = c.id
-            WHERE l.is_active = TRUE AND l.asking_price > 0`;
-        const params = [];
-        let n = 1;
-        if (city?.trim()) { query += ` AND l.city ILIKE $${n}`; params.push('%' + city.trim() + '%'); n++; }
-        if (minPrice && !isNaN(minPrice)) { query += ` AND l.asking_price >= $${n}`; params.push(parseInt(minPrice)); n++; }
-        if (maxPrice && !isNaN(maxPrice)) { query += ` AND l.asking_price <= $${n}`; params.push(parseInt(maxPrice)); n++; }
-        if (search?.trim()) { query += ` AND (l.address ILIKE $${n} OR l.city ILIKE $${n})`; params.push('%' + search.trim() + '%'); n++; }
-        if (phoneFilter === 'yes') query += ` AND l.phone IS NOT NULL AND l.phone != ''`;
-        else if (phoneFilter === 'no') query += ` AND (l.phone IS NULL OR l.phone = '')`;
-        if (contactStatus) { query += ` AND l.message_status = $${n}`; params.push(contactStatus); n++; }
-        const validSort = ['address', 'city', 'asking_price', 'created_at', 'ssi_score', 'area_sqm', 'rooms', 'floor'];
-        const sortField = validSort.includes(sortBy) ? `l.${sortBy}` : 'l.created_at';
-        const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
-        const offset = (parseInt(page) - 1) * parseInt(limit);
-        query += ` ORDER BY ${sortField} ${order} LIMIT $${n} OFFSET $${n + 1}`;
-        params.push(parseInt(limit), offset);
-        const result = await pool.query(query, params);
-        let countQuery = `SELECT COUNT(*) as total FROM listings l WHERE l.is_active = TRUE AND l.asking_price > 0`;
-        const countParams = [];
-        let cn = 1;
-        if (city?.trim()) { countQuery += ` AND l.city ILIKE $${cn}`; countParams.push('%' + city.trim() + '%'); cn++; }
-        if (phoneFilter === 'yes') countQuery += ` AND l.phone IS NOT NULL AND l.phone != ''`;
-        else if (phoneFilter === 'no') countQuery += ` AND (l.phone IS NULL OR l.phone = '')`;
-        const countResult = await pool.query(countQuery, countParams);
-        res.json({ success: true, data: result.rows, pagination: { page: parseInt(page), limit: parseInt(limit), total: parseInt(countResult.rows[0]?.total) || 0 } });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.post('/api/whatsapp/convert-to-lead', async (req, res) => {
-    try {
-        const { name, phone, budget, property_type, location_preference } = req.body;
-        const result = await pool.query(
-            `INSERT INTO website_leads (name, phone, budget, property_type, location_preference, source, status, created_at)
-             VALUES ($1, $2, $3, $4, $5, 'whatsapp', 'new', NOW()) RETURNING id`,
-            [name, phone, budget, property_type, location_preference]
-        );
-        res.json({ success: true, id: result.rows[0].id });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.get('/api/tasks', async (req, res) => {
-    try {
-        const { status } = req.query;
-        let query = `SELECT * FROM dashboard_tasks WHERE 1=1`;
-        const params = [];
-        if (status && status !== 'all') { query += ` AND status = $1`; params.push(status); }
-        query += ` ORDER BY created_at DESC`;
-        const result = await pool.query(query, params);
-        res.json({ success: true, tasks: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.post('/api/tasks', async (req, res) => {
-    try {
-        const { title, description, status, priority, due_date, reminder_at } = req.body;
-        const result = await pool.query(
-            `INSERT INTO dashboard_tasks (title, description, status, priority, due_date, reminder_at, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`,
-            [title, description || null, status || 'todo', priority || 'normal', due_date || null, reminder_at || null]
-        );
-        res.json({ success: true, task: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.put('/api/tasks/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { title, description, status, priority, due_date, reminder_at, reminder_snoozed, trello_card_id, trello_card_url } = req.body;
-        const result = await pool.query(
-            `UPDATE dashboard_tasks SET
-                title = COALESCE($1, title),
-                description = COALESCE($2, description),
-                status = COALESCE($3, status),
-                priority = COALESCE($4, priority),
-                due_date = COALESCE($5, due_date),
-                reminder_at = COALESCE($6, reminder_at),
-                reminder_snoozed = COALESCE($7, reminder_snoozed),
-                trello_card_id = COALESCE($8, trello_card_id),
-                trello_card_url = COALESCE($9, trello_card_url),
-                updated_at = NOW()
-             WHERE id = $10 RETURNING *`,
-            [title, description, status, priority, due_date, reminder_at, reminder_snoozed, trello_card_id, trello_card_url, id]
-        );
-        if (!result.rows.length) return res.status(404).json({ success: false, error: 'Task not found' });
-        res.json({ success: true, task: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.delete('/api/tasks/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM dashboard_tasks WHERE id = $1', [req.params.id]);
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.get('/api/trello/boards', async (req, res) => {
-    try {
-        const trelloService = require('../services/trelloService');
-        const boards = await trelloService.getBoards();
-        res.json({ success: true, boards });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-router.get('/api/trello/board', async (req, res) => {
-    try {
-        const trelloService = require('../services/trelloService');
-        const boardId = req.query.boardId || null;
-        const board = await trelloService.getBoardDetails(boardId);
-        res.json({ success: true, lists: board.lists || [], labels: board.labels || [] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-router.post('/api/trello/create-task-card', async (req, res) => {
-    try {
-        const { title, description, listName, labelName, dueDate, taskId, boardId } = req.body;
-        const trelloService = require('../services/trelloService');
-        let card;
-        if (boardId) {
-            // Dynamic board: get list ID from the specified board
-            const boardDetails = await trelloService.getBoardDetails(boardId);
-            const list = boardDetails.lists.find(l => l.name === listName);
-            if (!list) throw new Error('List "' + listName + '" not found in board');
-            const { default: fetch2 } = await import('node-fetch').catch(() => ({ default: fetch }));
-            const TRELLO_API_KEY = process.env.TRELLO_API_KEY;
-            const TRELLO_TOKEN = process.env.TRELLO_TOKEN;
-            const cardResp = await fetch(`https://api.trello.com/1/cards?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: title, desc: description || '', idList: list.id, due: dueDate || null })
-            });
-            card = await cardResp.json();
-            card.url = card.shortUrl || card.url;
-        } else {
-            card = await trelloService.createCard({ title, description, listName, labelName, dueDate });
-        }
-        if (taskId) {
-            await pool.query('UPDATE dashboard_tasks SET trello_card_id = $1, trello_card_url = $2, updated_at = NOW() WHERE id = $3',
-                [card.id, card.url, taskId]);
-        }
-        res.json({ success: true, id: card.id, url: card.url });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-function generateDashboardHTML(stats) {
-    return `<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
     <meta charset="utf-8">
@@ -331,7 +31,7 @@ function generateDashboardHTML(stats) {
         * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; }
         body { background:var(--bg-primary); color:var(--text-primary); font-size:15px; line-height:1.5; overflow-x:hidden; }
 
-        /* ── HEADER ── */
+        /* -- HEADER -- */
         .header { background:var(--bg-secondary); border-bottom:1px solid var(--border-subtle); padding:22px 24px 18px; text-align:center; position:sticky; top:0; z-index:100; }
         .header h1 { font-size:26px; font-weight:800; letter-spacing:4px; margin-bottom:5px; color:var(--text-primary); text-transform:uppercase; }
         .header h1 span.teal { color:var(--teal); }
@@ -340,18 +40,18 @@ function generateDashboardHTML(stats) {
         .status-dot { width:8px; height:8px; background:var(--green); border-radius:50%; box-shadow:0 0 6px var(--green); animation:blink 2s infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-        /* ── NAV TABS ── */
+        /* -- NAV TABS -- */
         .nav-tabs { background:var(--bg-secondary); padding:12px 24px; border-bottom:1px solid var(--border-subtle); display:flex; overflow-x:auto; gap:8px; position:sticky; top:72px; z-index:99; -webkit-overflow-scrolling:touch; scrollbar-width:none; justify-content:center; flex-wrap:wrap; }
         .nav-tabs::-webkit-scrollbar { display:none; }
         .nav-tab { background:transparent; border:1px solid var(--border-medium); border-radius:6px; padding:9px 18px; color:var(--text-secondary); font-weight:500; font-size:13px; cursor:pointer; transition:all 0.15s ease; white-space:nowrap; user-select:none; -webkit-tap-highlight-color:transparent; letter-spacing:0.3px; }
         .nav-tab.active { background:var(--bg-primary); border-color:rgba(255,255,255,0.25); color:var(--text-primary); font-weight:600; }
         .nav-tab:hover:not(.active) { border-color:rgba(255,255,255,0.18); color:var(--text-primary); background:rgba(255,255,255,0.04); }
 
-        /* ── TAB CONTENT ── */
+        /* -- TAB CONTENT -- */
         .tab-content { display:none; padding:18px 20px; min-height:calc(100vh - 120px); }
         .tab-content.active { display:block; }
 
-        /* ── STAT CARDS ── */
+        /* -- STAT CARDS -- */
         .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:18px; }
         .stat-card { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:8px; padding:20px 22px; cursor:pointer; transition:all 0.15s ease; user-select:none; position:relative; overflow:hidden; }
         .stat-card:hover { background:var(--bg-card-hover); border-color:var(--border-medium); }
@@ -360,18 +60,18 @@ function generateDashboardHTML(stats) {
         .stat-hint { font-size:11px; color:var(--text-muted); margin-bottom:5px; }
         .stat-change { font-size:11px; padding:2px 8px; border-radius:4px; font-weight:500; background:rgba(74,222,128,0.1); color:var(--green); display:inline-block; }
 
-        /* ── SECTION CARDS ── */
+        /* -- SECTION CARDS -- */
         .section { background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:8px; padding:20px 22px; margin-bottom:16px; }
         .section h2 { color:var(--text-primary); font-size:15px; margin-bottom:16px; font-weight:600; display:flex; align-items:center; gap:8px; }
 
-        /* ── FILTERS ── */
+        /* -- FILTERS -- */
         .filters { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin-bottom:14px; }
         .filter-input,.filter-select { background:rgba(255,255,255,0.05); border:1px solid var(--border-medium); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:13px; width:100%; transition:border-color 0.15s; }
         .filter-input:focus,.filter-select:focus { outline:none; border-color:var(--teal); background:rgba(45,212,191,0.04); }
         .filter-input::placeholder { color:var(--text-muted); }
         .filter-select option { background:var(--bg-card); color:var(--text-primary); }
 
-        /* ── BUTTONS ── */
+        /* -- BUTTONS -- */
         .btn { background:var(--teal); color:#1a1d24; border:none; padding:8px 18px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; transition:all 0.15s ease; display:inline-flex; align-items:center; gap:5px; }
         .btn:hover { opacity:0.88; }
         .btn-outline { background:transparent; color:var(--text-primary); border:1px solid var(--border-medium); }
@@ -387,7 +87,7 @@ function generateDashboardHTML(stats) {
         .btn-red { background:var(--red); color:#fff; border:none; }
         .btn-red:hover { opacity:0.88; }
 
-        /* ── DATA LIST ── */
+        /* -- DATA LIST -- */
         .data-list { display:grid; gap:10px; }
         .data-item { background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:6px; padding:14px; border-right:3px solid var(--gold); transition:all 0.15s ease; }
         .data-item:hover { background:rgba(255,255,255,0.07); }
@@ -397,7 +97,7 @@ function generateDashboardHTML(stats) {
         .data-meta-label { color:var(--text-secondary); }
         .data-meta-value { color:var(--text-primary); font-weight:600; }
 
-        /* ── TABLE ── */
+        /* -- TABLE -- */
         .tbl { width:100%; border-collapse:collapse; font-size:13px; }
         .tbl thead tr { background:var(--bg-table-head); }
         .tbl th { padding:11px 14px; border-bottom:1px solid var(--border-subtle); color:var(--text-secondary); font-weight:500; text-align:right; white-space:nowrap; cursor:pointer; font-size:12px; letter-spacing:0.3px; }
@@ -406,7 +106,7 @@ function generateDashboardHTML(stats) {
         .tbl tbody tr:hover { background:rgba(255,255,255,0.04) !important; cursor:pointer; }
         .tbl td { padding:12px 14px; vertical-align:middle; }
         .trow:hover { background:rgba(255,255,255,0.04) !important; cursor:pointer; }
-        /* ── BADGES ── */
+        /* -- BADGES -- */
         .badge { padding:4px 12px; border-radius:6px; font-size:12px; font-weight:500; display:inline-block; }
         .badge-green { background:rgba(74,222,128,0.15); color:var(--green); }
         .badge-blue { background:rgba(96,165,250,0.15); color:var(--blue); }
@@ -424,7 +124,7 @@ function generateDashboardHTML(stats) {
         .status-nophone { background:rgba(55,65,81,0.2); color:var(--text-muted); }
         .filter-active-badge { background:var(--teal-dim); border:1px solid var(--teal); color:var(--teal); padding:3px 10px; border-radius:6px; font-size:11px; margin-left:8px; display:inline-block; }
 
-        /* ── MISC ── */
+        /* -- MISC -- */
         .loading { text-align:center; padding:40px; color:var(--text-muted); }
         .error { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; padding:14px; border-radius:8px; margin:10px 0; }
         .actions-bar { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; align-items:center; }
@@ -434,7 +134,7 @@ function generateDashboardHTML(stats) {
         .intel-item .meta { font-size:12px; color:var(--text-secondary); }
         .intel-score { display:inline-block; padding:2px 7px; border-radius:10px; font-size:11px; font-weight:700; margin-left:5px; }
 
-        /* ── CONVERSATIONS ── */
+        /* -- CONVERSATIONS -- */
         .conv-item { padding:12px 14px; border-bottom:1px solid var(--border-subtle); cursor:pointer; transition:background 0.12s; }
         .conv-item:hover { background:rgba(45,212,191,0.06); }
         .conv-item.active { background:var(--teal-dim); border-right:2px solid var(--teal); }
@@ -446,7 +146,7 @@ function generateDashboardHTML(stats) {
         .bubble-in { background:#1e293b; color:var(--text-primary); margin-left:auto; border-bottom-left-radius:3px; }
         .bubble-time { font-size:10px; opacity:0.55; margin-top:3px; }
 
-        /* ── MODAL ── */
+        /* -- MODAL -- */
         .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center; }
         .modal-box { background:var(--bg-card); border:1px solid var(--border-medium); border-radius:12px; padding:24px; max-width:480px; width:90%; max-height:90vh; overflow-y:auto; }
         .modal-title { color:var(--teal); font-size:17px; font-weight:700; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; }
@@ -455,7 +155,7 @@ function generateDashboardHTML(stats) {
         .form-group { margin-bottom:12px; }
         .form-label { color:var(--text-secondary); font-size:12px; display:block; margin-bottom:5px; }
 
-        /* ── RESPONSIVE ── */
+        /* -- RESPONSIVE -- */
         @media(max-width:768px){
             .header{padding:10px 12px;} .header h1{font-size:18px;}
             .nav-tabs{padding:8px 10px; top:54px;}
@@ -472,6 +172,7 @@ function generateDashboardHTML(stats) {
             .intel-grid{grid-template-columns:1fr;}
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="header">
@@ -492,47 +193,47 @@ function generateDashboardHTML(stats) {
         <div class="nav-tab" data-tab="tasks">✅ משימות</div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ DASHBOARD TAB -->
+    <!-- DASHBOARD TAB -->
     <div id="tab-dashboard" class="tab-content active">
         <div class="stats-grid">
             <div class="stat-card" data-tab="complexes">
-                <div class="stat-number">${stats.totalComplexes}</div>
+                <div class="stat-number"><span class="stat-val" data-stat="totalComplexes">...</span></div>
                 <div class="stat-label">מתחמי פינוי-בינוי</div>
                 <div class="stat-hint">→ לחץ לפתיחת רשימת המתחמים</div>
                 <div class="stat-change">+12% השנה</div>
             </div>
             <div class="stat-card" data-tab="ads">
-                <div class="stat-number">${stats.newListings}</div>
+                <div class="stat-number"><span class="stat-val" data-stat="newListings">...</span></div>
                 <div class="stat-label">מודעות פעילות</div>
                 <div class="stat-hint">→ לחץ לפתיחת רשימת המודעות</div>
                 <div class="stat-change">+8% השנה</div>
             </div>
             <div class="stat-card" data-tab="messages">
-                <div class="stat-number">${stats.activeMessages}</div>
+                <div class="stat-number"><span class="stat-val" data-stat="activeMessages">...</span></div>
                 <div class="stat-label">שיחות WhatsApp</div>
                 <div class="stat-hint">→ לחץ לפתיחת מרכז השיחות</div>
                 <div class="stat-change">+23% השנה</div>
             </div>
             <div class="stat-card" data-tab="leads">
-                <div class="stat-number">${stats.qualifiedLeads}</div>
+                <div class="stat-number"><span class="stat-val" data-stat="qualifiedLeads">...</span></div>
                 <div class="stat-label">לידים מהאתר</div>
                 <div class="stat-hint">→ לחץ לפתיחת הלידים</div>
                 <div class="stat-change">+15% השנה</div>
             </div>
             <div class="stat-card" data-tab="complexes">
-                <div class="stat-number">${stats.hotOpportunities}</div>
+                <div class="stat-number"><span class="stat-val" data-stat="hotOpportunities">...</span></div>
                 <div class="stat-label">הזדמנויות חמות</div>
                 <div class="stat-hint">→ IAI > 75 | לחץ לפתיחת רשימה</div>
                 <div class="stat-change">+31% השנה</div>
             </div>
             <div class="stat-card" data-tab="ads">
-                <div class="stat-number">${stats.closedDeals}</div>
+                <div class="stat-number"><span class="stat-val" data-stat="closedDeals">...</span></div>
                 <div class="stat-label">עסקאות תיווך</div>
                 <div class="stat-hint">→ לחץ לפתיחת נתונים</div>
                 <div class="stat-change">+67% השנה</div>
             </div>
             <div class="stat-card" data-tab="kones">
-                <div class="stat-number">${stats.konesCount}</div>
+                <div class="stat-number"><span class="stat-val" data-stat="konesCount">...</span></div>
                 <div class="stat-label">כינוסי נכסים</div>
                 <div class="stat-hint">→ לחץ לפתיחת רשימת כינוסים</div>
                 <div class="stat-change" style="background:var(--gold-dim);color:var(--gold);border-color:rgba(245,158,11,0.3);">נכסים בכינוס</div>
@@ -542,33 +243,155 @@ function generateDashboardHTML(stats) {
         <div class="section">
             <h2>⚡ פעולות מהירות</h2>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
-                <button class="btn btn-intel" data-onclick="loadMorningIntelligence()">🧠 ינטליגנציה יומית</button>
-                <button class="btn btn-green" data-onclick="runFullScan()" style="font-weight:700;">🔍 סריקה מלאה + Enrichment</button>
-                <button class="btn" data-onclick="refreshStats()">🔄 רענן נתונים</button>
-                <button class="btn btn-secondary" data-onclick="window.open('/api/docs','_blank')">📋 API Docs</button>
+                <button class="btn btn-intel" onclick="loadMorningIntelligence()">🧠 ינטליגנציה יומית</button>
+                <button class="btn btn-green" onclick="runFullScan()" style="font-weight:700;">🔍 סריקה מלאה + Enrichment</button>
+                <button class="btn" onclick="refreshStats()">🔄 רענן נתונים</button>
+                <button class="btn btn-secondary" onclick="window.open('/api/docs','_blank')">📋 API Docs</button>
             </div>
         </div>
 
-        <div class="section" id="morning-section">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                <h2 style="margin:0;">🧠 ינטליגנציה יומית</h2>
-                <button class="btn btn-secondary" data-onclick="loadMorningIntelligence()" style="padding:5px 10px;font-size:11px;">🔄 רענן</button>
+        <div class="section" style="padding:10px 14px;">
+            <h2 style="font-size:12px;margin-bottom:8px;color:var(--text-secondary);">&#x1F4CA; סטטוס מערכת</h2>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:7px;">
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">📾 סריקה אוטומטית</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);סטטוס">סטטוס:</span><span style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">פעיל</span></div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">📱 WhatsApp</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);סטטוס">סטטוס:</span><span style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">מחובר</span></div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">📆 Auto Contact</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);סטטוס">סטטוס:</span><span style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">פעיל (כל 30דק)</span></div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🏗️ כינוס נכסים</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);סטטוס">סטטוס:</span><span style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">פעיל (07:45)</span></div>
+                </div>
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🤖 Pipeline יומי</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">סטטוס:</span><span style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">פעיל (06:00)</span></div>
+                </div>
+                <!-- NEW: Vapi -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🎙️ Vapi</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">שיחות היום:</span><span id="status-vapi-calls" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: INFORU -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">📨 INFORU</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">הודעות היום:</span><span id="status-inforu-msgs" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Appointments Today -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🗓️ תיאומים היום</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">נקבעו:</span><span id="status-appointments" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Pending Reminders -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #e8b84b;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🔔 תזכורות ממתינות</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">ממתינות:</span><span id="status-reminders" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(232,184,75,0.15);color:#e8b84b;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Hot Leads -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #f87171;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🔥 לידים חמים</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">לא טופלו:</span><span id="status-hot-leads" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(248,113,113,0.15);color:#f87171;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Pipeline Last Run -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">⚡ Pipeline אחרון</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">ריצה:</span><span id="status-pipeline-last" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">טוען...</span></div>
+                </div>
+                <!-- NEW: Zoho CRM -->
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:7px 10px;border-right:2px solid #4ade80;">
+                    <div style="font-size:11px;font-weight:600;color:var(--gold);margin-bottom:3px;">🏢 Zoho CRM</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;"><span style="font-size:10px;color:var(--text-secondary);">סטטוס:</span><span id="status-zoho" style="font-size:10px;padding:1px 7px;border-radius:4px;background:rgba(74,222,128,0.15);color:#4ade80;font-weight:600;">מחובר</span></div>
+                </div>
             </div>
-            <div id="morning-content"><div class="loading">טוען...</div></div>
         </div>
 
-        <div class="section" style="max-width:60%;">
-            <h2>📊 סטטוס מערכת</h2>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;">
-                <div class="data-item"><h3>📾 סריקה אוטומטית</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל</span></span></div></div></div>
-                <div class="data-item"><h3>📱 WhatsApp</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">מחובר</span></span></div></div></div>
-                <div class="data-item"><h3>📆 Auto Contact</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל (כל 30 דק)</span></span></div></div></div>
-                <div class="data-item"><h3>🏗️ כינוס נכסים</h3><div class="data-meta"><div class="data-meta-item"><span class="data-meta-label">סטטוס:</span><span class="data-meta-value"><span class="status-badge status-qualified">פעיל (07:45 יומי)</span></span></div></div></div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px;margin-top:16px;">
+            <div class="section">
+                <h2 style="text-align:center;font-size:14px;font-weight:600;color:var(--text-primary);letter-spacing:0.5px;margin-bottom:4px;">📈 מודעות חדשות לאורך זמן</h2>
+                <p style="text-align:center;font-size:11px;color:var(--text-muted);margin-bottom:12px;">קו ירוק = מודעות שנסרקו | קו אפור = לידים שנרשמו | ציר X = חודשים | ציר Y = כמות</p>
+                <div style="position:relative;height:220px;"><canvas id="chart-views-leads"></canvas></div>
             </div>
+            <div class="section">
+                <h2 style="text-align:center;font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">התפלגות סטטוס מודעות</h2>
+                <div style="position:relative;height:220px;"><canvas id="chart-donut"></canvas></div>
+            </div>
+        </div>
+        <!-- Source breakdown charts + QR generator -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+            <div class="section">
+                <h2 style="text-align:center;font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">📊 מודעות לפי מקור (6 חודשים)</h2>
+                <div style="position:relative;height:180px;"><canvas id="chart-listings-source"></canvas></div>
+            </div>
+            <div class="section">
+                <h2 style="text-align:center;font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px;">📊 לידים לפי מקור + פלאיירים</h2>
+                <div style="position:relative;height:180px;"><canvas id="chart-leads-source"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Conversion Rate Chart + SSI Backfill -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px;">
+            <div class="section">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <h2 style="font-size:13px;font-weight:600;color:var(--text-primary);margin:0;">📉 שיעור המרה חודשי (לידים / מודעות %)</h2>
+                </div>
+                <p style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">כמה לידים נוצרו מכל 100 מודעות פעילות באותו חודש</p>
+                <div style="position:relative;height:180px;"><canvas id="chart-conversion-rate"></canvas></div>
+            </div>
+            <div class="section" style="display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                    <h2 style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">📊 SSI סטטוס</h2>
+                    <div id="ssi-stats-display" style="font-size:12px;color:var(--text-secondary);line-height:1.8;">טוען...</div>
+                </div>
+                <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+                    <button class="btn btn-secondary" onclick="runSSIBackfill()" id="ssi-backfill-btn" style="font-size:12px;padding:8px 12px;width:100%;justify-content:center;">⚙️ חשב SSI לכל המודעות</button>
+                    <div id="ssi-backfill-msg" style="font-size:11px;color:var(--text-muted);text-align:center;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QR Campaign Generator -->
+        <div class="section" style="margin-bottom:16px;">
+            <h2 style="font-size:13px;margin-bottom:10px;">📷 יצירת לינק QR לקמפיין פלאייר</h2>
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                <div style="flex:1;min-width:180px;">
+                    <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px;">שם קמפיין / שכונה</label>
+                    <input id="qr-campaign-name" type="text" placeholder="לדוגמא: TLV_Ramat_Aviv_Q2" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:7px 10px;color:var(--text-primary);font-size:12px;">
+                </div>
+                <button class="btn btn-primary" onclick="generateQRLink()" style="padding:7px 16px;font-size:12px;white-space:nowrap;">🔗 צור לינק</button>
+            </div>
+            <div id="qr-result" style="margin-top:10px;display:none;">
+                <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                    <div id="qr-code-img" style="width:80px;height:80px;background:#fff;border-radius:4px;display:flex;align-items:center;justify-content:center;"></div>
+                    <div style="flex:1;">
+                        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">לינק לשיתוף בפלאייר:</div>
+                        <div id="qr-link-text" style="font-size:11px;color:#4ecdc4;word-break:break-all;"></div>
+                        <div style="margin-top:6px;display:flex;gap:6px;">
+                            <button class="btn btn-secondary" onclick="copyQRLink()" style="padding:3px 10px;font-size:11px;">📋 העתק</button>
+                            <button class="btn btn-secondary" onclick="downloadQR()" style="padding:3px 10px;font-size:11px;">⬇️ הורד QR</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" id="morning-section" style="margin-top:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                <h2 style="margin:0;">🧠 דוח אינטליגנציה יומי</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary" onclick="loadMorningIntelligence()" style="padding:5px 10px;font-size:11px;">🔄 רענן</button>
+                    <button class="btn btn-intel" onclick="sendMorningReport()" style="padding:5px 10px;font-size:11px;">📧 שלח באימייל</button>
+                </div>
+            </div>
+            <div id="morning-content"><div class="loading">🧠 טוען דוח אינטליגנציה...</div></div>
         </div>
     </div>
-
-    <!-- ═══════════════════════════════════════════════════════ ADS TAB -->
+    <!-- ADS TAB -->
     <div id="tab-ads" class="tab-content">
         <div class="section">
             <h2>🏘 רשימת מודעות</h2>
@@ -594,11 +417,11 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadAds()">🔍 טען מודעות</button>
-                <button class="btn btn-secondary" data-onclick="exportData('ads')">📊 ייצוא לאקסל</button>
+                <button class="btn" onclick="loadAds()">🔍 טען מודעות</button>
+                <button class="btn btn-secondary" onclick="exportData('ads')">📊 ייצוא לאקסל</button>
                 <div style="margin-right:auto;display:flex;gap:4px;">
-                    <button id="ads-view-table" class="btn" style="padding:6px 10px;font-size:12px;" data-onclick="setAdsView('table')" title="תצוגת שורות">☰ שורות</button>
-                    <button id="ads-view-grid" class="btn btn-secondary" style="padding:6px 10px;font-size:12px;" data-onclick="setAdsView('grid')" title="תצוגת ריבועים">⊞ ריבועים</button>
+                    <button id="ads-view-table" class="btn" style="padding:6px 10px;font-size:12px;" onclick="setAdsView('table')" title="תצוגת שורות">☰ שורות</button>
+                    <button id="ads-view-grid" class="btn btn-secondary" style="padding:6px 10px;font-size:12px;" onclick="setAdsView('grid')" title="תצוגת ריבועים">⊞ ריבועים</button>
                 </div>
             </div>
             <div id="ads-pagination" style="margin-bottom:6px;font-size:12px;color:var(--text-muted);"></div>
@@ -607,14 +430,16 @@ function generateDashboardHTML(stats) {
             <table id="ads-table" class="tbl" style="display:none;">
                 <thead>
                     <tr id="ads-thead">
-                        <th data-onclick="sortAdsBy('title')" data-sort-field="title">Property</th>
-                        <th data-onclick="sortAdsBy('complex_status')" data-sort-field="complex_status">Status</th>
+                        <th onclick="sortAdsBy('title')" data-sort-field="title">Property</th>
+                        <th onclick="sortAdsBy('complex_status')" data-sort-field="complex_status">Status</th>
                         <th>Performance Trend</th>
-                        <th data-onclick="sortAdsBy('asking_price')" data-sort-field="asking_price">Price</th>
-                        <th data-onclick="sortAdsBy('premium_percent')" data-sort-field="premium_percent">פרמייה</th>
-                        <th data-onclick="sortAdsBy('area_sqm')" data-sort-field="area_sqm">שטח</th>
-                        <th data-onclick="sortAdsBy('rooms')" data-sort-field="rooms">חדרים</th>
-                        <th data-onclick="sortAdsBy('ssi_score')" data-sort-field="ssi_score">SSI</th>
+                        <th onclick="sortAdsBy('asking_price')" data-sort-field="asking_price">מחיר קנייה</th>
+                        <th onclick="sortAdsBy('premium_percent')" data-sort-field="premium_percent">פרמייה %</th>
+                        <th title="מחיר מכירה מוערך אחרי הפרויקט">מחיר מכירה מוערך</th>
+                        <th title="רווח פוטנציאלי בשקלים" style="color:var(--green);">דלתא ₪</th>
+                        <th onclick="sortAdsBy('area_sqm')" data-sort-field="area_sqm">שטח</th>
+                        <th onclick="sortAdsBy('rooms')" data-sort-field="rooms">חדרים</th>
+                        <th onclick="sortAdsBy('ssi_score')" data-sort-field="ssi_score" title="Seller Stress Index — ציון לחץ מוכר (0-100)">SSI ⓘ</th>
                         <th>טלפון</th>
                         <th>Actions</th>
                     </tr>
@@ -626,7 +451,7 @@ function generateDashboardHTML(stats) {
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ MESSAGES TAB -->
+    <!-- MESSAGES TAB -->
     <div id="tab-messages" class="tab-content" style="padding:0;">
         <div class="section" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
@@ -639,8 +464,8 @@ function generateDashboardHTML(stats) {
                         <option value="closed">סגורות</option>
                         <option value="agent_needed">דורש טיפול</option>
                     </select>
-                    <button class="btn" data-onclick="loadConversations()">🔄 רענן</button>
-                    <button class="btn btn-secondary" data-onclick="exportData('messages')">📊 ייצוא</button>
+                    <button class="btn" onclick="loadConversations()">🔄 רענן</button>
+                    <button class="btn btn-secondary" onclick="exportData('messages')">📊 ייצוא</button>
                 </div>
             </div>
         </div>
@@ -657,7 +482,7 @@ function generateDashboardHTML(stats) {
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ LEADS TAB -->
+    <!-- LEADS TAB -->
     <div id="tab-leads" class="tab-content">
         <div class="section">
             <h2>👤 רשימת לידים</h2>
@@ -686,18 +511,18 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadLeads()">👤 כל הלידים</button>
-                <button class="btn btn-secondary" data-onclick="loadLeads('qualified')">✰ מוכשרים</button>
-                <button class="btn btn-secondary" data-onclick="loadLeads('contacted')">📞 בתהליך</button>
-                <button class="btn btn-secondary" data-onclick="loadLeads('new')">🆕 חדשים</button>
-                <button class="btn btn-green" data-onclick="exportData('leads')">📊 ייצוא לאקסל</button>
+                <button class="btn" onclick="loadLeads()">👤 כל הלידים</button>
+                <button class="btn btn-secondary" onclick="loadLeads('qualified')">✰ מוכשרים</button>
+                <button class="btn btn-secondary" onclick="loadLeads('contacted')">📞 בתהליך</button>
+                <button class="btn btn-secondary" onclick="loadLeads('new')">🆕 חדשים</button>
+                <button class="btn btn-green" onclick="exportData('leads')">📊 ייצוא לאקסל</button>
             </div>
             <div id="leads-filter-badge" style="margin-bottom:8px;"></div>
             <div id="leads-list" class="data-list"><div class="loading">טוען לידים...</div></div>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ COMPLEXES TAB -->
+    <!-- COMPLEXES TAB -->
     <div id="tab-complexes" class="tab-content">
         <div class="section">
             <h2>🏢 מתחמי פינוי-בינוי</h2>
@@ -714,16 +539,16 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadComplexes()">🔍 טען מתחמים</button>
-                <button class="btn btn-secondary" data-onclick="loadComplexes('hot')">🔥 הזדמנויות חמות</button>
-                <button class="btn btn-secondary" data-onclick="exportData('complexes')">📊 ייצוא</button>
+                <button class="btn" onclick="loadComplexes()">🔍 טען מתחמים</button>
+                <button class="btn btn-secondary" onclick="loadComplexes('hot')">🔥 הזדמנויות חמות</button>
+                <button class="btn btn-secondary" onclick="exportData('complexes')">📊 ייצוא</button>
             </div>
             <div id="complexes-filter-badge" style="margin-bottom:8px;"></div>
             <div id="complexes-list" class="data-list"><div class="loading">טוען מתחמים...</div></div>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ KONES TAB -->
+    <!-- KONES TAB -->
     <div id="tab-kones" class="tab-content">
         <div class="section">
             <h2>🏗️ כינוסי נכסים</h2>
@@ -740,11 +565,11 @@ function generateDashboardHTML(stats) {
                 </select>
             </div>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadKones()">🔍 טען כינוסים</button>
-                <button class="btn btn-secondary" data-onclick="loadKones('landline')">📞 קווי ארץ</button>
-                <button class="btn btn-secondary" data-onclick="loadKones('pending')">⏳ ממתינים</button>
-                <button class="btn btn-green" data-onclick="runKonesAutoContact()">📱 הפעל Auto Contact</button>
-                <button class="btn btn-secondary" data-onclick="exportData('kones')">📊 ייצוא</button>
+                <button class="btn" onclick="loadKones()">🔍 טען כינוסים</button>
+                <button class="btn btn-secondary" onclick="loadKones('landline')">📞 קווי ארץ</button>
+                <button class="btn btn-secondary" onclick="loadKones('pending')">⏳ ממתינים</button>
+                <button class="btn btn-green" onclick="runKonesAutoContact()">📱 הפעל Auto Contact</button>
+                <button class="btn btn-secondary" onclick="exportData('kones')">📊 ייצוא</button>
             </div>
             <div id="kones-filter-badge" style="margin-bottom:8px;"></div>
             <div id="kones-stats-bar" style="margin-bottom:10px;display:none;"></div>
@@ -752,13 +577,13 @@ function generateDashboardHTML(stats) {
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ NEWS TAB -->
+    <!-- NEWS TAB -->
     <div id="tab-news" class="tab-content">
         <div class="section">
             <h2>📰 חדשות שוק הנדלן</h2>
             <div class="actions-bar">
-                <button class="btn" data-onclick="loadNews()">🔄 רענן חדשות</button>
-                <button class="btn btn-secondary" data-onclick="loadFacebookAds()">📱 מודעות פייסבוק</button>
+                <button class="btn" onclick="loadNews()">🔄 רענן חדשות</button>
+                <button class="btn btn-secondary" onclick="loadFacebookAds()">📱 מודעות פייסבוק</button>
             </div>
             <div id="news-table-container" style="overflow-x:auto;margin-top:14px;">
                 <table class="tbl">
@@ -780,7 +605,7 @@ function generateDashboardHTML(stats) {
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ SCHEDULING TAB -->
+    <!-- SCHEDULING TAB -->
     <div id="tab-scheduling" class="tab-content">
         <div class="section">
             <h2>📅 תיאום פגישות — QUANTUM BOT</h2>
@@ -798,7 +623,7 @@ function generateDashboardHTML(stats) {
                     <option value="ru">🇷🇺 רוסית</option>
                 </select>
                 <input id="sched-search" type="text" placeholder="🔍 חיפוש שם / טלפון..." oninput="filterSchedulingTable()" class="filter-input" style="min-width:190px;width:auto;">
-                <button class="btn" data-onclick="loadScheduling()" style="margin-right:auto;">🔄 רענן</button>
+                <button class="btn" onclick="loadScheduling()" style="margin-right:auto;">🔄 רענן</button>
                 <a href="/api/scheduling/campaign" target="_blank" class="btn btn-secondary">📊 דוח קמפיין</a>
             </div>
             <div id="sched-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:16px;"></div>
@@ -806,42 +631,58 @@ function generateDashboardHTML(stats) {
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ SCRAPERS TAB -->
+    <!-- SCRAPERS TAB -->
     <div id="tab-scrapers" class="tab-content">
         <div class="section">
             <h2>🔍 מקורות סריקה — Real Estate Data Sources</h2>
             <div class="actions-bar" style="margin-bottom:14px;">
-                <button class="btn btn-green" data-onclick="runAllScrapers()">▶️ הפעל את כולם</button>
-                <button class="btn btn-intel" data-onclick="runFullScan()">🚀 סריקה מלאה + Enrichment</button>
-                <button class="btn btn-secondary" data-onclick="loadScraperStatus()">🔄 רענן סטטוס</button>
+                <button class="btn btn-green" onclick="runAllScrapers()">▶️ הפעל את כולם</button>
+                <button class="btn btn-intel" onclick="runFullScan()">🚀 סריקה מלאה + Enrichment</button>
+                <button class="btn btn-secondary" onclick="loadScraperStatus()">🔄 רענן סטטוס</button>
             </div>
             <div id="scrapers-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;margin-top:14px;"></div>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ TASKS TAB -->
+    <!-- TASKS TAB -->
     <div id="tab-tasks" class="tab-content">
         <div class="section">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
                 <h2 style="margin:0;">✅ משימות</h2>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="btn btn-secondary" id="tasks-filter-all" data-onclick="loadTasks('all')" style="padding:7px 12px;font-size:12px;">הכל</button>
-                    <button class="btn btn-secondary" id="tasks-filter-todo" data-onclick="loadTasks('todo')" style="padding:7px 12px;font-size:12px;">📋 To Do</button>
-                    <button class="btn btn-secondary" id="tasks-filter-doing" data-onclick="loadTasks('doing')" style="padding:7px 12px;font-size:12px;">⚡ Doing</button>
-                    <button class="btn btn-secondary" id="tasks-filter-done" data-onclick="loadTasks('done')" style="padding:7px 12px;font-size:12px;">✅ Done</button>
-                    <button class="btn" data-onclick="openNewTaskModal()" style="padding:7px 12px;font-size:12px;">➕ משימה חדשה</button>
+                    <button class="btn btn-secondary" id="tasks-filter-all" onclick="loadTasks('all')" style="padding:7px 12px;font-size:12px;">הכל</button>
+                    <button class="btn btn-secondary" id="tasks-filter-todo" onclick="loadTasks('todo')" style="padding:7px 12px;font-size:12px;">📋 To Do</button>
+                    <button class="btn btn-secondary" id="tasks-filter-doing" onclick="loadTasks('doing')" style="padding:7px 12px;font-size:12px;">⚡ Doing</button>
+                    <button class="btn btn-secondary" id="tasks-filter-done" onclick="loadTasks('done')" style="padding:7px 12px;font-size:12px;">✅ Done</button>
+                    <button class="btn" onclick="openNewTaskModal()" style="padding:7px 12px;font-size:12px;">➕ משימה חדשה</button>
                 </div>
             </div>
             <div id="tasks-list"><div class="loading">טוען משימות...</div></div>
         </div>
+
+        <!-- Trello Board Sync Panel -->
+        <div class="section" id="trello-board-panel" style="margin-top:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                <h2 style="margin:0;">📌 לוח Trello</h2>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <select id="trello-board-filter" class="filter-select" style="min-width:140px;font-size:12px;padding:6px 10px;" onchange="renderTrelloBoardCards()">
+                        <option value="">כל הרשימות</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="_trelloBoardCards=[];loadTrelloBoardCards()" style="padding:7px 12px;font-size:12px;">🔄 רענן</button>
+                    <button class="btn" onclick="openNewTaskModal()" style="padding:7px 12px;font-size:12px;">➕ כרטיס חדש</button>
+                </div>
+            </div>
+            <div id="trello-board-status" style="font-size:12px;color:var(--text-muted);margin-bottom:10px;"></div>
+            <div id="trello-board-cards"><div class="loading">📌 טוען כרטיסים מטרלו...</div></div>
+        </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ TRELLO MODAL -->
+    <!-- TRELLO MODAL -->
     <div id="trello-modal" class="modal-overlay">
         <div class="modal-box">
             <div class="modal-title">
                 📌 ייצוא ל-Trello
-                <button class="modal-close" data-onclick="closeTrelloModal()">✕</button>
+                <button class="modal-close" onclick="closeTrelloModal()">✕</button>
             </div>
             <div id="trello-modal-body">
                 <div class="form-group">
@@ -865,19 +706,19 @@ function generateDashboardHTML(stats) {
                     <input type="datetime-local" id="trello-due" class="filter-input" style="width:100%;">
                 </div>
                 <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
-                    <button class="btn btn-secondary" data-onclick="closeTrelloModal()" style="padding:9px 16px;">ביטול</button>
-                    <button class="btn" id="trello-submit-btn" data-onclick="submitTrelloCard()" style="padding:9px 16px;">📌 שלח ל-Trello</button>
+                    <button class="btn btn-secondary" onclick="closeTrelloModal()" style="padding:9px 16px;">ביטול</button>
+                    <button class="btn" id="trello-submit-btn" onclick="submitTrelloCard()" style="padding:9px 16px;">📌 שלח ל-Trello</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════ TASK MODAL -->
+    <!-- TASK MODAL -->
     <div id="task-modal" class="modal-overlay">
         <div class="modal-box">
             <div class="modal-title">
                 <span id="task-modal-title">➕ משימה חדשה</span>
-                <button class="modal-close" data-onclick="closeTaskModal()">✕</button>
+                <button class="modal-close" onclick="closeTaskModal()">✕</button>
             </div>
             <div class="form-group">
                 <label class="form-label">כותרת *</label>
@@ -915,21 +756,9 @@ function generateDashboardHTML(stats) {
                 <input type="datetime-local" id="task-form-reminder" class="filter-input" style="width:100%;">
             </div>
             <input type="hidden" id="task-form-id">
-            <div class="form-group" style="margin-top:12px;border-top:1px solid var(--border-subtle);padding-top:12px;">
-                <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
-                    <span>📌 לוח Trello (אופציונלי)</span>
-                    <button class="btn btn-secondary" data-onclick="setDefaultTrelloBoard()" style="padding:2px 8px;font-size:10px;" id="set-default-board-btn" title="הגדר כלוח ברירת מחדל">⭐ ברירת מחדל</button>
-                </label>
-                <select id="task-form-trello-board" class="filter-select" style="width:100%;" data-onchange="onTrelloBoardChange(this.value)">
-                    <option value="">ללא Trello</option>
-                </select>
-                <select id="task-form-trello-list" class="filter-select" style="width:100%;margin-top:6px;display:none;">
-                    <option value="">בחר רשימה...</option>
-                </select>
-            </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
-                <button class="btn btn-secondary" data-onclick="closeTaskModal()" style="padding:9px 16px;">ביטול</button>
-                <button class="btn" data-onclick="saveTask()" style="padding:9px 16px;">💾 שמור</button>
+                <button class="btn btn-secondary" onclick="closeTaskModal()" style="padding:9px 16px;">ביטול</button>
+                <button class="btn" onclick="saveTask()" style="padding:9px 16px;">💾 שמור</button>
             </div>
         </div>
     </div>
@@ -939,11 +768,31 @@ function generateDashboardHTML(stats) {
         let activeConvPhone = null;
         let schedulingData = [];
 
+
+        // Auto-load stats from API
+        async function loadStatsFromAPI() {
+            try {
+                const data = await fetchJSON('/dashboard/api/stats');
+                if (data.success) {
+                    const s = data.data;
+                    document.querySelectorAll('.stat-val[data-stat]').forEach(function(el) {
+                        const key = el.getAttribute('data-stat');
+                        if (s[key] !== undefined) el.textContent = s[key].toLocaleString('he-IL');
+                    });
+                }
+            } catch(e) { console.warn('Stats load failed:', e.message); }
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             updateTime();
             setInterval(updateTime, 1000);
             setTimeout(loadMorningIntelligence, 800);
             setInterval(checkReminders, 60000);
+            setTimeout(initDashboardCharts, 250);
+            setTimeout(initSourceCharts, 500);
+            setTimeout(loadConversionRateChart, 700);
+            setTimeout(loadSSIStats, 900);
+            setTimeout(loadSystemStatus, 600);
 
             document.querySelectorAll('.nav-tab[data-tab]').forEach(function(el) {
                 el.addEventListener('click', function() {
@@ -958,21 +807,9 @@ function generateDashboardHTML(stats) {
             });
 
             document.addEventListener('click', function(e) {
-                const btn = e.target.closest('[data-onclick]');
-                if (btn) {
-                    var fn = btn.getAttribute('data-onclick');
-                    try { eval(fn); } catch(err) { console.error('Action error:', fn, err); }
-                }
                 const inforuBtn = e.target.closest('.inforu-btn');
                 if (inforuBtn) {
                     sendInforu(inforuBtn.dataset.phone, inforuBtn.dataset.name);
-                }
-            });
-            document.addEventListener('change', function(e) {
-                const sel = e.target.closest('[data-onchange]');
-                if (sel) {
-                    var fn = sel.getAttribute('data-onchange');
-                    try { eval(fn); } catch(err) { console.error('Change action error:', fn, err); }
                 }
             });
         });
@@ -1000,14 +837,13 @@ function generateDashboardHTML(stats) {
             else if (tabName === 'scheduling') loadScheduling();
             else if (tabName === 'scrapers') loadScraperStatus();
             else if (tabName === 'news') loadNews();
-            else if (tabName === 'tasks') loadTasks('all');
+            else if (tabName === 'tasks') { loadTasks('all'); loadTrelloBoardCards(); loadSSIStats(); }
         }
 
         async function loadMorningIntelligence() {
-            const section = document.getElementById('morning-section');
             const content = document.getElementById('morning-content');
-            section.style.display = 'block';
-            content.innerHTML = '<div class="loading">טוען ינטליגנציה יומית...</div>';
+            if (!content) return;
+            content.innerHTML = '<div class="loading">🧠 טוען דוח אינטליגנציה...</div>';
             try {
                 const data = await fetchJSON('/api/morning/preview');
                 const opps = data.opportunities || [];
@@ -1029,7 +865,7 @@ function generateDashboardHTML(stats) {
                             + '<div style="flex:1;"><div class="name">' + (op.name || op.city || 'מתחם') + '</div>'
                             + '<div class="meta"><span class="intel-score" style="background:' + clr + ';color:#000;">IAI ' + iai + '</span>'
                             + (op.city ? op.city : '') + (op.developer ? ' | ' + op.developer : '') + '</div></div>'
-                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" data-onclick="openTrelloModal(' + JSON.stringify(opTitle) + ',' + JSON.stringify(opDesc) + ')">📌 Trello</button>'
+                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" onclick="openTrelloModal(' + JSON.stringify(opTitle) + ',' + JSON.stringify(opDesc) + ')">📌 Trello</button>'
                             + '</div>';
                     }
                 }
@@ -1047,7 +883,7 @@ function generateDashboardHTML(stats) {
                             + '<div style="flex:1;"><div class="name">' + (s.address || s.city || 'מוכר') + '</div>'
                             + '<div class="meta"><span class="intel-score" style="background:var(--gold);color:#000;">SSI ' + ssi + '</span>'
                             + (s.city ? s.city : '') + (s.asking_price ? ' | \u20AA' + parseInt(s.asking_price).toLocaleString() : '') + '</div></div>'
-                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" data-onclick="openTrelloModal(' + JSON.stringify(sTitle) + ',' + JSON.stringify(sDesc) + ')">📌 Trello</button>'
+                            + '<button class="btn btn-secondary" style="padding:3px 7px;font-size:10px;white-space:nowrap;flex-shrink:0;" onclick="openTrelloModal(' + JSON.stringify(sTitle) + ',' + JSON.stringify(sDesc) + ')">📌 Trello</button>'
                             + '</div>';
                     }
                 }
@@ -1065,6 +901,13 @@ function generateDashboardHTML(stats) {
             }
         }
 
+        async function sendMorningReport() {
+            if (!confirm('לשלוח דוח אינטליגנציה באימייל?')) return;
+            try {
+                const d = await fetchJSON('/api/morning/send', { method: 'POST' });
+                alert(d.success ? '✅ הדוח נשלח בהצלחה!' : '❌ שגיאה: ' + (d.error || 'נכשל'));
+            } catch (e) { alert('❌ שגיאה: ' + e.message); }
+        }
         async function loadAds() {
             const container = document.getElementById('ads-list');
             container.innerHTML = '<div class="loading">טוען מודעות...</div>';
@@ -1228,7 +1071,6 @@ function generateDashboardHTML(stats) {
                     ? parseFloat(ad.premium_min).toFixed(0) + '%\u2013' + parseFloat(ad.premium_max).toFixed(0) + '%' : '\u2014';
                 const statusHe = complexStatusHe[ad.complex_status] || (ad.complex_status || '\u2014');
                 const published = ad.published_at ? new Date(ad.published_at).toLocaleDateString('he-IL') : (ad.created_at ? new Date(ad.created_at).toLocaleDateString('he-IL') : '\u2014');
-                const created = ad.created_at ? new Date(ad.created_at).toLocaleDateString('he-IL') : '\u2014';
                 const ssi = ad.ssi_score || 0;
                 const ssiColor = ssi > 70 ? 'var(--green)' : ssi > 40 ? 'var(--gold)' : 'var(--text-muted)';
                 const title = (ad.title || ad.address || ('\u05de\u05d5\u05d3\u05e2\u05d4 #' + (i+1))).substring(0, 55);
@@ -1247,9 +1089,11 @@ function generateDashboardHTML(stats) {
                     + '<td>' + miniSparkline(sparkColor) + '</td>'
                     + '<td style="color:var(--text-primary);font-weight:600;font-size:14px;">' + price + '</td>'
                     + '<td style="color:' + premNowColor + ';font-weight:600;">' + premNow + '</td>'
+                    + '<td style="color:var(--blue);font-weight:600;font-size:13px;">' + (ad.estimated_sale_price ? '\u20AA' + parseInt(ad.estimated_sale_price).toLocaleString() : '\u2014') + '</td>'
+                    + '<td style="color:var(--green);font-weight:700;font-size:13px;">' + (ad.profit_delta_ils && parseFloat(ad.profit_delta_ils) > 0 ? '+\u20AA' + parseInt(ad.profit_delta_ils).toLocaleString() : '\u2014') + '</td>'
                     + '<td>' + (ad.area_sqm ? parseFloat(ad.area_sqm).toFixed(0) + ' מ"ר' : '\u2014') + '</td>'
                     + '<td>' + (ad.rooms || '\u2014') + '</td>'
-                    + '<td style="color:' + ssiColor + ';font-weight:600;">' + (ssi || '\u2014') + '</td>'
+                    + '<td style="color:' + ssiColor + ';font-weight:600;" title="SSI: ' + ssi + ' | זמן: ' + (ad.ssi_time_score||0) + ' | מחיר: ' + (ad.ssi_price_score||0) + ' | אינדיקטורים: ' + (ad.ssi_indicator_score||0) + '">' + (ssi || '\u2014') + '</td>'
                     + '<td>' + (ad.phone ? '<a href="tel:' + ad.phone + '" style="color:var(--blue);font-size:12px;">' + ad.phone + '</a>' : '<span style="color:var(--text-muted);font-size:11px;">אין</span>') + '</td>'
                     + '<td><div style="display:flex;gap:6px;">'
                     + '<button class="btn btn-secondary" style="padding:5px 12px;font-size:12px;" onclick="return false">ערוך</button>'
@@ -1383,7 +1227,7 @@ function generateDashboardHTML(stats) {
             const typeLabel = { investor: '🏢 משקיע', owner: '🏠 מוכר', contact: '📩 פנייה' };
             const statusColors = { new: 'var(--blue)', qualified: 'var(--green)', contacted: 'var(--gold)', closed: 'var(--text-muted)', rejected: 'var(--red)' };
             const statusHe = { new: 'חדש', qualified: 'מוכשר', contacted: 'בתהליך', closed: 'סגור', rejected: 'נדחה' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortLeadsBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortLeadsBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table class="tbl">'
                 + '<thead><tr>'
                 + th('שם','name') + th('טלפון','phone') + th('אימייל','email') + th('סטטוס','status') + th('מקור','source') + th('סוג','user_type')
@@ -1452,7 +1296,7 @@ function generateDashboardHTML(stats) {
                 return va < vb ? 1 : va > vb ? -1 : 0;
             });
             const statusHe = { deposited: 'הופקדה', approved: 'אושרה', pre_deposit: 'להפקדה', planning: 'בתכנון', construction: 'בביצוע', declared: 'הוכרז', unknown: 'לא ידוע' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortComplexesBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortComplexesBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table class="tbl">'
                 + '<thead><tr>'
                 + th('שם מתחם','name') + th('עיר','city') + th('סטטוס תכנון','status') + '<th>סטטוס הפרוייקט</th>'
@@ -1514,10 +1358,10 @@ function generateDashboardHTML(stats) {
                             statsBar.style.flexWrap = 'wrap';
                             statsBar.style.gap = '7px';
                             statsBar.innerHTML =
-                                '<span class="filter-active-badge" style="cursor:pointer;" data-onclick="loadKones(&quot;contacted&quot;)">✅ נוצר קשר: ' + s.contacted + '</span>'
-                                + '<span class="filter-active-badge" style="background:rgba(100,116,139,0.15);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" data-onclick="loadKones(&quot;landline&quot;)">📞 קו ארץ: ' + s.landline + '</span>'
-                                + '<span class="filter-active-badge" style="background:rgba(55,65,81,0.2);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" data-onclick="loadKones(&quot;no_phone&quot;)">🚫 אין טלפון: ' + s.no_phone + '</span>'
-                                + '<span class="filter-active-badge" style="background:rgba(239,68,68,0.12);border-color:var(--red);color:#fca5a5;cursor:pointer;" data-onclick="loadKones(&quot;failed&quot;)">❌ נכשל: ' + s.failed + '</span>';
+                                '<span class="filter-active-badge" style="cursor:pointer;" onclick="loadKones(\'contacted\')">✅ נוצר קשר: ' + s.contacted + '</span>'
+                                + '<span class="filter-active-badge" style="background:rgba(100,116,139,0.15);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" onclick="loadKones(\'landline\')">📞 קו ארץ: ' + s.landline + '</span>'
+                                + '<span class="filter-active-badge" style="background:rgba(55,65,81,0.2);border-color:var(--text-muted);color:var(--text-muted);cursor:pointer;" onclick="loadKones(\'no_phone\')">🚫 אין טלפון: ' + s.no_phone + '</span>'
+                                + '<span class="filter-active-badge" style="background:rgba(239,68,68,0.12);border-color:var(--red);color:#fca5a5;cursor:pointer;" onclick="loadKones(\'failed\')">❌ נכשל: ' + s.failed + '</span>';
                         }
                     } catch(e) { /* ignore */ }
                 } else if (statsBar) { statsBar.style.display = 'none'; }
@@ -1546,7 +1390,7 @@ function generateDashboardHTML(stats) {
             });
             const statusLabel = { pending: 'ממתין', contacted: 'נוצר קשר', failed: 'נכשל', landline: 'קו ארץ', no_phone: 'אין טלפון' };
             const statusColors = { pending: 'var(--gold)', contacted: 'var(--green)', failed: 'var(--red)', landline: 'var(--text-muted)', no_phone: 'var(--text-muted)' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortKonesBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortKonesBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             container.innerHTML = '<div style="overflow-x:auto;"><table class="tbl">'
                 + '<thead><tr>'
                 + th('כותרת','title') + th('כתובת','address') + th('עיר','city') + th('טלפון','phone') + th('מחיר','price') + th('סטטוס','contact_status')
@@ -1583,7 +1427,7 @@ function generateDashboardHTML(stats) {
                 if (res.ok) {
                     const d = await res.json();
                     const r = d.result || {};
-                    alert('✅ Auto Contact הופעל!\\n\\nנוצר קשר: ' + (r.contacted||0) + '\\nקווי ארץ (נדרשת שיחה): ' + (r.skipped_landline||0) + '\\nאין טלפון: ' + (r.skipped_no_phone||0) + '\\nנכשל: ' + (r.failed||0));
+                    alert('✅ Auto Contact הופעל! נוצר=' + (r.contacted||0) + ' | ארץ=' + (r.skipped_landline||0) + ' | ללא=' + (r.skipped_no_phone||0) + ' | נכשל=' + (r.failed||0));
                     loadKones();
                 } else throw new Error('HTTP ' + res.status);
             } catch (e) { alert('❌ נכשל: ' + e.message); }
@@ -1642,25 +1486,25 @@ function generateDashboardHTML(stats) {
             } catch (e) { console.error('Refresh failed:', e); }
         }
 
-        // ── FULL SCAN (includes enrichment) ──────────────────────────
         async function runFullScan() {
-            if (!confirm('להפעיל סריקה מלאה כולל Enrichment (טלפון + AI)?\\nהתהליך עשוי לקחת מספר דקות.')) return;
-            const btn = document.querySelector('[data-onclick="runFullScan()"]');
+            if (!confirm('להפעיל סריקה מלאה כולל Enrichment (טלפון + AI)?')) return;
+            const btn = document.querySelector('[onclick="runFullScan()"]');
             if (btn) { btn.textContent = '⏳ סורק...'; btn.disabled = true; }
             try {
                 const res = await fetch('/api/scan/full', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ limit: 50 }) });
                 const d = await res.json();
                 if (res.ok) {
-                    alert('✅ סריקה מלאה הושלמה!\\n\\nמודעות חדשות: ' + (d.newListings||0) + '\\nהועשרו: ' + (d.enriched||0) + '\\nטלפונים נמצאו: ' + (d.phones||0));
+                    alert('✅ סריקה הושלמה: ' + (d.newListings||0) + ' חדשות | ' + (d.enriched||0) + ' הועשרו | ' + (d.phones||0) + ' טלפונים');
                     refreshStats();
+            loadStatsFromAPI();
                 } else throw new Error(d.error || 'HTTP ' + res.status);
             } catch (e) { alert('❌ שגיאה: ' + e.message); }
             finally {
-                if (btn) { btn.textContent = '🚀 סריקה מלאה + Enrichment'; btn.disabled = false; }
+                const btn2 = document.querySelector('[onclick="runFullScan()"]');
+                if (btn2) { btn2.textContent = '🚀 סריקה מלאה + Enrichment'; btn2.disabled = false; }
             }
         }
 
-        // ── SCRAPERS ─────────────────────────────────────────────────
         const SCRAPERS_CONFIG = [
             { id: 'yad2',       name: 'יד2',          icon: '🏠', desc: 'פורטל הנדלן הגדול בישראל',    endpoint: '/api/scan/yad2',      color: '#e74c3c' },
             { id: 'yad1',       name: 'יד1',          icon: '🏡', desc: 'מודעות נדלן יד ראשונה',       endpoint: '/api/scan/yad1',      color: '#e67e22' },
@@ -1698,7 +1542,7 @@ function generateDashboardHTML(stats) {
                     + '<div>🕐 הפעלה אחרונה:<br><span style="color:var(--text-primary);">' + lastRun + '</span></div>'
                     + '<div>📦 מודעות:<br><span style="color:var(--gold);font-weight:700;font-size:15px;">' + count + '</span></div></div>'
                     + (st.error ? '<div style="font-size:10px;color:var(--red);margin-bottom:7px;padding:5px 8px;background:rgba(239,68,68,0.08);border-radius:4px;">⚠️ ' + st.error + '</div>' : '')
-                    + '<button class="btn btn-green" data-id="' + s.id + '" data-endpoint="' + s.endpoint + '" data-onclick="runScraper(this.dataset.id, this.dataset.endpoint)" '
+                    + '<button class="btn btn-green" data-id="' + s.id + '" data-endpoint="' + s.endpoint + '" onclick="runScraper(this.dataset.id, this.dataset.endpoint)" '
                     + (running ? 'disabled' : '') + ' style="width:100%;padding:7px;font-size:12px;">'
                     + (running ? '⏳ פועל...' : '▶️ סרוק עכשיו') + '</button></div>';
             }).join('');
@@ -1734,7 +1578,6 @@ function generateDashboardHTML(stats) {
             renderScraperCards();
         }
 
-        // ── SCHEDULING ───────────────────────────────────────────────
         async function loadScheduling() {
             const list = document.getElementById('sched-list');
             const kpis = document.getElementById('sched-kpis');
@@ -1805,7 +1648,7 @@ function generateDashboardHTML(stats) {
             const stateHe = { confirmed: '✅ מאושר', pending: '⏳ ממתין', declined: '❌ סירב', cancelled: '🚫 בוטל', no_answer: '📵 לא ענה' };
             const langLabel = { he: '🇮🇱', ru: '🇷🇺' };
             const typeMap = { signing_ceremony: 'כנס חתימות', consultation: 'ייעוץ', appraiser: 'שמאי', surveyor: 'מודד', physical: 'פגישה' };
-            const th = (label, field) => '<th data-sort="' + field + '" data-onclick="sortSchedBy(this.dataset.sort)">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
+            const th = (label, field) => '<th onclick="sortSchedBy(\'' + field + '\')">' + label + ' <span style="color:' + (sf===field?'var(--gold)':'var(--text-muted)') + ';">' + (sf===field?(sd==='asc'?'▲':'▼'):'▲▼') + '</span></th>';
             const rows_html = filtered.map(r => {
                 const phoneClean = (r.phone || '').replace(/\D/g,'');
                 const meetingType = r.meeting_type || r.campaign_meeting_type || '';
@@ -1844,7 +1687,6 @@ function generateDashboardHTML(stats) {
             } catch(e) { alert('❌ שגיאה: ' + e.message); }
         }
 
-        // ── TASKS ────────────────────────────────────────────────────
         let _currentTaskFilter = 'all';
         let _trelloLists = [];
         let _trelloLabels = [];
@@ -1894,12 +1736,12 @@ function generateDashboardHTML(stats) {
                     + (t.trello_card_url ? '<a href="' + t.trello_card_url + '" target="_blank" style="font-size:11px;color:var(--teal);">📌 Trello</a>' : '')
                     + '</div></div>'
                     + '<div style="display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;">'
-                    + (t.status !== 'done' ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-new-status="' + (t.status === 'todo' ? 'doing' : 'done') + '" data-onclick="updateTaskStatusFromEl(this)">'
+                    + (t.status !== 'done' ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-new-status="' + (t.status === 'todo' ? 'doing' : 'done') + '" onclick="updateTaskStatusFromEl(this)">'
                         + (t.status === 'todo' ? '▶️ התחל' : '✅ סיים') + '</button>' : '')
-                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="editTask(' + t.id + ')">✏️ ערוך</button>'
-                    + (!t.trello_card_id ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" data-onclick="openTrelloModalForTask(' + t.id + ',encodeURIComponent(' + JSON.stringify(t.title || '') + '),' + JSON.stringify(t.description || '') + ')">📌 Trello</button>' : '')
-                    + (t.reminder_at && !t.reminder_snoozed ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-onclick="snoozeReminder(' + t.id + ')">⏰ Snooze</button>' : '')
-                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;color:var(--red);" data-onclick="deleteTask(' + t.id + ')">🗑️</button>'
+                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" onclick="editTask(' + t.id + ')">✏️ ערוך</button>'
+                    + (!t.trello_card_id ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" data-task-id="' + t.id + '" onclick="openTrelloModalForTask(' + t.id + ',encodeURIComponent(' + JSON.stringify(t.title || '') + '),' + JSON.stringify(t.description || '') + ')">📌 Trello</button>' : '')
+                    + (t.reminder_at && !t.reminder_snoozed ? '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;" onclick="snoozeReminder(' + t.id + ')">⏰ Snooze</button>' : '')
+                    + '<button class="btn btn-secondary" style="padding:4px 9px;font-size:11px;color:var(--red);" onclick="deleteTask(' + t.id + ')">🗑️</button>'
                     + '</div></div></div>';
             }).join('');
         }
@@ -1957,58 +1799,6 @@ function generateDashboardHTML(stats) {
             }).catch(function() {});
         }
 
-        let _trelloBoardsCache = null;
-        async function loadTrelloBoardsForTask() {
-            const boardSel = document.getElementById('task-form-trello-board');
-            if (!boardSel) return;
-            if (_trelloBoardsCache) {
-                populateTrelloBoardSelector(_trelloBoardsCache);
-                return;
-            }
-            try {
-                const data = await fetchJSON('/dashboard/api/trello/boards');
-                _trelloBoardsCache = data.boards || [];
-                populateTrelloBoardSelector(_trelloBoardsCache);
-            } catch(e) { console.error('Trello boards load error:', e.message); }
-        }
-        function populateTrelloBoardSelector(boards) {
-            const boardSel = document.getElementById('task-form-trello-board');
-            if (!boardSel) return;
-            const defaultBoardId = localStorage.getItem('trello_default_board_id') || '';
-            const lastBoardId = localStorage.getItem('trello_last_board_id') || defaultBoardId;
-            boardSel.innerHTML = '<option value="">\u05dc\u05dc\u05d0 Trello</option>' +
-                boards.map(function(b) {
-                    const isDefault = b.id === defaultBoardId;
-                    const label = b.name + (isDefault ? ' \u2b50' : '');
-                    return '<option value="' + b.id + '">' + label + '</option>';
-                }).join('');
-            if (lastBoardId) {
-                boardSel.value = lastBoardId;
-                if (boardSel.value) onTrelloBoardChange(lastBoardId);
-            }
-        }
-        async function onTrelloBoardChange(boardId) {
-            const listSel = document.getElementById('task-form-trello-list');
-            if (!boardId) { listSel.style.display = 'none'; return; }
-            listSel.style.display = 'block';
-            listSel.innerHTML = '<option value="">\u05d8\u05d5\u05e2\u05df...</option>';
-            try {
-                const data = await fetchJSON('/dashboard/api/trello/board?boardId=' + boardId);
-                const lists = data.lists || [];
-                listSel.innerHTML = '<option value="">\u05d1\u05d7\u05e8 \u05e8\u05e9\u05d9\u05de\u05d4...</option>' +
-                    lists.map(function(l) { return '<option value="' + l.name + '">' + l.name + '</option>'; }).join('');
-                localStorage.setItem('trello_last_board_id', boardId);
-            } catch(e) { listSel.innerHTML = '<option value="">\u05e9\u05d2\u05d9\u05d0\u05d4</option>'; }
-        }
-        function setDefaultTrelloBoard() {
-            const boardSel = document.getElementById('task-form-trello-board');
-            const boardId = boardSel ? boardSel.value : '';
-            if (!boardId) { alert('\u05d1\u05d7\u05e8 \u05dc\u05d5\u05d7 \u05ea\u05d7\u05d9\u05dc\u05d4'); return; }
-            localStorage.setItem('trello_default_board_id', boardId);
-            const boardName = boardSel.options[boardSel.selectedIndex].text.replace(' \u2b50','');
-            if (_trelloBoardsCache) populateTrelloBoardSelector(_trelloBoardsCache);
-            alert('\u2b50 \u05dc\u05d5\u05d7 \u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc: ' + boardName);
-        }
         function openNewTaskModal() {
             document.getElementById('task-form-id').value = '';
             document.getElementById('task-form-title').value = '';
@@ -2017,9 +1807,8 @@ function generateDashboardHTML(stats) {
             document.getElementById('task-form-priority').value = 'normal';
             document.getElementById('task-form-due').value = '';
             document.getElementById('task-form-reminder').value = '';
-            document.getElementById('task-modal-title').textContent = '\u2795 \u05de\u05e9\u05d9\u05de\u05d4 \u05d7\u05d3\u05e9\u05d4';
+            document.getElementById('task-modal-title').textContent = '➕ משימה חדשה';
             document.getElementById('task-modal').style.display = 'flex';
-            loadTrelloBoardsForTask();
         }
 
         async function editTask(id) {
@@ -2046,9 +1835,7 @@ function generateDashboardHTML(stats) {
         async function saveTask() {
             const id = document.getElementById('task-form-id').value;
             const title = document.getElementById('task-form-title').value.trim();
-            if (!title) { alert('\u05e0\u05d0 \u05d4\u05d6\u05df \u05db\u05d5\u05ea\u05e8\u05ea'); return; }
-            const trelloBoardId = document.getElementById('task-form-trello-board') ? document.getElementById('task-form-trello-board').value : '';
-            const trelloListName = document.getElementById('task-form-trello-list') ? document.getElementById('task-form-trello-list').value : '';
+            if (!title) { alert('נא הזן כותרת'); return; }
             const body = {
                 title: title,
                 description: document.getElementById('task-form-desc').value.trim() || null,
@@ -2066,22 +1853,168 @@ function generateDashboardHTML(stats) {
                 }
                 const data = await resp.json();
                 if (!data.success) throw new Error(data.error);
-                const savedTaskId = data.task ? data.task.id : id;
-                // Create Trello card if board+list selected
-                if (trelloBoardId && trelloListName && savedTaskId) {
-                    try {
-                        const trelloBody = { title: title, description: body.description || '', listName: trelloListName, dueDate: body.due_date || null, taskId: savedTaskId, boardId: trelloBoardId };
-                        const tr = await fetch('/dashboard/api/trello/create-task-card', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(trelloBody) });
-                        const trData = await tr.json();
-                        if (trData.url) window.open(trData.url, '_blank');
-                    } catch(te) { console.warn('Trello card creation failed:', te.message); }
-                }
                 closeTaskModal();
                 loadTasks(_currentTaskFilter);
-            } catch (e) { alert('\u05e9\u05d2\u05d9\u05d0\u05d4: ' + e.message); }
+            } catch (e) { alert('שגיאה: ' + e.message); }
         }
 
-        // ── TRELLO ───────────────────────────────────────────────────
+        // -- TRELLO BOARD SYNC --
+        let _trelloBoardCards = [];
+        let _trelloBoardLists = [];
+
+        async function loadTrelloBoardCards() {
+            const container = document.getElementById('trello-board-cards');
+            const statusEl = document.getElementById('trello-board-status');
+            if (!container) return;
+            container.innerHTML = '<div class="loading">📌 טוען כרטיסים מטרלו...</div>';
+            try {
+                const data = await fetchJSON('/dashboard/api/trello/cards');
+                if (!data.success) {
+                    if (!data.configured) {
+                        container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">⚠️ Trello לא מוגדר. הגדר TRELLO_API_KEY, TRELLO_TOKEN, TRELLO_BOARD_ID ב-Railway.</div>';
+                        return;
+                    }
+                    throw new Error(data.error);
+                }
+                _trelloBoardCards = data.cards || [];
+                _trelloBoardLists = data.lists || [];
+                // Populate filter
+                const filterSel = document.getElementById('trello-board-filter');
+                if (filterSel) {
+                    const currentVal = filterSel.value;
+                    filterSel.innerHTML = '<option value="">כל הרשימות</option>' +
+                        _trelloBoardLists.map(l => '<option value="' + l.id + '">' + l.name + '</option>').join('');
+                    filterSel.value = currentVal;
+                }
+                if (statusEl) statusEl.textContent = _trelloBoardCards.length + ' כרטיסים פעילים';
+                renderTrelloBoardCards();
+            } catch (e) {
+                container.innerHTML = '<div class="error">שגיאה בטעינת Trello: ' + e.message + '</div>';
+            }
+        }
+
+        function renderTrelloBoardCards() {
+            const container = document.getElementById('trello-board-cards');
+            if (!container) return;
+            const filterSel = document.getElementById('trello-board-filter');
+            const filterListId = filterSel ? filterSel.value : '';
+            const cards = filterListId ? _trelloBoardCards.filter(c => c.idList === filterListId) : _trelloBoardCards;
+            if (!cards.length) {
+                container.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">אין כרטיסים להצגה</div>';
+                return;
+            }
+            // Group by list
+            const byList = {};
+            cards.forEach(c => {
+                const ln = c.listName || 'ללא רשימה';
+                if (!byList[ln]) byList[ln] = [];
+                byList[ln].push(c);
+            });
+            let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;">';
+            for (const [listName, listCards] of Object.entries(byList)) {
+                html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:8px;padding:12px;">';
+                html += '<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:10px;border-bottom:1px solid var(--border-subtle);padding-bottom:6px;">' + listName + ' <span style="color:var(--text-muted);font-weight:400;">(' + listCards.length + ')</span></div>';
+                listCards.forEach(c => {
+                    const dueStr = c.due ? new Date(c.due).toLocaleDateString('he-IL') : '';
+                    const labels = (c.labels || []).map(l => '<span style="background:' + (l.color ? l.color : '#555') + ';color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;margin-left:3px;">' + (l.name || '') + '</span>').join('');
+                    html += '<div style="background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);border-radius:6px;padding:10px;margin-bottom:8px;cursor:pointer;" onclick="window.open(\'' + c.url + '\',\'_blank\')">';
+                    html += '<div style="font-size:13px;color:var(--text-primary);font-weight:500;margin-bottom:4px;">' + c.name + '</div>';
+                    if (labels) html += '<div style="margin-bottom:4px;">' + labels + '</div>';
+                    if (dueStr) html += '<div style="font-size:11px;color:var(--text-muted);">⏰ ' + dueStr + '</div>';
+                    html += '<div style="display:flex;gap:6px;margin-top:8px;">';
+                    html += '<button class="btn btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="event.stopPropagation();moveTrelloCard(\'' + c.id + '\')">↔️ הזז</button>';
+                    html += '<a href="' + c.url + '" target="_blank" class="btn btn-secondary" style="padding:3px 8px;font-size:10px;" onclick="event.stopPropagation();">🔗 פתח</a>';
+                    html += '</div></div>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function moveTrelloCard(cardId) {
+            const listName = prompt('שם הרשימה להזזה (לדוגמא: Done):');
+            if (!listName) return;
+            try {
+                const resp = await fetch('/dashboard/api/trello/move-card', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ cardId, listName }) });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error);
+                loadTrelloBoardCards();
+            } catch (e) { alert('שגיאה: ' + e.message); }
+        }
+
+        // -- SSI BACKFILL --
+        async function runSSIBackfill() {
+            const btn = document.getElementById('ssi-backfill-btn');
+            const msg = document.getElementById('ssi-backfill-msg');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ מחשב...'; }
+            if (msg) msg.textContent = 'SSI backfill רץ ברקע...';
+            try {
+                const resp = await fetch('/dashboard/api/ssi/backfill', { method: 'POST' });
+                const data = await resp.json();
+                if (msg) msg.textContent = data.success ? '✅ ' + data.message : '❌ ' + data.error;
+                setTimeout(() => { loadSSIStats(); }, 3000);
+            } catch (e) {
+                if (msg) msg.textContent = '❌ שגיאה: ' + e.message;
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '⚙️ חשב SSI לכל המודעות'; }
+            }
+        }
+
+        async function loadSSIStats() {
+            const el = document.getElementById('ssi-stats-display');
+            if (!el) return;
+            try {
+                const data = await fetchJSON('/dashboard/api/ssi/stats');
+                if (data.success) {
+                    el.innerHTML =
+                        '<div>סה"כ מודעות: <strong>' + (data.total || 0) + '</strong></div>' +
+                        '<div>עם ציון SSI: <strong>' + (data.scored || 0) + '</strong></div>' +
+                        '<div style="color:var(--red);">לחץ גבוה (≥70): <strong>' + (data.high_stress || 0) + '</strong></div>' +
+                        '<div style="color:var(--gold);">לחץ בינוני (40-70): <strong>' + (data.medium_stress || 0) + '</strong></div>' +
+                        '<div>ממוצע SSI: <strong>' + (data.avg_score || 0) + '</strong></div>';
+                }
+            } catch (e) { el.textContent = 'שגיאה בטעינת SSI'; }
+        }
+
+        // -- CONVERSION RATE CHART --
+        async function loadConversionRateChart() {
+            const canvas = document.getElementById('chart-conversion-rate');
+            if (!canvas || canvas._ci) return;
+            try {
+                const data = await fetchJSON('/dashboard/api/chart/conversion-rate');
+                if (!data.success) return;
+                const heMonths = ['ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ'];
+                const labels = data.months.map(m => {
+                    const d = new Date(m.month + '-01');
+                    return heMonths[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
+                });
+                const rates = data.months.map(m => m.rate);
+                canvas._ci = new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'שיעור המרה (%)',
+                            data: rates,
+                            backgroundColor: rates.map(r => r > 5 ? 'rgba(74,222,128,0.7)' : r > 2 ? 'rgba(232,184,75,0.7)' : 'rgba(248,113,113,0.5)'),
+                            borderColor: rates.map(r => r > 5 ? '#4ade80' : r > 2 ? '#e8b84b' : '#f87171'),
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ctx.parsed.y + '%' } } },
+                        scales: {
+                            x: { ticks: { color: '#9aa0b0', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: { ticks: { color: '#9aa0b0', font: { size: 10 }, callback: v => v + '%' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                        }
+                    }
+                });
+            } catch (e) { console.error('Conversion rate chart error:', e); }
+        }
+
         async function loadTrelloBoard() {
             if (_trelloLists.length) return;
             try {
@@ -2089,7 +2022,11 @@ function generateDashboardHTML(stats) {
                 _trelloLists = data.lists || [];
                 _trelloLabels = data.labels || [];
                 const listSel = document.getElementById('trello-list');
-                listSel.innerHTML = _trelloLists.map(function(l) { return '<option value="' + l + '">' + l + '</option>'; }).join('');
+                // lists are objects {name, id} from getBoardDetails
+                listSel.innerHTML = _trelloLists.map(function(l) {
+                    const name = l.name || l;
+                    return '<option value="' + name + '">' + name + '</option>';
+                }).join('');
                 const labelSel = document.getElementById('trello-label');
                 labelSel.innerHTML = '<option value="">ללא תווית</option>' + _trelloLabels.filter(function(l) { return l.name; }).map(function(l) { return '<option value="' + l.name + '">' + l.name + '</option>'; }).join('');
             } catch (e) { console.error('Trello board load error:', e.message); }
@@ -2149,7 +2086,260 @@ function generateDashboardHTML(stats) {
             }
         }
 
-        // ── UTILITIES ────────────────────────────────────────────────
+        // -- DASHBOARD CHARTS --
+        function initDashboardCharts() {
+            // Load real listings chart data from API
+            (async () => {
+                const cVL = document.getElementById('chart-views-leads');
+                if (!cVL || cVL._ci) return;
+                try {
+                    const r = await fetch('/api/chart/listings-monthly');
+                    const d = await r.json();
+                    const listingsMap = {};
+                    const leadsMap = {};
+                    if (d.success) {
+                        d.listings.forEach(row => { listingsMap[row.sort_key] = parseInt(row.count); });
+                        d.leads.forEach(row => { leadsMap[row.sort_key] = parseInt(row.count); });
+                    }
+                    // Build last 12 months labels
+                    const labels = [], listingsData = [], leadsData = [];
+                    const heMonths = ['ינו','פבר','מרץ','אפר','מאי','יוני','יולי','אוג','ספט','אוק','נוב','דצמ'];
+                    for (let i = 11; i >= 0; i--) {
+                        const d2 = new Date(); d2.setDate(1); d2.setMonth(d2.getMonth() - i);
+                        const key = d2.getFullYear() + '-' + String(d2.getMonth()+1).padStart(2,'0');
+                        labels.push(heMonths[d2.getMonth()] + ' ' + String(d2.getFullYear()).slice(2));
+                        listingsData.push(listingsMap[key] || 0);
+                        leadsData.push(leadsMap[key] || 0);
+                    }
+                    cVL._ci = new Chart(cVL, {
+                        type:'line',
+                        data:{
+                            labels,
+                            datasets:[
+                                { label:'מודעות', data:listingsData, fill:true,
+                                  backgroundColor:'rgba(78,205,196,0.18)', borderColor:'#4ecdc4',
+                                  tension:0.3, pointRadius:3, pointBackgroundColor:'#4ecdc4', borderWidth:2 },
+                                { label:'לידים', data:leadsData, fill:true,
+                                  backgroundColor:'rgba(148,163,184,0.13)', borderColor:'rgba(148,163,184,0.6)',
+                                  tension:0.3, pointRadius:3, pointBackgroundColor:'rgba(148,163,184,0.8)', borderWidth:1.5 }
+                            ]
+                        },
+                        options:{
+                            responsive:true, maintainAspectRatio:false,
+                            plugins:{ legend:{ position:'bottom', labels:{ color:'#9aa0b0', font:{size:11} } } },
+                            scales:{
+                                x:{ ticks:{ color:'#9aa0b0', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.04)' } },
+                                y:{ ticks:{ color:'#9aa0b0', font:{size:10} }, grid:{ color:'rgba(255,255,255,0.06)' }, beginAtZero:true }
+                            }
+                        }
+                    });
+                } catch(e) {
+                    if (cVL) cVL.parentElement.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px;font-size:12px;">אין נתוני גרף עדיין</div>';
+                }
+            })();
+
+            const cD = document.getElementById('chart-donut');
+            if (cD && !cD._ci) {
+                cD._ci = new Chart(cD, {
+                    type:'doughnut',
+                    data:{
+                        labels:['פעיל','בהמתנה','נמכר'],
+                        datasets:[{
+                            data:[57.2,32.7,10.3],
+                            backgroundColor:['rgba(78,205,196,0.75)','rgba(148,163,184,0.35)','rgba(232,184,75,0.55)'],
+                            borderColor:['#4ecdc4','rgba(148,163,184,0.6)','#e8b84b'],
+                            borderWidth:1.5,
+                            hoverOffset:6
+                        }]
+                    },
+                    options:{
+                        responsive:true, maintainAspectRatio:false,
+                        cutout:'68%',
+                        plugins:{
+                            legend:{
+                                position:'right',
+                                labels:{ color:'#9aa0b0', font:{size:11}, padding:14,
+                                    generateLabels: function(chart) {
+                                        const data = chart.data;
+                                        return data.labels.map((label, i) => ({
+                                            text: label + ' ' + data.datasets[0].data[i] + '%',
+                                            fillStyle: data.datasets[0].backgroundColor[i],
+                                            strokeStyle: data.datasets[0].borderColor[i],
+                                            lineWidth:1.5, index:i
+                                        }));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // -- SOURCE BREAKDOWN CHARTS --
+        async function initSourceCharts() {
+            try {
+                // Listings by source
+                const lsData = await fetchJSON('/api/chart/listings-by-source').catch(() => null);
+                if (lsData && lsData.data && lsData.data.length > 0) {
+                    const months = [...new Set(lsData.data.map(r => r.sort_key))].sort();
+                    const sources = [...new Set(lsData.data.map(r => r.source))];
+                    const colors = ['#4ecdc4','#e8b84b','#a78bfa','#f87171','#34d399','#60a5fa','#fb923c'];
+                    const datasets = sources.map((src, i) => ({
+                        label: src,
+                        data: months.map(m => { const r = lsData.data.find(d => d.sort_key===m && d.source===src); return r ? parseInt(r.count) : 0; }),
+                        backgroundColor: colors[i % colors.length] + '99',
+                        borderColor: colors[i % colors.length],
+                        borderWidth: 1.5
+                    }));
+                    const cLS = document.getElementById('chart-listings-source');
+                    if (cLS && !cLS._ci) {
+                        cLS._ci = new Chart(cLS, {
+                            type: 'bar',
+                            data: { labels: months, datasets },
+                            options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'#9aa0b0', font:{size:10} } } }, scales:{ x:{ stacked:true, ticks:{color:'#9aa0b0',font:{size:9}} }, y:{ stacked:true, ticks:{color:'#9aa0b0',font:{size:9}} } } }
+                        });
+                    }
+                } else {
+                    const cLS = document.getElementById('chart-listings-source');
+                    if (cLS) cLS.parentElement.innerHTML = '<div style="color:#9aa0b0;font-size:11px;text-align:center;padding:20px;">אין נתונים עדיין</div>';
+                }
+
+                // Leads by source
+                const ldData = await fetchJSON('/api/chart/leads-by-source').catch(() => null);
+                if (ldData && ldData.data && ldData.data.length > 0) {
+                    const months = [...new Set(ldData.data.map(r => r.sort_key))].sort();
+                    const sources = [...new Set(ldData.data.map(r => r.source))];
+                    const colors = ['#4ecdc4','#e8b84b','#a78bfa','#f87171','#34d399','#60a5fa'];
+                    const datasets = sources.map((src, i) => ({
+                        label: src === 'flyer' ? '📄 פלאייר' : src === 'website' ? '🌐 אתר' : src === 'whatsapp' ? '📱 WhatsApp' : src,
+                        data: months.map(m => { const r = ldData.data.find(d => d.sort_key===m && d.source===src); return r ? parseInt(r.count) : 0; }),
+                        backgroundColor: colors[i % colors.length] + '99',
+                        borderColor: colors[i % colors.length],
+                        borderWidth: 1.5
+                    }));
+                    const cLD = document.getElementById('chart-leads-source');
+                    if (cLD && !cLD._ci) {
+                        cLD._ci = new Chart(cLD, {
+                            type: 'bar',
+                            data: { labels: months, datasets },
+                            options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'#9aa0b0', font:{size:10} } } }, scales:{ x:{ stacked:true, ticks:{color:'#9aa0b0',font:{size:9}} }, y:{ stacked:true, ticks:{color:'#9aa0b0',font:{size:9}} } } }
+                        });
+                    }
+                    // Show campaign breakdown if flyer leads exist
+                    if (ldData.campaigns && ldData.campaigns.length > 0) {
+                        const cLD = document.getElementById('chart-leads-source');
+                        if (cLD) {
+                            const info = document.createElement('div');
+                            info.style.cssText = 'font-size:10px;color:#9aa0b0;margin-top:4px;text-align:center;';
+                            info.textContent = '📄 פלאיירים: ' + ldData.campaigns.map(c => c.campaign + ' (' + c.count + ')').join(' | ');
+                            cLD.parentElement.appendChild(info);
+                        }
+                    }
+                } else {
+                    const cLD = document.getElementById('chart-leads-source');
+                    if (cLD) cLD.parentElement.innerHTML = '<div style="color:#9aa0b0;font-size:11px;text-align:center;padding:20px;">אין נתונים עדיין</div>';
+                }
+            } catch(e) { console.warn('Source charts error:', e); }
+        }
+
+        // -- QR GENERATOR --
+        let _qrLink = '';
+        async function generateQRLink() {
+            const name = document.getElementById('qr-campaign-name').value.trim();
+            if (!name) { alert('נא להזין שם קמפיין'); return; }
+            try {
+                const data = await fetchJSON('/api/campaign/generate-link', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ campaign_name: name }) });
+                if (!data.success) throw new Error(data.error);
+                _qrLink = data.link;
+                document.getElementById('qr-link-text').textContent = data.link;
+                // Generate QR using free API
+                const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=' + encodeURIComponent(data.link);
+                const img = document.createElement('img');
+                img.src = qrUrl; img.style.cssText = 'width:76px;height:76px;border-radius:2px;';
+                const qrDiv = document.getElementById('qr-code-img');
+                qrDiv.innerHTML = ''; qrDiv.appendChild(img);
+                document.getElementById('qr-result').style.display = 'block';
+            } catch(e) { alert('שגיאה: ' + e.message); }
+        }
+        function copyQRLink() {
+            if (_qrLink) { navigator.clipboard.writeText(_qrLink).then(() => alert('הלינק הועתק!')); }
+        }
+        function downloadQR() {
+            if (!_qrLink) return;
+            const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(_qrLink);
+            const a = document.createElement('a'); a.href = qrUrl; a.download = 'qr_campaign.png'; a.click();
+        }
+
+        // -- SYSTEM STATUS LOADER --
+        async function loadSystemStatus() {
+            try {
+                const d = await fetchJSON('/api/dashboard/system-status').catch(() => null);
+                if (!d) return;
+
+                // Vapi calls today
+                const vapiEl = document.getElementById('status-vapi-calls');
+                if (vapiEl) {
+                    vapiEl.textContent = d.vapi_calls_today !== undefined ? d.vapi_calls_today + ' שיחות' : 'פעיל';
+                }
+
+                // INFORU messages today
+                const inforuEl = document.getElementById('status-inforu-msgs');
+                if (inforuEl) {
+                    inforuEl.textContent = d.inforu_msgs_today !== undefined ? d.inforu_msgs_today + ' הודעות' : 'פעיל';
+                }
+
+                // Appointments today
+                const apptEl = document.getElementById('status-appointments');
+                if (apptEl) {
+                    const count = d.appointments_today || 0;
+                    apptEl.textContent = count + ' תיאומים';
+                    apptEl.style.background = count > 0 ? 'rgba(74,222,128,0.15)' : 'rgba(148,163,184,0.1)';
+                    apptEl.style.color = count > 0 ? '#4ade80' : '#9aa0b0';
+                }
+
+                // Pending reminders
+                const remEl = document.getElementById('status-reminders');
+                if (remEl) {
+                    const count = d.pending_reminders || 0;
+                    remEl.textContent = count + ' ממתינות';
+                    remEl.style.background = count > 0 ? 'rgba(232,184,75,0.15)' : 'rgba(148,163,184,0.1)';
+                    remEl.style.color = count > 0 ? '#e8b84b' : '#9aa0b0';
+                }
+
+                // Hot leads
+                const hotEl = document.getElementById('status-hot-leads');
+                if (hotEl) {
+                    const count = d.hot_leads_untreated || 0;
+                    hotEl.textContent = count + ' לידים';
+                    hotEl.style.background = count > 0 ? 'rgba(248,113,113,0.15)' : 'rgba(148,163,184,0.1)';
+                    hotEl.style.color = count > 0 ? '#f87171' : '#9aa0b0';
+                }
+
+                // Pipeline last run
+                const pipeEl = document.getElementById('status-pipeline-last');
+                if (pipeEl && d.pipeline_last_run) {
+                    const dt = new Date(d.pipeline_last_run);
+                    const timeStr = dt.toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'});
+                    const status = d.pipeline_last_status === 'success' ? '✅ ' + timeStr : d.pipeline_last_status === 'running' ? '⏳ רץ' : '❌ שגיאה';
+                    pipeEl.textContent = status;
+                    pipeEl.style.color = d.pipeline_last_status === 'success' ? '#4ade80' : d.pipeline_last_status === 'running' ? '#e8b84b' : '#f87171';
+                } else if (pipeEl) {
+                    pipeEl.textContent = 'טרם רץ';
+                    pipeEl.style.color = '#9aa0b0';
+                }
+
+                // Zoho CRM
+                const zohoEl = document.getElementById('status-zoho');
+                if (zohoEl) {
+                    zohoEl.textContent = d.zoho_connected ? 'מחובר' : 'לא מחובר';
+                    zohoEl.style.background = d.zoho_connected ? 'rgba(74,222,128,0.15)' : 'rgba(248,113,113,0.15)';
+                    zohoEl.style.color = d.zoho_connected ? '#4ade80' : '#f87171';
+                }
+            } catch(e) { console.warn('System status load error:', e); }
+        }
+
+        // -- UTILITIES --
         async function fetchJSON(url, options) {
             const res = await fetch(url, options);
             if (!res.ok) {
@@ -2161,13 +2351,9 @@ function generateDashboardHTML(stats) {
         }
 
         function errorHTML(msg, retryFn) {
-            return '<div class="error"><p>❌ שגיאה: ' + msg + '</p><button class="btn" data-onclick="' + retryFn + '" style="margin-top:8px;">נסה שוב</button></div>';
+            return '<div class="error"><p>❌ שגיאה: ' + msg + '</p><button class="btn" onclick="' + retryFn + '" style="margin-top:8px;">נסה שוב</button></div>';
         }
 
     </script>
 </body>
-</html>`;
-}
-
-module.exports = router;
-// v5.4.0 - SSI backfill, conversion rate chart, Trello board sync
+</html>

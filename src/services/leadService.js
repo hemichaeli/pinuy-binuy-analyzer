@@ -26,6 +26,12 @@ async function ensureLeadsTable() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_status ON website_leads(status)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_created ON website_leads(created_at DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_urgent ON website_leads(is_urgent) WHERE is_urgent = TRUE`);
+    // Campaign tracking columns (idempotent)
+    await pool.query(`ALTER TABLE website_leads ADD COLUMN IF NOT EXISTS campaign_tag TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE website_leads ADD COLUMN IF NOT EXISTS utm_source TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE website_leads ADD COLUMN IF NOT EXISTS utm_campaign TEXT`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_campaign ON website_leads(campaign_tag)`).catch(() => {});
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_website_leads_utm ON website_leads(utm_source)`).catch(() => {});
   } catch (err) {
     logger.warn('Lead table migration note:', err.message);
   }
@@ -134,11 +140,12 @@ async function processNewLead(leadData) {
     // 1. Save to database
     try {
       const insertResult = await pool.query(`
-        INSERT INTO website_leads (name, email, phone, phone_verified, user_type, form_data, mailing_list_consent, is_urgent, source)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id
+        INSERT INTO website_leads (name, email, phone, phone_verified, user_type, form_data, mailing_list_consent, is_urgent, source, campaign_tag, utm_source, utm_campaign)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id
       `, [leadData.name, leadData.email, leadData.phone, leadData.phone_verified || false,
         leadData.user_type, JSON.stringify(leadData.form_data || {}),
-        leadData.mailing_list_consent || false, isUrgent, leadData.source || 'website']);
+        leadData.mailing_list_consent || false, isUrgent, leadData.source || 'website',
+        leadData.campaign_tag || null, leadData.utm_source || null, leadData.utm_campaign || null]);
       results.leadId = insertResult.rows[0].id;
       results.saved = true;
       logger.info(`Lead saved: #${results.leadId} (${leadData.user_type}) ${isUrgent ? '[URGENT]' : ''}`);

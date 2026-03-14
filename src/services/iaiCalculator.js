@@ -309,6 +309,38 @@ async function propagateCityAvg(city, cityAvg) {
   }
 }
 
+// === STATUTORY BONUS SCORING ===
+/**
+ * Statutory Bonus: 0-15 extra points based on committee approvals, TAMAL, and realization speed.
+ * Added on top of the 6-axis IAI to reward projects with clear statutory progress.
+ */
+function calcStatutoryBonus(complex) {
+  let bonus = 0;
+  // Local committee approval: +3
+  if (complex.local_committee_date || complex.local_committee_status === 'approved') bonus += 3;
+  // District committee approval: +5
+  if (complex.district_committee_date || complex.district_committee_status === 'approved') bonus += 5;
+  // TAMAL (national plan): +4 — fast-tracked projects
+  if (complex.is_tamal === true || complex.is_tamal === 'true') bonus += 4;
+  // VATMAL (ות"מל): +3 if submitted, +6 if approved — highest acceleration factor
+  if (complex.is_vatmal === true || complex.is_vatmal === 'true') {
+    if (complex.vatmal_status === 'approved') bonus += 6;
+    else if (['submitted', 'in_review'].includes(complex.vatmal_status)) bonus += 3;
+    else bonus += 2; // is_vatmal=true but status unknown
+  }
+  // Realization speed: +0-3 based on estimated months to construction
+  const months = parseInt(complex.estimated_months_to_construction) || 0;
+  if (months > 0 && months <= 18) bonus += 3;
+  else if (months > 0 && months <= 36) bonus += 2;
+  else if (months > 0 && months <= 60) bonus += 1;
+  // Claude synthesis premium potential: +0-3
+  const synthScore = parseFloat(complex.premium_potential_score) || 0;
+  if (synthScore >= 80) bonus += 3;
+  else if (synthScore >= 60) bonus += 2;
+  else if (synthScore >= 40) bonus += 1;
+  return Math.min(21, bonus); // max 21: local(3)+district(5)+tamal(4)+vatmal(6)+speed(3)
+}
+
 // === MAIN CALCULATION ===
 
 async function calculateIAI(complexId) {
@@ -318,15 +350,16 @@ async function calculateIAI(complexId) {
 
     const complex = complexResult.rows[0];
     
-    // Calculate all 6 axes
+    // Calculate all 6 axes + statutory bonus
     const planning  = calcPlanningScore(complex);
     const premium   = await calcPremiumScore(complex);
     const momentum  = calcMomentumScore(complex);
     const scale     = calcScaleScore(complex);
     const developer = calcDeveloperScore(complex);
     const dataConf  = calcDataScore(complex);
+    const statutory = calcStatutoryBonus(complex);
     
-    const iai = Math.min(100, planning + premium + momentum + scale + developer + dataConf);
+    const iai = Math.min(100, planning + premium + momentum + scale + developer + dataConf + statutory);
     
     // Store theoretical premium for backward compatibility
     const theoreticalRange = PREMIUM_TABLE[complex.status] || PREMIUM_TABLE['unknown'];
@@ -352,11 +385,11 @@ async function calculateIAI(complexId) {
         Math.round(yieldFactor * 1000) / 1000, 
         iai, complexId]);
 
-    logger.info(`[IAI v3] ${complex.name}: IAI=${iai} | plan=${planning} prem=${premium} mom=${momentum} scale=${scale} dev=${developer} data=${dataConf} | actual_premium=${actualPremium !== null ? actualPremium + '%' : 'N/A'}`, { complexId });
+    logger.info(`[IAI v3] ${complex.name}: IAI=${iai} | plan=${planning} prem=${premium} mom=${momentum} scale=${scale} dev=${developer} data=${dataConf} stat=${statutory} | actual_premium=${actualPremium !== null ? actualPremium + '%' : 'N/A'}`, { complexId });
 
     return {
       iai_score: iai,
-      breakdown: { planning, premium, momentum, scale, developer, data: dataConf },
+      breakdown: { planning, premium, momentum, scale, developer, data: dataConf, statutory },
       premium_gap: premiumGap,
       certainty_factor: certaintyFactor,
       yield_factor: yieldFactor,
