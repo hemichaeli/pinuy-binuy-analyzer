@@ -311,7 +311,23 @@ async function getStatus() {
   }
 }
 
+async function getBoards() {
+  const boards = await trelloRequest('/members/me/boards?fields=id,name,desc,closed&filter=open');
+  return (boards || []).filter(b => !b.closed);
+}
+
+async function getBoardDetails(boardId) {
+  const bid = boardId || TRELLO_BOARD_ID;
+  if (!bid) throw new Error('No board ID provided');
+  const [lists, labels] = await Promise.all([
+    trelloRequest(`/boards/${bid}/lists?filter=open`),
+    trelloRequest(`/boards/${bid}/labels`)
+  ]);
+  return { id: bid, lists: lists || [], labels: labels || [] };
+}
+
 module.exports = {
   createCard, createInvestorCard, createSellerCard, createContactCard, createNotificationCard,
-  isConfigured, getStatus, loadBoardData, getListId, getLabelId, getLeadPriority
+  isConfigured, getStatus, loadBoardData, getListId, getLabelId, getLeadPriority,
+  getBoards, getBoardDetails
 };

@@ -197,7 +197,7 @@ router.post('/api/whatsapp/convert-to-lead', async (req, res) => {
 router.get('/api/tasks', async (req, res) => {
     try {
         const { status } = req.query;
-        let query = `SELECT * FROM tasks WHERE 1=1`;
+        let query = `SELECT * FROM dashboard_tasks WHERE 1=1`;
         const params = [];
         if (status && status !== 'all') { query += ` AND status = $1`; params.push(status); }
         query += ` ORDER BY created_at DESC`;
@@ -212,7 +212,7 @@ router.post('/api/tasks', async (req, res) => {
     try {
         const { title, description, status, priority, due_date, reminder_at } = req.body;
         const result = await pool.query(
-            `INSERT INTO tasks (title, description, status, priority, due_date, reminder_at, created_at, updated_at)
+            `INSERT INTO dashboard_tasks (title, description, status, priority, due_date, reminder_at, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`,
             [title, description || null, status || 'todo', priority || 'normal', due_date || null, reminder_at || null]
         );
@@ -227,7 +227,7 @@ router.put('/api/tasks/:id', async (req, res) => {
         const { id } = req.params;
         const { title, description, status, priority, due_date, reminder_at, reminder_snoozed, trello_card_id, trello_card_url } = req.body;
         const result = await pool.query(
-            `UPDATE tasks SET
+            `UPDATE dashboard_tasks SET
                 title = COALESCE($1, title),
                 description = COALESCE($2, description),
                 status = COALESCE($3, status),
@@ -250,17 +250,27 @@ router.put('/api/tasks/:id', async (req, res) => {
 
 router.delete('/api/tasks/:id', async (req, res) => {
     try {
-        await pool.query('DELETE FROM tasks WHERE id = $1', [req.params.id]);
+        await pool.query('DELETE FROM dashboard_tasks WHERE id = $1', [req.params.id]);
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
+router.get('/api/trello/boards', async (req, res) => {
+    try {
+        const trelloService = require('../services/trelloService');
+        const boards = await trelloService.getBoards();
+        res.json({ success: true, boards });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 router.get('/api/trello/board', async (req, res) => {
     try {
         const trelloService = require('../services/trelloService');
-        const board = await trelloService.getBoardDetails();
+        const boardId = req.query.boardId || null;
+        const board = await trelloService.getBoardDetails(boardId);
         res.json({ success: true, lists: board.lists || [], labels: board.labels || [] });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -269,11 +279,29 @@ router.get('/api/trello/board', async (req, res) => {
 
 router.post('/api/trello/create-task-card', async (req, res) => {
     try {
-        const { title, description, listName, labelName, dueDate, taskId } = req.body;
+        const { title, description, listName, labelName, dueDate, taskId, boardId } = req.body;
         const trelloService = require('../services/trelloService');
-        const card = await trelloService.createCard({ title, description, listName, labelName, dueDate });
+        let card;
+        if (boardId) {
+            // Dynamic board: get list ID from the specified board
+            const boardDetails = await trelloService.getBoardDetails(boardId);
+            const list = boardDetails.lists.find(l => l.name === listName);
+            if (!list) throw new Error('List "' + listName + '" not found in board');
+            const { default: fetch2 } = await import('node-fetch').catch(() => ({ default: fetch }));
+            const TRELLO_API_KEY = process.env.TRELLO_API_KEY;
+            const TRELLO_TOKEN = process.env.TRELLO_TOKEN;
+            const cardResp = await fetch(`https://api.trello.com/1/cards?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: title, desc: description || '', idList: list.id, due: dueDate || null })
+            });
+            card = await cardResp.json();
+            card.url = card.shortUrl || card.url;
+        } else {
+            card = await trelloService.createCard({ title, description, listName, labelName, dueDate });
+        }
         if (taskId) {
-            await pool.query('UPDATE tasks SET trello_card_id = $1, trello_card_url = $2, updated_at = NOW() WHERE id = $3',
+            await pool.query('UPDATE dashboard_tasks SET trello_card_id = $1, trello_card_url = $2, updated_at = NOW() WHERE id = $3',
                 [card.id, card.url, taskId]);
         }
         res.json({ success: true, id: card.id, url: card.url });
@@ -900,6 +928,18 @@ function generateDashboardHTML(stats) {
                 <input type="datetime-local" id="task-form-reminder" class="filter-input" style="width:100%;">
             </div>
             <input type="hidden" id="task-form-id">
+            <div class="form-group" style="margin-top:12px;border-top:1px solid var(--border-subtle);padding-top:12px;">
+                <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+                    <span>📌 לוח Trello (אופציונלי)</span>
+                    <button class="btn btn-secondary" data-onclick="setDefaultTrelloBoard()" style="padding:2px 8px;font-size:10px;" id="set-default-board-btn" title="הגדר כלוח ברירת מחדל">⭐ ברירת מחדל</button>
+                </label>
+                <select id="task-form-trello-board" class="filter-select" style="width:100%;" data-onchange="onTrelloBoardChange(this.value)">
+                    <option value="">ללא Trello</option>
+                </select>
+                <select id="task-form-trello-list" class="filter-select" style="width:100%;margin-top:6px;display:none;">
+                    <option value="">בחר רשימה...</option>
+                </select>
+            </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
                 <button class="btn btn-secondary" data-onclick="closeTaskModal()" style="padding:9px 16px;">ביטול</button>
                 <button class="btn" data-onclick="saveTask()" style="padding:9px 16px;">💾 שמור</button>
@@ -939,6 +979,13 @@ function generateDashboardHTML(stats) {
                 const inforuBtn = e.target.closest('.inforu-btn');
                 if (inforuBtn) {
                     sendInforu(inforuBtn.dataset.phone, inforuBtn.dataset.name);
+                }
+            });
+            document.addEventListener('change', function(e) {
+                const sel = e.target.closest('[data-onchange]');
+                if (sel) {
+                    var fn = sel.getAttribute('data-onchange');
+                    try { eval(fn); } catch(err) { console.error('Change action error:', fn, err); }
                 }
             });
         });
@@ -1923,6 +1970,58 @@ function generateDashboardHTML(stats) {
             }).catch(function() {});
         }
 
+        let _trelloBoardsCache = null;
+        async function loadTrelloBoardsForTask() {
+            const boardSel = document.getElementById('task-form-trello-board');
+            if (!boardSel) return;
+            if (_trelloBoardsCache) {
+                populateTrelloBoardSelector(_trelloBoardsCache);
+                return;
+            }
+            try {
+                const data = await fetchJSON('/dashboard/api/trello/boards');
+                _trelloBoardsCache = data.boards || [];
+                populateTrelloBoardSelector(_trelloBoardsCache);
+            } catch(e) { console.error('Trello boards load error:', e.message); }
+        }
+        function populateTrelloBoardSelector(boards) {
+            const boardSel = document.getElementById('task-form-trello-board');
+            if (!boardSel) return;
+            const defaultBoardId = localStorage.getItem('trello_default_board_id') || '';
+            const lastBoardId = localStorage.getItem('trello_last_board_id') || defaultBoardId;
+            boardSel.innerHTML = '<option value="">\u05dc\u05dc\u05d0 Trello</option>' +
+                boards.map(function(b) {
+                    const isDefault = b.id === defaultBoardId;
+                    const label = b.name + (isDefault ? ' \u2b50' : '');
+                    return '<option value="' + b.id + '">' + label + '</option>';
+                }).join('');
+            if (lastBoardId) {
+                boardSel.value = lastBoardId;
+                if (boardSel.value) onTrelloBoardChange(lastBoardId);
+            }
+        }
+        async function onTrelloBoardChange(boardId) {
+            const listSel = document.getElementById('task-form-trello-list');
+            if (!boardId) { listSel.style.display = 'none'; return; }
+            listSel.style.display = 'block';
+            listSel.innerHTML = '<option value="">\u05d8\u05d5\u05e2\u05df...</option>';
+            try {
+                const data = await fetchJSON('/dashboard/api/trello/board?boardId=' + boardId);
+                const lists = data.lists || [];
+                listSel.innerHTML = '<option value="">\u05d1\u05d7\u05e8 \u05e8\u05e9\u05d9\u05de\u05d4...</option>' +
+                    lists.map(function(l) { return '<option value="' + l.name + '">' + l.name + '</option>'; }).join('');
+                localStorage.setItem('trello_last_board_id', boardId);
+            } catch(e) { listSel.innerHTML = '<option value="">\u05e9\u05d2\u05d9\u05d0\u05d4</option>'; }
+        }
+        function setDefaultTrelloBoard() {
+            const boardSel = document.getElementById('task-form-trello-board');
+            const boardId = boardSel ? boardSel.value : '';
+            if (!boardId) { alert('\u05d1\u05d7\u05e8 \u05dc\u05d5\u05d7 \u05ea\u05d7\u05d9\u05dc\u05d4'); return; }
+            localStorage.setItem('trello_default_board_id', boardId);
+            const boardName = boardSel.options[boardSel.selectedIndex].text.replace(' \u2b50','');
+            if (_trelloBoardsCache) populateTrelloBoardSelector(_trelloBoardsCache);
+            alert('\u2b50 \u05dc\u05d5\u05d7 \u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc: ' + boardName);
+        }
         function openNewTaskModal() {
             document.getElementById('task-form-id').value = '';
             document.getElementById('task-form-title').value = '';
@@ -1931,8 +2030,9 @@ function generateDashboardHTML(stats) {
             document.getElementById('task-form-priority').value = 'normal';
             document.getElementById('task-form-due').value = '';
             document.getElementById('task-form-reminder').value = '';
-            document.getElementById('task-modal-title').textContent = '➕ משימה חדשה';
+            document.getElementById('task-modal-title').textContent = '\u2795 \u05de\u05e9\u05d9\u05de\u05d4 \u05d7\u05d3\u05e9\u05d4';
             document.getElementById('task-modal').style.display = 'flex';
+            loadTrelloBoardsForTask();
         }
 
         async function editTask(id) {
@@ -1959,7 +2059,9 @@ function generateDashboardHTML(stats) {
         async function saveTask() {
             const id = document.getElementById('task-form-id').value;
             const title = document.getElementById('task-form-title').value.trim();
-            if (!title) { alert('נא הזן כותרת'); return; }
+            if (!title) { alert('\u05e0\u05d0 \u05d4\u05d6\u05df \u05db\u05d5\u05ea\u05e8\u05ea'); return; }
+            const trelloBoardId = document.getElementById('task-form-trello-board') ? document.getElementById('task-form-trello-board').value : '';
+            const trelloListName = document.getElementById('task-form-trello-list') ? document.getElementById('task-form-trello-list').value : '';
             const body = {
                 title: title,
                 description: document.getElementById('task-form-desc').value.trim() || null,
@@ -1977,9 +2079,19 @@ function generateDashboardHTML(stats) {
                 }
                 const data = await resp.json();
                 if (!data.success) throw new Error(data.error);
+                const savedTaskId = data.task ? data.task.id : id;
+                // Create Trello card if board+list selected
+                if (trelloBoardId && trelloListName && savedTaskId) {
+                    try {
+                        const trelloBody = { title: title, description: body.description || '', listName: trelloListName, dueDate: body.due_date || null, taskId: savedTaskId, boardId: trelloBoardId };
+                        const tr = await fetch('/dashboard/api/trello/create-task-card', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(trelloBody) });
+                        const trData = await tr.json();
+                        if (trData.url) window.open(trData.url, '_blank');
+                    } catch(te) { console.warn('Trello card creation failed:', te.message); }
+                }
                 closeTaskModal();
                 loadTasks(_currentTaskFilter);
-            } catch (e) { alert('שגיאה: ' + e.message); }
+            } catch (e) { alert('\u05e9\u05d2\u05d9\u05d0\u05d4: ' + e.message); }
         }
 
         // ── TRELLO ───────────────────────────────────────────────────
