@@ -62,7 +62,8 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS reminder2_template_id TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS max_call_attempts    INTEGER NOT NULL DEFAULT 2;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS call_delay_after_wa_hours INTEGER NOT NULL DEFAULT 48;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS call_retry_delay_hours    INTEGER NOT NULL DEFAULT 24;
-ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS flow_enabled         BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS flow_enabled              BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS initial_message_inforu_id TEXT; -- INFORU template ID of the Zoho-sent initial message (read-only reference)
 
 -- ── campaign_leads: add flow tracking columns ────────────
 ALTER TABLE campaign_leads ADD COLUMN IF NOT EXISTS zoho_contact_id      TEXT;

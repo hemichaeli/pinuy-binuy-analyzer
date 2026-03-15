@@ -214,6 +214,19 @@ textarea{resize:vertical;min-height:80px}
             </div>
             <div class="flow-section">
               <div class="flow-section-title">📱 תזכורות WhatsApp</div>
+              <!-- Initial message (sent by Zoho) — editable only at creation -->
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:end;margin-bottom:12px;background:#0d1a2a;border:1px solid #1e3a5f;border-radius:7px;padding:10px">
+                <div style="text-align:center;min-width:60px">
+                  <div style="font-size:18px;font-weight:700;color:#78909c">0</div>
+                  <div style="font-size:10px;color:#546e7a">הודעה</div>
+                  <div style="font-size:9px;color:#37474f">ראשונה</div>
+                </div>
+                <div class="form-group" style="margin:0">
+                  <label>INFORU Template ID — הודעה ראשונה (נשלחת עיי זוהו)</label>
+                  <input type="text" id="bInitialInforu" placeholder="מספר תבנית ההודעה הראשונה באינפוריו" style="border-color:#1e3a5f">
+                  <div style="font-size:10px;color:#546e7a;margin-top:3px">הודעה זו נשלחת על ידי זוהו בלבד. המזהה שלה יוצג לעיון בלבד בדשבורד.</div>
+                </div>
+              </div>
               <div class="flow-grid" style="margin-bottom:12px">
                 <div class="form-group">
                   <label>מספר תזכורות WA</label>
@@ -504,8 +517,24 @@ textarea{resize:vertical;min-height:80px}
       if (c.reminder3_template_id) tplMap[3] = c.reminder3_template_id;
       if (c.reminder4_template_id) tplMap[4] = c.reminder4_template_id;
       if (c.reminder5_template_id) tplMap[5] = c.reminder5_template_id;
+      var initInforuDisplay = c.initial_message_inforu_id
+        ? '<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;margin-bottom:12px;background:#0a0f1a;border:1px solid #1e3a5f;border-radius:7px;padding:10px">' +
+            '<div style="text-align:center;min-width:60px">' +
+              '<div style="font-size:18px;font-weight:700;color:#78909c">0</div>' +
+              '<div style="font-size:10px;color:#546e7a">הודעה</div>' +
+              '<div style="font-size:9px;color:#37474f">ראשונה</div>' +
+            '</div>' +
+            '<div>' +
+              '<div style="font-size:11px;color:#78909c;margin-bottom:4px">INFORU Template ID — הודעה ראשונה (נשלחת עיי זוהו)</div>' +
+              '<div style="font-size:16px;font-weight:700;color:#4fc3f7;letter-spacing:1px;padding:6px 10px;background:#0d1117;border:1px solid #1e3a5f;border-radius:5px;display:inline-block">' + escHtml(c.initial_message_inforu_id) + '</div>' +
+              '<div style="font-size:10px;color:#37474f;margin-top:4px">🔒 לקריאה בלבד — לשינוי יש לעדכן בזוהו</div>' +
+            '</div>' +
+          '</div>'
+        : '<div style="font-size:11px;color:#546e7a;padding:6px 0;margin-bottom:10px">לא הוזן INFORU Template ID להודעה הראשונה</div>';
       el.innerHTML = '<div class="flow-section"><div class="flow-section-title">⚙️ הגדרות זרימה — ' + escHtml(c.name) + '</div>' +
         '<div class="form-group"><label>Zoho Campaign ID</label><input type="text" id="fs-zoho-' + id + '" value="' + escHtml(c.zoho_campaign_id || '') + '" placeholder="מזהה זוהו"></div>' +
+        '<div style="font-size:12px;font-weight:700;color:#4db6ac;margin-bottom:8px">📱 תזכורות WhatsApp</div>' +
+        initInforuDisplay +
         '<div class="flow-grid" style="margin-bottom:12px">' +
           '<div class="form-group"><label>מספר תזכורות WA</label><input type="number" id="fs-maxr-' + id + '" value="' + maxR + '" min="0" max="5" oninput="renderReminderRows(\'fs-' + id + '-\', null, null)"></div>' +
           '<div class="form-group"><label>השהיה בין תזכורות (שעות)</label><input type="number" id="fs-rdelay-' + id + '" value="' + (c.wa_reminder_delay_hours || 24) + '" min="1" max="168"></div>' +
@@ -669,6 +698,7 @@ textarea{resize:vertical;min-height:80px}
       }
       apiFetch(API + '/' + campId + '/flow-settings', 'POST', Object.assign({
         zoho_campaign_id: document.getElementById('bZohoId').value.trim() || null,
+        initial_message_inforu_id: document.getElementById('bInitialInforu').value.trim() || null,
         max_wa_reminders: bMaxR,
         wa_reminder_delay_hours: parseInt(document.getElementById('bReminderDelay').value) || 24,
         max_call_attempts: parseInt(document.getElementById('bMaxCalls').value) || 2,

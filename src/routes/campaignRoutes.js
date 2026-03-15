@@ -679,31 +679,47 @@ router.get('/:id/leads-detail', async (req, res) => {
 router.post('/:id/flow-settings', async (req, res) => {
   try {
     const {
-      zoho_campaign_id,
+      zoho_campaign_id, initial_message_inforu_id,
       max_wa_reminders, wa_reminder_delay_hours,
       reminder1_template_id, reminder2_template_id,
+      reminder3_template_id, reminder4_template_id, reminder5_template_id,
       max_call_attempts, call_delay_after_wa_hours,
       call_retry_delay_hours, flow_enabled
     } = req.body;
+    // Ensure reminder3-5 columns exist (idempotent)
+    await pool.query(`
+      ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS reminder3_template_id TEXT;
+      ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS reminder4_template_id TEXT;
+      ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS reminder5_template_id TEXT;
+      ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS initial_message_inforu_id TEXT;
+    `).catch(() => {});
     await pool.query(`
       UPDATE campaigns SET
-        zoho_campaign_id          = COALESCE($1,  zoho_campaign_id),
-        max_wa_reminders          = COALESCE($2,  max_wa_reminders),
-        wa_reminder_delay_hours   = COALESCE($3,  wa_reminder_delay_hours),
-        reminder1_template_id     = COALESCE($4,  reminder1_template_id),
-        reminder2_template_id     = COALESCE($5,  reminder2_template_id),
-        max_call_attempts         = COALESCE($6,  max_call_attempts),
-        call_delay_after_wa_hours = COALESCE($7,  call_delay_after_wa_hours),
-        call_retry_delay_hours    = COALESCE($8,  call_retry_delay_hours),
-        flow_enabled              = COALESCE($9,  flow_enabled),
-        updated_at                = NOW()
-      WHERE id = $10
+        zoho_campaign_id              = COALESCE($1,  zoho_campaign_id),
+        initial_message_inforu_id     = COALESCE($2,  initial_message_inforu_id),
+        max_wa_reminders              = COALESCE($3,  max_wa_reminders),
+        wa_reminder_delay_hours       = COALESCE($4,  wa_reminder_delay_hours),
+        reminder1_template_id         = COALESCE($5,  reminder1_template_id),
+        reminder2_template_id         = COALESCE($6,  reminder2_template_id),
+        reminder3_template_id         = COALESCE($7,  reminder3_template_id),
+        reminder4_template_id         = COALESCE($8,  reminder4_template_id),
+        reminder5_template_id         = COALESCE($9,  reminder5_template_id),
+        max_call_attempts             = COALESCE($10, max_call_attempts),
+        call_delay_after_wa_hours     = COALESCE($11, call_delay_after_wa_hours),
+        call_retry_delay_hours        = COALESCE($12, call_retry_delay_hours),
+        flow_enabled                  = COALESCE($13, flow_enabled),
+        updated_at                    = NOW()
+      WHERE id = $14
     `, [
       zoho_campaign_id || null,
+      initial_message_inforu_id || null,
       max_wa_reminders != null ? parseInt(max_wa_reminders) : null,
       wa_reminder_delay_hours != null ? parseInt(wa_reminder_delay_hours) : null,
       reminder1_template_id || null,
       reminder2_template_id || null,
+      reminder3_template_id || null,
+      reminder4_template_id || null,
+      reminder5_template_id || null,
       max_call_attempts != null ? parseInt(max_call_attempts) : null,
       call_delay_after_wa_hours != null ? parseInt(call_delay_after_wa_hours) : null,
       call_retry_delay_hours != null ? parseInt(call_retry_delay_hours) : null,
