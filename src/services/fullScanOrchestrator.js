@@ -191,14 +191,20 @@ async function runAiEnrichment(limit = 50) {
 // MAIN ORCHESTRATOR
 // ============================================================
 async function runFullScan(options = {}) {
+  const ALL_SOURCES = ['yad2', 'yad1', 'dira', 'winwin', 'homeless', 'komo', 'banknadlan', 'bidspirit', 'madlan'];
   const {
-    sources = ['yad2', 'yad1', 'dira', 'winwin', 'homeless', 'komo', 'banknadlan', 'bidspirit', 'madlan'],
+    sources: sourcesRaw = ALL_SOURCES,
     enrichPhones = true,
     enrichAi = true,
     phoneLimit = 200,
     aiLimit = 50
   } = options;
-  
+
+  // Accept 'all' string, null, undefined, or array
+  const sources = (!sourcesRaw || sourcesRaw === 'all')
+    ? ALL_SOURCES
+    : Array.isArray(sourcesRaw) ? sourcesRaw : [sourcesRaw];
+
   const startTime = Date.now();
   logger.info(`[FullScan] Starting full scan: ${sources.join(', ')}`);
   
