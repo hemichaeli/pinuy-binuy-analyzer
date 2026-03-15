@@ -33,7 +33,8 @@
 const cron = require('node-cron');
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
-const Anthropic = require('@anthropic-ai/sdk');
+let Anthropic = null;
+try { Anthropic = require('@anthropic-ai/sdk'); } catch (e) { logger.warn('[MasterPipeline] @anthropic-ai/sdk not installed — Claude synthesis disabled'); }
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 const PIPELINE_CRON = process.env.MASTER_PIPELINE_CRON || '0 6 * * *'; // 06:00 daily Israel time
@@ -477,6 +478,7 @@ ${JSON.stringify(statutory, null, 2).slice(0, 1500)}
  */
 async function synthesizeComplex(complex) {
   try {
+    if (!Anthropic) throw new Error('@anthropic-ai/sdk not installed');
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set');
 

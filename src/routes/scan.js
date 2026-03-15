@@ -1144,6 +1144,28 @@ router.post('/cleanup-phoneless', async (req, res) => {
   }
 });
 
+// POST /api/scan/migrate-columns - Add missing columns to listings table
+router.post('/migrate-columns', async (req, res) => {
+  try {
+    const results = [];
+    const cols = [
+      ['thumbnail_url', 'TEXT'],
+      ['contact_name', 'TEXT'],
+    ];
+    for (const [col, type] of cols) {
+      try {
+        await pool.query(`ALTER TABLE listings ADD COLUMN IF NOT EXISTS ${col} ${type}`);
+        results.push(`listings.${col}: OK`);
+      } catch (e) {
+        results.push(`listings.${col}: ${e.message}`);
+      }
+    }
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/scan/:id - MUST BE LAST (catch-all for numeric scan IDs)
 router.get('/:id', async (req, res) => {
   try {
