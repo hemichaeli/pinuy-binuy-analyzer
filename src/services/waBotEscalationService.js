@@ -93,7 +93,7 @@ async function runEscalation() {
     WHERE l.source = 'whatsapp_bot'
       AND lm.sender = 'bot'
       AND lm.last_at < NOW() - ($1::int * INTERVAL '1 minute')
-      AND l.status NOT IN ('called', 'closed', 'pending_handoff', 'disqualified', 'vapi_called')
+      AND l.status NOT IN ('called', 'closed', 'pending_handoff', 'disqualified', 'vapi_called', 'vapi_failed')
     LIMIT 10
   `, [waitMinutes]);
 
@@ -138,6 +138,13 @@ async function runEscalation() {
 
     } catch (e) {
       logger.error(`[WaBotEscalation] Failed for lead #${lead.id}:`, e.message);
+      // Mark as failed so we don't retry endlessly
+      try {
+        await pool.query(
+          "UPDATE leads SET status = 'vapi_failed', updated_at = NOW() WHERE id = $1",
+          [lead.id]
+        );
+      } catch (_) {}
       errors++;
     }
   }

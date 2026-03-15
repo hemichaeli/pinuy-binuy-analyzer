@@ -121,9 +121,18 @@ async function fetchMadlanData(complexId) {
                (complex_id, transaction_date, price, area_sqm, rooms, floor, 
                 price_per_sqm, address, city, source, building_year)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'madlan', $10)`,
-              [complexId, tx.date || null, tx.price, tx.area_sqm || null,
-               tx.rooms || null, tx.floor || null, pricePerSqm,
-               tx.address, complex.city, tx.building_year || null]
+              [
+               complexId,
+               tx.date ? (String(tx.date).length === 4 ? `${tx.date}-01-01` : tx.date) : null,
+               tx.price,
+               tx.area_sqm ? Math.round(parseFloat(tx.area_sqm)) : null,
+               tx.rooms ? Math.round(parseFloat(tx.rooms)) : null,
+               tx.floor !== undefined && tx.floor !== null ? Math.round(parseFloat(tx.floor)) : null,
+               pricePerSqm,
+               tx.address,
+               complex.city,
+               tx.building_year ? parseInt(String(tx.building_year).substring(0, 4), 10) : null
+              ]
             );
             newTransactions++;
           }
