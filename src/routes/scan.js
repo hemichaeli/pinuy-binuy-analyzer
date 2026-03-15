@@ -1069,6 +1069,81 @@ router.post('/facebook-marketplace', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/scan/cleanup-phoneless — delete listings without phone, then full re-scan + Perplexity enrichment
+router.post('/cleanup-phoneless', async (req, res) => {
+  try {
+    const { dryRun = false, usePerplexity = true, phoneLimit = 500 } = req.body;
+
+    // Count listings without phone
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM listings WHERE (phone IS NULL OR phone = '' OR phone = 'NULL') AND is_active = TRUE`
+    );
+    const phonelessCount = parseInt(countResult.rows[0].total);
+
+    if (dryRun) {
+      return res.json({
+        dryRun: true,
+        phoneless_count: phonelessCount,
+        message: `Would delete ${phonelessCount} phone-less listings, then run full scan + Perplexity enrichment`
+      });
+    }
+
+    // Delete listings without phone
+    const deleteResult = await pool.query(
+      `DELETE FROM listings WHERE (phone IS NULL OR phone = '' OR phone = 'NULL') AND is_active = TRUE RETURNING id`
+    );
+    const deletedCount = deleteResult.rowCount;
+
+    // Log the scan
+    const scanLog = await pool.query(
+      `INSERT INTO scan_logs (scan_type, status, summary) VALUES ('cleanup_rescan', 'running', $1) RETURNING *`,
+      [`Deleted ${deletedCount} phone-less listings, starting full re-scan`]
+    );
+    const scanId = scanLog.rows[0].id;
+
+    res.json({
+      success: true,
+      deleted: deletedCount,
+      scan_id: scanId,
+      message: `Deleted ${deletedCount} listings without phone. Full re-scan + Perplexity enrichment running in background (scan #${scanId}).`
+    });
+
+    // Run full scan + Perplexity enrichment in background
+    (async () => {
+      try {
+        const { runFullScan } = require('../services/fullScanOrchestrator');
+        const results = await runFullScan({ sources: 'all', enrichPhones: true, enrichAi: false, phoneLimit });
+
+        // After full scan, run Perplexity enrichment on remaining phone-less listings
+        let perplexityResult = { enriched: 0 };
+        if (usePerplexity) {
+          const { enrichAllPhones } = require('../services/phoneEnrichmentService');
+          perplexityResult = await enrichAllPhones({ limit: phoneLimit, usePerplexity: true });
+        }
+
+        const summary = [
+          `Re-scan: ${results.total_new || 0} new, ${results.total_updated || 0} updated`,
+          `Phones: ${results.phone_enrichment?.enriched || 0} direct + ${perplexityResult.enriched || 0} Perplexity`
+        ].join('. ');
+
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(), summary = $1 WHERE id = $2`,
+          [summary, scanId]
+        );
+        logger.info(`[CleanupRescan] Done: ${summary}`);
+      } catch (err) {
+        await pool.query(
+          `UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`,
+          [err.message, scanId]
+        );
+        logger.error('[CleanupRescan] Failed', { error: err.message });
+      }
+    })();
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/scan/:id - MUST BE LAST (catch-all for numeric scan IDs)
 router.get('/:id', async (req, res) => {
   try {
