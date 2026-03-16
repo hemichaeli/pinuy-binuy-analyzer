@@ -800,6 +800,20 @@
             setTimeout(loadSSIStats, 900);
             setTimeout(loadSystemStatus, 600);
 
+            // Deep-link: navigate to tab from URL hash (e.g. #ads, #leads/hot)
+            (function() {
+                const hash = window.location.hash.replace('#', '');
+                if (hash) {
+                    const parts = hash.split('/');
+                    const tabName = parts[0];
+                    const filter = parts[1] || null;
+                    const validTabs = ['dashboard','ads','messages','leads','complexes','kones','news','scheduling','scrapers','tasks'];
+                    if (validTabs.includes(tabName)) {
+                        setTimeout(function() { switchTab(tabName, filter); }, 300);
+                    }
+                }
+            })();
+
             document.querySelectorAll('.nav-tab[data-tab]').forEach(function(el) {
                 el.addEventListener('click', function() {
                     switchTab(this.getAttribute('data-tab'));
@@ -834,6 +848,8 @@
                 if (n.getAttribute('data-tab') === tabName) n.classList.add('active');
             });
             currentTab = tabName;
+            // Update URL hash for deep-linking from emails
+            try { history.replaceState(null, '', '#' + tabName + (filter ? '/' + filter : '')); } catch(e) {}
             window.scrollTo(0, 0);
             if (tabName === 'ads') loadAds();
             else if (tabName === 'messages') loadConversations();
