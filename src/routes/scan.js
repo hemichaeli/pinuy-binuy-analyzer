@@ -450,10 +450,21 @@ router.post('/yad2', async (req, res) => {
     res.json({ message: 'yad2 listing scan triggered', scan_id: scanId });
     (async () => {
       try {
-        const results = await yad2Scraper.scanAll({ city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: staleOnly !== false });
-        await calculateAllSSI();
-        await pool.query(`UPDATE scan_logs SET status = 'completed', completed_at = NOW(), complexes_scanned = $1, new_listings = $2, updated_listings = $3, summary = $4 WHERE id = $5`,
-          [results.total, results.totalNew, results.totalUpdated, `yad2: ${results.succeeded}/${results.total} ok, ${results.totalNew} new, ${results.totalUpdated} updated`, scanId]);
+        let results;
+        // Use city-based scan (fast, ~1-2 min) unless a specific city or limit is requested
+        if (!city && !limit) {
+          results = await yad2Scraper.scanAllByCities({ staleOnly: staleOnly !== false });
+          await calculateAllSSI();
+          await pool.query(`UPDATE scan_logs SET status = 'completed', completed_at = NOW(), complexes_scanned = $1, new_listings = $2, updated_listings = $3, summary = $4 WHERE id = $5`,
+            [results.citiesScanned, results.totalNew, results.totalUpdated,
+             `yad2 city-scan: ${results.citiesScanned} cities, ${results.totalListingsFound} fetched, ${results.totalNew} new, ${results.totalUpdated} updated`, scanId]);
+        } else {
+          // Fallback to complex-based scan for specific city/limit requests
+          results = await yad2Scraper.scanAll({ city: city || null, limit: limit ? parseInt(limit) : null, staleOnly: staleOnly !== false });
+          await calculateAllSSI();
+          await pool.query(`UPDATE scan_logs SET status = 'completed', completed_at = NOW(), complexes_scanned = $1, new_listings = $2, updated_listings = $3, summary = $4 WHERE id = $5`,
+            [results.total, results.totalNew, results.totalUpdated, `yad2: ${results.succeeded}/${results.total} ok, ${results.totalNew} new, ${results.totalUpdated} updated`, scanId]);
+        }
       } catch (err) { await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]); }
     })();
   } catch (err) { res.status(500).json({ error: 'Failed to trigger yad2 scan' }); }
