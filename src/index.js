@@ -15,7 +15,7 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const VERSION = '4.99.0';
-const BUILD = '2026-03-18-v4.99.5-github-backup';
+const BUILD = '2026-03-18-v5.0.0-github-backup';
 
 async function runAutoMigrations() {
   try {
@@ -132,7 +132,8 @@ const limiter = rateLimit({
     req.path.startsWith('/api/visits/') || req.path.startsWith('/api/campaigns/') ||
     req.path.startsWith('/events/') || req.path.startsWith('/api/events/') ||
     req.path.startsWith('/pro/') || req.path.startsWith('/attend/') ||
-    req.path.startsWith('/api/outreach/'),
+    req.path.startsWith('/api/outreach/') ||
+    req.path.startsWith('/api/comms/'),
   message: { error: 'Too many requests, please try again later' }
 });
 app.use('/api/', limiter);
@@ -192,6 +193,8 @@ function loadAllRoutes() {
     // ── Event Scheduler — Admin UI MUST come before scheduler (avoids :id conflict) ──
     { path: '/events', file: 'routes/eventAdminRoute.js' },
     { path: '/events', file: 'routes/eventSchedulerRoutes.js' },
+    // ── Unified Communications: sellers (inbound), buyers, outgoing listings ──
+    { path: '/api/comms', file: 'routes/unifiedCommsRoutes.js' },
   ];
 
   for (const { path: routePath, file } of routeFiles) {

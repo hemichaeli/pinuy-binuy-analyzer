@@ -191,6 +191,9 @@
         <div class="nav-tab" data-tab="scheduling">📅 תיאומים</div>
         <div class="nav-tab" data-tab="scrapers">🔍 סריקות</div>
         <div class="nav-tab" data-tab="tasks">✅ משימות</div>
+        <div class="nav-tab" data-tab="sellers">🏠 מוכרים</div>
+        <div class="nav-tab" data-tab="buyers">👥 קונים</div>
+        <div class="nav-tab" data-tab="publish">📢 פרסום</div>
     </div>
 
     <!-- DASHBOARD TAB -->
@@ -680,6 +683,210 @@
             </div>
             <div id="trello-board-status" style="font-size:12px;color:var(--text-muted);margin-bottom:10px;"></div>
             <div id="trello-board-cards"><div class="loading">📌 טוען לוחות Favorites...</div></div>
+        </div>
+    </div>
+
+    <!-- SELLERS TAB -->
+    <div id="tab-sellers" class="tab-content" style="padding:0;">
+        <div class="section" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <h2 style="margin:0;">🏠 מוכרים</h2>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <div style="display:flex;gap:0;border:1px solid var(--border-subtle);border-radius:6px;overflow:hidden;">
+                        <button class="btn btn-secondary" id="sellers-tab-outreach" onclick="switchSellersView('outreach')" style="border-radius:0;border:none;padding:7px 14px;font-size:12px;">📤 פניות שלנו</button>
+                        <button class="btn" id="sellers-tab-inbound" onclick="switchSellersView('inbound')" style="border-radius:0;border:none;padding:7px 14px;font-size:12px;">📥 פנו אלינו</button>
+                    </div>
+                    <input type="text" class="filter-input" id="sellersSearch" placeholder="חיפוש שם/טלפון/כתובת..." style="width:200px;" onkeyup="if(event.key==='Enter')loadSellers()">
+                    <button class="btn" onclick="loadSellers()">🔄 רענן</button>
+                    <button class="btn btn-secondary" id="sellers-add-btn" onclick="openAddSellerModal()" style="display:none;">➕ הוסף מוכר</button>
+                </div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 210px);background:var(--bg-primary);" id="sellers-panel">
+            <div style="border-left:1px solid var(--border-subtle);overflow-y:auto;background:var(--bg-secondary);" id="sellers-list">
+                <div class="loading">טוען מוכרים...</div>
+            </div>
+            <div style="display:flex;flex-direction:column;overflow:hidden;" id="sellers-thread">
+                <div style="text-align:center;padding:60px 20px;color:var(--text-muted);margin:auto;">
+                    <div style="font-size:48px;margin-bottom:14px;">🏠</div>
+                    <p style="font-size:15px;">בחר מוכר מהרשימה לצפייה בשיחה</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BUYERS TAB -->
+    <div id="tab-buyers" class="tab-content" style="padding:0;">
+        <div class="section" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <h2 style="margin:0;">👥 קונים</h2>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <select class="filter-select" id="buyersSourceFilter" style="width:150px;" onchange="loadBuyers()">
+                        <option value="">כל המקורות</option>
+                        <option value="facebook_ad">📘 פייסבוק</option>
+                        <option value="google_ad">🔍 גוגל</option>
+                        <option value="instagram_ad">📷 אינסטגרם</option>
+                        <option value="listing_reply">🏘 מודעה</option>
+                        <option value="whatsapp">💬 WhatsApp</option>
+                        <option value="sms">📱 SMS</option>
+                        <option value="other">אחר</option>
+                    </select>
+                    <select class="filter-select" id="buyersStatusFilter" style="width:130px;" onchange="loadBuyers()">
+                        <option value="">כל הסטטוסים</option>
+                        <option value="new">🆕 חדש</option>
+                        <option value="active">⚡ פעיל</option>
+                        <option value="qualified">✅ מוכשר</option>
+                        <option value="closed">🔒 סגור</option>
+                    </select>
+                    <input type="text" class="filter-input" id="buyersSearch" placeholder="חיפוש שם/טלפון..." style="width:180px;" onkeyup="if(event.key==='Enter')loadBuyers()">
+                    <button class="btn" onclick="loadBuyers()">🔄 רענן</button>
+                </div>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 210px);background:var(--bg-primary);" id="buyers-panel">
+            <div style="border-left:1px solid var(--border-subtle);overflow-y:auto;background:var(--bg-secondary);" id="buyers-list">
+                <div class="loading">טוען קונים...</div>
+            </div>
+            <div style="display:flex;flex-direction:column;overflow:hidden;" id="buyers-thread">
+                <div style="text-align:center;padding:60px 20px;color:var(--text-muted);margin:auto;">
+                    <div style="font-size:48px;margin-bottom:14px;">👥</div>
+                    <p style="font-size:15px;">בחר קונה מהרשימה לצפייה בשיחה</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PUBLISH TAB -->
+    <div id="tab-publish" class="tab-content">
+        <div class="section">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+                <h2 style="margin:0;">📢 פרסום מודעות</h2>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn" onclick="openNewListingModal()">➕ מודעה חדשה</button>
+                    <button class="btn btn-secondary" onclick="loadOutgoingListings()">🔄 רענן</button>
+                </div>
+            </div>
+            <!-- Platform status -->
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;" id="platform-status-bar">
+                <div class="stat-card" style="flex:1;min-width:120px;padding:10px 14px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">yad2</div>
+                    <div style="font-size:18px;font-weight:700;" id="ps-yad2">—</div>
+                </div>
+                <div class="stat-card" style="flex:1;min-width:120px;padding:10px 14px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Facebook</div>
+                    <div style="font-size:18px;font-weight:700;" id="ps-facebook">—</div>
+                </div>
+                <div class="stat-card" style="flex:1;min-width:120px;padding:10px 14px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Homeless</div>
+                    <div style="font-size:18px;font-weight:700;" id="ps-homeless">—</div>
+                </div>
+                <div class="stat-card" style="flex:1;min-width:120px;padding:10px 14px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Madlan</div>
+                    <div style="font-size:18px;font-weight:700;" id="ps-madlan">—</div>
+                </div>
+                <div class="stat-card" style="flex:1;min-width:120px;padding:10px 14px;">
+                    <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Winwin</div>
+                    <div style="font-size:18px;font-weight:700;" id="ps-winwin">—</div>
+                </div>
+            </div>
+            <div id="outgoing-listings-list"><div class="loading">טוען מודעות...</div></div>
+        </div>
+    </div>
+
+    <!-- NEW LISTING MODAL -->
+    <div id="new-listing-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:600px;">
+            <div class="modal-title">
+                📢 מודעה חדשה לפרסום
+                <button class="modal-close" onclick="closeNewListingModal()">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div class="form-group">
+                    <label class="form-label">כתובת *</label>
+                    <input type="text" id="nl-address" class="filter-input" style="width:100%;" placeholder="רחוב, מספר, עיר">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">מחיר מבוקש (₪)</label>
+                    <input type="number" id="nl-price" class="filter-input" style="width:100%;" placeholder="2500000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">חדרים</label>
+                    <input type="number" id="nl-rooms" class="filter-input" style="width:100%;" step="0.5" placeholder="4">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">שטח (מ"ר)</label>
+                    <input type="number" id="nl-area" class="filter-input" style="width:100%;" placeholder="100">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">קומה</label>
+                    <input type="number" id="nl-floor" class="filter-input" style="width:100%;" placeholder="3">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">סוג עסקה</label>
+                    <select id="nl-deal-type" class="filter-select" style="width:100%;">
+                        <option value="sale">מכירה</option>
+                        <option value="rent">השכרה</option>
+                    </select>
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">תיאור</label>
+                    <textarea id="nl-description" class="filter-input" rows="3" style="width:100%;resize:vertical;"></textarea>
+                </div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">פרסם ב:</label>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;">
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="nl-pub-yad2" checked> yad2</label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="nl-pub-facebook" checked> Facebook</label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="nl-pub-homeless"> Homeless</label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="nl-pub-madlan"> Madlan</label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" id="nl-pub-winwin"> Winwin</label>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+                <button class="btn btn-secondary" onclick="closeNewListingModal()" style="padding:9px 16px;">ביטול</button>
+                <button class="btn" id="nl-submit-btn" onclick="submitNewListing()" style="padding:9px 16px;">📢 פרסם</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ADD SELLER MODAL -->
+    <div id="add-seller-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:480px;">
+            <div class="modal-title">
+                🏠 הוסף מוכר שפנה אלינו
+                <button class="modal-close" onclick="closeAddSellerModal()">✕</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">שם *</label>
+                <input type="text" id="as-name" class="filter-input" style="width:100%;">
+            </div>
+            <div class="form-group">
+                <label class="form-label">טלפון *</label>
+                <input type="text" id="as-phone" class="filter-input" style="width:100%;" placeholder="972501234567">
+            </div>
+            <div class="form-group">
+                <label class="form-label">כתובת הנכס</label>
+                <input type="text" id="as-address" class="filter-input" style="width:100%;">
+            </div>
+            <div class="form-group">
+                <label class="form-label">מקור הפנייה</label>
+                <select id="as-source" class="filter-select" style="width:100%;">
+                    <option value="flyer">פלייר</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="phone">טלפון</option>
+                    <option value="referral">המלצה</option>
+                    <option value="other">אחר</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">הודעה ראשונה</label>
+                <textarea id="as-message" class="filter-input" rows="3" style="width:100%;resize:vertical;"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+                <button class="btn btn-secondary" onclick="closeAddSellerModal()" style="padding:9px 16px;">ביטול</button>
+                <button class="btn" onclick="submitAddSeller()" style="padding:9px 16px;">➕ הוסף</button>
+            </div>
         </div>
     </div>
 
@@ -2439,6 +2646,368 @@
         function errorHTML(msg, retryFn) {
             return '<div class="error"><p>❌ שגיאה: ' + msg + '</p><button class="btn" onclick="' + retryFn + '" style="margin-top:8px;">נסה שוב</button></div>';
         }
+
+        // ==================== SELLERS TAB ====================
+        let _sellersView = 'outreach'; // 'outreach' or 'inbound'
+        let _activeSellerId = null;
+
+        function switchSellersView(view) {
+            _sellersView = view;
+            document.getElementById('sellers-tab-outreach').className = view === 'outreach' ? 'btn' : 'btn btn-secondary';
+            document.getElementById('sellers-tab-inbound').className = view === 'inbound' ? 'btn' : 'btn btn-secondary';
+            document.getElementById('sellers-add-btn').style.display = view === 'inbound' ? '' : 'none';
+            loadSellers();
+        }
+
+        async function loadSellers() {
+            const container = document.getElementById('sellers-list');
+            container.innerHTML = '<div class="loading">טוען...</div>';
+            try {
+                const search = document.getElementById('sellersSearch')?.value || '';
+                const params = new URLSearchParams({ view: _sellersView });
+                if (search) params.append('search', search);
+                const data = await fetchJSON('/api/comms/sellers?' + params);
+                if (!data.success) throw new Error(data.error || 'שגיאה');
+                const items = data.data || [];
+                if (!items.length) {
+                    container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);"><div style="font-size:32px;margin-bottom:10px;">📭</div><p>' + (_sellersView === 'outreach' ? 'אין שיחות עם מפרסמי מודעות' : 'אין מוכרים שפנו אלינו') + '</p></div>';
+                    return;
+                }
+                container.innerHTML = items.map(s => renderSellerItem(s)).join('');
+            } catch(e) { container.innerHTML = '<div style="padding:20px;color:#fca5a5;">שגיאה: ' + e.message + '</div>'; }
+        }
+
+        function renderSellerItem(s) {
+            const name = s.display_name || s.seller_name || s.phone || 'מוכר';
+            const preview = s.last_message ? s.last_message.substring(0, 45) + (s.last_message.length > 45 ? '...' : '') : 'אין הודעות';
+            const date = s.updated_at ? new Date(s.updated_at).toLocaleDateString('he-IL') : '';
+            const isActive = _activeSellerId === s.id;
+            const statusDot = s.status === 'active' ? 'var(--green)' : s.status === 'agent_needed' ? 'var(--red)' : 'var(--text-muted)';
+            return '<div class="conv-item' + (isActive ? ' active' : '') + '" data-id="' + s.id + '" onclick="openSellerConv(' + s.id + ')" style="cursor:pointer;">'
+                + '<div style="display:flex;align-items:center;gap:7px;">'
+                + '<div style="width:7px;height:7px;border-radius:50%;background:' + statusDot + ';flex-shrink:0;"></div>'
+                + '<div class="conv-name">' + name + '</div></div>'
+                + '<div class="conv-preview">' + preview + '</div>'
+                + '<div class="conv-meta"><span>' + (s.city || s.address || '') + '</span><span>' + date + '</span></div>'
+                + '</div>';
+        }
+
+        async function openSellerConv(id) {
+            _activeSellerId = id;
+            document.querySelectorAll('#sellers-list .conv-item').forEach(el => el.classList.remove('active'));
+            const item = document.querySelector('#sellers-list [data-id="' + id + '"]');
+            if (item) item.classList.add('active');
+            const thread = document.getElementById('sellers-thread');
+            thread.innerHTML = '<div class="loading">טוען שיחה...</div>';
+            try {
+                const data = await fetchJSON('/api/comms/sellers/' + id + '/messages');
+                if (!data.success) throw new Error(data.error);
+                const contact = data.contact || {};
+                const name = contact.display_name || contact.seller_name || contact.phone || 'מוכר';
+                const phone = contact.phone || '';
+                let html = '<div style="background:var(--bg-secondary);padding:14px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:space-between;">'
+                    + '<div><div style="font-weight:700;font-size:15px;">' + name + '</div>'
+                    + '<div style="font-size:11px;color:var(--text-muted);">' + phone + (contact.address ? ' | ' + contact.address : '') + '</div></div>'
+                    + '<div style="display:flex;gap:7px;">'
+                    + (phone ? '<a href="https://wa.me/' + phone.replace(/[^0-9]/g,'') + '" target="_blank" class="btn btn-green" style="padding:5px 10px;font-size:11px;">WhatsApp</a>' : '')
+                    + (contact.listing_url ? '<a href="' + contact.listing_url + '" target="_blank" class="btn btn-secondary" style="padding:5px 10px;font-size:11px;">🔗 מודעה</a>' : '')
+                    + '</div></div>';
+                const msgs = data.data || [];
+                if (!msgs.length) {
+                    html += '<div style="text-align:center;padding:40px;color:var(--text-muted);">אין הודעות בשיחה זו</div>';
+                } else {
+                    html += '<div style="flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:4px;">';
+                    for (const msg of msgs) {
+                        const isOut = msg.direction === 'outgoing';
+                        const time = msg.created_at ? new Date(msg.created_at).toLocaleString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+                        html += '<div style="display:flex;justify-content:' + (isOut ? 'flex-end' : 'flex-start') + ';">'
+                            + '<div class="bubble ' + (isOut ? 'bubble-out' : 'bubble-in') + '">'
+                            + '<div>' + (msg.message || '').replace(/\n/g, '<br>') + '</div>'
+                            + '<div class="bubble-time" style="text-align:' + (isOut ? 'left' : 'right') + ';">' + time + '</div>'
+                            + '</div></div>';
+                    }
+                    html += '</div>';
+                }
+                // Reply box
+                html += '<div style="padding:12px;border-top:1px solid var(--border-subtle);display:flex;gap:8px;">'
+                    + '<textarea id="seller-reply-text" class="filter-input" rows="2" style="flex:1;resize:none;" placeholder="כתוב הודעה..."></textarea>'
+                    + '<button class="btn" onclick="sendSellerMessage(' + id + ', \'' + phone + '\')" style="padding:8px 14px;">שלח ↑</button>'
+                    + '</div>';
+                thread.innerHTML = html;
+                const msgDiv = thread.querySelector('[style*="overflow-y:auto"]');
+                if (msgDiv) msgDiv.scrollTop = msgDiv.scrollHeight;
+            } catch(e) { thread.innerHTML = '<div style="padding:20px;color:#fca5a5;">שגיאה: ' + e.message + '</div>'; }
+        }
+
+        async function sendSellerMessage(id, phone) {
+            const text = document.getElementById('seller-reply-text')?.value?.trim();
+            if (!text) return;
+            try {
+                const data = await fetchJSON('/api/comms/sellers/' + id + '/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, phone })
+                });
+                if (!data.success) throw new Error(data.error);
+                document.getElementById('seller-reply-text').value = '';
+                await openSellerConv(id);
+            } catch(e) { alert('שגיאה בשליחה: ' + e.message); }
+        }
+
+        function openAddSellerModal() {
+            document.getElementById('add-seller-modal').style.display = 'flex';
+        }
+        function closeAddSellerModal() {
+            document.getElementById('add-seller-modal').style.display = 'none';
+        }
+        async function submitAddSeller() {
+            const name = document.getElementById('as-name').value.trim();
+            const phone = document.getElementById('as-phone').value.trim();
+            const address = document.getElementById('as-address').value.trim();
+            const source = document.getElementById('as-source').value;
+            const message = document.getElementById('as-message').value.trim();
+            if (!name || !phone) { alert('שם וטלפון הם שדות חובה'); return; }
+            try {
+                const data = await fetchJSON('/api/comms/sellers/inbound', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, phone, address, source, initial_message: message })
+                });
+                if (!data.success) throw new Error(data.error);
+                closeAddSellerModal();
+                loadSellers();
+            } catch(e) { alert('שגיאה: ' + e.message); }
+        }
+
+        // ==================== BUYERS TAB ====================
+        let _activeBuyerId = null;
+
+        async function loadBuyers() {
+            const container = document.getElementById('buyers-list');
+            container.innerHTML = '<div class="loading">טוען...</div>';
+            try {
+                const search = document.getElementById('buyersSearch')?.value || '';
+                const source = document.getElementById('buyersSourceFilter')?.value || '';
+                const status = document.getElementById('buyersStatusFilter')?.value || '';
+                const params = new URLSearchParams();
+                if (search) params.append('search', search);
+                if (source) params.append('source', source);
+                if (status) params.append('status', status);
+                const data = await fetchJSON('/api/comms/buyers?' + params);
+                if (!data.success) throw new Error(data.error || 'שגיאה');
+                const items = data.data || [];
+                if (!items.length) {
+                    container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);"><div style="font-size:32px;margin-bottom:10px;">📭</div><p>אין קונים עדיין</p></div>';
+                    return;
+                }
+                container.innerHTML = items.map(b => renderBuyerItem(b)).join('');
+            } catch(e) { container.innerHTML = '<div style="padding:20px;color:#fca5a5;">שגיאה: ' + e.message + '</div>'; }
+        }
+
+        function renderBuyerItem(b) {
+            const name = b.display_name || b.name || b.phone || 'קונה';
+            const preview = b.last_message ? b.last_message.substring(0, 45) + (b.last_message.length > 45 ? '...' : '') : 'אין הודעות';
+            const date = b.updated_at ? new Date(b.updated_at).toLocaleDateString('he-IL') : '';
+            const isActive = _activeBuyerId === b.id;
+            const srcIcon = { facebook_ad: '📘', google_ad: '🔍', instagram_ad: '📷', listing_reply: '🏘', whatsapp: '💬', sms: '📱' };
+            const icon = srcIcon[b.source] || '👤';
+            const statusColors = { new: 'var(--blue)', active: 'var(--green)', qualified: 'var(--gold)', closed: 'var(--text-muted)' };
+            const dot = statusColors[b.status] || 'var(--text-muted)';
+            return '<div class="conv-item' + (isActive ? ' active' : '') + '" data-id="' + b.id + '" onclick="openBuyerConv(' + b.id + ')" style="cursor:pointer;">'
+                + '<div style="display:flex;align-items:center;gap:7px;">'
+                + '<div style="width:7px;height:7px;border-radius:50%;background:' + dot + ';flex-shrink:0;"></div>'
+                + '<div class="conv-name">' + icon + ' ' + name + '</div></div>'
+                + '<div class="conv-preview">' + preview + '</div>'
+                + '<div class="conv-meta"><span>' + (b.source || '') + '</span><span>' + date + '</span></div>'
+                + '</div>';
+        }
+
+        async function openBuyerConv(id) {
+            _activeBuyerId = id;
+            document.querySelectorAll('#buyers-list .conv-item').forEach(el => el.classList.remove('active'));
+            const item = document.querySelector('#buyers-list [data-id="' + id + '"]');
+            if (item) item.classList.add('active');
+            const thread = document.getElementById('buyers-thread');
+            thread.innerHTML = '<div class="loading">טוען שיחה...</div>';
+            try {
+                const data = await fetchJSON('/api/comms/buyers/' + id + '/messages');
+                if (!data.success) throw new Error(data.error);
+                const contact = data.contact || {};
+                const name = contact.display_name || contact.name || contact.phone || 'קונה';
+                const phone = contact.phone || '';
+                let html = '<div style="background:var(--bg-secondary);padding:14px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:space-between;">'
+                    + '<div><div style="font-weight:700;font-size:15px;">' + name + '</div>'
+                    + '<div style="font-size:11px;color:var(--text-muted);">' + phone + (contact.source ? ' | ' + contact.source : '') + (contact.listing_address ? ' | ' + contact.listing_address : '') + '</div></div>'
+                    + '<div style="display:flex;gap:7px;">'
+                    + (phone ? '<a href="https://wa.me/' + phone.replace(/[^0-9]/g,'') + '" target="_blank" class="btn btn-green" style="padding:5px 10px;font-size:11px;">WhatsApp</a>' : '')
+                    + '<button class="btn btn-secondary" onclick="updateBuyerStatus(' + id + ')" style="padding:5px 10px;font-size:11px;">✏️ סטטוס</button>'
+                    + '</div></div>';
+                const msgs = data.data || [];
+                if (!msgs.length) {
+                    html += '<div style="text-align:center;padding:40px;color:var(--text-muted);">אין הודעות בשיחה זו</div>';
+                } else {
+                    html += '<div style="flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:4px;">';
+                    for (const msg of msgs) {
+                        const isOut = msg.direction === 'outgoing';
+                        const time = msg.created_at ? new Date(msg.created_at).toLocaleString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+                        html += '<div style="display:flex;justify-content:' + (isOut ? 'flex-end' : 'flex-start') + ';">'
+                            + '<div class="bubble ' + (isOut ? 'bubble-out' : 'bubble-in') + '">'
+                            + '<div>' + (msg.message || '').replace(/\n/g, '<br>') + '</div>'
+                            + '<div class="bubble-time" style="text-align:' + (isOut ? 'left' : 'right') + ';">' + time + '</div>'
+                            + '</div></div>';
+                    }
+                    html += '</div>';
+                }
+                html += '<div style="padding:12px;border-top:1px solid var(--border-subtle);display:flex;gap:8px;">'
+                    + '<textarea id="buyer-reply-text" class="filter-input" rows="2" style="flex:1;resize:none;" placeholder="כתוב הודעה..."></textarea>'
+                    + '<button class="btn" onclick="sendBuyerMessage(' + id + ', \'' + phone + '\')" style="padding:8px 14px;">שלח ↑</button>'
+                    + '</div>';
+                thread.innerHTML = html;
+                const msgDiv = thread.querySelector('[style*="overflow-y:auto"]');
+                if (msgDiv) msgDiv.scrollTop = msgDiv.scrollHeight;
+            } catch(e) { thread.innerHTML = '<div style="padding:20px;color:#fca5a5;">שגיאה: ' + e.message + '</div>'; }
+        }
+
+        async function sendBuyerMessage(id, phone) {
+            const text = document.getElementById('buyer-reply-text')?.value?.trim();
+            if (!text) return;
+            try {
+                const data = await fetchJSON('/api/comms/buyers/' + id + '/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, phone })
+                });
+                if (!data.success) throw new Error(data.error);
+                document.getElementById('buyer-reply-text').value = '';
+                await openBuyerConv(id);
+            } catch(e) { alert('שגיאה בשליחה: ' + e.message); }
+        }
+
+        async function updateBuyerStatus(id) {
+            const status = prompt('סטטוס חדש (new/active/qualified/closed):');
+            if (!status) return;
+            try {
+                const data = await fetchJSON('/api/comms/buyers/' + id + '/status', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+                if (!data.success) throw new Error(data.error);
+                loadBuyers();
+            } catch(e) { alert('שגיאה: ' + e.message); }
+        }
+
+        // ==================== PUBLISH TAB ====================
+        async function loadOutgoingListings() {
+            const container = document.getElementById('outgoing-listings-list');
+            container.innerHTML = '<div class="loading">טוען מודעות...</div>';
+            try {
+                const data = await fetchJSON('/api/comms/listings');
+                if (!data.success) throw new Error(data.error);
+                const items = data.data || [];
+                // Update platform counts
+                const counts = {};
+                items.forEach(l => {
+                    (l.published_platforms || []).forEach(p => { counts[p] = (counts[p] || 0) + 1; });
+                });
+                ['yad2','facebook','homeless','madlan','winwin'].forEach(p => {
+                    const el = document.getElementById('ps-' + p);
+                    if (el) el.textContent = counts[p] || 0;
+                });
+                if (!items.length) {
+                    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);"><div style="font-size:40px;margin-bottom:12px;">📢</div><p>אין מודעות לפרסום עדיין</p><button class="btn" onclick="openNewListingModal()" style="margin-top:12px;">➕ הוסף מודעה ראשונה</button></div>';
+                    return;
+                }
+                const statusColors = { draft: 'var(--text-muted)', publishing: 'var(--blue)', active: 'var(--green)', paused: 'var(--gold)', error: 'var(--red)' };
+                const statusHe = { draft: 'טיוטה', publishing: 'מפרסם...', active: 'פעיל', paused: 'מושהה', error: 'שגיאה' };
+                container.innerHTML = '<div style="overflow-x:auto;"><table class="tbl"><thead><tr>'
+                    + '<th>כתובת</th><th>מחיר</th><th>חד׳</th><th>מ״ר</th><th>סטטוס</th><th>פלטפורמות</th><th>תאריך</th><th>פעולות</th>'
+                    + '</tr></thead><tbody>'
+                    + items.map(l => {
+                        const st = l.status || 'draft';
+                        const stColor = statusColors[st] || 'var(--text-muted)';
+                        const stHe = statusHe[st] || st;
+                        const platforms = (l.published_platforms || []).map(p => '<span style="background:var(--bg-tertiary);padding:2px 6px;border-radius:3px;font-size:10px;margin:1px;">' + p + '</span>').join('');
+                        const date = l.created_at ? new Date(l.created_at).toLocaleDateString('he-IL') : '—';
+                        return '<tr class="trow">'
+                            + '<td style="font-weight:600;">' + (l.address || '—') + '</td>'
+                            + '<td>' + (l.asking_price ? '₪' + Number(l.asking_price).toLocaleString('he-IL') : '—') + '</td>'
+                            + '<td>' + (l.rooms || '—') + '</td>'
+                            + '<td>' + (l.area_sqm || '—') + '</td>'
+                            + '<td><span style="background:' + stColor + '22;color:' + stColor + ';padding:2px 8px;border-radius:4px;font-size:11px;">' + stHe + '</span></td>'
+                            + '<td>' + (platforms || '<span style="color:var(--text-muted);font-size:11px;">לא פורסם</span>') + '</td>'
+                            + '<td style="font-size:12px;color:var(--text-muted);">' + date + '</td>'
+                            + '<td><button class="btn btn-secondary" onclick="publishListing(' + l.id + ')" style="padding:4px 8px;font-size:11px;">📢 פרסם</button></td>'
+                            + '</tr>';
+                    }).join('')
+                    + '</tbody></table></div>';
+            } catch(e) { container.innerHTML = errorHTML(e.message, 'loadOutgoingListings()'); }
+        }
+
+        function openNewListingModal() {
+            document.getElementById('new-listing-modal').style.display = 'flex';
+        }
+        function closeNewListingModal() {
+            document.getElementById('new-listing-modal').style.display = 'none';
+        }
+
+        async function submitNewListing() {
+            const btn = document.getElementById('nl-submit-btn');
+            btn.disabled = true; btn.textContent = 'שומר...';
+            try {
+                const platforms = [];
+                if (document.getElementById('nl-pub-yad2')?.checked) platforms.push('yad2');
+                if (document.getElementById('nl-pub-facebook')?.checked) platforms.push('facebook');
+                if (document.getElementById('nl-pub-homeless')?.checked) platforms.push('homeless');
+                if (document.getElementById('nl-pub-madlan')?.checked) platforms.push('madlan');
+                if (document.getElementById('nl-pub-winwin')?.checked) platforms.push('winwin');
+                const body = {
+                    address: document.getElementById('nl-address').value.trim(),
+                    asking_price: parseFloat(document.getElementById('nl-price').value) || null,
+                    rooms: parseFloat(document.getElementById('nl-rooms').value) || null,
+                    area_sqm: parseFloat(document.getElementById('nl-area').value) || null,
+                    floor: parseInt(document.getElementById('nl-floor').value) || null,
+                    deal_type: document.getElementById('nl-deal-type').value,
+                    description: document.getElementById('nl-description').value.trim(),
+                    target_platforms: platforms
+                };
+                if (!body.address) { alert('כתובת היא שדה חובה'); btn.disabled = false; btn.textContent = '📢 פרסם'; return; }
+                const data = await fetchJSON('/api/comms/listings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!data.success) throw new Error(data.error);
+                closeNewListingModal();
+                loadOutgoingListings();
+                alert('✅ המודעה נשמרה! פרסום יתחיל בקרוב.');
+            } catch(e) { alert('שגיאה: ' + e.message); }
+            finally { btn.disabled = false; btn.textContent = '📢 פרסם'; }
+        }
+
+        async function publishListing(id) {
+            if (!confirm('לפרסם מודעה זו בכל הפלטפורמות שנבחרו?')) return;
+            try {
+                const data = await fetchJSON('/api/comms/listings/' + id + '/publish', { method: 'POST' });
+                if (!data.success) throw new Error(data.error);
+                alert('✅ הפרסום הושלם!');
+                loadOutgoingListings();
+            } catch(e) { alert('שגיאה בפרסום: ' + e.message); }
+        }
+
+        // ==================== TAB INIT ====================
+        const _origSwitchTab = typeof switchTab === 'function' ? switchTab : null;
+        document.addEventListener('DOMContentLoaded', () => {
+            // Hook into tab switching for lazy load
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const t = tab.dataset.tab;
+                    if (t === 'sellers') { setTimeout(loadSellers, 50); }
+                    else if (t === 'buyers') { setTimeout(loadBuyers, 50); }
+                    else if (t === 'publish') { setTimeout(loadOutgoingListings, 50); }
+                });
+            });
+        });
 
     </script>
 </body>

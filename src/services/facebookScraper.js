@@ -20,8 +20,9 @@ const { detectKeywords } = require('./ssiCalculator');
 
 // Apify configuration
 const APIFY_BASE_URL = 'https://api.apify.com/v2';
-const APIFY_ACTOR_ID = 'apify~facebook-marketplace-scraper'; // Official Apify FB Marketplace scraper
-const APIFY_TIMEOUT = 120000; // 2 minutes max wait for sync run
+// curious_coder/facebook-marketplace - most popular FB Marketplace actor (3M+ runs)
+const APIFY_ACTOR_ID = 'Y0QGH7cuqgKtNbEgt';
+const APIFY_TIMEOUT = 180000; // 3 minutes max wait for sync run
 const DELAY_BETWEEN_SCANS = 5000; // 5s between city scans
 
 // Facebook Marketplace URL slugs for Israeli cities
@@ -327,9 +328,12 @@ async function queryFacebookApify(city) {
   logger.info(`Querying Apify for Facebook Marketplace: ${city} → ${marketplaceUrl}`);
 
   const input = {
-    startUrls: [{ url: marketplaceUrl }],
-    maxItems: 50,
-    proxy: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] }
+    urls: [marketplaceUrl],
+    getListingDetails: true,
+    getAllListingPhotos: false,
+    strictFiltering: true,
+    maxPagesPerUrl: 2,
+    proxy: { useApifyProxy: true, apifyProxyCountryCode: 'IL' }
   };
 
   const items = await runApifyActor(input);
@@ -353,9 +357,12 @@ async function queryFacebookForComplex(complex) {
   if (!marketplaceUrl) return null;
 
   const input = {
-    startUrls: [{ url: marketplaceUrl }],
-    maxItems: 30,
-    proxy: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] }
+    urls: [marketplaceUrl],
+    getListingDetails: true,
+    getAllListingPhotos: false,
+    strictFiltering: true,
+    maxPagesPerUrl: 1,
+    proxy: { useApifyProxy: true, apifyProxyCountryCode: 'IL' }
   };
 
   const items = await runApifyActor(input);
