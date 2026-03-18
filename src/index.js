@@ -15,7 +15,7 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const VERSION = '4.99.0';
-const BUILD = '2026-03-18-v4.99.2-cf-worker-proxy';
+const BUILD = '2026-03-18-v4.99.3-perplexity-city-fallback';
 
 async function runAutoMigrations() {
   try {

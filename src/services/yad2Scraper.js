@@ -319,6 +319,74 @@ ${streetList}
 }
 
 /**
+ * Query Perplexity for ALL yad2 listings in a given city (not per-complex)
+ * Returns a flat list of listings with address info for cross-referencing.
+ */
+async function queryYad2PerplexityByCity(cityName) {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) return [];
+
+  const prompt = `חפש ב-yad2.co.il את כל דירות המכירה הפעילות ב${cityName} שנמצאות במתחמי פינוי-בינוי.
+
+החזר JSON עם כל המודעות שמצאת:
+{
+  "listings": [
+    {
+      "address": "כתובת מלאה כולל מספר בית",
+      "street": "שם הרחוב בלבד",
+      "house_number": "מספר הבית",
+      "asking_price": מחיר_בשקלים_או_null,
+      "rooms": מספר_חדרים_או_null,
+      "area_sqm": שטח_מ_ר_או_null,
+      "floor": קומה_או_null,
+      "description": "תיאור קצר",
+      "url": "קישור ל-yad2",
+      "listing_id": "מזהה המודעה ב-yad2",
+      "phone": "טלפון המוכר/מתווך או null",
+      "contact_name": "שם המוכר/מתווך או null",
+      "is_urgent": true/false,
+      "is_foreclosure": true/false,
+      "is_inheritance": true/false
+    }
+  ],
+  "total_found": מספר_כולל
+}
+
+חשוב:
+- רק דירות למכירה (לא השכרה)
+- רק ב${cityName}
+- מחירים בשקלים
+- כלול כתובת מדויקת עם מספר בית לכל מודעה
+- שים לב למילים: דחוף, הזדמנות, כינוס, ירושה, חייב למכור`;
+
+  try {
+    const response = await axios.post(PERPLEXITY_API, {
+      model: 'sonar',
+      messages: [
+        { role: 'system', content: 'Return ONLY valid JSON, no markdown, no explanations.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 4000,
+      temperature: 0.1
+    }, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 45000
+    });
+
+    const content = response.data.choices?.[0]?.message?.content || '';
+    const parsed = parsePerplexityResponse(content);
+    logger.info(`[yad2-perplexity-city] ${cityName}: found ${parsed.listings.length} listings`);
+    return parsed.listings;
+  } catch (err) {
+    logger.warn(`[yad2-perplexity-city] Failed for ${cityName}: ${err.message}`);
+    return [];
+  }
+}
+
+/**
  * Parse Perplexity JSON response
  */
 function parsePerplexityResponse(content) {
@@ -889,6 +957,8 @@ async function scanAllByCities(options = {}) {
         let page = 1;
         let hasMore = true;
 
+        let apiBlocked = false;
+
         while (hasMore && page <= 10) { // max 10 pages = 500 listings per city
           try {
             // Use Cloudflare Worker proxy to bypass Railway IP blocking
@@ -896,8 +966,9 @@ async function scanAllByCities(options = {}) {
             const response = await axios.get(proxyUrl, { timeout: 20000 });
 
             // Check for bot challenge
-            if (response.data?.error === 'bot_challenge') {
-              logger.warn(`[yad2-city-scan] Bot challenge for ${cityName} - yad2 blocked Cloudflare IP too`);
+            if (response.data?.error === 'bot_challenge' || response.status === 404 || response.status === 403) {
+              logger.warn(`[yad2-city-scan] API blocked for ${cityName} (${response.status}) - will use Perplexity fallback`);
+              apiBlocked = true;
               hasMore = false;
               break;
             }
@@ -914,18 +985,27 @@ async function scanAllByCities(options = {}) {
 
             if (ads.length < 50) hasMore = false;
           } catch (err) {
-            logger.warn(`[yad2-city-scan] Proxy error for ${cityName} page ${page}: ${err.message}`);
+            logger.warn(`[yad2-city-scan] Proxy error for ${cityName} page ${page}: ${err.message} - will use Perplexity fallback`);
+            apiBlocked = true;
             hasMore = false;
           }
         }
 
-        logger.info(`[yad2-city-scan] ${cityName}: fetched ${allListings.length} listings from yad2`);
+        // Fallback to Perplexity if API was blocked or returned no results
+        let perplexityListings = [];
+        if (apiBlocked || allListings.length === 0) {
+          logger.info(`[yad2-city-scan] ${cityName}: using Perplexity fallback (API blocked=${apiBlocked}, direct=${allListings.length})`);
+          perplexityListings = await queryYad2PerplexityByCity(cityName);
+        }
+
+        logger.info(`[yad2-city-scan] ${cityName}: direct=${allListings.length}, perplexity=${perplexityListings.length}`);
 
         // For each listing, try to match it to a pinuy-binuy complex
         let cityNew = 0;
         let cityUpdated = 0;
         let cityMatched = 0;
 
+        // Process direct API listings (from yad2 feed)
         for (const item of allListings) {
           const address = [
             item.street || item.street_name || '',
@@ -957,6 +1037,60 @@ async function scanAllByCities(options = {}) {
           }
         }
 
+        // Process Perplexity fallback listings
+        let perplexityMatched = 0;
+        for (const item of perplexityListings) {
+          const address = [
+            item.street || '',
+            item.house_number || ''
+          ].filter(Boolean).join(' ').trim() || item.address || '';
+
+          if (!address) continue;
+
+          const match = await findMatchingComplex(address, cityName);
+          if (!match) continue;
+
+          cityMatched++;
+          perplexityMatched++;
+
+          // Build listing object from Perplexity data
+          const listing = {
+            source: 'yad2',
+            source_listing_id: item.listing_id || `perp-${cityName}-${address}`.replace(/\s+/g, '-'),
+            address: address,
+            city: cityName,
+            asking_price: item.asking_price || null,
+            rooms: item.rooms || null,
+            area_sqm: item.area_sqm || null,
+            floor: item.floor || null,
+            description: item.description || null,
+            url: item.url || null,
+            phone: item.phone || null,
+            contact_name: item.contact_name || null,
+            is_urgent: item.is_urgent || false,
+            is_foreclosure: item.is_foreclosure || false,
+            is_inheritance: item.is_inheritance || false,
+            last_seen: new Date().toISOString().split('T')[0],
+            is_active: true
+          };
+
+          const result = await processListing(listing, match.complexId, cityName);
+          if (result.action === 'inserted') {
+            cityNew++;
+            if (result.id) {
+              const complexInfo = await pool.query('SELECT iai_score FROM complexes WHERE id = $1', [match.complexId]);
+              const iai = complexInfo.rows[0]?.iai_score;
+              await createNewListingAlert(result.id, match.complexId, listing, iai);
+            }
+          } else if (result.action === 'updated') {
+            cityUpdated++;
+          }
+        }
+
+        if (perplexityMatched > 0) {
+          logger.info(`[yad2-city-scan] ${cityName}: Perplexity matched ${perplexityMatched}/${perplexityListings.length}`);
+        }
+
         // Update last_yad2_scan for all complexes in this city
         await pool.query(
           "UPDATE complexes SET last_yad2_scan = NOW() WHERE city = $1",
@@ -966,10 +1100,11 @@ async function scanAllByCities(options = {}) {
         return {
           city: cityName,
           cityCode,
-          listingsFetched: allListings.length,
+          listingsFetched: allListings.length + perplexityListings.length,
           listingsMatched: cityMatched,
           newListings: cityNew,
-          updatedListings: cityUpdated
+          updatedListings: cityUpdated,
+          perplexityUsed: perplexityListings.length > 0
         };
       })
     );
@@ -983,6 +1118,9 @@ async function scanAllByCities(options = {}) {
           totalNew += r.newListings || 0;
           totalUpdated += r.updatedListings || 0;
           if ((r.listingsMatched || 0) > 0) citiesWithResults++;
+          logger.info(`[yad2-city-scan] ${r.city}: fetched=${r.listingsFetched}, matched=${r.listingsMatched}, new=${r.newListings}, updated=${r.updatedListings}`);
+        } else {
+          logger.debug(`[yad2-city-scan] Skipped ${r.city}: ${r.reason}`);
         }
         cityResults.push(r);
       } else {
