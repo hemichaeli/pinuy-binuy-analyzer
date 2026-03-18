@@ -28,6 +28,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
+const { publishListing, getPlatformStatus } = require('../services/listingPublisher');
 
 // ─────────────────────────────────────────────
 // INIT: ensure tables exist
@@ -462,40 +463,22 @@ router.post('/listings/:id/publish', express.json(), async (req, res) => {
     const listing = await pool.query(`SELECT * FROM outgoing_listings WHERE id = $1`, [id]);
     if (!listing.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
     const platforms = req.body.platforms || listing.rows[0].target_platforms || [];
+    if (!platforms.length) return res.status(400).json({ success: false, error: 'No platforms specified' });
     // Mark as publishing
     await pool.query(`UPDATE outgoing_listings SET status = 'publishing', updated_at = NOW() WHERE id = $1`, [id]);
-    // Trigger async publish
-    triggerPublish(id, platforms).catch(e => logger.error('[Publish] Error:', e.message));
+    // Trigger async publish (non-blocking)
+    publishListing(id, platforms)
+      .then(results => logger.info(`[Publish] Done for listing ${id}:`, JSON.stringify(results)))
+      .catch(e => logger.error('[Publish] Error:', e.message));
     res.json({ success: true, message: 'פרסום התחיל', platforms });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ─────────────────────────────────────────────
-// ASYNC PUBLISH (placeholder — real implementation per platform)
-// ─────────────────────────────────────────────
-async function triggerPublish(listingId, platforms) {
-  logger.info(`[Publish] Listing ${listingId} → platforms: ${platforms.join(', ')}`);
-  const published = [];
-  for (const platform of platforms) {
-    try {
-      // TODO: implement per-platform publishing
-      // For now, mark as published after a short delay (placeholder)
-      await new Promise(r => setTimeout(r, 500));
-      await pool.query(
-        `UPDATE outgoing_listings SET published_platforms = array_append(published_platforms, $1), updated_at = NOW() WHERE id = $2 AND NOT ($1 = ANY(published_platforms))`,
-        [platform, listingId]
-      );
-      published.push(platform);
-      logger.info(`[Publish] ${platform} ✓ (placeholder)`);
-    } catch (e) {
-      logger.error(`[Publish] ${platform} error:`, e.message);
-    }
-  }
-  if (published.length > 0) {
-    await pool.query(`UPDATE outgoing_listings SET status = 'active', updated_at = NOW() WHERE id = $1`, [listingId]);
-  }
-}
+// GET /api/comms/platforms/status — which platforms are configured
+router.get('/platforms/status', (req, res) => {
+  res.json({ success: true, platforms: getPlatformStatus() });
+});
 
 module.exports = router;
