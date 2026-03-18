@@ -1177,6 +1177,52 @@ router.post('/migrate-columns', async (req, res) => {
   }
 });
 
+// POST /api/scan/dedup - Run deduplication SQL directly on the DB
+router.post('/dedup', async (req, res) => {
+  try {
+    // Delete duplicates by (source, address, city) - keep highest id
+    const deleteResult = await pool.query(`
+      DELETE FROM listings
+      WHERE id NOT IN (
+        SELECT MAX(id)
+        FROM listings
+        WHERE address IS NOT NULL AND address != ''
+          AND city IS NOT NULL AND city != ''
+        GROUP BY source, LOWER(TRIM(address)), LOWER(TRIM(city))
+      )
+      AND address IS NOT NULL AND address != ''
+      AND city IS NOT NULL AND city != ''
+    `);
+    const deleted = deleteResult.rowCount;
+
+    // Drop old index if exists
+    await pool.query('DROP INDEX IF EXISTS idx_listings_source_address_city');
+
+    // Create UNIQUE index
+    let indexCreated = false;
+    try {
+      await pool.query(`
+        CREATE UNIQUE INDEX idx_listings_source_address_city
+          ON listings (source, LOWER(TRIM(address)), LOWER(TRIM(city)))
+          WHERE address IS NOT NULL AND address != '' AND city IS NOT NULL AND city != ''
+      `);
+      indexCreated = true;
+    } catch (idxErr) {
+      logger.warn('[Dedup] Index creation failed:', idxErr.message);
+    }
+
+    // Count remaining active listings
+    const countResult = await pool.query('SELECT COUNT(*) FROM listings WHERE is_active = TRUE');
+    const remaining = parseInt(countResult.rows[0].count);
+
+    logger.info(`[Dedup] Deleted ${deleted} duplicates, ${remaining} listings remain, index: ${indexCreated}`);
+    res.json({ success: true, deleted, remaining, indexCreated });
+  } catch (err) {
+    logger.error('[Dedup] Failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/scan/:id - MUST BE LAST (catch-all for numeric scan IDs)
 router.get('/:id', async (req, res) => {
   try {
