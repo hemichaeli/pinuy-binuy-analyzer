@@ -453,7 +453,7 @@ router.post('/yad2', async (req, res) => {
         let results;
         // Use city-based scan (fast, ~1-2 min) unless a specific city or limit is requested
         if (!city && !limit) {
-          results = await yad2Scraper.scanAllByCities({ staleOnly: staleOnly !== false });
+          results = await yad2Scraper.scanAllByCities({ staleOnly: staleOnly === true });
           await calculateAllSSI();
           await pool.query(`UPDATE scan_logs SET status = 'completed', completed_at = NOW(), complexes_scanned = $1, new_listings = $2, updated_listings = $3, summary = $4 WHERE id = $5`,
             [results.citiesScanned, results.totalNew, results.totalUpdated,
