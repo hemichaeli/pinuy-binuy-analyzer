@@ -21,6 +21,9 @@ const YAD2_API_BASE = 'https://gw.yad2.co.il/feed-search-legacy/realestate/forsa
 const YAD2_ITEM_API = 'https://gw.yad2.co.il/feed-search-legacy/item';
 const PERPLEXITY_API = 'https://api.perplexity.ai/chat/completions';
 
+// Cloudflare Worker proxy URL (bypasses yad2 IP blocking on Railway)
+const YAD2_PROXY_URL = process.env.YAD2_PROXY_URL || 'https://yad2-proxy.pinuy-binuy.workers.dev';
+
 const DELAY_BETWEEN_REQUESTS = 3500; // 3.5s between requests
 const MAX_RETRIES = 2;
 
@@ -888,24 +891,18 @@ async function scanAllByCities(options = {}) {
 
         while (hasMore && page <= 10) { // max 10 pages = 500 listings per city
           try {
-            const response = await axios.get(YAD2_API_BASE, {
-              params: {
-                city: cityCode,
-                propertyGroup: 'apartments',
-                dealType: 'forsale',
-                page,
-                limit: 50
-              },
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json',
-                'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
-                'Referer': 'https://www.yad2.co.il/realestate/forsale',
-                'Origin': 'https://www.yad2.co.il'
-              },
-              timeout: 15000
-            });
+            // Use Cloudflare Worker proxy to bypass Railway IP blocking
+            const proxyUrl = `${YAD2_PROXY_URL}?city=${cityCode}&propertyGroup=apartments&dealType=forsale&page=${page}&limit=50&key=pinuy-binuy-2026`;
+            const response = await axios.get(proxyUrl, { timeout: 20000 });
 
+            // Check for bot challenge
+            if (response.data?.error === 'bot_challenge') {
+              logger.warn(`[yad2-city-scan] Bot challenge for ${cityName} - yad2 blocked Cloudflare IP too`);
+              hasMore = false;
+              break;
+            }
+
+            // Worker returns yad2 response directly (same format as direct API)
             const feedItems = response.data?.feed?.feed_items || [];
             const ads = feedItems.filter(item => item.type === 'ad' && item.id);
             allListings.push(...ads);
@@ -917,7 +914,7 @@ async function scanAllByCities(options = {}) {
 
             if (ads.length < 50) hasMore = false;
           } catch (err) {
-            logger.warn(`[yad2-city-scan] API error for ${cityName} page ${page}: ${err.message}`);
+            logger.warn(`[yad2-city-scan] Proxy error for ${cityName} page ${page}: ${err.message}`);
             hasMore = false;
           }
         }
