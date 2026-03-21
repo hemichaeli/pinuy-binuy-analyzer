@@ -44,6 +44,24 @@ function getProxyArgs() {
 }
 
 /**
+ * Authenticate proxy in the browser page (basic auth popup) — also sets via CDP.
+ */
+async function setProxyCredentials(page) {
+  const user = process.env.TWOCAPTCHA_PROXY_USER || 'u1d381207513d0589-zone-custom';
+  const pass = process.env.TWOCAPTCHA_PROXY_PASS || '2ddaa2a486fc4e3296acd639aa486614';
+  // Use CDP to set proxy credentials (more reliable than page.authenticate)
+  const client = await page.target().createCDPSession();
+  await client.send('Network.enable');
+  await client.send('Network.setExtraHTTPHeaders', {
+    headers: {
+      'Proxy-Authorization': 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64')
+    }
+  });
+  // Also use page.authenticate as fallback
+  await page.authenticate({ username: user, password: pass });
+}
+
+/**
  * Authenticate proxy in the browser page (basic auth popup).
  */
 async function authenticateProxy(page) {
@@ -333,24 +351,48 @@ async function publishToYad2(listing) {
   try {
     browser = await launchStealthBrowser({ useProxy: true });
     const page = await browser.newPage();
-    await authenticateProxy(page);
+    // Use enhanced proxy credentials (CDP + page.authenticate)
+    await setProxyCredentials(page);
     await page.setViewport({ width: 1280, height: 800 });
 
-    // Set realistic Hebrew browser headers
+    // Set realistic Hebrew browser headers + spoof real browser
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"',
+      'sec-fetch-dest': 'document',
+      'sec-fetch-mode': 'navigate',
+      'sec-fetch-site': 'none',
+      'sec-fetch-user': '?1',
+      'upgrade-insecure-requests': '1'
+    });
+
+    // Override navigator properties to avoid detection
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'languages', { get: () => ['he-IL', 'he', 'en-US', 'en'] });
+      Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+      window.chrome = { runtime: {} };
     });
 
     // Step 1: Login
     logger.info('[Publisher] yad2: navigating to login...');
 
-    // First visit homepage to establish session before login page
+    // First visit homepage to warm up the session / get cookies
     await page.goto('https://www.yad2.co.il/', {
       waitUntil: 'domcontentloaded',
-      timeout: 45000
+      timeout: 60000
     });
-    await delay(3000);
+    await delay(4000);
+
+    // Simulate human mouse movement
+    await page.mouse.move(400, 300);
+    await delay(500);
+    await page.mouse.move(600, 400);
+    await delay(300);
 
     await page.goto('https://www.yad2.co.il/account/login', {
       waitUntil: 'networkidle2',
@@ -365,8 +407,14 @@ async function publishToYad2(listing) {
     });
 
     if (statusCode) {
-      logger.info('[Publisher] yad2: got 403, waiting 10s and retrying...');
-      await delay(10000);
+      logger.info('[Publisher] yad2: got 403, waiting 15s and retrying with fresh navigation...');
+      await delay(15000);
+      // Navigate to a different page first, then back to login
+      await page.goto('https://www.yad2.co.il/realestate', {
+        waitUntil: 'domcontentloaded',
+        timeout: 45000
+      }).catch(() => {});
+      await delay(3000);
       await page.goto('https://www.yad2.co.il/account/login', {
         waitUntil: 'networkidle2',
         timeout: 60000
@@ -381,8 +429,8 @@ async function publishToYad2(listing) {
     });
 
     if (cfChallenge) {
-      logger.info('[Publisher] yad2: Cloudflare challenge detected, waiting 15s...');
-      await delay(15000);
+      logger.info('[Publisher] yad2: Cloudflare challenge detected, waiting 20s...');
+      await delay(20000);
       await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
     }
 
