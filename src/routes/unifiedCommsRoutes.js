@@ -448,7 +448,7 @@ router.post('/listings', express.json(), async (req, res) => {
     const listing = result.rows[0];
     // If target_platforms specified, trigger async publishing
     if (target_platforms.length > 0) {
-      triggerPublish(listing.id, target_platforms).catch(e => logger.error('[Publish] Error:', e.message));
+      publishListing(listing.id, target_platforms).catch(e => logger.error('[Publish] Error:', e.message));
     }
     res.json({ success: true, listing });
   } catch (err) {
