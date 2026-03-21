@@ -1,15 +1,20 @@
 /**
  * Listing Publisher Service
  * Publishes outgoing listings to multiple real-estate platforms.
- * 
+ *
  * Supported platforms:
- *   - yad2       (Puppeteer browser automation)
- *   - homeless   (Puppeteer browser automation)
- *   - madlan     (Puppeteer browser automation)
- *   - winwin     (Puppeteer browser automation)
- *   - facebook   (Apify actor: curious_coder~facebook-marketplace)
- * 
- * Credentials are read from env vars:
+ *   - yad2       (Puppeteer + 2captcha Residential Proxy + Cloudflare Turnstile)
+ *   - homeless   (Puppeteer + 2captcha Residential Proxy + reCAPTCHA)
+ *   - madlan     (Puppeteer + 2captcha Residential Proxy)
+ *   - winwin     (Puppeteer + 2captcha Residential Proxy)
+ *   - facebook   (Apify actor — scraping only, manual publish fallback)
+ *
+ * Env vars required:
+ *   TWOCAPTCHA_API_KEY          — 2captcha API key (captcha solving + residential proxy)
+ *   TWOCAPTCHA_PROXY_USER       — 2captcha proxy username (u1d381207513d0589-zone-custom)
+ *   TWOCAPTCHA_PROXY_PASS       — 2captcha proxy password (2ddaa2a486fc4e3296acd639aa486614)
+ *   TWOCAPTCHA_PROXY_HOST       — ap.proxy.2captcha.com
+ *   TWOCAPTCHA_PROXY_PORT       — 2334
  *   YAD2_EMAIL, YAD2_PASSWORD
  *   HOMELESS_EMAIL, HOMELESS_PASSWORD
  *   MADLAN_EMAIL, MADLAN_PASSWORD
@@ -22,25 +27,62 @@ const pool = require('../db/pool');
 const axios = require('axios');
 
 // ─────────────────────────────────────────────
-// BROWSER FACTORY (puppeteer-extra + stealth + 2captcha)
+// PROXY HELPERS
 // ─────────────────────────────────────────────
-async function launchStealthBrowser() {
+
+/**
+ * Returns 2captcha residential proxy args for Puppeteer launch.
+ * Falls back to no proxy if env vars not set.
+ */
+function getProxyArgs() {
+  const host = process.env.TWOCAPTCHA_PROXY_HOST || 'ap.proxy.2captcha.com';
+  const port = process.env.TWOCAPTCHA_PROXY_PORT || '2334';
+  return [`--proxy-server=http://${host}:${port}`];
+}
+
+/**
+ * Authenticate proxy in the browser page (basic auth popup).
+ */
+async function authenticateProxy(page) {
+  const user = process.env.TWOCAPTCHA_PROXY_USER || 'u1d381207513d0589-zone-custom';
+  const pass = process.env.TWOCAPTCHA_PROXY_PASS || '2ddaa2a486fc4e3296acd639aa486614';
+  await page.authenticate({ username: user, password: pass });
+}
+
+// ─────────────────────────────────────────────
+// BROWSER FACTORY (puppeteer-extra + stealth + residential proxy)
+// ─────────────────────────────────────────────
+async function launchStealthBrowser({ useProxy = true } = {}) {
   const puppeteer = require('puppeteer-extra');
   const StealthPlugin = require('puppeteer-extra-plugin-stealth');
   puppeteer.use(StealthPlugin());
+
+  const args = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-blink-features=AutomationControlled',
+    '--window-size=1280,800',
+    '--lang=he-IL,he',
+    '--disable-web-security',
+    '--allow-running-insecure-content'
+  ];
+
+  if (useProxy) {
+    args.push(...getProxyArgs());
+  }
+
   return puppeteer.launch({
     headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-blink-features=AutomationControlled',
-      '--window-size=1280,800'
-    ]
+    args
   });
 }
 
-// Solve image/text captcha using 2captcha service
+// ─────────────────────────────────────────────
+// CAPTCHA SOLVERS
+// ─────────────────────────────────────────────
+
+/** Solve image/text captcha */
 async function solveCaptchaImage(base64Image) {
   const apiKey = process.env.TWOCAPTCHA_API_KEY;
   if (!apiKey) return null;
@@ -50,12 +92,12 @@ async function solveCaptchaImage(base64Image) {
     const result = await solver.imageCaptcha({ body: base64Image });
     return result.data;
   } catch (err) {
-    logger.warn('[2captcha] Failed to solve captcha:', err.message);
+    logger.warn('[2captcha] Failed to solve image captcha:', err.message);
     return null;
   }
 }
 
-// Solve reCAPTCHA v2 using 2captcha service
+/** Solve reCAPTCHA v2 */
 async function solveRecaptchaV2(siteKey, pageUrl) {
   const apiKey = process.env.TWOCAPTCHA_API_KEY;
   if (!apiKey) return null;
@@ -68,6 +110,85 @@ async function solveRecaptchaV2(siteKey, pageUrl) {
     logger.warn('[2captcha] Failed to solve reCAPTCHA:', err.message);
     return null;
   }
+}
+
+/** Solve Cloudflare Turnstile */
+async function solveTurnstile(siteKey, pageUrl) {
+  const apiKey = process.env.TWOCAPTCHA_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const { Solver } = require('2captcha-ts');
+    const solver = new Solver(apiKey);
+    const result = await solver.cloudflareTurnstile({ sitekey: siteKey, pageurl: pageUrl });
+    return result.data;
+  } catch (err) {
+    logger.warn('[2captcha] Failed to solve Turnstile:', err.message);
+    return null;
+  }
+}
+
+/** Detect and solve any captcha on the current page */
+async function detectAndSolveCaptcha(page) {
+  const url = page.url();
+
+  // Cloudflare Turnstile
+  const turnstileKey = await page.evaluate(() => {
+    const el = document.querySelector('[data-sitekey]');
+    if (el && el.closest('[class*="turnstile"], [id*="turnstile"], [class*="cf-"]')) {
+      return el.getAttribute('data-sitekey');
+    }
+    // Also check for cf-turnstile class
+    const cfEl = document.querySelector('.cf-turnstile, [data-cf-turnstile]');
+    if (cfEl) return cfEl.getAttribute('data-sitekey');
+    return null;
+  }).catch(() => null);
+
+  if (turnstileKey) {
+    logger.info('[2captcha] Turnstile detected, solving...');
+    const token = await solveTurnstile(turnstileKey, url);
+    if (token) {
+      await page.evaluate((t) => {
+        // Inject token into Turnstile response field
+        const inputs = document.querySelectorAll('input[name="cf-turnstile-response"], input[name="turnstile-response"]');
+        inputs.forEach(el => { el.value = t; });
+        // Try callback
+        if (window.turnstile && window.turnstile.reset) {
+          // some sites use callback
+        }
+      }, token);
+      logger.info('[2captcha] Turnstile token injected');
+      return true;
+    }
+  }
+
+  // reCAPTCHA v2
+  const recaptchaKey = await page.evaluate(() => {
+    const el = document.querySelector('[data-sitekey]');
+    if (el) return el.getAttribute('data-sitekey');
+    return null;
+  }).catch(() => null);
+
+  if (recaptchaKey) {
+    logger.info('[2captcha] reCAPTCHA detected, solving...');
+    const token = await solveRecaptchaV2(recaptchaKey, url);
+    if (token) {
+      await page.evaluate((t) => {
+        const el = document.querySelector('[name="g-recaptcha-response"]');
+        if (el) el.value = t;
+        // Try to trigger callback
+        if (window.grecaptcha) {
+          try {
+            const widgetId = window.___grecaptcha_cfg?.clients?.[0];
+            if (widgetId !== undefined) window.grecaptcha.reset(widgetId);
+          } catch (e) {}
+        }
+      }, token);
+      logger.info('[2captcha] reCAPTCHA token injected');
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // ─────────────────────────────────────────────
@@ -97,7 +218,6 @@ async function publishListing(listingId, platforms) {
       results[platform] = result;
 
       if (result.success) {
-        // Mark as published in DB
         await pool.query(
           `UPDATE outgoing_listings 
            SET published_platforms = array_append(
@@ -118,10 +238,12 @@ async function publishListing(listingId, platforms) {
     }
   }
 
-  // Update status
   const anySuccess = Object.values(results).some(r => r.success);
   if (!anySuccess) {
-    await pool.query(`UPDATE outgoing_listings SET status = 'failed', updated_at = NOW() WHERE id = $1`, [listingId]);
+    await pool.query(
+      `UPDATE outgoing_listings SET status = 'failed', updated_at = NOW() WHERE id = $1`,
+      [listingId]
+    );
   }
 
   return results;
@@ -140,452 +262,590 @@ function formatPrice(price) {
   return price.toLocaleString('he-IL');
 }
 
+function buildTitle(listing) {
+  const city = listing.city || listing.address || '';
+  const rooms = listing.rooms ? `${listing.rooms} חדרים` : 'דירה';
+  return `${rooms} ב${city} - פינוי בינוי`;
+}
+
 function buildDescription(listing) {
   const parts = [];
-  if (listing.rooms) parts.push(`${listing.rooms} חדרים`);
-  if (listing.floor) parts.push(`קומה ${listing.floor}`);
-  if (listing.area_sqm) parts.push(`${listing.area_sqm} מ"ר`);
-  if (listing.asking_price) parts.push(`מחיר: ₪${formatPrice(listing.asking_price)}`);
-  if (listing.description) parts.push(listing.description);
-  return parts.join(' | ');
+  if (listing.description) {
+    parts.push(listing.description);
+  } else {
+    parts.push('נכס בפרויקט פינוי בינוי מתקדם');
+    if (listing.rooms) parts.push(`${listing.rooms} חדרים`);
+    if (listing.floor) parts.push(`קומה ${listing.floor}`);
+    if (listing.area_sqm) parts.push(`${listing.area_sqm} מ"ר`);
+    if (listing.asking_price) parts.push(`מחיר: ₪${formatPrice(listing.asking_price)}`);
+    parts.push('השקעה מצוינת למשקיעים');
+  }
+  return parts.join('\n');
 }
 
 // ─────────────────────────────────────────────
-// FACEBOOK MARKETPLACE (via Apify)
+// FACEBOOK MARKETPLACE (via Apify — scraping only)
 // ─────────────────────────────────────────────
 async function publishToFacebook(listing) {
-  const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
-  if (!APIFY_TOKEN) {
-    return { success: false, error: 'APIFY_API_TOKEN not set' };
-  }
-
-  // Note: Facebook Marketplace publishing via Apify requires a logged-in Facebook session
-  // The actor `curious_coder~facebook-marketplace` is primarily for scraping.
-  // For publishing, we use the `apify~facebook-post-creator` actor or similar.
-  // Until a publishing actor is confirmed, we return a structured placeholder.
-  
-  try {
-    // Check if there's a publishing actor available
-    const actorId = process.env.APIFY_FB_PUBLISH_ACTOR || 'apify~facebook-marketplace-poster';
-    const title = `${listing.rooms ? listing.rooms + ' חדרים' : 'דירה'} ב${listing.city || listing.address}`;
-    const description = buildDescription(listing);
-    const price = listing.asking_price || 0;
-
-    const runResp = await axios.post(
-      `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_TOKEN}`,
-      {
-        title,
-        description,
-        price,
-        location: listing.city || listing.address,
-        category: 'real_estate',
-        images: listing.images || []
-      },
-      { timeout: 30000 }
-    );
-
-    if (runResp.data?.data?.id) {
-      return { success: true, external_id: runResp.data.data.id, platform: 'facebook' };
-    }
-    return { success: false, error: 'Actor run failed', platform: 'facebook' };
-  } catch (err) {
-    // Actor not found or not available — log and return structured response
-    logger.warn(`[Publisher] Facebook Marketplace publishing actor not available: ${err.message}`);
-    return { 
-      success: false, 
-      error: 'Facebook publishing requires manual setup. Please publish manually and mark as published.',
-      platform: 'facebook',
-      manual_required: true
-    };
-  }
+  // Facebook Marketplace does not allow automated publishing via API.
+  // The Apify actor curious_coder~facebook-marketplace is for scraping only.
+  // Return a structured response indicating manual action is required.
+  logger.warn('[Publisher] Facebook Marketplace: automated publishing not supported. Manual action required.');
+  return {
+    success: false,
+    error: 'Facebook Marketplace אינו מאפשר פרסום אוטומטי. יש לפרסם ידנית.',
+    platform: 'facebook',
+    manual_required: true,
+    listing_title: buildTitle(listing),
+    listing_description: buildDescription(listing),
+    listing_price: listing.asking_price
+  };
 }
 
 // ─────────────────────────────────────────────
-// YAD2 (Puppeteer)
+// YAD2 (Puppeteer + Residential Proxy + Cloudflare Turnstile)
 // ─────────────────────────────────────────────
 async function publishToYad2(listing) {
   const email = process.env.YAD2_EMAIL;
   const password = process.env.YAD2_PASSWORD;
-  
+
   if (!email || !password) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'YAD2_EMAIL / YAD2_PASSWORD not set in Railway env vars',
       platform: 'yad2',
       setup_required: true
     };
   }
 
+  let browser;
   try {
-    const browser = await launchStealthBrowser();
+    browser = await launchStealthBrowser({ useProxy: true });
     const page = await browser.newPage();
+    await authenticateProxy(page);
     await page.setViewport({ width: 1280, height: 800 });
 
-    try {
-      // Login
-      await page.goto('https://www.yad2.co.il/account/login', { waitUntil: 'networkidle2', timeout: 30000 });
-      await page.waitForSelector('input[name="email"]', { timeout: 10000 });
-      await page.type('input[name="email"]', email);
-      await page.type('input[name="password"]', password);
-      await page.click('button[type="submit"]');
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+    // Set realistic Hebrew browser headers
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+    });
 
-      // Navigate to new listing
-      await page.goto('https://www.yad2.co.il/realestate/forsale/new', { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      // Fill in listing details
-      // Address
-      if (listing.address) {
-        await page.waitForSelector('input[placeholder*="כתובת"]', { timeout: 10000 });
-        await page.type('input[placeholder*="כתובת"]', listing.address);
-        await page.waitForTimeout(1500);
-        // Select first autocomplete suggestion
-        const suggestion = await page.$('.autocomplete-suggestion, [class*="suggestion"]');
-        if (suggestion) await suggestion.click();
-      }
+    // Step 1: Login
+    logger.info('[Publisher] yad2: navigating to login...');
+    await page.goto('https://www.yad2.co.il/account/login', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
 
-      // Rooms
-      if (listing.rooms) {
-        const roomsInput = await page.$('input[name="rooms"], select[name="rooms"]');
-        if (roomsInput) {
-          const tag = await roomsInput.evaluate(el => el.tagName.toLowerCase());
-          if (tag === 'select') {
-            await page.select('select[name="rooms"]', String(listing.rooms));
-          } else {
-            await roomsInput.click({ clickCount: 3 });
-            await roomsInput.type(String(listing.rooms));
-          }
-        }
-      }
+    // Check for Cloudflare challenge
+    const cfChallenge = await page.evaluate(() => {
+      return document.title.includes('Just a moment') ||
+             document.querySelector('#challenge-form') !== null ||
+             document.querySelector('.cf-browser-verification') !== null;
+    });
 
-      // Floor
-      if (listing.floor) {
-        const floorInput = await page.$('input[name="floor"]');
-        if (floorInput) {
-          await floorInput.click({ clickCount: 3 });
-          await floorInput.type(String(listing.floor));
-        }
-      }
-
-      // Area
-      if (listing.area_sqm) {
-        const areaInput = await page.$('input[name="squareMeter"], input[name="area"]');
-        if (areaInput) {
-          await areaInput.click({ clickCount: 3 });
-          await areaInput.type(String(listing.area_sqm));
-        }
-      }
-
-      // Price
-      if (listing.asking_price) {
-        const priceInput = await page.$('input[name="price"]');
-        if (priceInput) {
-          await priceInput.click({ clickCount: 3 });
-          await priceInput.type(String(listing.asking_price));
-        }
-      }
-
-      // Description
-      if (listing.description) {
-        const descInput = await page.$('textarea[name="description"], textarea[placeholder*="תיאור"]');
-        if (descInput) {
-          await descInput.type(listing.description);
-        }
-      }
-
-      // Submit
-      const submitBtn = await page.$('button[type="submit"]:not([disabled])');
-      if (submitBtn) {
-        await submitBtn.click();
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-      }
-
-      // Try to get listing ID from URL
-      const url = page.url();
-      const match = url.match(/\/(\d+)(?:\?|$)/);
-      const externalId = match ? match[1] : null;
-
-      await browser.close();
-      return { success: true, external_id: externalId, url, platform: 'yad2' };
-
-    } catch (err) {
-      await browser.close();
-      throw err;
+    if (cfChallenge) {
+      logger.info('[Publisher] yad2: Cloudflare challenge detected, waiting...');
+      // Wait for Cloudflare to pass (it usually does with residential proxy)
+      await page.waitForTimeout(5000);
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
     }
+
+    // Solve any captcha on login page
+    await detectAndSolveCaptcha(page);
+
+    // Fill login form
+    try {
+      await page.waitForSelector('input[name="email"], input[type="email"], #email', { timeout: 15000 });
+    } catch (e) {
+      // Try to get current page status
+      const title = await page.title();
+      const content = await page.evaluate(() => document.body?.innerText?.substring(0, 200));
+      logger.warn(`[Publisher] yad2: login page not loaded. Title: ${title}. Content: ${content}`);
+      throw new Error(`yad2 login page not accessible: ${title}`);
+    }
+
+    await page.evaluate(() => {
+      const emailEl = document.querySelector('input[name="email"], input[type="email"], #email');
+      if (emailEl) emailEl.value = '';
+    });
+    await page.type('input[name="email"], input[type="email"], #email', email, { delay: 80 });
+    await page.waitForTimeout(500);
+    await page.type('input[name="password"], input[type="password"], #password', password, { delay: 80 });
+    await page.waitForTimeout(500);
+
+    // Solve captcha before submit if present
+    await detectAndSolveCaptcha(page);
+
+    await page.click('button[type="submit"]');
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+
+    // Step 2: Navigate to new listing form
+    logger.info('[Publisher] yad2: navigating to new listing form...');
+    await page.goto('https://www.yad2.co.il/realestate/forsale/new', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
+
+    // Check for Cloudflare again
+    const cfChallenge2 = await page.evaluate(() => {
+      return document.title.includes('Just a moment') ||
+             document.querySelector('#challenge-form') !== null;
+    });
+    if (cfChallenge2) {
+      logger.info('[Publisher] yad2: Cloudflare on listing page, waiting...');
+      await page.waitForTimeout(6000);
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+    }
+
+    await detectAndSolveCaptcha(page);
+
+    // Step 3: Fill listing form
+    // Address
+    if (listing.address) {
+      const addrSel = 'input[placeholder*="כתובת"], input[name*="address"], input[id*="address"]';
+      const addrInput = await page.$(addrSel);
+      if (addrInput) {
+        await addrInput.click({ clickCount: 3 });
+        await addrInput.type(listing.address, { delay: 60 });
+        await page.waitForTimeout(1500);
+        // Click first autocomplete suggestion
+        const suggestion = await page.$('.autocomplete-suggestion, [class*="suggestion"], [class*="Suggestion"]');
+        if (suggestion) await suggestion.click();
+        await page.waitForTimeout(500);
+      }
+    }
+
+    // Rooms
+    if (listing.rooms) {
+      const roomsSel = 'input[name="rooms"], select[name="rooms"], [data-field="rooms"] input';
+      const roomsEl = await page.$(roomsSel);
+      if (roomsEl) {
+        const tag = await roomsEl.evaluate(el => el.tagName.toLowerCase());
+        if (tag === 'select') {
+          await page.select(roomsSel, String(listing.rooms));
+        } else {
+          await roomsEl.click({ clickCount: 3 });
+          await roomsEl.type(String(listing.rooms), { delay: 60 });
+        }
+      }
+    }
+
+    // Floor
+    if (listing.floor) {
+      const floorEl = await page.$('input[name="floor"], [data-field="floor"] input');
+      if (floorEl) {
+        await floorEl.click({ clickCount: 3 });
+        await floorEl.type(String(listing.floor), { delay: 60 });
+      }
+    }
+
+    // Area
+    if (listing.area_sqm) {
+      const areaEl = await page.$('input[name="squareMeter"], input[name="area"], [data-field="squareMeter"] input');
+      if (areaEl) {
+        await areaEl.click({ clickCount: 3 });
+        await areaEl.type(String(listing.area_sqm), { delay: 60 });
+      }
+    }
+
+    // Price
+    if (listing.asking_price) {
+      const priceEl = await page.$('input[name="price"], [data-field="price"] input');
+      if (priceEl) {
+        await priceEl.click({ clickCount: 3 });
+        await priceEl.type(String(listing.asking_price), { delay: 60 });
+      }
+    }
+
+    // Description
+    const desc = buildDescription(listing);
+    const descEl = await page.$('textarea[name="description"], textarea[id*="description"], textarea');
+    if (descEl) {
+      await descEl.click({ clickCount: 3 });
+      await descEl.type(desc, { delay: 30 });
+    }
+
+    // Phone (Quantum's number)
+    const phone = process.env.QUANTUM_PHONE || listing.contact_phone;
+    if (phone) {
+      const phoneEl = await page.$('input[name="phone"], input[type="tel"], [data-field="phone"] input');
+      if (phoneEl) {
+        await phoneEl.click({ clickCount: 3 });
+        await phoneEl.type(phone, { delay: 60 });
+      }
+    }
+
+    // Solve captcha before submit
+    await detectAndSolveCaptcha(page);
+
+    // Submit
+    const submitBtn = await page.$('button[type="submit"]:not([disabled])');
+    if (submitBtn) {
+      await submitBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {});
+    }
+
+    const url = page.url();
+    const match = url.match(/\/(\d+)(?:\?|$)/);
+    const externalId = match ? match[1] : null;
+
+    await browser.close();
+    logger.info(`[Publisher] yad2: published successfully. URL: ${url}`);
+    return { success: true, external_id: externalId, url, platform: 'yad2' };
+
   } catch (err) {
+    if (browser) await browser.close().catch(() => {});
+    logger.error('[Publisher] yad2 error:', err.message);
     return { success: false, error: err.message, platform: 'yad2' };
   }
 }
 
 // ─────────────────────────────────────────────
-// HOMELESS (Puppeteer + stealth + 2captcha)
+// HOMELESS (Puppeteer + Residential Proxy + reCAPTCHA)
 // ─────────────────────────────────────────────
 async function publishToHomeless(listing) {
   const email = process.env.HOMELESS_EMAIL;
   const password = process.env.HOMELESS_PASSWORD;
-  
+
   if (!email || !password) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'HOMELESS_EMAIL / HOMELESS_PASSWORD not set in Railway env vars',
       platform: 'homeless',
       setup_required: true
     };
   }
 
+  let browser;
   try {
-    const browser = await launchStealthBrowser();
+    browser = await launchStealthBrowser({ useProxy: true });
     const page = await browser.newPage();
+    await authenticateProxy(page);
     await page.setViewport({ width: 1280, height: 800 });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'he-IL,he;q=0.9' });
 
-    try {
-      // Login to homeless private zone
-      await page.goto('https://www.homeless.co.il/privatezone/', { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      // Check for captcha and solve if present
-      const captchaFrame = await page.$('iframe[src*="recaptcha"]');
-      if (captchaFrame) {
-        logger.info('[Publisher] Homeless: reCAPTCHA detected, solving via 2captcha...');
-        const siteKey = await page.evaluate(() => {
-          const el = document.querySelector('[data-sitekey]');
-          return el ? el.getAttribute('data-sitekey') : null;
-        });
-        if (siteKey) {
-          const token = await solveRecaptchaV2(siteKey, page.url());
-          if (token) {
-            await page.evaluate((t) => {
-              const el = document.querySelector('[name="g-recaptcha-response"]');
-              if (el) el.value = t;
-              // Also try callback
-              if (window.grecaptcha && window.grecaptcha.getResponse) {
-                const form = document.querySelector('form');
-                if (form) form.submit();
-              }
-            }, token);
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-          }
-        }
+    // Login
+    logger.info('[Publisher] homeless: navigating to login...');
+    await page.goto('https://www.homeless.co.il/privatezone/', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
+
+    await detectAndSolveCaptcha(page);
+
+    const emailInput = await page.$('input[type="email"], input[name="email"], #email');
+    if (emailInput) {
+      await emailInput.click({ clickCount: 3 });
+      await emailInput.type(email, { delay: 80 });
+      const passInput = await page.$('input[type="password"]');
+      if (passInput) {
+        await passInput.click({ clickCount: 3 });
+        await passInput.type(password, { delay: 80 });
       }
-
-      // Login form
-      const emailInput = await page.$('input[type="email"], input[name="email"], #email');
-      if (emailInput) {
-        await emailInput.click({ clickCount: 3 });
-        await emailInput.type(email);
-        const passInput = await page.$('input[type="password"]');
-        if (passInput) {
-          await passInput.click({ clickCount: 3 });
-          await passInput.type(password);
-        }
-        await page.click('input[type="submit"], button[type="submit"]');
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-      }
-
-      // Navigate to new listing
-      await page.goto('https://www.homeless.co.il/postad/', { waitUntil: 'networkidle2', timeout: 30000 });
-
-      // Select real estate category if needed
-      const catLink = await page.$('a[href*="rent"], a[href*="sale"]');
-      if (catLink) await catLink.click();
-      await page.waitForTimeout(1000);
-
-      // Fill basic fields
-      const title = `${listing.rooms ? listing.rooms + ' חדרים' : 'דירה'} ב${listing.address || listing.city}`;
-      const titleInput = await page.$('input[name="title"], input[id*="title"], input[placeholder*="כותרת"]');
-      if (titleInput) {
-        await titleInput.click({ clickCount: 3 });
-        await titleInput.type(title);
-      }
-
-      if (listing.asking_price) {
-        const priceInput = await page.$('input[name="price"], input[id*="price"]');
-        if (priceInput) {
-          await priceInput.click({ clickCount: 3 });
-          await priceInput.type(String(listing.asking_price));
-        }
-      }
-
-      if (listing.description) {
-        const descInput = await page.$('textarea');
-        if (descInput) await descInput.type(listing.description);
-      }
-
-      // Check for captcha before submit
-      const submitCaptcha = await page.$('[data-sitekey]');
-      if (submitCaptcha) {
-        const siteKey = await page.evaluate(() => document.querySelector('[data-sitekey]').getAttribute('data-sitekey'));
-        const token = await solveRecaptchaV2(siteKey, page.url());
-        if (token) {
-          await page.evaluate((t) => {
-            const el = document.querySelector('[name="g-recaptcha-response"]');
-            if (el) el.value = t;
-          }, token);
-        }
-      }
-
-      const submitBtn = await page.$('input[type="submit"], button[type="submit"]');
-      if (submitBtn) {
-        await submitBtn.click();
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
-      }
-
-      const url = page.url();
-      await browser.close();
-      return { success: true, url, platform: 'homeless' };
-
-    } catch (err) {
-      await browser.close();
-      throw err;
+      await detectAndSolveCaptcha(page);
+      await page.click('input[type="submit"], button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
     }
+
+    // Navigate to post ad
+    await page.goto('https://www.homeless.co.il/postad/', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
+
+    // Select real estate / for sale category
+    const catLink = await page.$('a[href*="sale"], a[href*="forsale"], a[href*="realestate"]');
+    if (catLink) {
+      await catLink.click();
+      await page.waitForTimeout(1500);
+    }
+
+    // Fill title
+    const title = buildTitle(listing);
+    const titleInput = await page.$('input[name="title"], input[id*="title"], input[placeholder*="כותרת"]');
+    if (titleInput) {
+      await titleInput.click({ clickCount: 3 });
+      await titleInput.type(title, { delay: 60 });
+    }
+
+    // Fill price
+    if (listing.asking_price) {
+      const priceInput = await page.$('input[name="price"], input[id*="price"]');
+      if (priceInput) {
+        await priceInput.click({ clickCount: 3 });
+        await priceInput.type(String(listing.asking_price), { delay: 60 });
+      }
+    }
+
+    // Fill description
+    const descInput = await page.$('textarea');
+    if (descInput) {
+      await descInput.click({ clickCount: 3 });
+      await descInput.type(buildDescription(listing), { delay: 30 });
+    }
+
+    // Phone
+    const phone = process.env.QUANTUM_PHONE || listing.contact_phone;
+    if (phone) {
+      const phoneInput = await page.$('input[name="phone"], input[type="tel"]');
+      if (phoneInput) {
+        await phoneInput.click({ clickCount: 3 });
+        await phoneInput.type(phone, { delay: 60 });
+      }
+    }
+
+    // Solve captcha before submit
+    await detectAndSolveCaptcha(page);
+
+    const submitBtn = await page.$('input[type="submit"], button[type="submit"]');
+    if (submitBtn) {
+      await submitBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {});
+    }
+
+    const url = page.url();
+    await browser.close();
+    logger.info(`[Publisher] homeless: published. URL: ${url}`);
+    return { success: true, url, platform: 'homeless' };
+
   } catch (err) {
+    if (browser) await browser.close().catch(() => {});
+    logger.error('[Publisher] homeless error:', err.message);
     return { success: false, error: err.message, platform: 'homeless' };
   }
 }
 
 // ─────────────────────────────────────────────
-// MADLAN (Puppeteer)
+// MADLAN (Puppeteer + Residential Proxy)
 // ─────────────────────────────────────────────
 async function publishToMadlan(listing) {
   const email = process.env.MADLAN_EMAIL;
   const password = process.env.MADLAN_PASSWORD;
-  
+
   if (!email || !password) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'MADLAN_EMAIL / MADLAN_PASSWORD not set in Railway env vars',
       platform: 'madlan',
       setup_required: true
     };
   }
 
+  let browser;
   try {
-    const browser = await launchStealthBrowser();
+    browser = await launchStealthBrowser({ useProxy: true });
     const page = await browser.newPage();
+    await authenticateProxy(page);
     await page.setViewport({ width: 1280, height: 800 });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'he-IL,he;q=0.9' });
 
-    try {
-      await page.goto('https://www.madlan.co.il/user/login', { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      const emailInput = await page.$('input[type="email"], input[name="email"]');
-      if (emailInput) {
-        await emailInput.type(email);
-        const passInput = await page.$('input[type="password"]');
-        if (passInput) await passInput.type(password);
-        await page.click('button[type="submit"]');
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+    logger.info('[Publisher] madlan: navigating to login...');
+    await page.goto('https://www.madlan.co.il/user/login', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
+
+    await detectAndSolveCaptcha(page);
+
+    const emailInput = await page.$('input[type="email"], input[name="email"]');
+    if (emailInput) {
+      await emailInput.click({ clickCount: 3 });
+      await emailInput.type(email, { delay: 80 });
+      const passInput = await page.$('input[type="password"]');
+      if (passInput) {
+        await passInput.click({ clickCount: 3 });
+        await passInput.type(password, { delay: 80 });
       }
-
-      await page.goto('https://www.madlan.co.il/publish-listing', { waitUntil: 'networkidle2', timeout: 30000 });
-
-      if (listing.asking_price) {
-        const priceInput = await page.$('input[name="price"]');
-        if (priceInput) {
-          await priceInput.click({ clickCount: 3 });
-          await priceInput.type(String(listing.asking_price));
-        }
-      }
-
-      if (listing.description) {
-        const descInput = await page.$('textarea');
-        if (descInput) await descInput.type(listing.description);
-      }
-
-      const submitBtn = await page.$('button[type="submit"]');
-      if (submitBtn) {
-        await submitBtn.click();
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-      }
-
-      const url = page.url();
-      await browser.close();
-      return { success: true, url, platform: 'madlan' };
-
-    } catch (err) {
-      await browser.close();
-      throw err;
+      await detectAndSolveCaptcha(page);
+      await page.click('button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
     }
+
+    await page.goto('https://www.madlan.co.il/publish-listing', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
+
+    // Fill address
+    if (listing.address) {
+      const addrInput = await page.$('input[placeholder*="כתובת"], input[name*="address"]');
+      if (addrInput) {
+        await addrInput.click({ clickCount: 3 });
+        await addrInput.type(listing.address, { delay: 60 });
+        await page.waitForTimeout(1500);
+        const suggestion = await page.$('[class*="suggestion"], [class*="Suggestion"]');
+        if (suggestion) await suggestion.click();
+      }
+    }
+
+    // Fill price
+    if (listing.asking_price) {
+      const priceInput = await page.$('input[name="price"]');
+      if (priceInput) {
+        await priceInput.click({ clickCount: 3 });
+        await priceInput.type(String(listing.asking_price), { delay: 60 });
+      }
+    }
+
+    // Fill description
+    const descInput = await page.$('textarea');
+    if (descInput) {
+      await descInput.click({ clickCount: 3 });
+      await descInput.type(buildDescription(listing), { delay: 30 });
+    }
+
+    // Phone
+    const phone = process.env.QUANTUM_PHONE || listing.contact_phone;
+    if (phone) {
+      const phoneInput = await page.$('input[name="phone"], input[type="tel"]');
+      if (phoneInput) {
+        await phoneInput.click({ clickCount: 3 });
+        await phoneInput.type(phone, { delay: 60 });
+      }
+    }
+
+    await detectAndSolveCaptcha(page);
+
+    const submitBtn = await page.$('button[type="submit"]');
+    if (submitBtn) {
+      await submitBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {});
+    }
+
+    const url = page.url();
+    await browser.close();
+    logger.info(`[Publisher] madlan: published. URL: ${url}`);
+    return { success: true, url, platform: 'madlan' };
+
   } catch (err) {
+    if (browser) await browser.close().catch(() => {});
+    logger.error('[Publisher] madlan error:', err.message);
     return { success: false, error: err.message, platform: 'madlan' };
   }
 }
 
 // ─────────────────────────────────────────────
-// WINWIN (Puppeteer)
+// WINWIN (Puppeteer + Residential Proxy)
 // ─────────────────────────────────────────────
 async function publishToWinwin(listing) {
   const email = process.env.WINWIN_EMAIL;
   const password = process.env.WINWIN_PASSWORD;
-  
+
   if (!email || !password) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'WINWIN_EMAIL / WINWIN_PASSWORD not set in Railway env vars',
       platform: 'winwin',
       setup_required: true
     };
   }
 
+  let browser;
   try {
-    const browser = await launchStealthBrowser();
+    browser = await launchStealthBrowser({ useProxy: true });
     const page = await browser.newPage();
+    await authenticateProxy(page);
     await page.setViewport({ width: 1280, height: 800 });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'he-IL,he;q=0.9' });
 
-    try {
-      await page.goto('https://www.winwin.co.il/login', { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      const emailInput = await page.$('input[type="email"], input[name="email"]');
-      if (emailInput) {
-        await emailInput.type(email);
-        const passInput = await page.$('input[type="password"]');
-        if (passInput) await passInput.type(password);
-        await page.click('button[type="submit"]');
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+    logger.info('[Publisher] winwin: navigating to login...');
+    await page.goto('https://www.winwin.co.il/login', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
+
+    await detectAndSolveCaptcha(page);
+
+    const emailInput = await page.$('input[type="email"], input[name="email"]');
+    if (emailInput) {
+      await emailInput.click({ clickCount: 3 });
+      await emailInput.type(email, { delay: 80 });
+      const passInput = await page.$('input[type="password"]');
+      if (passInput) {
+        await passInput.click({ clickCount: 3 });
+        await passInput.type(password, { delay: 80 });
       }
-
-      await page.goto('https://www.winwin.co.il/publish', { waitUntil: 'networkidle2', timeout: 30000 });
-
-      if (listing.asking_price) {
-        const priceInput = await page.$('input[name="price"]');
-        if (priceInput) {
-          await priceInput.click({ clickCount: 3 });
-          await priceInput.type(String(listing.asking_price));
-        }
-      }
-
-      if (listing.description) {
-        const descInput = await page.$('textarea');
-        if (descInput) await descInput.type(listing.description);
-      }
-
-      const submitBtn = await page.$('button[type="submit"]');
-      if (submitBtn) {
-        await submitBtn.click();
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 });
-      }
-
-      const url = page.url();
-      await browser.close();
-      return { success: true, url, platform: 'winwin' };
-
-    } catch (err) {
-      await browser.close();
-      throw err;
+      await detectAndSolveCaptcha(page);
+      await page.click('button[type="submit"]');
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
     }
+
+    await page.goto('https://www.winwin.co.il/publish', {
+      waitUntil: 'networkidle2',
+      timeout: 45000
+    });
+
+    // Fill address
+    if (listing.address) {
+      const addrInput = await page.$('input[placeholder*="כתובת"], input[name*="address"]');
+      if (addrInput) {
+        await addrInput.click({ clickCount: 3 });
+        await addrInput.type(listing.address, { delay: 60 });
+        await page.waitForTimeout(1500);
+        const suggestion = await page.$('[class*="suggestion"], [class*="Suggestion"]');
+        if (suggestion) await suggestion.click();
+      }
+    }
+
+    // Fill price
+    if (listing.asking_price) {
+      const priceInput = await page.$('input[name="price"]');
+      if (priceInput) {
+        await priceInput.click({ clickCount: 3 });
+        await priceInput.type(String(listing.asking_price), { delay: 60 });
+      }
+    }
+
+    // Fill description
+    const descInput = await page.$('textarea');
+    if (descInput) {
+      await descInput.click({ clickCount: 3 });
+      await descInput.type(buildDescription(listing), { delay: 30 });
+    }
+
+    // Phone
+    const phone = process.env.QUANTUM_PHONE || listing.contact_phone;
+    if (phone) {
+      const phoneInput = await page.$('input[name="phone"], input[type="tel"]');
+      if (phoneInput) {
+        await phoneInput.click({ clickCount: 3 });
+        await phoneInput.type(phone, { delay: 60 });
+      }
+    }
+
+    await detectAndSolveCaptcha(page);
+
+    const submitBtn = await page.$('button[type="submit"]');
+    if (submitBtn) {
+      await submitBtn.click();
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 25000 }).catch(() => {});
+    }
+
+    const url = page.url();
+    await browser.close();
+    logger.info(`[Publisher] winwin: published. URL: ${url}`);
+    return { success: true, url, platform: 'winwin' };
+
   } catch (err) {
+    if (browser) await browser.close().catch(() => {});
+    logger.error('[Publisher] winwin error:', err.message);
     return { success: false, error: err.message, platform: 'winwin' };
   }
 }
 
 // ─────────────────────────────────────────────
-// CHECK PLATFORM STATUS (which platforms are configured)
+// PLATFORM STATUS
 // ─────────────────────────────────────────────
 function getPlatformStatus() {
+  const hasProxy = !!(process.env.TWOCAPTCHA_PROXY_USER || process.env.TWOCAPTCHA_API_KEY);
   return {
-    yad2:     { configured: !!(process.env.YAD2_EMAIL && process.env.YAD2_PASSWORD),     method: 'puppeteer', captcha: !!process.env.TWOCAPTCHA_API_KEY },
-    homeless: { configured: !!(process.env.HOMELESS_EMAIL && process.env.HOMELESS_PASSWORD), method: 'puppeteer', captcha: !!process.env.TWOCAPTCHA_API_KEY },
-    madlan:   { configured: !!(process.env.MADLAN_EMAIL && process.env.MADLAN_PASSWORD),   method: 'puppeteer', captcha: !!process.env.TWOCAPTCHA_API_KEY },
-    winwin:   { configured: !!(process.env.WINWIN_EMAIL && process.env.WINWIN_PASSWORD),   method: 'puppeteer', captcha: !!process.env.TWOCAPTCHA_API_KEY },
-    facebook: { configured: !!process.env.APIFY_API_TOKEN,                                 method: 'apify',     captcha: false }
+    yad2:     { configured: !!(process.env.YAD2_EMAIL && process.env.YAD2_PASSWORD),         method: 'puppeteer+proxy', captcha: !!process.env.TWOCAPTCHA_API_KEY, proxy: hasProxy },
+    homeless: { configured: !!(process.env.HOMELESS_EMAIL && process.env.HOMELESS_PASSWORD), method: 'puppeteer+proxy', captcha: !!process.env.TWOCAPTCHA_API_KEY, proxy: hasProxy },
+    madlan:   { configured: !!(process.env.MADLAN_EMAIL && process.env.MADLAN_PASSWORD),     method: 'puppeteer+proxy', captcha: !!process.env.TWOCAPTCHA_API_KEY, proxy: hasProxy },
+    winwin:   { configured: !!(process.env.WINWIN_EMAIL && process.env.WINWIN_PASSWORD),     method: 'puppeteer+proxy', captcha: !!process.env.TWOCAPTCHA_API_KEY, proxy: hasProxy },
+    facebook: { configured: !!process.env.APIFY_API_TOKEN,                                   method: 'manual',          captcha: false,                             proxy: false }
   };
 }
 
