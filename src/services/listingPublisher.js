@@ -26,6 +26,9 @@ const { logger } = require('./logger');
 const pool = require('../db/pool');
 const axios = require('axios');
 
+/** Cross-version compatible delay (replaces page.waitForTimeout removed in Puppeteer v22) */
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // ─────────────────────────────────────────────
 // PROXY HELPERS
 // ─────────────────────────────────────────────
@@ -341,10 +344,34 @@ async function publishToYad2(listing) {
 
     // Step 1: Login
     logger.info('[Publisher] yad2: navigating to login...');
-    await page.goto('https://www.yad2.co.il/account/login', {
-      waitUntil: 'networkidle2',
+
+    // First visit homepage to establish session before login page
+    await page.goto('https://www.yad2.co.il/', {
+      waitUntil: 'domcontentloaded',
       timeout: 45000
     });
+    await delay(3000);
+
+    await page.goto('https://www.yad2.co.il/account/login', {
+      waitUntil: 'networkidle2',
+      timeout: 60000
+    });
+
+    // Check for Cloudflare 403 or challenge
+    const statusCode = await page.evaluate(() => {
+      return document.title.includes('403') ||
+             document.title.includes('Forbidden') ||
+             document.body?.innerText?.includes('403 Forbidden');
+    });
+
+    if (statusCode) {
+      logger.info('[Publisher] yad2: got 403, waiting 10s and retrying...');
+      await delay(10000);
+      await page.goto('https://www.yad2.co.il/account/login', {
+        waitUntil: 'networkidle2',
+        timeout: 60000
+      });
+    }
 
     // Check for Cloudflare challenge
     const cfChallenge = await page.evaluate(() => {
@@ -354,9 +381,8 @@ async function publishToYad2(listing) {
     });
 
     if (cfChallenge) {
-      logger.info('[Publisher] yad2: Cloudflare challenge detected, waiting...');
-      // Wait for Cloudflare to pass (it usually does with residential proxy)
-      await page.waitForTimeout(5000);
+      logger.info('[Publisher] yad2: Cloudflare challenge detected, waiting 15s...');
+      await delay(15000);
       await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
     }
 
@@ -379,9 +405,9 @@ async function publishToYad2(listing) {
       if (emailEl) emailEl.value = '';
     });
     await page.type('input[name="email"], input[type="email"], #email', email, { delay: 80 });
-    await page.waitForTimeout(500);
+    await delay(500);
     await page.type('input[name="password"], input[type="password"], #password', password, { delay: 80 });
-    await page.waitForTimeout(500);
+    await delay(500);
 
     // Solve captcha before submit if present
     await detectAndSolveCaptcha(page);
@@ -403,7 +429,7 @@ async function publishToYad2(listing) {
     });
     if (cfChallenge2) {
       logger.info('[Publisher] yad2: Cloudflare on listing page, waiting...');
-      await page.waitForTimeout(6000);
+      await delay(6000);
       await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
     }
 
@@ -417,11 +443,11 @@ async function publishToYad2(listing) {
       if (addrInput) {
         await addrInput.click({ clickCount: 3 });
         await addrInput.type(listing.address, { delay: 60 });
-        await page.waitForTimeout(1500);
+        await delay(1500);
         // Click first autocomplete suggestion
         const suggestion = await page.$('.autocomplete-suggestion, [class*="suggestion"], [class*="Suggestion"]');
         if (suggestion) await suggestion.click();
-        await page.waitForTimeout(500);
+        await delay(500);
       }
     }
 
@@ -567,7 +593,7 @@ async function publishToHomeless(listing) {
     const catLink = await page.$('a[href*="sale"], a[href*="forsale"], a[href*="realestate"]');
     if (catLink) {
       await catLink.click();
-      await page.waitForTimeout(1500);
+      await delay(1500);
     }
 
     // Fill title
@@ -682,7 +708,7 @@ async function publishToMadlan(listing) {
       if (addrInput) {
         await addrInput.click({ clickCount: 3 });
         await addrInput.type(listing.address, { delay: 60 });
-        await page.waitForTimeout(1500);
+        await delay(1500);
         const suggestion = await page.$('[class*="suggestion"], [class*="Suggestion"]');
         if (suggestion) await suggestion.click();
       }
@@ -752,9 +778,9 @@ async function publishToWinwin(listing) {
 
   let browser;
   try {
-    browser = await launchStealthBrowser({ useProxy: true });
+    // winwin blocks the residential proxy — use direct connection
+    browser = await launchStealthBrowser({ useProxy: false });
     const page = await browser.newPage();
-    await authenticateProxy(page);
     await page.setViewport({ width: 1280, height: 800 });
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'he-IL,he;q=0.9' });
 
@@ -791,7 +817,7 @@ async function publishToWinwin(listing) {
       if (addrInput) {
         await addrInput.click({ clickCount: 3 });
         await addrInput.type(listing.address, { delay: 60 });
-        await page.waitForTimeout(1500);
+        await delay(1500);
         const suggestion = await page.$('[class*="suggestion"], [class*="Suggestion"]');
         if (suggestion) await suggestion.click();
       }
