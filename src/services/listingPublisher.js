@@ -44,20 +44,12 @@ function getProxyArgs() {
 }
 
 /**
- * Authenticate proxy in the browser page (basic auth popup) — also sets via CDP.
+ * Authenticate proxy in the browser page (basic auth popup).
+ * Only use page.authenticate — CDP setExtraHTTPHeaders causes ERR_INVALID_ARGUMENT.
  */
 async function setProxyCredentials(page) {
   const user = process.env.TWOCAPTCHA_PROXY_USER || 'u1d381207513d0589-zone-custom';
   const pass = process.env.TWOCAPTCHA_PROXY_PASS || '2ddaa2a486fc4e3296acd639aa486614';
-  // Use CDP to set proxy credentials (more reliable than page.authenticate)
-  const client = await page.target().createCDPSession();
-  await client.send('Network.enable');
-  await client.send('Network.setExtraHTTPHeaders', {
-    headers: {
-      'Proxy-Authorization': 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64')
-    }
-  });
-  // Also use page.authenticate as fallback
   await page.authenticate({ username: user, password: pass });
 }
 
