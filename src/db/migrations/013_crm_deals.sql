@@ -3,8 +3,8 @@
 
 CREATE TABLE IF NOT EXISTS deals (
   id              SERIAL PRIMARY KEY,
-  lead_id         INTEGER REFERENCES leads(id) ON DELETE SET NULL,
-  complex_id      INTEGER REFERENCES complexes(id) ON DELETE SET NULL,
+  lead_id         INTEGER,
+  complex_id      INTEGER,
   title           TEXT NOT NULL,
   value           NUMERIC(12,2) DEFAULT 0,
   stage           TEXT NOT NULL DEFAULT 'prospect'
@@ -21,9 +21,10 @@ CREATE INDEX IF NOT EXISTS idx_deals_complex_id ON deals(complex_id);
 CREATE INDEX IF NOT EXISTS idx_deals_stage      ON deals(stage);
 CREATE INDEX IF NOT EXISTS idx_deals_updated_at ON deals(updated_at DESC);
 
--- Seed a few demo deals so the pipeline page isn't empty
-INSERT INTO deals (lead_id, title, value, stage, notes)
-SELECT id, 'עסקת מכירה — ' || name, 1500000, 'prospect', 'ליד ממערכת QUANTUM'
-FROM leads
-WHERE id IN (SELECT id FROM leads ORDER BY id LIMIT 3)
-ON CONFLICT DO NOTHING;
+-- Seed demo deals (no FK dependency)
+INSERT INTO deals (title, value, stage, notes)
+SELECT unnest(ARRAY['פרויקט תל אביב — מגדל A','פרויקט רמת גן — בניין 3','פרויקט חיפה — מתחם הנמל']),
+       unnest(ARRAY[2500000::numeric, 1800000::numeric, 3200000::numeric]),
+       unnest(ARRAY['prospect','qualified','proposal']),
+       unnest(ARRAY['ליד ממערכת QUANTUM','בשלב בדיקת היתכנות','הצעה נשלחה ללקוח'])
+WHERE NOT EXISTS (SELECT 1 FROM deals LIMIT 1);
