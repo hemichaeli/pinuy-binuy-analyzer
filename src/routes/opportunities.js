@@ -8,7 +8,7 @@ router.get('/opportunities', async (req, res) => {
   try {
     const { min_iai, city, limit: limitParam } = req.query;
     const minIai = parseInt(min_iai) || 30;
-    const limitVal = Math.min(parseInt(limitParam) || 50, 200);
+    const limitVal = Math.min(parseInt(limitParam) || 500, 1000);
 
     let conditions = ['c.iai_score >= $1'];
     let params = [minIai];
@@ -253,6 +253,7 @@ router.get('/listings/search', async (req, res) => {
           l.address, l.city, l.first_seen, l.last_seen,
           l.deal_status, l.message_status,
           l.last_message_sent_at, l.last_reply_at, l.last_reply_text, l.notes,
+          l.phone, l.contact_name,
           c.id as complex_id, c.slug as complex_slug,
           c.name as complex_name, c.city as complex_city, c.status as complex_status,
           c.iai_score, c.developer,
@@ -274,7 +275,10 @@ router.get('/listings/search', async (req, res) => {
         ...row,
         ssi_category: row.ssi_score >= 70 ? 'very_stressed' : row.ssi_score >= 50 ? 'stressed' : row.ssi_score >= 30 ? 'normal' : 'strong',
         strategy: row.ssi_score >= 70 ? 'הצעה אגרסיבית 15-20% מתחת למחיר' : row.ssi_score >= 50 ? 'הצעה 10-15% מתחת למחיר' : row.ssi_score >= 30 ? 'משא ומתן סטנדרטי' : 'מחיר שוק מלא',
-        potential_discount: row.ssi_score >= 70 ? '15-20%' : row.ssi_score >= 50 ? '10-15%' : row.ssi_score >= 30 ? '5-10%' : '0-5%'
+        potential_discount: row.ssi_score >= 70 ? '15-20%' : row.ssi_score >= 50 ? '10-15%' : row.ssi_score >= 30 ? '5-10%' : '0-5%',
+        premium_pct: row.actual_premium && row.asking_price
+          ? ((parseFloat(row.actual_premium) / parseFloat(row.asking_price)) * 100).toFixed(1)
+          : null
       }))
     });
   } catch (error) {
