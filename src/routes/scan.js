@@ -1561,10 +1561,23 @@ router.post('/apify-deploy', async (req, res) => {
       ]
     };
 
-    // If build failed, fetch the build log
-    if (buildStatus === 'FAILED') {
+    // If build failed, fetch the build log + details
+    if (buildStatus === 'FAILED' || buildStatus === 'SUCCEEDED') {
+      // Get build details
       try {
-        const logResp = await axios.get(`${baseUrl}/acts/${actorId}/builds/${buildId}/log`, { headers, timeout: 10000, responseType: 'text' });
+        const buildDetailResp = await axios.get(`${baseUrl}/actor-builds/${buildId}`, { headers, timeout: 10000 });
+        responseData.build_details = {
+          status: buildDetailResp.data?.data?.status,
+          statusMessage: buildDetailResp.data?.data?.statusMessage,
+          inputSchema: buildDetailResp.data?.data?.inputSchema ? 'present' : 'missing',
+          buildNumber: buildDetailResp.data?.data?.buildNumber,
+          usage: buildDetailResp.data?.data?.usage
+        };
+      } catch (e) { responseData.build_details = e.message; }
+
+      // Get build log
+      try {
+        const logResp = await axios.get(`${baseUrl}/actor-builds/${buildId}/log`, { headers, timeout: 10000, responseType: 'text' });
         const fullLog = typeof logResp.data === 'string' ? logResp.data : JSON.stringify(logResp.data);
         responseData.build_log = fullLog.length > 5000 ? '...' + fullLog.slice(-5000) : fullLog;
       } catch (e) { responseData.build_log = `Failed to fetch log: ${e.message}`; }
