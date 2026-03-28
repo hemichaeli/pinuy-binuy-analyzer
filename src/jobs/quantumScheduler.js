@@ -439,6 +439,33 @@ function initScheduler() {
     logger.info('[SCHEDULER] Morning Report cron DISABLED (set ENABLE_MORNING_REPORT=true to enable)');
   }
 
+  // Phone Enrichment v2: Every 6 hours (unified orchestrator — regex+komo+yad2+scrape+apify)
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 */6 * * *', async () => {
+      if (!isEnrichmentDay()) return;
+      logger.info('[SCHEDULER] Phone enrichment v2 (unified orchestrator)');
+      try {
+        const { enrichAllPhones } = require('../services/phoneRevealOrchestrator');
+        const result = await enrichAllPhones({ limit: 500, useApify: !!process.env.APIFY_API_TOKEN });
+        const coverage = result.total > 0 ? ((result.enriched / result.total) * 100).toFixed(1) : '0';
+        logger.info(`[SCHEDULER] Phone enrichment v2 done: ${result.enriched}/${result.total} (${coverage}%)`);
+      } catch (e) { logger.warn('[SCHEDULER] Phone enrichment v2 failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
+  // Komo Direct Phone Enrichment: Daily 10:00 (uses open phone API — free)
+  schedulerState.scheduledTasks.push(
+    cron.schedule('0 10 * * *', async () => {
+      if (!isEnrichmentDay()) return;
+      logger.info('[SCHEDULER] Komo direct phone enrichment (open API)');
+      try {
+        const { enrichExistingListings } = require('../services/komoDirectScraper');
+        const result = await enrichExistingListings(500);
+        logger.info(`[SCHEDULER] Komo phone enrichment done: ${result.enriched}/${result.total} phones found`);
+      } catch (e) { logger.warn('[SCHEDULER] Komo phone enrichment failed', { error: e.message }); }
+    }, { timezone: 'Asia/Jerusalem' })
+  );
+
   // WhatsApp Follow-up: Daily 14:00 (business days only)
   schedulerState.scheduledTasks.push(
     cron.schedule('0 14 * * 1-5', async () => {

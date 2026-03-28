@@ -722,12 +722,15 @@ async function runMasterPipeline(options = {}) {
     result.phase1_scrapers = await runAllScrapers();
     logger.info(`[MasterPipeline] PHASE 1 complete: ${result.phase1_scrapers.totalNew} new, ${result.phase1_scrapers.totalUpdated} updated`);
 
-    // ── PHASE 1b: Phone reveal (yad2 + all sources without phone) ─────────
-    logger.info('[MasterPipeline] PHASE 1b: Revealing phone numbers...');
+    // ── PHASE 1b: Phone reveal (unified orchestrator — all platforms) ─────
+    logger.info('[MasterPipeline] PHASE 1b: Revealing phone numbers (v2 orchestrator)...');
     try {
-      const { revealPhonesForAllYad2 } = require('../services/yad2PhoneReveal');
-      result.phase1b_phones = await revealPhonesForAllYad2({ limit: 300 });
-      logger.info(`[MasterPipeline] PHASE 1b complete: ${result.phase1b_phones.enriched}/${result.phase1b_phones.total} phones revealed`);
+      const { enrichAllPhones } = require('../services/phoneRevealOrchestrator');
+      result.phase1b_phones = await enrichAllPhones({ limit: 1000, useApify: !!process.env.APIFY_API_TOKEN });
+      const coverage = result.phase1b_phones.total > 0
+        ? ((result.phase1b_phones.enriched / result.phase1b_phones.total) * 100).toFixed(1)
+        : '0';
+      logger.info(`[MasterPipeline] PHASE 1b complete: ${result.phase1b_phones.enriched}/${result.phase1b_phones.total} (${coverage}%) phones revealed`);
     } catch (phoneErr) {
       logger.warn(`[MasterPipeline] PHASE 1b phone reveal failed (non-fatal): ${phoneErr.message}`);
       result.phase1b_phones = { enriched: 0, total: 0, error: phoneErr.message };

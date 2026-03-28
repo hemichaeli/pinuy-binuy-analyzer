@@ -1,0 +1,20 @@
+{
+  "name": "quantum-phone-reveal",
+  "version": "1.0.0",
+  "description": "Multi-platform phone reveal for Israeli real estate listings (yad2, yad1, dira, homeless, banknadlan, komo)",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "apify": "^3.1.0",
+    "crawlee": "^3.5.0",
+    "puppeteer": "^21.0.0"
+  },
+  "apify": {
+    "title": "QUANTUM Phone Reveal",
+    "description": "Reveals phone numbers from Israeli real estate sites using browser automation with residential proxies",
+    "isPublic": false,
+    "usesStandbyMode": false
+  }
+}

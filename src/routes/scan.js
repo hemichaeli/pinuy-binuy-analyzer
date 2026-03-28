@@ -973,6 +973,42 @@ router.post('/komo-enrich-phones', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /api/scan/enrich-phones-v2 - UNIFIED phone enrichment (replaces enrich-phones + yad2-reveal-phones)
+// Multi-pass: regex → komo API → yad2 API → page scrape → Apify browser automation
+router.post('/enrich-phones-v2', async (req, res) => {
+  try {
+    const { limit = 2000, source = null, useApify = true, dryRun = false } = req.body;
+    const scanLog = await pool.query(`INSERT INTO scan_logs (scan_type, status) VALUES ('phone_enrichment_v2', 'running') RETURNING *`);
+    const scanId = scanLog.rows[0].id;
+    res.json({ message: 'Unified phone enrichment v2 triggered', scan_id: scanId, limit, source, useApify });
+    (async () => {
+      try {
+        const { enrichAllPhones } = require('../services/phoneRevealOrchestrator');
+        const result = await enrichAllPhones({ limit, source, useApify, dryRun });
+        const passBreakdown = Object.entries(result.passes).map(([k, v]) => `${k}=${v.enriched}`).join(' ');
+        await pool.query(
+          `UPDATE scan_logs SET status = 'completed', completed_at = NOW(), complexes_scanned = $1, summary = $2 WHERE id = $3`,
+          [result.total, `Phone enrichment v2: ${result.enriched}/${result.total} phones (${passBreakdown})`, scanId]
+        );
+      } catch (err) {
+        await pool.query(`UPDATE scan_logs SET status = 'failed', completed_at = NOW(), errors = $1 WHERE id = $2`, [err.message, scanId]);
+        logger.error('[enrich-phones-v2] Failed', { error: err.message });
+      }
+    })();
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/scan/phone-coverage - Get phone coverage report by platform
+router.get('/phone-coverage', async (req, res) => {
+  try {
+    const { getCoverageReport } = require('../services/phoneRevealOrchestrator');
+    const report = await getCoverageReport();
+    res.json({ success: true, ...report });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /api/scan/complex-address - Scan complexes for listings on Homeless, Yad1, Winwin
 // Uses Perplexity Sonar to search by exact complex address
 router.post('/complex-address', async (req, res) => {

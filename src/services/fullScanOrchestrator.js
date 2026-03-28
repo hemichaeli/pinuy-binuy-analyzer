@@ -158,18 +158,28 @@ async function runMadlanScan() {
 }
 
 // ============================================================
-// PHONE ENRICHMENT RUNNER
+// PHONE ENRICHMENT RUNNER (v2 — unified orchestrator)
 // ============================================================
-async function runPhoneEnrichment(limit = 200) {
+async function runPhoneEnrichment(limit = 2000) {
   try {
-    const { enrichAllPhones } = require('./phoneEnrichmentService');
-    logger.info('[FullScan] Starting phone enrichment...');
-    const result = await enrichAllPhones({ limit });
-    logger.info(`[FullScan] Phone enrichment: ${result.enriched}/${result.total} phones found`);
+    // Use the new unified orchestrator (multi-pass: regex → komo → yad2 → scrape → apify)
+    const { enrichAllPhones } = require('./phoneRevealOrchestrator');
+    logger.info('[FullScan] Starting phone enrichment v2 (unified orchestrator)...');
+    const result = await enrichAllPhones({ limit, useApify: !!process.env.APIFY_API_TOKEN });
+    const coverage = result.total > 0 ? ((result.enriched / result.total) * 100).toFixed(1) : '0';
+    logger.info(`[FullScan] Phone enrichment v2: ${result.enriched}/${result.total} (${coverage}%) phones found`);
     return result;
   } catch (err) {
-    logger.error(`[FullScan] Phone enrichment failed: ${err.message}`);
-    return { enriched: 0, total: 0, error: err.message };
+    logger.error(`[FullScan] Phone enrichment v2 failed: ${err.message}`);
+    // Fallback to legacy enrichment service
+    try {
+      const { enrichAllPhones: legacyEnrich } = require('./phoneEnrichmentService');
+      logger.info('[FullScan] Falling back to legacy phone enrichment...');
+      return await legacyEnrich({ limit });
+    } catch (fallbackErr) {
+      logger.error(`[FullScan] Legacy phone enrichment also failed: ${fallbackErr.message}`);
+      return { enriched: 0, total: 0, error: err.message };
+    }
   }
 }
 
