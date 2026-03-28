@@ -1411,6 +1411,86 @@ router.post('/enrich-missing-addresses', async (req, res) => {
   }
 });
 
+// GET /api/scan/apify-runs - Fetch recent Apify Actor runs + logs for diagnostics
+router.get('/apify-runs', async (req, res) => {
+  const token = process.env.APIFY_API_TOKEN;
+  if (!token) return res.status(503).json({ error: 'APIFY_API_TOKEN not configured' });
+
+  const actorId = process.env.APIFY_PHONE_REVEAL_ACTOR || 'quantum-phone-reveal';
+  const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+  const withLog = req.query.log !== 'false';
+
+  try {
+    const axios = require('axios');
+    const baseUrl = 'https://api.apify.com/v2';
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // 1. Get recent runs
+    const runsResp = await axios.get(`${baseUrl}/acts/${actorId}/runs`, {
+      headers, params: { limit, desc: true }, timeout: 15000
+    }).catch(err => {
+      return { data: { data: { items: [] }, error: err.response?.data?.error || err.message } };
+    });
+
+    const runs = runsResp.data?.data?.items || [];
+    if (runs.length === 0) {
+      let actors = [];
+      try {
+        const actorsResp = await axios.get(`${baseUrl}/acts`, { headers, params: { my: true, limit: 20 }, timeout: 10000 });
+        actors = (actorsResp.data?.data?.items || []).map(a => ({ id: a.id, name: a.name, title: a.title }));
+      } catch (e) { /* ok */ }
+
+      return res.json({
+        actor_id: actorId, runs: [],
+        message: 'No runs found for this actor. Check actor ID.',
+        available_actors: actors,
+        api_error: runsResp.data?.error || null
+      });
+    }
+
+    // 2. For each run, optionally fetch log (last 3000 chars)
+    const enrichedRuns = [];
+    for (const run of runs) {
+      const entry = {
+        id: run.id, status: run.status,
+        startedAt: run.startedAt, finishedAt: run.finishedAt,
+        durationSecs: run.stats?.runTimeSecs || null,
+        computeUnits: run.stats?.computeUnits || null,
+        datasetItemCount: run.stats?.datasetItemCount || 0,
+        exitCode: run.exitCode, statusMessage: run.statusMessage,
+        defaultDatasetId: run.defaultDatasetId, buildNumber: run.buildNumber
+      };
+
+      if (withLog && enrichedRuns.length < 3) {
+        try {
+          const logResp = await axios.get(`${baseUrl}/actor-runs/${run.id}/log`, {
+            headers, timeout: 10000, responseType: 'text'
+          });
+          const fullLog = typeof logResp.data === 'string' ? logResp.data : JSON.stringify(logResp.data);
+          entry.log_tail = fullLog.length > 3000 ? '...' + fullLog.slice(-3000) : fullLog;
+          entry.log_length = fullLog.length;
+        } catch (e) { entry.log_error = e.message; }
+      }
+
+      if (run.status === 'SUCCEEDED' && run.defaultDatasetId && enrichedRuns.length < 2) {
+        try {
+          const dsResp = await axios.get(`${baseUrl}/datasets/${run.defaultDatasetId}/items`, {
+            headers, params: { limit: 10 }, timeout: 10000
+          });
+          entry.dataset_sample = dsResp.data || [];
+        } catch (e) { entry.dataset_error = e.message; }
+      }
+
+      enrichedRuns.push(entry);
+    }
+
+    res.json({ actor_id: actorId, total_runs: runs.length, runs: enrichedRuns });
+  } catch (err) {
+    logger.error('[apify-runs] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/scan/:id - MUST BE LAST (catch-all for numeric scan IDs)
 router.get('/:id', async (req, res) => {
   try {
