@@ -1416,7 +1416,7 @@ router.get('/apify-runs', async (req, res) => {
   const token = process.env.APIFY_API_TOKEN;
   if (!token) return res.status(503).json({ error: 'APIFY_API_TOKEN not configured' });
 
-  const actorId = process.env.APIFY_PHONE_REVEAL_ACTOR || 'quantum-phone-reveal';
+  let actorId = req.query.actorId || process.env.APIFY_PHONE_REVEAL_ACTOR || 'quantum-phone-reveal';
   const limit = Math.min(parseInt(req.query.limit) || 5, 20);
   const withLog = req.query.log !== 'false';
 
@@ -1425,12 +1425,28 @@ router.get('/apify-runs', async (req, res) => {
     const baseUrl = 'https://api.apify.com/v2';
     const headers = { Authorization: `Bearer ${token}` };
 
-    // 1. Get recent runs
-    const runsResp = await axios.get(`${baseUrl}/acts/${actorId}/runs`, {
+    // 1. Get recent runs — try slug first, then resolve by name if 404
+    let runsResp = await axios.get(`${baseUrl}/acts/${actorId}/runs`, {
       headers, params: { limit, desc: true }, timeout: 15000
-    }).catch(err => {
-      return { data: { data: { items: [] }, error: err.response?.data?.error || err.message } };
-    });
+    }).catch(() => null);
+
+    // If slug failed, find the actor by name and use its numeric ID
+    if (!runsResp || !runsResp.data?.data?.items?.length) {
+      try {
+        const actorsResp = await axios.get(`${baseUrl}/acts`, { headers, params: { my: true, limit: 50 }, timeout: 10000 });
+        const match = (actorsResp.data?.data?.items || []).find(a => a.name === 'quantum-phone-reveal' || a.title?.includes('Phone Reveal'));
+        if (match) {
+          actorId = match.id;
+          runsResp = await axios.get(`${baseUrl}/acts/${actorId}/runs`, {
+            headers, params: { limit, desc: true }, timeout: 15000
+          }).catch(() => null);
+        }
+      } catch (e) { /* ok */ }
+    }
+
+    if (!runsResp) {
+      runsResp = { data: { data: { items: [] } } };
+    }
 
     const runs = runsResp.data?.data?.items || [];
     if (runs.length === 0) {
