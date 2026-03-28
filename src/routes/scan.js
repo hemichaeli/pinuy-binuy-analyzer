@@ -1467,7 +1467,7 @@ router.post('/apify-deploy', async (req, res) => {
     }
 
     // 4. Trigger build
-    const buildResp = await axios.post(`${baseUrl}/acts/${actorId}/builds`, { version: '0.1', tag: 'latest', useCache: false }, { headers: { ...headers, 'Content-Type': 'application/json' }, timeout: 15000 });
+    const buildResp = await axios.post(`${baseUrl}/acts/${actorId}/builds`, null, { headers, params: { version: '0.1', tag: 'latest', useCache: false }, timeout: 15000 });
     const buildId = buildResp.data?.data?.id;
 
     // 5. Optional test run with a single listing
