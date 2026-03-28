@@ -28,6 +28,9 @@
 const { Actor } = require('apify');
 const { PuppeteerCrawler, log } = require('crawlee');
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const delay = ms => new Promise(r => setTimeout(r, ms));
+
 // ── Phone utils ──────────────────────────────────────────────────────────────
 
 function cleanPhone(phone) {
@@ -68,7 +71,7 @@ async function handleYad2(page, listing) {
   });
 
   await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(2000);
+  await delay(2000);
 
   // Click reveal button
   const revealSelectors = [
@@ -89,7 +92,7 @@ async function handleYad2(page, listing) {
       const btn = await page.$(sel);
       if (btn) {
         await btn.click();
-        await page.waitForTimeout(3000);
+        await delay(3000);
         break;
       }
     } catch (e) { /* try next */ }
@@ -117,12 +120,12 @@ async function handleYad2(page, listing) {
  */
 async function handleYad1(page, listing) {
   await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-  await page.waitForTimeout(2000);
+  await delay(2000);
 
   // Try clicking phone reveal button
   try {
     const btn = await page.$('button[class*="phone"], [class*="show-phone"], [data-action="reveal-phone"]');
-    if (btn) { await btn.click(); await page.waitForTimeout(2000); }
+    if (btn) { await btn.click(); await delay(2000); }
   } catch (e) { /* no button */ }
 
   // Extract from tel: links
@@ -145,12 +148,12 @@ async function handleYad1(page, listing) {
  */
 async function handleDira(page, listing) {
   await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-  await page.waitForTimeout(2000);
+  await delay(2000);
 
   // Try phone reveal button
   try {
     const btn = await page.$('[class*="phone"], [class*="contact-btn"], button[class*="reveal"]');
-    if (btn) { await btn.click(); await page.waitForTimeout(2000); }
+    if (btn) { await btn.click(); await delay(2000); }
   } catch (e) { /* skip */ }
 
   // tel: link
@@ -199,12 +202,12 @@ async function handleHomeless(page, listing) {
   });
 
   await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-  await page.waitForTimeout(2000);
+  await delay(2000);
 
   // Click reveal
   try {
     const btn = await page.$('[class*="phone"], [class*="show-phone"], [class*="reveal"]');
-    if (btn) { await btn.click(); await page.waitForTimeout(2500); }
+    if (btn) { await btn.click(); await delay(2500); }
   } catch (e) { /* skip */ }
 
   if (capturedPhone) return { phone: capturedPhone, method: 'api_intercept' };
@@ -227,7 +230,7 @@ async function handleHomeless(page, listing) {
  */
 async function handleBankNadlan(page, listing) {
   await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-  await page.waitForTimeout(2000);
+  await delay(2000);
 
   // BankNadlan usually shows attorney/agent info directly
   const contactInfo = await page.evaluate(() => {
@@ -280,7 +283,7 @@ async function handleKomo(page, listing) {
   if (!modaaMatch) {
     // Try page scraping
     await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-    await page.waitForTimeout(2000);
+    await delay(2000);
     const pageText = await page.evaluate(() => document.body?.innerText || '');
     const phones = extractPhonesFromText(pageText);
     if (phones.length) return { phone: phones[0], method: 'page_regex' };
@@ -314,7 +317,7 @@ async function handleKomo(page, listing) {
  */
 async function handleMadlan(page, listing) {
   await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 25000 });
-  await page.waitForTimeout(2000);
+  await delay(2000);
 
   const telPhone = await page.evaluate(() => {
     const tel = document.querySelector('a[href^="tel:"]');
@@ -367,8 +370,9 @@ Actor.main(async () => {
   const validListings = listings.filter(l => {
     if (!l.url || l.url === 'NULL') return false;
     // Skip search result pages — these don't have individual listing phones
-    if (l.url.includes('/forsale?') || l.url.includes('/city/') ||
-        l.url.includes('apartments-for-sale.asp?n')) return false;
+    // Note: komo uses apartments-for-sale.asp for individual listings too, so only filter yad2/madlan search URLs
+    if (l.url.includes('yad2.co.il') && l.url.includes('/forsale?')) return false;
+    if (l.url.includes('madlan.co.il') && l.url.includes('/city/')) return false;
     return true;
   });
 
