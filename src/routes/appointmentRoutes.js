@@ -5,6 +5,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db/pool');
 const axios = require('axios');
+const inforuService = require('../services/inforuService');
 
 // ── Auto-migrations ─────────────────────────────────────────────────────────
 async function ensureAppointmentTables() {
@@ -55,22 +56,9 @@ function formatSlotForWhatsApp(slot) {
 }
 
 async function sendWhatsApp(phone, message) {
-  const username = process.env.INFORU_USERNAME || 'hemichaeli';
-  const token = process.env.INFORU_PASSWORD || process.env.INFORU_API_TOKEN;
-  const businessLine = process.env.INFORU_BUSINESS_LINE || '037572229';
-
-  const cleanPhone = phone.replace(/\D/g, '');
-  const intlPhone = cleanPhone.startsWith('0') ? '972' + cleanPhone.slice(1) : cleanPhone;
-
-  const resp = await axios.post(
-    'https://capi.inforu.co.il/api/v2/WhatsApp/SendWhatsAppChat',
-    {
-      Data: { Message: message, Recipients: [{ Phone: intlPhone }] },
-      Settings: { BusinessPhoneNumber: businessLine }
-    },
-    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', username } }
-  );
-  return resp.data;
+  return inforuService.sendWhatsAppChat(phone, message, {
+    customerParameter: 'QUANTUM_APPOINTMENTS'
+  });
 }
 
 async function callWithVapi(phone, leadName, appointmentId) {

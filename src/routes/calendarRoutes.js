@@ -49,6 +49,98 @@ try {
 }
 
 // ════════════════════════════════════════════════════════════
+// GOOGLE CALENDAR — OAuth2 User Flow
+// ════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/scheduling/calendar/google/auth
+ * Redirects the user to Google's consent screen.
+ * Query: ?projectId=123 (optional, stored in state for callback)
+ */
+router.get('/google/auth', (req, res) => {
+  if (!gcalService?.isOAuthConfigured()) {
+    return res.status(503).json({ error: 'Google OAuth2 not configured. Set GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET on Railway.' });
+  }
+  const state = req.query.projectId || '';
+  const url = gcalService.getOAuthConsentUrl(state);
+  if (!url) return res.status(500).json({ error: 'Failed to generate OAuth URL' });
+  res.redirect(url);
+});
+
+/**
+ * GET /api/scheduling/calendar/google/callback
+ * Google redirects here after user consent.
+ * Exchanges code → tokens, saves to oauth_tokens table.
+ */
+router.get('/google/callback', async (req, res) => {
+  const { code, state, error: oauthError } = req.query;
+  if (oauthError) {
+    return res.status(400).json({ error: `OAuth denied: ${oauthError}` });
+  }
+  if (!code) {
+    return res.status(400).json({ error: 'Missing authorization code' });
+  }
+  try {
+    const tokens = await gcalService.exchangeCodeForTokens(code);
+
+    // Ensure oauth_tokens table exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS oauth_tokens (
+        id SERIAL PRIMARY KEY,
+        provider VARCHAR(50) NOT NULL DEFAULT 'google_calendar',
+        access_token TEXT NOT NULL,
+        refresh_token TEXT,
+        expiry_date BIGINT,
+        scope TEXT,
+        project_id INTEGER,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    const projectId = state ? parseInt(state) || null : null;
+
+    // Upsert: one token row per provider+project
+    await pool.query(`
+      INSERT INTO oauth_tokens (provider, access_token, refresh_token, expiry_date, scope, project_id, updated_at)
+      VALUES ('google_calendar', $1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (provider, COALESCE(project_id, 0))
+      DO UPDATE SET access_token = $1, refresh_token = COALESCE($2, oauth_tokens.refresh_token),
+                    expiry_date = $3, updated_at = NOW()
+    `, [tokens.access_token, tokens.refresh_token || null, tokens.expiry_date || null, tokens.scope || null, projectId]);
+
+    logger.info('[CalendarRoutes] Google OAuth tokens saved', { projectId, hasRefreshToken: !!tokens.refresh_token });
+
+    // Redirect to dashboard with success
+    const dashboardUrl = process.env.DASHBOARD_URL || '/dashboard';
+    res.redirect(`${dashboardUrl}?gcal_connected=true${projectId ? `&projectId=${projectId}` : ''}`);
+  } catch (err) {
+    logger.error('[CalendarRoutes] OAuth callback error:', err.message);
+    res.status(500).json({ error: 'Failed to exchange authorization code', details: err.message });
+  }
+});
+
+/**
+ * GET /api/scheduling/calendar/google/status
+ * Returns OAuth2 connection status.
+ */
+router.get('/google/status', async (req, res) => {
+  const oauthConfigured = gcalService?.isOAuthConfigured() || false;
+  const jwtConfigured = gcalService?.isConfigured() || false;
+  let oauthTokens = [];
+  try {
+    const r = await pool.query(`SELECT id, provider, project_id, expiry_date, created_at, updated_at FROM oauth_tokens WHERE provider = 'google_calendar' ORDER BY updated_at DESC`);
+    oauthTokens = r.rows;
+  } catch (e) { /* table may not exist yet */ }
+  res.json({
+    jwt_configured: jwtConfigured,
+    oauth_configured: oauthConfigured,
+    oauth_tokens: oauthTokens,
+    auth_url: oauthConfigured ? '/api/scheduling/calendar/google/auth' : null
+  });
+});
+
+// ════════════════════════════════════════════════════════════
 // GOOGLE CALENDAR — BASIC
 // ════════════════════════════════════════════════════════════
 

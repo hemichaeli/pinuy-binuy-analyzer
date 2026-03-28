@@ -546,10 +546,39 @@ async function checkAccountStatus() {
   return result;
 }
 
+// ==================== UNIFIED SEND ====================
+
+/**
+ * Unified convenience method — picks the best channel automatically.
+ * Within 24h window → WhatsApp chat; otherwise → SMS fallback.
+ *
+ * @param {string} phone     - Recipient phone
+ * @param {string} message   - Free-text message
+ * @param {object} [options] - { preferWhatsApp: true, customerParameter: 'QUANTUM' }
+ * @returns {object} result with channel used
+ */
+async function sendMessage(phone, message, options = {}) {
+  const preferWhatsApp = options.preferWhatsApp !== false;
+
+  if (preferWhatsApp) {
+    try {
+      const waResult = await sendWhatsAppChat(phone, message, options);
+      if (waResult.success) return waResult;
+      logger.info('[sendMessage] WhatsApp chat failed, falling back to SMS', { phone, reason: waResult.description });
+    } catch (err) {
+      logger.info('[sendMessage] WhatsApp chat error, falling back to SMS', { phone, error: err.message });
+    }
+  }
+
+  // Fallback to SMS
+  return sendSms(phone, message, options);
+}
+
 module.exports = {
   sendSms, fillTemplate,
   sendWhatsApp, sendWhatsAppChat, sendWhatsAppChatDebug,
   sendVisitInviteWithButton,
+  sendMessage,
   getWhatsAppTemplates, getWhatsAppTemplate,
   pullIncomingWhatsApp, pullWhatsAppDLR,
   sendDualChannel, bulkSend,

@@ -40,13 +40,30 @@ async function getAccessToken() {
   return _cachedToken;
 }
 
-async function zohoGet(endpoint, params = {}) {
+async function zohoGet(endpoint, params = {}, retries = 3) {
   const token = await getAccessToken();
-  const resp = await axios.get(`${ZOHO_BASE}/${endpoint}`, {
-    headers: { Authorization: `Zoho-oauthtoken ${token}` },
-    params,
-  });
-  return resp.data;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const resp = await axios.get(`${ZOHO_BASE}/${endpoint}`, {
+        headers: { Authorization: `Zoho-oauthtoken ${token}` },
+        params,
+        timeout: 15000,
+      });
+      return resp.data;
+    } catch (err) {
+      const status = err.response?.status;
+      // Retry on 429 (rate limit) or 5xx server errors
+      if (attempt < retries && (status === 429 || (status >= 500 && status < 600) || !status)) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        logger.warn(`[ZohoSvc] zohoGet retry ${attempt}/${retries} for ${endpoint} (${status || err.code}), waiting ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+        // Force token refresh on 401
+        if (status === 401) { _cachedToken = null; _tokenExpiry = 0; }
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 // ── Compounds (מתחמים) ────────────────────────────────────────────────────────
@@ -191,7 +208,23 @@ async function getResidentsForEvent(buildingIds, compoundName = '') {
     await new Promise(r => setTimeout(r, 200));
   }
 
-  return residents;
+  // Deduplicate by phone — keep first occurrence (preserves unit context)
+  return deduplicateByPhone(residents);
+}
+
+/**
+ * Deduplicate contacts by normalized phone number.
+ * Keeps the first occurrence of each phone.
+ */
+function deduplicateByPhone(contacts) {
+  const seen = new Set();
+  return contacts.filter(c => {
+    if (!c.phone) return true; // keep phoneless contacts
+    const normalized = c.phone.replace(/[\s\-\(\)\.+]/g, '');
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
 }
 
 // ── Single compound — all buildings + residents ───────────────────────────────

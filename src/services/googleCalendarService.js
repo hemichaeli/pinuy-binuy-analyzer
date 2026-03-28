@@ -20,6 +20,12 @@ let google = null;
 let calendar = null;
 let jwtClient = null;
 
+const GCAL_SCOPES = ['https://www.googleapis.com/auth/calendar'];
+
+// ─────────────────────────────────────────────────────────────
+// JWT (Service Account) — server-side, no user interaction
+// ─────────────────────────────────────────────────────────────
+
 function getClient() {
   if (jwtClient) return jwtClient;
 
@@ -54,7 +60,7 @@ function getClient() {
       credentials.client_email,
       null,
       credentials.private_key,
-      ['https://www.googleapis.com/auth/calendar']
+      GCAL_SCOPES
     );
 
     calendar = google.calendar({ version: 'v3', auth: jwtClient });
@@ -64,6 +70,76 @@ function getClient() {
     logger.warn('[GCal] Failed to initialize client:', err.message);
     return null;
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// OAuth2 — user-facing, requires consent flow
+// ─────────────────────────────────────────────────────────────
+
+let _oauth2Client = null;
+
+function getOAuth2Client() {
+  if (_oauth2Client) return _oauth2Client;
+
+  const { GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URI } = process.env;
+  if (!GOOGLE_OAUTH_CLIENT_ID || !GOOGLE_OAUTH_CLIENT_SECRET) return null;
+
+  if (!google) google = require('googleapis').google;
+
+  const redirectUri = GOOGLE_OAUTH_REDIRECT_URI
+    || `${process.env.BASE_URL || 'https://pinuy-binuy-analyzer-production.up.railway.app'}/api/scheduling/calendar/google/callback`;
+
+  _oauth2Client = new google.auth.OAuth2(GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, redirectUri);
+  return _oauth2Client;
+}
+
+/**
+ * Generate the Google OAuth2 consent URL.
+ * @param {string} [state] - Opaque state to pass through the redirect
+ * @returns {string|null} URL to redirect the user to
+ */
+function getOAuthConsentUrl(state = '') {
+  const client = getOAuth2Client();
+  if (!client) return null;
+  return client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: GCAL_SCOPES,
+    state
+  });
+}
+
+/**
+ * Exchange an authorization code for tokens.
+ * @param {string} code - Authorization code from the callback
+ * @returns {object} { access_token, refresh_token, expiry_date }
+ */
+async function exchangeCodeForTokens(code) {
+  const client = getOAuth2Client();
+  if (!client) throw new Error('OAuth2 client not configured');
+  const { tokens } = await client.getToken(code);
+  return tokens;
+}
+
+/**
+ * Get a calendar client authenticated with user OAuth2 tokens.
+ * Automatically refreshes if expired.
+ * @param {object} tokens - { access_token, refresh_token, expiry_date }
+ * @returns {object} google.calendar({ version: 'v3', auth })
+ */
+function getOAuth2Calendar(tokens) {
+  const client = getOAuth2Client();
+  if (!client) return null;
+  client.setCredentials(tokens);
+  if (!google) google = require('googleapis').google;
+  return google.calendar({ version: 'v3', auth: client });
+}
+
+/**
+ * Check if OAuth2 is configured (env vars set).
+ */
+function isOAuthConfigured() {
+  return !!(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -406,5 +482,10 @@ module.exports = {
   createCeremonySlotEvent,
   createMeetingSlotEvent,
   testCalendarAccess,
-  isConfigured
+  isConfigured,
+  // OAuth2
+  isOAuthConfigured,
+  getOAuthConsentUrl,
+  exchangeCodeForTokens,
+  getOAuth2Calendar
 };
