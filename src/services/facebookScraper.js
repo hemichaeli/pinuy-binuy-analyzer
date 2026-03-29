@@ -24,7 +24,7 @@ const APIFY_BASE_URL = 'https://api.apify.com/v2';
 const APIFY_ACTOR_ID = 'apify~facebook-marketplace-scraper';
 // Fallback: curious_coder/facebook-marketplace (3M+ runs, needs cookies)
 const APIFY_ACTOR_ID_FALLBACK = 'Y0QGH7cuqgKtNbEgt';
-const APIFY_TIMEOUT = 180000; // 3 minutes max wait for sync run
+const APIFY_TIMEOUT = 300000; // 5 minutes max wait for sync run
 const DELAY_BETWEEN_SCANS = 5000; // 5s between city scans
 
 // Facebook Marketplace URL slugs for Israeli cities
