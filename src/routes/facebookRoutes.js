@@ -18,6 +18,7 @@
 const express = require('express');
 const router = express.Router();
 const facebookScraper = require('../services/facebookScraper');
+const directScraper = require('../services/facebookDirectScraper');
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
 
@@ -72,6 +73,55 @@ router.get('/test', async (req, res) => {
       instructions: 'Set APIFY_API_TOKEN environment variable in Railway'
     });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /direct/check - Check if direct scraper cookies are valid
+ */
+router.get('/direct/check', async (req, res) => {
+  try {
+    const result = await directScraper.checkCookies();
+    res.json({ status: 'ok', cookies: result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /direct/scrape - Test direct scraper on a city
+ * Body: { city: "תל אביב", maxItems: 10, getDetails: true }
+ */
+router.post('/direct/scrape', async (req, res) => {
+  try {
+    const { city, maxItems = 10, getDetails = true } = req.body;
+    const url = city
+      ? facebookScraper.buildMarketplaceUrl(city)
+      : 'https://www.facebook.com/marketplace/tel-aviv/propertyforsale';
+
+    if (!url) {
+      return res.status(400).json({ error: `No URL mapping for city: ${city}` });
+    }
+
+    logger.info(`[Direct] Manual scrape test: ${url}`);
+    const result = await directScraper.scrapeMarketplace(url, { maxItems, getDetails });
+
+    const normalized = result.listings
+      .map(item => directScraper.normalizeDirectListing(item, city || 'תל אביב'))
+      .filter(l => l !== null);
+
+    res.json({
+      status: 'ok',
+      url,
+      source: result.source,
+      rawCount: result.listings.length,
+      normalizedCount: normalized.length,
+      listings: normalized.slice(0, 20),
+      rawSample: result.listings.slice(0, 3)
+    });
+  } catch (err) {
+    logger.error(`[Direct] scrape test error: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
 });

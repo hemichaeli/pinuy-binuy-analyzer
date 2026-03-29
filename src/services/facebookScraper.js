@@ -17,6 +17,7 @@ const axios = require('axios');
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 const { detectKeywords } = require('./ssiCalculator');
+const directScraper = require('./facebookDirectScraper');
 
 // Apify configuration
 const APIFY_BASE_URL = 'https://api.apify.com/v2';
@@ -354,14 +355,30 @@ async function queryFacebookApify(city) {
     return null;
   }
 
-  logger.info(`Querying Apify for Facebook Marketplace: ${city} → ${marketplaceUrl}`);
+  logger.info(`Querying Facebook Marketplace: ${city} → ${marketplaceUrl}`);
 
+  // === PRIMARY: Direct scraper (no Apify dependency) ===
+  try {
+    const directResult = await directScraper.scrapeMarketplace(marketplaceUrl, {
+      maxItems: 50, getDetails: true
+    });
+    if (directResult.listings.length > 0) {
+      const listings = directResult.listings
+        .map(item => directScraper.normalizeDirectListing(item, city))
+        .filter(l => l !== null);
+      logger.info(`[Direct] ${directResult.listings.length} raw → ${listings.length} normalized for ${city}`);
+      return { listings, source: 'direct', rawCount: directResult.rawCount };
+    }
+    logger.info(`[Direct] returned 0 for ${city}, trying Apify fallback...`);
+  } catch (err) {
+    logger.warn(`[Direct] scraper failed for ${city}: ${err.message}`);
+  }
+
+  // === FALLBACK: Apify actors ===
   const fbCookies = loadFbCookies();
   const cookieStr = cookiesToString(fbCookies);
 
-  logger.info(`FB cookies loaded: ${fbCookies ? fbCookies.length + ' cookies, c_user=' + (fbCookies.find(c=>c.name==='c_user')?.value||'?') : 'none'}`);
-
-  // Try official actor first with cookies if available
+  // Try official Apify actor
   const officialInput = {
     startUrls: [{ url: marketplaceUrl }],
     maxItems: 50,
@@ -369,14 +386,13 @@ async function queryFacebookApify(city) {
   };
   if (fbCookies) {
     officialInput.cookies = cookieStr;
-    officialInput.cookieArray = fbCookies;
   }
 
   let items = await runApifyActor(officialInput, { actorId: APIFY_ACTOR_ID });
 
-  // Fallback to curious_coder actor with cookies (expects array format)
+  // Fallback to curious_coder actor
   if (!items || items.length === 0) {
-    logger.info(`Official actor returned empty for ${city}, trying fallback with cookies...`);
+    logger.info(`Official Apify actor empty for ${city}, trying curious_coder...`);
     const fallbackInput = {
       urls: [marketplaceUrl],
       getListingDetails: true,
@@ -386,7 +402,6 @@ async function queryFacebookApify(city) {
       proxy: { useApifyProxy: true, apifyProxyCountryCode: 'IL' }
     };
     if (fbCookies) {
-      // curious_coder actor accepts cookies as array of {name, value, domain}
       fallbackInput.cookies = fbCookies;
       fallbackInput.cookieString = cookieStr;
     }
@@ -401,7 +416,7 @@ async function queryFacebookApify(city) {
     .map(item => normalizeApifyListing(item, city))
     .filter(l => l !== null);
 
-  logger.info(`Apify returned ${items.length} raw items, ${listings.length} normalized for ${city}`);
+  logger.info(`Apify returned ${items.length} raw → ${listings.length} normalized for ${city}`);
   return { listings, source: 'apify', rawCount: items.length };
 }
 
@@ -412,26 +427,48 @@ async function queryFacebookForComplex(complex) {
   const marketplaceUrl = buildMarketplaceUrl(complex.city);
   if (!marketplaceUrl) return null;
 
-  const cookieStr = cookiesToString(loadFbCookies());
+  let listings = [];
+  let source = 'none';
+  let rawCount = 0;
 
-  const input = {
-    urls: [marketplaceUrl],
-    getListingDetails: true,
-    getAllListingPhotos: false,
-    strictFiltering: true,
-    maxPagesPerUrl: 1,
-    proxy: { useApifyProxy: true, apifyProxyCountryCode: 'IL' }
-  };
-  if (cookieStr) {
-    input.cookies = cookieStr;
+  // Try direct scraper first
+  try {
+    const directResult = await directScraper.scrapeMarketplace(marketplaceUrl, {
+      maxItems: 30, getDetails: true
+    });
+    if (directResult.listings.length > 0) {
+      listings = directResult.listings
+        .map(item => directScraper.normalizeDirectListing(item, complex.city))
+        .filter(l => l !== null);
+      source = 'direct';
+      rawCount = directResult.rawCount;
+    }
+  } catch (err) {
+    logger.warn(`[Direct] complex scrape failed: ${err.message}`);
   }
 
-  const items = await runApifyActor(input);
-  if (!items || items.length === 0) return null;
+  // Fallback to Apify
+  if (listings.length === 0) {
+    const cookieStr = cookiesToString(loadFbCookies());
+    const input = {
+      urls: [marketplaceUrl],
+      getListingDetails: true,
+      getAllListingPhotos: false,
+      strictFiltering: true,
+      maxPagesPerUrl: 1,
+      proxy: { useApifyProxy: true, apifyProxyCountryCode: 'IL' }
+    };
+    if (cookieStr) input.cookies = cookieStr;
 
-  const listings = items
-    .map(item => normalizeApifyListing(item, complex.city))
-    .filter(l => l !== null);
+    const items = await runApifyActor(input);
+    if (items && items.length > 0) {
+      listings = items.map(item => normalizeApifyListing(item, complex.city)).filter(l => l !== null);
+      source = 'apify';
+      rawCount = items.length;
+    }
+  }
+
+  if (listings.length === 0) return null;
 
   const complexAddresses = (complex.addresses || '').split(',').map(a => a.trim()).filter(Boolean);
   const streetNames = complexAddresses.map(addr => addr.replace(/\d+/g, '').trim()).filter(s => s.length > 2);
@@ -442,11 +479,11 @@ async function queryFacebookForComplex(complex) {
       return streetNames.some(street => listingText.includes(street.toLowerCase()));
     });
     if (matched.length > 0) {
-      return { listings: matched, source: 'apify', rawCount: items.length };
+      return { listings: matched, source, rawCount };
     }
   }
 
-  return { listings, source: 'apify', rawCount: items.length };
+  return { listings, source, rawCount };
 }
 
 /**
