@@ -1,18 +1,19 @@
 /**
  * Messaging Orchestrator - Multi-platform auto-messaging for listings
- * 
- * Routes messages to the right channel:
- *   - yad2 listings → yad2 Puppeteer messenger (in-platform chat)
- *   - kones (receivership) → INFORU SMS to receiver/lawyer
- *   - facebook → WhatsApp link (FB Messenger requires manual)
- *   - fallback → WhatsApp deeplink / INFORU SMS
- * 
+ *
+ * ESCALATION PRIORITY (per listing):
+ *   1. Platform messaging first (yad2_chat, fb_messenger, komo_chat)
+ *   2. WhatsApp (if phone available)
+ *   3. SMS (for kones/receivership)
+ *   4. Manual fallback
+ *
  * Supports:
  *   - Auto-send on new listing discovery
  *   - Filter-based batch send (city, SSI, price, rooms, area, source, complex)
  *   - Configurable templates per platform
  *   - Rate limiting and throttling
- *   - Message tracking and analytics
+ *   - Message tracking via unified_messages table
+ *   - Available channels detection per listing
  */
 
 const pool = require('../db/pool');
@@ -24,6 +25,52 @@ function getYad2Messenger() {
 }
 function getInforuService() {
   try { return require('./inforuService'); } catch (e) { return null; }
+}
+function getFbMessenger() {
+  try { return require('./facebookMessenger'); } catch (e) { return null; }
+}
+
+// ============================================================
+// CHANNEL DETECTION
+// ============================================================
+
+/**
+ * Compute available channels for a listing based on source and data
+ * Priority order: platform first, then WhatsApp, then manual
+ */
+function detectAvailableChannels(listing) {
+  const channels = [];
+  const source = (listing.source || '').toLowerCase();
+  const hasPhone = listing.phone && listing.phone.length > 5;
+  const hasUrl = !!listing.url;
+
+  // Platform-native channels (priority 1)
+  if (source === 'yad2' && (hasUrl || listing.source_listing_id)) {
+    channels.push('yad2_chat');
+  }
+  if (source === 'facebook' && hasUrl) {
+    channels.push('fb_messenger');
+  }
+  if (source === 'komo' && (hasUrl || listing.source_listing_id)) {
+    channels.push('komo_chat');
+  }
+
+  // WhatsApp (priority 2 — only if phone exists)
+  if (hasPhone) {
+    channels.push('whatsapp');
+  }
+
+  // SMS for kones/receivership
+  if ((source === 'kones' || source === 'receivership') && hasPhone) {
+    channels.push('sms');
+  }
+
+  // Manual fallback
+  if (channels.length === 0) {
+    channels.push('manual');
+  }
+
+  return channels;
 }
 
 // ============================================================
@@ -130,90 +177,153 @@ function fillTemplate(templateStr, listing, extraVars = {}) {
 
 async function sendToListing(listing, messageText, options = {}) {
   const platform = (listing.source || 'yad2').toLowerCase();
-  const result = { listing_id: listing.id, platform, channel: 'unknown', success: false, message_text: messageText, error: null };
-  
+  const channels = detectAvailableChannels(listing);
+  const result = {
+    listing_id: listing.id, platform, channel: 'unknown',
+    available_channels: channels, success: false,
+    message_text: messageText, error: null
+  };
+
   try {
+    // Log to unified_messages
     const msgRecord = await pool.query(
-      `INSERT INTO listing_messages (listing_id, direction, message_text, status, channel)
-       VALUES ($1, 'sent', $2, 'pending', $3) RETURNING id`,
-      [listing.id, messageText, platform]
-    );
-    result.message_id = msgRecord.rows[0].id;
-    
-    if (platform === 'yad2') {
-      result.channel = 'yad2_chat';
-      const yad2 = getYad2Messenger();
-      if (yad2 && yad2.getStatus().hasCredentials) {
-        let itemUrl = listing.url;
-        if (listing.source_listing_id && (!itemUrl || !itemUrl.includes('/item/'))) {
-          itemUrl = `https://www.yad2.co.il/item/${listing.source_listing_id}`;
+      `INSERT INTO unified_messages (listing_id, complex_id, contact_phone, direction, channel, platform, message_text, status)
+       VALUES ($1, $2, $3, 'outgoing', $4, $5, $6, 'pending') RETURNING id`,
+      [listing.id, listing.complex_id || null, listing.phone || listing.contact_phone || null,
+       channels[0], platform, messageText]
+    ).catch(() => {
+      // Fallback to old table if unified_messages doesn't exist yet
+      return pool.query(
+        `INSERT INTO listing_messages (listing_id, direction, message_text, status, channel)
+         VALUES ($1, 'sent', $2, 'pending', $3) RETURNING id`,
+        [listing.id, messageText, channels[0]]
+      );
+    });
+    result.message_id = msgRecord.rows[0]?.id;
+
+    // Escalation: try each available channel in priority order
+    for (const channel of channels) {
+      if (result.success) break;
+
+      if (channel === 'yad2_chat') {
+        result.channel = 'yad2_chat';
+        const yad2 = getYad2Messenger();
+        if (yad2 && yad2.getStatus().hasCredentials) {
+          let itemUrl = listing.url;
+          if (listing.source_listing_id && (!itemUrl || !itemUrl.includes('/item/'))) {
+            itemUrl = `https://www.yad2.co.il/item/${listing.source_listing_id}`;
+          }
+          if (itemUrl) {
+            const sendResult = await yad2.sendMessage(itemUrl, messageText);
+            result.success = sendResult.success;
+            if (!sendResult.success) result.error = sendResult.error;
+          }
         }
-        if (itemUrl) {
-          const sendResult = await yad2.sendMessage(itemUrl, messageText);
-          result.success = sendResult.success;
-          result.error = sendResult.error;
+        if (!result.success) {
+          result.manual_url = listing.url || `https://www.yad2.co.il/item/${listing.source_listing_id}`;
+        }
+      }
+
+      else if (channel === 'fb_messenger') {
+        result.channel = 'fb_messenger';
+        const fbm = getFbMessenger();
+        if (fbm && fbm.getStatus().configured) {
+          const fbResult = listing.url
+            ? await fbm.sendToMarketplaceListing(listing.url, messageText)
+            : { success: false, error: 'No FB listing URL' };
+          result.success = fbResult.success;
+          if (!fbResult.success) {
+            result.error = fbResult.error;
+            result.manual_url = listing.url;
+          }
         } else {
-          result.error = 'No yad2 URL available';
-          result.channel = 'whatsapp_fallback';
-          result.whatsapp_link = generateWhatsAppLink(listing, messageText);
+          result.manual_url = listing.url;
         }
-      } else {
-        result.channel = 'manual_yad2';
-        result.error = 'yad2 Puppeteer not available - manual send required';
-        result.manual_url = listing.url || `https://www.yad2.co.il/item/${listing.source_listing_id}`;
       }
-    }
-    else if (platform === 'kones' || platform === 'receivership') {
-      result.channel = 'sms';
-      const inforu = getInforuService();
-      if (inforu && listing.contact_phone) {
-        const smsResult = await inforu.sendSms(listing.contact_phone, messageText, {
-          listingId: listing.id, complexId: listing.complex_id
-        });
-        result.success = smsResult.success;
-        result.error = smsResult.error;
-      } else if (listing.contact_phone) {
-        result.channel = 'whatsapp_fallback';
-        result.whatsapp_link = generateWhatsAppLink(listing, messageText);
-        result.success = true;
-      } else {
-        result.error = 'No contact phone for kones listing';
+
+      else if (channel === 'komo_chat') {
+        result.channel = 'komo_chat';
+        // Komo doesn't have API messaging — provide manual URL
+        const sid = listing.source_listing_id;
+        result.manual_url = sid
+          ? `https://www.komo.co.il/code/nadlan/apartments-for-sale.asp?modaaNum=${sid}`
+          : listing.url;
+        // Can't auto-send to komo — continue to next channel
       }
-    }
-    else if (platform === 'facebook') {
-      result.channel = 'manual_facebook';
-      result.manual_url = listing.url;
-      result.whatsapp_link = listing.contact_phone ? generateWhatsAppLink(listing, messageText) : null;
-      result.error = 'Facebook requires manual message via Messenger';
-    }
-    else {
-      if (listing.contact_phone) {
+
+      else if (channel === 'whatsapp') {
         result.channel = 'whatsapp';
-        result.whatsapp_link = generateWhatsAppLink(listing, messageText);
-        result.success = true;
-      } else {
+        const phone = listing.phone || listing.contact_phone;
+        if (phone) {
+          const inforu = getInforuService();
+          if (inforu) {
+            try {
+              const waResult = await inforu.sendWhatsApp(phone, messageText, {
+                listingId: listing.id, complexId: listing.complex_id
+              });
+              result.success = waResult.success !== false;
+              if (!result.success) result.error = waResult.error;
+            } catch (e) {
+              // InForu WA failed, generate link as fallback
+              result.whatsapp_link = generateWhatsAppLink(listing, messageText);
+              result.success = true;
+            }
+          } else {
+            result.whatsapp_link = generateWhatsAppLink(listing, messageText);
+            result.success = true;
+          }
+        }
+      }
+
+      else if (channel === 'sms') {
+        result.channel = 'sms';
+        const inforu = getInforuService();
+        const phone = listing.phone || listing.contact_phone;
+        if (inforu && phone) {
+          const smsResult = await inforu.sendSms(phone, messageText, {
+            listingId: listing.id, complexId: listing.complex_id
+          });
+          result.success = smsResult.success;
+          if (!smsResult.success) result.error = smsResult.error;
+        }
+      }
+
+      else if (channel === 'manual') {
         result.channel = 'manual';
-        result.error = `Unknown platform: ${platform}`;
+        result.manual_url = listing.url;
       }
     }
-    
-    const finalStatus = result.success ? 'sent' : (result.whatsapp_link ? 'whatsapp_link' : 'failed');
+
+    // Update message status
+    const finalStatus = result.success ? 'sent' : (result.whatsapp_link ? 'whatsapp_link' : (result.manual_url ? 'manual' : 'failed'));
     await pool.query(
-      `UPDATE listing_messages SET status = $1, error_message = $2, channel = $3 WHERE id = $4`,
+      `UPDATE unified_messages SET status = $1, error_message = $2, channel = $3, updated_at = NOW() WHERE id = $4`,
       [finalStatus, result.error, result.channel, result.message_id]
-    );
-    
+    ).catch(() => {
+      pool.query(
+        `UPDATE listing_messages SET status = $1, error_message = $2, channel = $3 WHERE id = $4`,
+        [finalStatus, result.error, result.channel, result.message_id]
+      ).catch(() => {});
+    });
+
     if (result.success || result.whatsapp_link) {
       await pool.query(
-        `UPDATE listings SET message_status = $1, last_message_sent_at = NOW() WHERE id = $2`,
-        [result.success ? 'נשלחה' : 'קישור וואטסאפ', listing.id]
-      );
+        `UPDATE listings SET message_status = $1, last_message_sent_at = NOW(),
+         available_channels = $3 WHERE id = $2`,
+        [result.success ? 'נשלחה' : 'קישור וואטסאפ', listing.id, channels]
+      ).catch(() => {
+        pool.query(`UPDATE listings SET message_status = $1, last_message_sent_at = NOW() WHERE id = $2`,
+          [result.success ? 'נשלחה' : 'קישור וואטסאפ', listing.id]).catch(() => {});
+      });
+    } else {
+      // Still update available_channels even if send failed
+      await pool.query(`UPDATE listings SET available_channels = $1 WHERE id = $2`, [channels, listing.id]).catch(() => {});
     }
   } catch (err) {
     result.error = err.message;
     logger.error(`[MessagingOrchestrator] sendToListing failed`, { listing_id: listing.id, error: err.message });
   }
-  
+
   return result;
 }
 
@@ -402,5 +512,6 @@ module.exports = {
   sendToListing, sendByFilter, autoSendToNewListings,
   getAutoSendConfig, updateAutoSendConfig,
   getTemplates, previewMessage, getDashboardStats,
-  fillTemplate, generateWhatsAppLink, DEFAULT_TEMPLATES
+  fillTemplate, generateWhatsAppLink, detectAvailableChannels,
+  DEFAULT_TEMPLATES
 };

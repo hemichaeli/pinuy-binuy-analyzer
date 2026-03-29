@@ -81,7 +81,7 @@ const LISTING_SELECT = `
   l.is_foreclosure, l.is_inheritance, l.has_urgent_keywords, l.urgent_keywords_found,
   l.last_message_sent_at, l.last_reply_at, l.last_reply_text, l.notes,
   c.name as complex_name, c.iai_score, c.status as complex_status,
-  l.complex_id
+  l.complex_id, l.available_channels
 `;
 
 // ============================================================
@@ -572,6 +572,168 @@ router.get('/deal-statuses', (req, res) => {
     { value: 'בטיפול', label: 'בטיפול', color: '#22d3ee' },
     { value: 'סגור', label: 'סגור', color: '#1e293b' }
   ] });
+});
+
+// ============================================================
+// UNIFIED INBOX — all channels in one view
+// ============================================================
+
+/**
+ * GET /api/messaging/inbox — Unified inbox across all channels
+ * Query: ?listing_id=&channel=&direction=&status=&limit=&offset=&search=
+ */
+router.get('/inbox', async (req, res) => {
+  try {
+    const { listing_id, channel, direction, status, limit = 50, offset = 0, search } = req.query;
+    let conditions = [];
+    let params = [];
+    let idx = 1;
+
+    if (listing_id) { conditions.push(`um.listing_id = $${idx++}`); params.push(parseInt(listing_id)); }
+    if (channel) { conditions.push(`um.channel = $${idx++}`); params.push(channel); }
+    if (direction) { conditions.push(`um.direction = $${idx++}`); params.push(direction); }
+    if (status) { conditions.push(`um.status = $${idx++}`); params.push(status); }
+    if (search) {
+      conditions.push(`(um.message_text ILIKE $${idx} OR um.contact_name ILIKE $${idx} OR l.address ILIKE $${idx})`);
+      params.push(`%${search}%`); idx++;
+    }
+
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+    params.push(parseInt(limit), parseInt(offset));
+
+    const messages = await pool.query(`
+      SELECT um.*, l.address, l.city, l.source as listing_source, l.asking_price,
+             c.name as complex_name
+      FROM unified_messages um
+      LEFT JOIN listings l ON um.listing_id = l.id
+      LEFT JOIN complexes c ON l.complex_id = c.id
+      ${where}
+      ORDER BY um.created_at DESC
+      LIMIT $${idx++} OFFSET $${idx++}
+    `, params);
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM unified_messages um LEFT JOIN listings l ON um.listing_id = l.id ${where}`,
+      params.slice(0, -2)
+    );
+
+    res.json({
+      success: true,
+      messages: messages.rows,
+      total: parseInt(countResult.rows[0].total),
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+  } catch (err) {
+    // If unified_messages table doesn't exist yet, fall back to listing_messages
+    try {
+      const fallback = await pool.query(`
+        SELECT lm.*, l.address, l.city, l.source as listing_source
+        FROM listing_messages lm
+        LEFT JOIN listings l ON lm.listing_id = l.id
+        ORDER BY lm.created_at DESC LIMIT 50
+      `);
+      res.json({ success: true, messages: fallback.rows, total: fallback.rows.length, fallback: true });
+    } catch (e2) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }
+});
+
+/**
+ * GET /api/messaging/inbox/listing/:id — All messages for a specific listing
+ */
+router.get('/inbox/listing/:id', async (req, res) => {
+  try {
+    const listingId = parseInt(req.params.id);
+    const messages = await pool.query(`
+      SELECT um.* FROM unified_messages um
+      WHERE um.listing_id = $1
+      ORDER BY um.created_at ASC
+    `, [listingId]);
+
+    const listing = await pool.query(`
+      SELECT l.*, c.name as complex_name
+      FROM listings l LEFT JOIN complexes c ON l.complex_id = c.id
+      WHERE l.id = $1
+    `, [listingId]);
+
+    res.json({
+      success: true,
+      listing: listing.rows[0] || null,
+      messages: messages.rows,
+      available_channels: listing.rows[0]?.available_channels || []
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/messaging/inbox/stats — Inbox statistics by channel
+ */
+router.get('/inbox/stats', async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT channel,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE direction = 'outgoing') as sent,
+        COUNT(*) FILTER (WHERE direction = 'incoming') as received,
+        COUNT(*) FILTER (WHERE status = 'sent') as delivered,
+        COUNT(*) FILTER (WHERE status = 'replied') as replied,
+        COUNT(*) FILTER (WHERE status = 'failed') as failed
+      FROM unified_messages
+      GROUP BY channel ORDER BY total DESC
+    `);
+
+    const channelCoverage = await pool.query(`
+      SELECT
+        COUNT(*) as total_active,
+        COUNT(*) FILTER (WHERE available_channels IS NOT NULL AND array_length(available_channels, 1) > 0) as has_channels,
+        COUNT(*) FILTER (WHERE 'whatsapp' = ANY(available_channels)) as has_whatsapp,
+        COUNT(*) FILTER (WHERE 'yad2_chat' = ANY(available_channels)) as has_yad2_chat,
+        COUNT(*) FILTER (WHERE 'fb_messenger' = ANY(available_channels)) as has_fb_messenger,
+        COUNT(*) FILTER (WHERE 'komo_chat' = ANY(available_channels)) as has_komo_chat,
+        COUNT(*) FILTER (WHERE available_channels = ARRAY['manual']::TEXT[]) as manual_only
+      FROM listings WHERE is_active = TRUE
+    `);
+
+    res.json({
+      success: true,
+      by_channel: stats.rows,
+      coverage: channelCoverage.rows[0]
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/messaging/detect-channels — Detect and update available_channels for listings
+ */
+router.post('/detect-channels', async (req, res) => {
+  try {
+    const orch = getOrchestrator();
+    if (!orch) return res.status(500).json({ error: 'Orchestrator not available' });
+
+    const { limit = 500 } = req.body;
+    const listings = await pool.query(`
+      SELECT id, source, url, source_listing_id, phone, contact_phone
+      FROM listings WHERE is_active = TRUE
+      ORDER BY id DESC LIMIT $1
+    `, [limit]);
+
+    let updated = 0;
+    for (const listing of listings.rows) {
+      const channels = orch.detectAvailableChannels(listing);
+      await pool.query(`UPDATE listings SET available_channels = $1 WHERE id = $2`, [channels, listing.id]);
+      updated++;
+    }
+
+    res.json({ success: true, updated, total: listings.rows.length });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 module.exports = router;

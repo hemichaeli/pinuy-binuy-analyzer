@@ -328,6 +328,7 @@ async function start() {
   await runMigrationFile('Perf indexes (014)', path.join(__dirname, 'db', 'migrations', '014_add_performance_indexes.sql'));
   await runMigrationFile('Newsletter (015)', path.join(__dirname, 'db', 'migrations', '015_newsletter_subscribers.sql'));
   await runMigrationFile('Newsletter lang (016)', path.join(__dirname, 'db', 'migrations', '016_newsletter_lang.sql'));
+  await runMigrationFile('Multi-channel (019)', path.join(__dirname, 'db', 'migrations', '019_available_channels.sql'));
   if (isQuantum) await runOutreachMigration();
 
   loadAllRoutes();
