@@ -18,7 +18,11 @@
 const express = require('express');
 const router = express.Router();
 const facebookScraper = require('../services/facebookScraper');
-const directScraper = require('../services/facebookDirectScraper');
+let _directScraper;
+function getDirectScraper() {
+  if (!_directScraper) _directScraper = require('../services/facebookDirectScraper');
+  return _directScraper;
+}
 const pool = require('../db/pool');
 const { logger } = require('../services/logger');
 
@@ -82,7 +86,7 @@ router.get('/test', async (req, res) => {
  */
 router.get('/direct/check', async (req, res) => {
   try {
-    const result = await directScraper.checkCookies();
+    const result = await getDirectScraper().checkCookies();
     res.json({ status: 'ok', cookies: result });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -105,10 +109,10 @@ router.post('/direct/scrape', async (req, res) => {
     }
 
     logger.info(`[Direct] Manual scrape test: ${url}`);
-    const result = await directScraper.scrapeMarketplace(url, { maxItems, getDetails });
+    const result = await getDirectScraper().scrapeMarketplace(url, { maxItems, getDetails });
 
     const normalized = result.listings
-      .map(item => directScraper.normalizeDirectListing(item, city || 'תל אביב'))
+      .map(item => getDirectScraper().normalizeDirectListing(item, city || 'תל אביב'))
       .filter(l => l !== null);
 
     res.json({

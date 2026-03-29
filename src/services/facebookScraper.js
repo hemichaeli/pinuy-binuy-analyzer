@@ -17,7 +17,15 @@ const axios = require('axios');
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 const { detectKeywords } = require('./ssiCalculator');
-const directScraper = require('./facebookDirectScraper');
+// Lazy-load to prevent cascading require failures
+let _directScraper;
+function getDirectScraper() {
+  if (!_directScraper) {
+    try { _directScraper = require('./facebookDirectScraper'); }
+    catch (err) { logger.warn(`Failed to load facebookDirectScraper: ${err.message}`); _directScraper = null; }
+  }
+  return _directScraper;
+}
 
 // Apify configuration
 const APIFY_BASE_URL = 'https://api.apify.com/v2';
@@ -358,20 +366,23 @@ async function queryFacebookApify(city) {
   logger.info(`Querying Facebook Marketplace: ${city} → ${marketplaceUrl}`);
 
   // === PRIMARY: Direct scraper (no Apify dependency) ===
-  try {
-    const directResult = await directScraper.scrapeMarketplace(marketplaceUrl, {
-      maxItems: 50, getDetails: true
-    });
-    if (directResult.listings.length > 0) {
-      const listings = directResult.listings
-        .map(item => directScraper.normalizeDirectListing(item, city))
-        .filter(l => l !== null);
-      logger.info(`[Direct] ${directResult.listings.length} raw → ${listings.length} normalized for ${city}`);
-      return { listings, source: 'direct', rawCount: directResult.rawCount };
+  const ds = getDirectScraper();
+  if (ds) {
+    try {
+      const directResult = await ds.scrapeMarketplace(marketplaceUrl, {
+        maxItems: 50, getDetails: true
+      });
+      if (directResult.listings.length > 0) {
+        const listings = directResult.listings
+          .map(item => ds.normalizeDirectListing(item, city))
+          .filter(l => l !== null);
+        logger.info(`[Direct] ${directResult.listings.length} raw → ${listings.length} normalized for ${city}`);
+        return { listings, source: 'direct', rawCount: directResult.rawCount };
+      }
+      logger.info(`[Direct] returned 0 for ${city}, trying Apify fallback...`);
+    } catch (err) {
+      logger.warn(`[Direct] scraper failed for ${city}: ${err.message}`);
     }
-    logger.info(`[Direct] returned 0 for ${city}, trying Apify fallback...`);
-  } catch (err) {
-    logger.warn(`[Direct] scraper failed for ${city}: ${err.message}`);
   }
 
   // === FALLBACK: Apify actors ===
@@ -432,19 +443,22 @@ async function queryFacebookForComplex(complex) {
   let rawCount = 0;
 
   // Try direct scraper first
-  try {
-    const directResult = await directScraper.scrapeMarketplace(marketplaceUrl, {
-      maxItems: 30, getDetails: true
-    });
-    if (directResult.listings.length > 0) {
-      listings = directResult.listings
-        .map(item => directScraper.normalizeDirectListing(item, complex.city))
-        .filter(l => l !== null);
-      source = 'direct';
-      rawCount = directResult.rawCount;
+  const ds2 = getDirectScraper();
+  if (ds2) {
+    try {
+      const directResult = await ds2.scrapeMarketplace(marketplaceUrl, {
+        maxItems: 30, getDetails: true
+      });
+      if (directResult.listings.length > 0) {
+        listings = directResult.listings
+          .map(item => ds2.normalizeDirectListing(item, complex.city))
+          .filter(l => l !== null);
+        source = 'direct';
+        rawCount = directResult.rawCount;
+      }
+    } catch (err) {
+      logger.warn(`[Direct] complex scrape failed: ${err.message}`);
     }
-  } catch (err) {
-    logger.warn(`[Direct] complex scrape failed: ${err.message}`);
   }
 
   // Fallback to Apify

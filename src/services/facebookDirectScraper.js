@@ -7,8 +7,14 @@
  */
 
 const axios = require('axios');
-const cheerio = require('cheerio');
 const { logger } = require('./logger');
+
+// Lazy-load cheerio to avoid startup issues
+let cheerio;
+function getCheerio() {
+  if (!cheerio) cheerio = require('cheerio');
+  return cheerio;
+}
 
 const FB_BASE = 'https://www.facebook.com';
 const FB_GRAPHQL = 'https://www.facebook.com/api/graphql/';
@@ -141,7 +147,7 @@ async function scrapeViaHtml(marketplaceUrl, cookieStr) {
     }
 
     // Method 3: Parse any JSON-LD or embedded marketplace data
-    const $ = cheerio.load(html);
+    const $ = getCheerio().load(html);
 
     // Look for marketplace listing cards in the HTML
     const relayData = [];
