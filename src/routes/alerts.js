@@ -10,13 +10,29 @@ router.get('/', async (req, res) => {
     const limitVal = Math.min(parseInt(limit) || 50, 200);
     
     let query = `
-      SELECT 
+      SELECT
         a.*,
         c.name as complex_name,
         c.city,
-        c.slug as complex_slug
+        c.slug as complex_slug,
+        c.accurate_price_sqm as complex_avg_price_sqm,
+        c.city_avg_price_sqm as complex_city_price_sqm,
+        l.asking_price as listing_price,
+        l.area_sqm as listing_size_sqm,
+        l.rooms as listing_rooms,
+        l.address as listing_address,
+        l.url as listing_url,
+        l.source as listing_source,
+        l.phone as listing_phone,
+        CASE WHEN l.asking_price > 0 AND c.accurate_price_sqm > 0 AND l.area_sqm > 0
+          THEN ROUND((c.accurate_price_sqm * l.area_sqm) - l.asking_price)
+          ELSE NULL END as premium_market_amount,
+        CASE WHEN l.asking_price > 0 AND c.accurate_price_sqm > 0 AND l.area_sqm > 0
+          THEN ROUND(((c.accurate_price_sqm * l.area_sqm - l.asking_price) / l.asking_price) * 100, 1)
+          ELSE NULL END as premium_market_pct
       FROM alerts a
       LEFT JOIN complexes c ON a.complex_id = c.id
+      LEFT JOIN listings l ON a.listing_id = l.id
       WHERE 1=1
     `;
     const params = [];

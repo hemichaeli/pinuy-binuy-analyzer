@@ -14,17 +14,21 @@ function getNewsService() {
 
 // ── In-memory cache for news (1 hour TTL) ────────────────────────────────────
 let newsCache = { data: null, ts: 0 };
-const NEWS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const NEWS_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours
 
 // GET /api/news — main news feed for dashboard
 router.get('/', async (req, res) => {
   try {
-    // Return cached if fresh
-    if (newsCache.data && Date.now() - newsCache.ts < NEWS_CACHE_TTL) {
+    const { refresh } = req.query;
+
+    // Return cached if fresh (unless refresh requested)
+    if (!refresh && newsCache.data && Date.now() - newsCache.ts < NEWS_CACHE_TTL) {
       return res.json({ success: true, data: newsCache.data, cached: true });
     }
 
-    // Try Perplexity first
+    const allArticles = [];
+
+    // Source 1: Perplexity
     const PERPLEXITY_KEY = process.env.PERPLEXITY_API_KEY;
     if (PERPLEXITY_KEY) {
       try {
@@ -32,45 +36,73 @@ router.get('/', async (req, res) => {
         const resp = await axios.post('https://api.perplexity.ai/chat/completions', {
           model: 'sonar',
           messages: [
-            { role: 'system', content: 'You are a real estate news aggregator for Israel. Return a JSON array of 5-8 news items. Each item must have: title, summary (2 sentences), source, url, category (one of: התחדשות עירונית, פינוי בינוי, נדל"ן, רגולציה, מימון), published_at (ISO date). Return ONLY valid JSON array, no markdown.' },
-            { role: 'user', content: 'חדשות נדל"ן ישראל פינוי בינוי התחדשות עירונית היום' }
+            { role: 'system', content: 'You are a real estate news aggregator for Israel. Return a JSON array of 10 news items. Each item must have: title, summary (2 sentences), source, url, category (one of: ועדות, מחירים, פינוי-בינוי, כללי), published_at (ISO date). Return ONLY valid JSON array, no markdown.' },
+            { role: 'user', content: 'חדשות נדל"ן ישראל היום: פינוי בינוי, התחדשות עירונית, ועדות תכנון, אישורים חדשים, מחירי דירות. תן לי 10 כתבות עם כותרת, תקציר 2 משפטים, מקור ותאריך.' }
           ],
-          max_tokens: 2000
+          max_tokens: 3000
         }, {
           headers: { 'Authorization': `Bearer ${PERPLEXITY_KEY}`, 'Content-Type': 'application/json' },
-          timeout: 15000
+          timeout: 20000
         });
         const content = resp.data?.choices?.[0]?.message?.content || '[]';
-        // Extract JSON array from response
         const jsonMatch = content.match(/\[[\s\S]*\]/);
         const articles = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
-        newsCache = { data: articles, ts: Date.now() };
-        return res.json({ success: true, data: articles });
+        allArticles.push(...articles.map(a => ({ ...a, source_type: 'perplexity' })));
       } catch (perplexityErr) {
         logger.warn('[News] Perplexity fetch failed:', perplexityErr.message);
       }
     }
 
-    // Fallback: try RSS service
+    // Source 2: Committee updates from complexes (last 30 days)
+    try {
+      const { rows: committees } = await pool.query(`
+        SELECT name, city, plan_stage, status, updated_at
+        FROM complexes
+        WHERE updated_at > NOW() - INTERVAL '30 days'
+          AND plan_stage IS NOT NULL
+        ORDER BY updated_at DESC LIMIT 10
+      `);
+      committees.forEach(c => {
+        allArticles.push({
+          title: `עדכון ועדה: ${c.name} (${c.city})`,
+          summary: `המתחם ${c.name} ב${c.city} עודכן לשלב "${c.plan_stage}". סטטוס: ${c.status || 'פעיל'}.`,
+          source: 'QUANTUM מעקב ועדות',
+          url: null,
+          category: 'ועדות',
+          published_at: c.updated_at,
+          source_type: 'committee'
+        });
+      });
+    } catch (e) { logger.warn('[News] Committee query failed:', e.message); }
+
+    // Source 3: RSS fallback
     const service = getNewsService();
     if (service) {
       try {
         let items = await service.fetchAllRSSFeeds();
         items = (service.filterRelevantNews ? service.filterRelevantNews(items) : items).slice(0, 10);
-        const data = items.map(item => ({
-          title: item.title, summary: item.description || item.summary || '',
-          source: item.source || item.feed || '', url: item.link || item.url || '',
-          category: 'נדל"ן', published_at: item.pubDate || item.date || new Date().toISOString()
-        }));
-        newsCache = { data, ts: Date.now() };
-        return res.json({ success: true, data });
+        items.forEach(item => {
+          allArticles.push({
+            title: item.title, summary: item.description || item.summary || '',
+            source: item.source || item.feed || '', url: item.link || item.url || '',
+            category: 'כללי', published_at: item.pubDate || item.date || new Date().toISOString(),
+            source_type: 'rss'
+          });
+        });
       } catch (rssErr) {
         logger.warn('[News] RSS fallback failed:', rssErr.message);
       }
     }
 
     // No news source available
-    res.json({ success: true, data: [], message: 'No news sources configured' });
+    // Sort by date descending
+    allArticles.sort((a, b) => new Date(b.published_at || 0) - new Date(a.published_at || 0));
+
+    // Cache and return
+    if (allArticles.length > 0) {
+      newsCache = { data: allArticles, ts: Date.now() };
+    }
+    res.json({ success: true, data: allArticles, total: allArticles.length });
   } catch (err) {
     logger.error('[News] Error:', err.message);
     res.status(500).json({ success: false, error: err.message });

@@ -186,11 +186,14 @@ router.get('/sellers', async (req, res) => {
 
     if (view === 'outreach') {
       // Use existing whatsapp_conversations table
-      let q = `SELECT wc.id, wc.phone, wc.display_name, wc.city, wc.address,
+      let q = `SELECT DISTINCT ON (wc.id) wc.id, wc.phone, COALESCE(wc.display_name, l.contact_name, wc.phone) as display_name,
+                      COALESCE(wc.city, l.city) as city, COALESCE(wc.address, l.address) as address,
                       wc.status, wc.last_message, wc.updated_at,
-                      l.url as listing_url
+                      l.url as listing_url,
+                      COALESCE(l.address, l.city, '') as listing_title,
+                      l.source as listing_source
                FROM whatsapp_conversations wc
-               LEFT JOIN listings l ON l.id = wc.listing_id
+               LEFT JOIN listings l ON (l.id = wc.listing_id OR (wc.listing_id IS NULL AND l.phone = wc.phone AND l.is_active = TRUE))
                WHERE 1=1`;
       const params = [];
       let n = 1;

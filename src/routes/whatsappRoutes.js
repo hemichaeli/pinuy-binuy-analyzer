@@ -123,6 +123,9 @@ router.get('/conversations', async (req, res) => {
         COALESCE(l.contact_name, wc.phone) as display_name,
         l.address as listing_address,
         l.city as listing_city,
+        COALESCE(l.address, l.city, '') as listing_title,
+        l.url as listing_url,
+        l.source as listing_source,
         (
           SELECT message FROM whatsapp_messages
           WHERE (conversation_id = wc.id OR phone = wc.phone)

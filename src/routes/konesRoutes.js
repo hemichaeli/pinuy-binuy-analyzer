@@ -391,4 +391,37 @@ router.get('/scan-status', async (req, res) => {
   }
 });
 
+// POST /api/kones/enrich — run enrichment on kones listings (match to complexes, compute premium)
+router.post('/enrich', async (req, res) => {
+  try {
+    // Return immediately, run async
+    res.json({ success: true, message: 'Enrichment started', status: 'running' });
+
+    // Async enrichment
+    (async () => {
+      try {
+        // Match complexes
+        const complexesResult = await pool.query('SELECT id, city, name, accurate_price_sqm, city_avg_price_sqm FROM complexes WHERE city IS NOT NULL');
+        const matches = await konesIsraelService.matchWithComplexes(complexesResult.rows).catch(() => []);
+        logger.info(`[Kones Enrich] Matched ${matches.length} complexes`);
+
+        // Boost SSI for matched complexes
+        for (const match of matches) {
+          if (match.complexId) {
+            await pool.query(
+              `UPDATE complexes SET is_receivership = TRUE WHERE id = $1 AND (is_receivership IS NULL OR is_receivership = FALSE)`,
+              [match.complexId]
+            ).catch(() => {});
+          }
+        }
+        logger.info('[Kones Enrich] Enrichment complete');
+      } catch (e) {
+        logger.error('[Kones Enrich] Error:', e.message);
+      }
+    })();
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 module.exports = router;

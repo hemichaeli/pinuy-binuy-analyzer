@@ -192,6 +192,7 @@ router.get('/listings/search', async (req, res) => {
       min_days_on_market, max_days_on_market, min_price_drops, has_price_drop,
       is_foreclosure, is_inheritance, has_urgent_keywords,
       complex_status, deal_status, message_status,
+      source, has_phone, min_premium_pct, max_premium_pct, complex_name,
       sort_by, sort_order, limit, offset
     } = req.query;
 
@@ -232,13 +233,24 @@ router.get('/listings/search', async (req, res) => {
     addFilter('c.status', '=', complex_status, v => v);
     addFilter('l.deal_status', '=', deal_status, v => v);
     addFilter('l.message_status', '=', message_status, v => v);
+    addFilter('l.source', '=', source, v => v);
+    if (has_phone === 'true') conditions.push(`l.phone IS NOT NULL AND l.phone != ''`);
+    if (complex_name) { paramCount++; conditions.push(`c.name ILIKE $${paramCount}`); params.push('%' + complex_name + '%'); }
+    if (min_premium_pct !== undefined && min_premium_pct !== '') {
+      conditions.push(`CASE WHEN l.asking_price > 0 AND c.accurate_price_sqm > 0 AND l.area_sqm > 0 THEN ((c.accurate_price_sqm * l.area_sqm - l.asking_price) / l.asking_price) * 100 ELSE NULL END >= ${parseFloat(min_premium_pct)}`);
+    }
+    if (max_premium_pct !== undefined && max_premium_pct !== '') {
+      conditions.push(`CASE WHEN l.asking_price > 0 AND c.accurate_price_sqm > 0 AND l.area_sqm > 0 THEN ((c.accurate_price_sqm * l.area_sqm - l.asking_price) / l.asking_price) * 100 ELSE NULL END <= ${parseFloat(max_premium_pct)}`);
+    }
 
     const whereClause = conditions.join(' AND ');
     const validSorts = {
       'price': 'l.asking_price', 'ssi': 'l.ssi_score', 'iai': 'c.iai_score',
       'rooms': 'l.rooms', 'area': 'l.area_sqm', 'floor': 'l.floor',
       'days': 'l.days_on_market', 'price_drop': 'l.total_price_drop_percent',
-      'price_changes': 'l.price_changes', 'date': 'l.first_seen'
+      'price_changes': 'l.price_changes', 'date': 'l.first_seen',
+      'premium_market': '(c.accurate_price_sqm * l.area_sqm - l.asking_price)',
+      'premium_city': '(c.city_avg_price_sqm * l.area_sqm - l.asking_price)'
     };
     const sortCol = validSorts[sort_by] || 'l.ssi_score';
     const sortDir = sort_order === 'asc' ? 'ASC' : 'DESC';
@@ -258,7 +270,20 @@ router.get('/listings/search', async (req, res) => {
           c.name as complex_name, c.city as complex_city, c.status as complex_status,
           c.iai_score, c.developer,
           c.plan_stage, c.developer_status, c.news_sentiment,
-          c.actual_premium, c.signature_percent, c.signature_source
+          c.actual_premium, c.signature_percent, c.signature_source,
+          c.accurate_price_sqm, c.city_avg_price_sqm,
+          CASE WHEN l.asking_price > 0 AND c.accurate_price_sqm > 0 AND l.area_sqm > 0
+            THEN ROUND((c.accurate_price_sqm * l.area_sqm) - l.asking_price)
+            ELSE NULL END as premium_market_amount,
+          CASE WHEN l.asking_price > 0 AND c.accurate_price_sqm > 0 AND l.area_sqm > 0
+            THEN ROUND(((c.accurate_price_sqm * l.area_sqm - l.asking_price) / l.asking_price) * 100, 1)
+            ELSE NULL END as premium_market_pct,
+          CASE WHEN l.asking_price > 0 AND c.city_avg_price_sqm > 0 AND l.area_sqm > 0
+            THEN ROUND((c.city_avg_price_sqm * l.area_sqm) - l.asking_price)
+            ELSE NULL END as premium_city_amount,
+          CASE WHEN l.asking_price > 0 AND c.city_avg_price_sqm > 0 AND l.area_sqm > 0
+            THEN ROUND(((c.city_avg_price_sqm * l.area_sqm - l.asking_price) / l.asking_price) * 100, 1)
+            ELSE NULL END as premium_city_pct
         FROM listings l JOIN complexes c ON l.complex_id = c.id
         WHERE ${whereClause}
         ORDER BY ${sortCol} ${sortDir} NULLS LAST
