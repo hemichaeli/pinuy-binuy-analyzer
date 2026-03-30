@@ -97,6 +97,45 @@ async function initiateVapiCall(phone, leadName, campaign) {
   return resp.data?.id;
 }
 
+// ─── Auto-migration: ensure campaigns tables exist ─────────────────────────────
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaigns (
+        id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'wa_then_call',
+        wa_wait_minutes INTEGER NOT NULL DEFAULT 60,
+        agent_name TEXT NOT NULL DEFAULT 'רן',
+        status TEXT NOT NULL DEFAULT 'draft',
+        wa_message TEXT, notes TEXT,
+        voice_gender TEXT NOT NULL DEFAULT 'male', voice_name TEXT,
+        voice_provider TEXT NOT NULL DEFAULT 'vapi', call_script TEXT,
+        zoho_campaign_id TEXT, max_wa_reminders INTEGER NOT NULL DEFAULT 2,
+        wa_reminder_delay_hours INTEGER NOT NULL DEFAULT 24,
+        reminder1_template_id TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS campaign_leads (
+        id SERIAL PRIMARY KEY,
+        campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+        phone TEXT NOT NULL, name TEXT, source TEXT, lead_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'pending',
+        wa_sent_at TIMESTAMPTZ, wa_replied_at TIMESTAMPTZ,
+        call_queued_at TIMESTAMPTZ, call_initiated_at TIMESTAMPTZ,
+        vapi_call_id TEXT, notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_campaign_leads_campaign ON campaign_leads(campaign_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_campaign_leads_status ON campaign_leads(status)`);
+    logger.info('[Campaigns] Tables ensured');
+  } catch (e) { logger.error('[Campaigns] Migration error:', e.message); }
+})();
+
 // ─── CRUD ──────────────────────────────────────────────────────────────────────
 
 // GET /api/campaigns
