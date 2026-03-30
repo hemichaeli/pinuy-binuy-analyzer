@@ -231,7 +231,48 @@ async function runApifyAsync(actorId, input) {
 // For Perplexity-sourced listings that have bad source_listing_ids (URL-based or perp- prefixed),
 // search yad2 API by city+street to find the real item ID, then call phone endpoint.
 
-const YAD2_PROXY_URL = process.env.YAD2_PROXY_URL || 'https://yad2-proxy.pinuy-binuy.workers.dev';
+const YAD2_PROXY_URL = process.env.YAD2_PROXY_URL || null; // May not be deployed
+const YAD2_API_BASE = 'https://gw.yad2.co.il/feed-search-legacy/realestate/forsale';
+const YAD2_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
+  'Referer': 'https://www.yad2.co.il/realestate/forsale',
+  'Origin': 'https://www.yad2.co.il'
+};
+
+/**
+ * Fetch yad2 feed items for a city. Tries proxy first (if configured), falls back to direct API.
+ */
+async function fetchYad2CityListings(cityCode, page = 1) {
+  // Try proxy first if configured
+  if (YAD2_PROXY_URL) {
+    try {
+      const proxyUrl = `${YAD2_PROXY_URL}?city=${cityCode}&propertyGroup=apartments&dealType=forsale&page=${page}&limit=50&key=pinuy-binuy-2026`;
+      const response = await axios.get(proxyUrl, { timeout: 20000 });
+      if (response.data?.feed?.feed_items) {
+        return response.data.feed.feed_items.filter(i => i.type === 'ad' && i.id);
+      }
+    } catch (e) {
+      logger.debug(`[PhoneOrch] Proxy failed, trying direct API: ${e.message}`);
+    }
+  }
+
+  // Direct yad2 API
+  try {
+    const response = await axios.get(YAD2_API_BASE, {
+      params: { city: cityCode, propertyGroup: 'apartments', dealType: 'forsale', page, limit: 50 },
+      headers: YAD2_HEADERS,
+      timeout: 15000
+    });
+    if (response.data?.feed?.feed_items) {
+      return response.data.feed.feed_items.filter(i => i.type === 'ad' && i.id);
+    }
+  } catch (e) {
+    logger.debug(`[PhoneOrch] Direct yad2 API failed for city ${cityCode}: ${e.message}`);
+  }
+  return [];
+}
 
 // City code mapping (subset — same as yad2Scraper.js)
 const CITY_CODES = {
@@ -290,12 +331,8 @@ async function resolveYad2ItemId(listing) {
   if (!street || street.length < 2) return null;
 
   try {
-    const proxyUrl = `${YAD2_PROXY_URL}?city=${cityCode}&propertyGroup=apartments&dealType=forsale&page=1&limit=50&key=pinuy-binuy-2026`;
-    const response = await axios.get(proxyUrl, { timeout: 20000 });
-
-    if (response.data?.error || !response.data?.feed?.feed_items) return null;
-
-    const items = response.data.feed.feed_items.filter(i => i.type === 'ad' && i.id);
+    const items = await fetchYad2CityListings(cityCode, 1);
+    if (items.length === 0) return null;
 
     // Match by address similarity
     const streetWords = street.split(/[\s,]+/).filter(w => w.length > 1);
@@ -356,13 +393,10 @@ async function batchResolveYad2Ids(listings) {
       // Fetch ALL listings for this city (up to 3 pages)
       const allItems = [];
       for (let page = 1; page <= 3; page++) {
-        const proxyUrl = `${YAD2_PROXY_URL}?city=${cityCode}&propertyGroup=apartments&dealType=forsale&page=${page}&limit=50&key=pinuy-binuy-2026`;
-        const response = await axios.get(proxyUrl, { timeout: 20000 });
-        if (response.data?.error || !response.data?.feed?.feed_items) break;
-        const items = response.data.feed.feed_items.filter(i => i.type === 'ad' && i.id);
+        const items = await fetchYad2CityListings(cityCode, page);
         allItems.push(...items);
         if (items.length < 50) break;
-        await sleep(1500);
+        await sleep(2000);
       }
 
       if (allItems.length === 0) continue;
@@ -410,12 +444,14 @@ async function batchResolveYad2Ids(listings) {
 async function tryYad2ApiPhone(itemId) {
   if (!itemId || itemId === 'NULL' || !isValidYad2Id(itemId)) return null;
 
-  // Try via proxy first, then direct
   const endpoints = [
-    `${YAD2_PROXY_URL}/phone?itemId=${itemId}&key=pinuy-binuy-2026`,
     `https://gw.yad2.co.il/feed-search/item/${itemId}/phone`,
     `https://gw.yad2.co.il/feed-search-legacy/item/${itemId}/phone`,
   ];
+  // Add proxy phone endpoint if proxy is configured
+  if (YAD2_PROXY_URL) {
+    endpoints.unshift(`${YAD2_PROXY_URL}/phone?itemId=${itemId}&key=pinuy-binuy-2026`);
+  }
 
   for (const endpoint of endpoints) {
     try {
@@ -445,29 +481,30 @@ async function tryKomoForYad2Listing(listing) {
   if (!listing.address || !listing.city) return null;
 
   try {
-    // Search Komo by address
-    const searchUrl = `${KOMO_BASE}/api/modaotService/searchModaot/post/`;
-    const searchData = `luachNum=2&text=${encodeURIComponent(listing.address + ' ' + listing.city)}&source=1`;
-    const r = await axios.post(searchUrl, searchData, {
-      headers: KOMO_HEADERS, timeout: 10000
+    // Search Komo's property listing page to find modaaNum
+    const searchUrl = `${KOMO_BASE}/code/nadlan/apartments-for-sale.asp`;
+    const searchParams = new URLSearchParams({
+      cityTxt: listing.city,
+      streetTxt: listing.address.replace(/\d+/g, '').trim(),
+      luachNum: '2'
+    });
+    const r = await axios.get(`${searchUrl}?${searchParams}`, {
+      headers: { ...KOMO_HEADERS, 'Accept': 'text/html' },
+      timeout: 10000
     });
 
-    if (r.data?.status === 'OK' && Array.isArray(r.data?.list)) {
-      for (const item of r.data.list) {
-        // Verify address match
-        const itemAddr = (item.address || item.street || '').trim();
-        const listAddr = listing.address.replace(/\d+/g, '').trim();
-        const addrWords = listAddr.split(/[\s,]+/).filter(w => w.length > 1);
-        const matches = addrWords.filter(w => itemAddr.includes(w)).length;
+    if (typeof r.data === 'string') {
+      // Extract modaaNum links from the search results page
+      const modaaMatches = r.data.match(/modaaNum=(\d+)/g) || [];
+      const uniqueModaas = [...new Set(modaaMatches.map(m => m.replace('modaaNum=', '')))];
 
-        if (matches >= Math.min(2, addrWords.length) && item.modaaNum) {
-          // Found matching Komo listing — get phone
-          const phoneResult = await fetchKomoPhone(item.modaaNum);
-          if (phoneResult.phone) {
-            logger.debug(`[PhoneOrch] Komo cross-match: ${listing.address} → ${phoneResult.phone} (via komo #${item.modaaNum})`);
-            return phoneResult;
-          }
+      for (const modaaNum of uniqueModaas.slice(0, 5)) { // Try first 5
+        const phoneResult = await fetchKomoPhone(modaaNum);
+        if (phoneResult.phone) {
+          logger.debug(`[PhoneOrch] Komo cross-match: ${listing.address} → ${phoneResult.phone} (via komo #${modaaNum})`);
+          return phoneResult;
         }
+        await sleep(500);
       }
     }
   } catch (err) {
