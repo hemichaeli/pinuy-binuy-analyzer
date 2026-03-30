@@ -544,10 +544,20 @@ async function testYad2ApiConnectivity() {
       headers: YAD2_HEADERS,
       timeout: 10000
     });
-    const items = r.data?.feed?.feed_items?.filter(i => i.type === 'ad') || [];
-    results.direct = { success: true, items: items.length, sampleId: items[0]?.id || null };
+    const allItems = r.data?.feed?.feed_items || [];
+    const adItems = allItems.filter(i => i.type === 'ad');
+    results.direct = {
+      success: true,
+      totalItems: allItems.length,
+      adItems: adItems.length,
+      sampleId: adItems[0]?.id || null,
+      responseKeys: Object.keys(r.data || {}),
+      feedKeys: Object.keys(r.data?.feed || {}),
+      itemTypes: [...new Set(allItems.map(i => i.type))],
+      status: r.status
+    };
   } catch (e) {
-    results.direct = { success: false, error: e.message, status: e.response?.status };
+    results.direct = { success: false, error: e.message, status: e.response?.status, data: JSON.stringify(e.response?.data || '').substring(0, 200) };
   }
 
   return results;

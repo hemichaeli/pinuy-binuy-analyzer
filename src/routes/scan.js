@@ -1028,10 +1028,20 @@ router.get('/phone-diagnostics', async (req, res) => {
       GROUP BY source ORDER BY total DESC
     `);
 
+    // Sample bad IDs to understand the pattern
+    const { rows: sampleBadIds } = await pool.query(`
+      SELECT source_listing_id, url, city, address
+      FROM listings
+      WHERE source = 'yad2' AND is_active = TRUE
+        AND (phone IS NULL OR phone = '' OR phone = 'NULL')
+      ORDER BY random() LIMIT 5
+    `);
+
     res.json({
       success: true,
       yad2_api: apiTest,
-      listings_breakdown: breakdown
+      listings_breakdown: breakdown,
+      sample_yad2_no_phone: sampleBadIds
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
