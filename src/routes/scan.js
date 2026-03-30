@@ -1009,6 +1009,35 @@ router.get('/phone-coverage', async (req, res) => {
   }
 });
 
+// GET /api/scan/phone-diagnostics - Test yad2 API connectivity and enrichment pass status
+router.get('/phone-diagnostics', async (req, res) => {
+  try {
+    const phoneOrch = require('../services/phoneRevealOrchestrator');
+    const apiTest = await phoneOrch.testYad2ApiConnectivity();
+
+    // Get listing breakdown
+    const { rows: breakdown } = await pool.query(`
+      SELECT source,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE phone IS NOT NULL AND phone != '' AND phone != 'NULL') as with_phone,
+        COUNT(*) FILTER (WHERE source_listing_id LIKE 'perp-%') as perp_ids,
+        COUNT(*) FILTER (WHERE source_listing_id LIKE 'http%') as url_ids,
+        COUNT(*) FILTER (WHERE address IS NOT NULL AND address != '') as with_address,
+        COUNT(*) FILTER (WHERE city IS NOT NULL AND city != '') as with_city
+      FROM listings WHERE is_active = TRUE
+      GROUP BY source ORDER BY total DESC
+    `);
+
+    res.json({
+      success: true,
+      yad2_api: apiTest,
+      listings_breakdown: breakdown
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /api/scan/complex-address - Scan complexes for listings on Homeless, Yad1, Winwin
 // Uses Perplexity Sonar to search by exact complex address
 router.post('/complex-address', async (req, res) => {

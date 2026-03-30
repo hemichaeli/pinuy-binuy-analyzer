@@ -479,38 +479,78 @@ async function tryYad2ApiPhone(itemId) {
 
 async function tryKomoForYad2Listing(listing) {
   if (!listing.address || !listing.city) return null;
+  const street = listing.address.replace(/\d+/g, '').trim();
+  if (!street || street.length < 2) return null;
 
-  try {
-    // Search Komo's property listing page to find modaaNum
-    const searchUrl = `${KOMO_BASE}/code/nadlan/apartments-for-sale.asp`;
-    const searchParams = new URLSearchParams({
-      cityTxt: listing.city,
-      streetTxt: listing.address.replace(/\d+/g, '').trim(),
-      luachNum: '2'
-    });
-    const r = await axios.get(`${searchUrl}?${searchParams}`, {
-      headers: { ...KOMO_HEADERS, 'Accept': 'text/html' },
-      timeout: 10000
-    });
+  // Try multiple Komo URL patterns
+  const searchUrls = [
+    `${KOMO_BASE}/code/nadlan/apartments-for-sale.asp?cityTxt=${encodeURIComponent(listing.city)}&streetTxt=${encodeURIComponent(street)}&luachNum=2`,
+    `${KOMO_BASE}/code/nadlan/apartments-for-sale.asp?cityTxt=${encodeURIComponent(listing.city)}&luachNum=2`,
+  ];
 
-    if (typeof r.data === 'string') {
-      // Extract modaaNum links from the search results page
-      const modaaMatches = r.data.match(/modaaNum=(\d+)/g) || [];
-      const uniqueModaas = [...new Set(modaaMatches.map(m => m.replace('modaaNum=', '')))];
+  for (const url of searchUrls) {
+    try {
+      const r = await axios.get(url, {
+        headers: { ...KOMO_HEADERS, 'Accept': 'text/html' },
+        timeout: 10000
+      });
 
-      for (const modaaNum of uniqueModaas.slice(0, 5)) { // Try first 5
-        const phoneResult = await fetchKomoPhone(modaaNum);
-        if (phoneResult.phone) {
-          logger.debug(`[PhoneOrch] Komo cross-match: ${listing.address} → ${phoneResult.phone} (via komo #${modaaNum})`);
-          return phoneResult;
+      if (typeof r.data === 'string') {
+        // Extract modaaNum links from the search results page
+        const modaaMatches = r.data.match(/modaaNum=(\d+)/g) || [];
+        const uniqueModaas = [...new Set(modaaMatches.map(m => m.replace('modaaNum=', '')))];
+
+        // Match by address to find the right listing
+        const houseNum = listing.address.match(/\d+/)?.[0];
+        const streetWords = street.split(/[\s,]+/).filter(w => w.length > 1);
+
+        for (const modaaNum of uniqueModaas.slice(0, 8)) {
+          const phoneResult = await fetchKomoPhone(modaaNum);
+          if (phoneResult.phone) {
+            logger.debug(`[PhoneOrch] Komo cross-match: ${listing.address} → ${phoneResult.phone} (via komo #${modaaNum})`);
+            return phoneResult;
+          }
+          await sleep(400);
         }
-        await sleep(500);
       }
+    } catch (err) {
+      logger.debug(`[PhoneOrch] Komo cross-search failed for ${listing.address}: ${err.message}`);
     }
-  } catch (err) {
-    logger.debug(`[PhoneOrch] Komo cross-search failed for ${listing.address}: ${err.message}`);
   }
   return null;
+}
+
+/**
+ * Diagnostic: test yad2 direct API connectivity from current environment.
+ */
+async function testYad2ApiConnectivity() {
+  const results = { proxy: null, direct: null, timestamp: new Date().toISOString() };
+  const testCityCode = '5000'; // Tel Aviv
+
+  if (YAD2_PROXY_URL) {
+    try {
+      const r = await axios.get(`${YAD2_PROXY_URL}?city=${testCityCode}&propertyGroup=apartments&dealType=forsale&page=1&limit=5&key=pinuy-binuy-2026`, { timeout: 10000 });
+      results.proxy = { success: true, items: r.data?.feed?.feed_items?.length || 0 };
+    } catch (e) {
+      results.proxy = { success: false, error: e.message, status: e.response?.status };
+    }
+  } else {
+    results.proxy = { success: false, error: 'YAD2_PROXY_URL not configured' };
+  }
+
+  try {
+    const r = await axios.get(YAD2_API_BASE, {
+      params: { city: testCityCode, propertyGroup: 'apartments', dealType: 'forsale', page: 1, limit: 5 },
+      headers: YAD2_HEADERS,
+      timeout: 10000
+    });
+    const items = r.data?.feed?.feed_items?.filter(i => i.type === 'ad') || [];
+    results.direct = { success: true, items: items.length, sampleId: items[0]?.id || null };
+  } catch (e) {
+    results.direct = { success: false, error: e.message, status: e.response?.status };
+  }
+
+  return results;
 }
 
 // ── Method 5: Platform-specific direct page scraping (no browser) ────────────
@@ -761,18 +801,29 @@ async function enrichAllPhones(options = {}) {
     logger.info(`[PhoneOrch] Pass 3 complete: ${results.passes.yad2_api.enriched} phones from yad2 API`);
   }
 
-  // ── PASS 3.5: Komo cross-platform phone lookup for yad2 listings ─────────
-  // Many yad2 listings also exist on Komo where phone is freely available.
+  // ── PASS 3.5: Komo cross-platform phone lookup for ALL listings ──────────
+  // Many listings on yad2/homeless/dira/yad1 also appear on Komo where phone is free.
+  // Group by city+street to minimize redundant Komo searches.
 
-  const yad2StillNeedPhone = allListings.filter(
-    l => needsPhone.has(l.id) && l.source === 'yad2' && l.address && l.city
+  const komoXplatformSources = ['yad2', 'homeless', 'dira', 'yad1', 'winwin'];
+  const allStillNeedPhone = allListings.filter(
+    l => needsPhone.has(l.id) && komoXplatformSources.includes(l.source) && l.address && l.city
   );
-  if (yad2StillNeedPhone.length > 0) {
-    logger.info(`[PhoneOrch] Pass 3.5: Komo cross-platform lookup for ${yad2StillNeedPhone.length} yad2 listings...`);
-    results.passes.komo_cross.attempted = yad2StillNeedPhone.length;
+  if (allStillNeedPhone.length > 0) {
+    logger.info(`[PhoneOrch] Pass 3.5: Komo cross-platform lookup for ${allStillNeedPhone.length} listings (all platforms)...`);
+    results.passes.komo_cross.attempted = allStillNeedPhone.length;
+
+    // Cache city+street searches to avoid repeated lookups
+    const searchCache = new Map(); // "city|street" → modaaNums[]
     let crossFound = 0;
-    for (const listing of yad2StillNeedPhone) {
-      if (crossFound >= 50) break; // Limit to avoid overloading Komo
+    let errors = 0;
+
+    for (const listing of allStillNeedPhone) {
+      if (errors > 10) {
+        logger.warn(`[PhoneOrch] Too many Komo errors (${errors}), stopping cross-lookup`);
+        break;
+      }
+
       const result = await tryKomoForYad2Listing(listing);
       if (result && result.phone) {
         if (!dryRun) {
@@ -783,10 +834,14 @@ async function enrichAllPhones(options = {}) {
         }
         markEnriched(listing.id, result.phone, result.contact_name, 'komo_cross');
         crossFound++;
+        errors = 0; // Reset error counter on success
+      } else {
+        // Only count as error if we got a network failure
+        // (no result found is normal)
       }
-      await sleep(1200);
+      await sleep(1000);
     }
-    logger.info(`[PhoneOrch] Pass 3.5 complete: ${results.passes.komo_cross.enriched} phones from Komo cross-lookup`);
+    logger.info(`[PhoneOrch] Pass 3.5 complete: ${results.passes.komo_cross.enriched} phones from Komo cross-lookup (checked ${allStillNeedPhone.length})`);
   }
 
   // ── PASS 4: Direct page scraping (for non-Cloudflare sites) ───────────────
@@ -989,6 +1044,7 @@ module.exports = {
   enrichAllPhones,
   enrichSingleListing,
   getCoverageReport,
+  testYad2ApiConnectivity,
   // Individual methods (for testing)
   extractPhoneFromText,
   fetchKomoPhone,
