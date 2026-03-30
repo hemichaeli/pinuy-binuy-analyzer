@@ -737,6 +737,45 @@ router.post('/detect-channels', async (req, res) => {
 });
 
 // ============================================================
+// AUTO-MIGRATION: ensure conversation tracking columns exist
+// ============================================================
+(async () => {
+  try {
+    await pool.query(`ALTER TABLE unified_messages ADD COLUMN IF NOT EXISTS conversation_id VARCHAR(255)`);
+    await pool.query(`ALTER TABLE unified_messages ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE unified_messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE unified_messages ADD COLUMN IF NOT EXISTS reply_to_id INTEGER`);
+    await pool.query(`ALTER TABLE unified_messages ADD COLUMN IF NOT EXISTS external_thread_id VARCHAR(255)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_unified_messages_conversation ON unified_messages(conversation_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_unified_messages_is_read ON unified_messages(is_read) WHERE is_read = FALSE`);
+    await pool.query(`UPDATE unified_messages SET conversation_id = CONCAT('conv_', listing_id, '_', channel) WHERE conversation_id IS NULL AND listing_id IS NOT NULL`);
+    await pool.query(`
+      CREATE OR REPLACE VIEW conversation_summary AS
+      SELECT conversation_id,
+        MIN(um.listing_id) as listing_id, MIN(um.channel) as channel, MIN(um.platform) as platform,
+        MIN(um.contact_phone) as contact_phone, MIN(um.contact_name) as contact_name,
+        COUNT(*) as total_messages,
+        COUNT(*) FILTER (WHERE um.direction = 'outgoing') as sent_count,
+        COUNT(*) FILTER (WHERE um.direction = 'incoming') as received_count,
+        COUNT(*) FILTER (WHERE um.is_read = FALSE AND um.direction = 'incoming') as unread_count,
+        MAX(um.created_at) as last_message_at,
+        MAX(um.created_at) FILTER (WHERE um.direction = 'outgoing') as last_sent_at,
+        MAX(um.created_at) FILTER (WHERE um.direction = 'incoming') as last_received_at,
+        CASE WHEN MAX(um.created_at) FILTER (WHERE um.direction = 'outgoing') >
+             COALESCE(MAX(um.created_at) FILTER (WHERE um.direction = 'incoming'), '1970-01-01'::timestamptz)
+             AND MAX(um.created_at) FILTER (WHERE um.direction = 'outgoing') < NOW() - INTERVAL '5 hours'
+        THEN TRUE ELSE FALSE END as is_unanswered,
+        CASE WHEN COUNT(*) FILTER (WHERE um.is_read = FALSE AND um.direction = 'incoming') > 0
+        THEN TRUE ELSE FALSE END as has_unread
+      FROM unified_messages um WHERE um.conversation_id IS NOT NULL GROUP BY um.conversation_id
+    `);
+    logger.info('[Messaging] Conversation tracking migration complete');
+  } catch (e) {
+    logger.warn('[Messaging] Conversation migration skipped:', e.message);
+  }
+})();
+
+// ============================================================
 // CONVERSATIONS — grouped by listing+channel
 // ============================================================
 

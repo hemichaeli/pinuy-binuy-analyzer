@@ -186,11 +186,12 @@ async function sendToListing(listing, messageText, options = {}) {
 
   try {
     // Log to unified_messages
+    const convId = `conv_${listing.id}_${channels[0]}`;
     const msgRecord = await pool.query(
-      `INSERT INTO unified_messages (listing_id, complex_id, contact_phone, direction, channel, platform, message_text, status)
-       VALUES ($1, $2, $3, 'outgoing', $4, $5, $6, 'pending') RETURNING id`,
+      `INSERT INTO unified_messages (listing_id, complex_id, contact_phone, direction, channel, platform, message_text, status, conversation_id)
+       VALUES ($1, $2, $3, 'outgoing', $4, $5, $6, 'pending', $7) RETURNING id`,
       [listing.id, listing.complex_id || null, listing.phone || listing.contact_phone || null,
-       channels[0], platform, messageText]
+       channels[0], platform, messageText, convId]
     ).catch(() => {
       // Fallback to old table if unified_messages doesn't exist yet
       return pool.query(
