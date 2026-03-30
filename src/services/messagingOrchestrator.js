@@ -29,6 +29,9 @@ function getInforuService() {
 function getFbMessenger() {
   try { return require('./facebookMessenger'); } catch (e) { return null; }
 }
+function getPhoneOrch() {
+  try { return require('./phoneRevealOrchestrator'); } catch (e) { return null; }
+}
 
 // ============================================================
 // CHANNEL DETECTION
@@ -209,19 +212,46 @@ async function sendToListing(listing, messageText, options = {}) {
       if (channel === 'yad2_chat') {
         result.channel = 'yad2_chat';
         const yad2 = getYad2Messenger();
-        if (yad2 && yad2.getStatus().hasCredentials) {
-          let itemUrl = listing.url;
-          if (listing.source_listing_id && (!itemUrl || !itemUrl.includes('/item/'))) {
+
+        // Resolve proper yad2 item URL (Perplexity listings may have search page URLs)
+        let itemUrl = listing.url;
+        const phoneOrch = getPhoneOrch();
+        if (phoneOrch) {
+          // Check if URL is a proper item URL
+          const hasItemUrl = itemUrl && itemUrl.includes('/item/');
+          const hasValidId = phoneOrch.isValidYad2Id(listing.source_listing_id);
+
+          if (!hasItemUrl && hasValidId) {
             itemUrl = `https://www.yad2.co.il/item/${listing.source_listing_id}`;
+          } else if (!hasItemUrl && !hasValidId) {
+            // Try to extract from URL
+            const urlId = phoneOrch.extractYad2ItemId(itemUrl);
+            if (urlId) {
+              itemUrl = `https://www.yad2.co.il/item/${urlId}`;
+            } else {
+              // Resolve via API search
+              const resolved = await phoneOrch.resolveYad2ItemId(listing);
+              if (resolved) {
+                itemUrl = resolved.url;
+                // Update DB for future use
+                await pool.query(
+                  `UPDATE listings SET source_listing_id = $1, url = $2, updated_at = NOW() WHERE id = $3`,
+                  [resolved.itemId, resolved.url, listing.id]
+                ).catch(() => {});
+              }
+            }
           }
-          if (itemUrl) {
-            const sendResult = await yad2.sendMessage(itemUrl, messageText);
-            result.success = sendResult.success;
-            if (!sendResult.success) result.error = sendResult.error;
-          }
+        } else if (listing.source_listing_id && (!itemUrl || !itemUrl.includes('/item/'))) {
+          itemUrl = `https://www.yad2.co.il/item/${listing.source_listing_id}`;
+        }
+
+        if (yad2 && yad2.getStatus().hasCredentials && itemUrl && itemUrl.includes('/item/')) {
+          const sendResult = await yad2.sendMessage(itemUrl, messageText);
+          result.success = sendResult.success;
+          if (!sendResult.success) result.error = sendResult.error;
         }
         if (!result.success) {
-          result.manual_url = listing.url || `https://www.yad2.co.il/item/${listing.source_listing_id}`;
+          result.manual_url = itemUrl || listing.url || `https://www.yad2.co.il/item/${listing.source_listing_id}`;
         }
       }
 
@@ -244,12 +274,28 @@ async function sendToListing(listing, messageText, options = {}) {
 
       else if (channel === 'komo_chat') {
         result.channel = 'komo_chat';
-        // Komo doesn't have API messaging — provide manual URL
         const sid = listing.source_listing_id;
         result.manual_url = sid
           ? `https://www.komo.co.il/code/nadlan/apartments-for-sale.asp?modaaNum=${sid}`
           : listing.url;
-        // Can't auto-send to komo — continue to next channel
+
+        // Try to get phone from Komo API and send via WhatsApp instead
+        if (!listing.phone && sid && /^\d+$/.test(sid)) {
+          const phoneOrch = getPhoneOrch();
+          if (phoneOrch) {
+            const komoResult = await phoneOrch.fetchKomoPhone(sid);
+            if (komoResult && komoResult.phone) {
+              listing.phone = komoResult.phone;
+              // Update DB with newly found phone
+              await pool.query(
+                `UPDATE listings SET phone = $1, contact_name = COALESCE($2, contact_name), updated_at = NOW() WHERE id = $3`,
+                [komoResult.phone, komoResult.contact_name, listing.id]
+              ).catch(() => {});
+              // Will try WhatsApp on next channel iteration
+            }
+          }
+        }
+        // Continue to next channel (WhatsApp if phone now available)
       }
 
       else if (channel === 'whatsapp') {

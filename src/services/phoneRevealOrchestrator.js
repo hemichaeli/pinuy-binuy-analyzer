@@ -227,12 +227,192 @@ async function runApifyAsync(actorId, input) {
   }
 }
 
+// ── Method 3b: Resolve real yad2 item IDs via search API ────────────────────
+// For Perplexity-sourced listings that have bad source_listing_ids (URL-based or perp- prefixed),
+// search yad2 API by city+street to find the real item ID, then call phone endpoint.
+
+const YAD2_PROXY_URL = process.env.YAD2_PROXY_URL || 'https://yad2-proxy.pinuy-binuy.workers.dev';
+
+// City code mapping (subset — same as yad2Scraper.js)
+const CITY_CODES = {
+  'תל אביב יפו': '5000', 'תל אביב - יפו': '5000', 'תל אביב': '5000',
+  'רמת גן': '8600', 'גבעתיים': '6300', 'בני ברק': '6100',
+  'חולון': '6600', 'בת ים': '6200', 'ראשון לציון': '8300',
+  'פתח תקווה': '7900', 'הרצליה': '6400', 'רעננה': '8700',
+  'כפר סבא': '6900', 'הוד השרון': '9700', 'רמת השרון': '2650',
+  'ראש העין': '2640', 'אור יהודה': '2400', 'יהוד': '9400',
+  'יהוד-מונוסון': '9400', 'נס ציונה': '7200', 'רחובות': '8400',
+  'יבנה': '2660', 'באר יעקב': '2530', 'לוד': '7000', 'רמלה': '8500',
+  'מודיעין': '1200', 'מודיעין-מכבים-רעות': '1200', 'נתניה': '7400',
+  'חדרה': '6500', 'חיפה': '4000', 'ירושלים': '3000',
+  'אשדוד': '70', 'אשקלון': '7100', 'באר שבע': '9000',
+  'קריית אתא': '6800', 'קריית ביאליק': '9500', 'קריית ים': '9600',
+  'קריית מוצקין': '8200', 'קריית אונו': '2620', 'נשר': '2500',
+  'עפולה': '7800', 'בית שמש': '2610', 'טירת כרמל': '2100',
+  'כוכב יאיר': '1224', 'כוכב יאיר-צור יגאל': '1224',
+  'מבשרת ציון': '1015', 'מעלה אדומים': '3616', 'נצרת עילית': '1061',
+};
+
+/**
+ * Extract yad2 item ID from a URL like https://www.yad2.co.il/item/xxxxx
+ */
+function extractYad2ItemId(url) {
+  if (!url) return null;
+  const m = url.match(/yad2\.co\.il\/item\/([a-zA-Z0-9]+)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Check if a source_listing_id looks like a real yad2 item ID (not perp- or URL-based)
+ */
+function isValidYad2Id(id) {
+  if (!id) return false;
+  if (id.startsWith('yad2-') || id.startsWith('ai-') || id.startsWith('perp-')) return false;
+  if (id.startsWith('http')) return false;
+  if (id.length > 30) return false; // URL fragments are long
+  return /^[a-zA-Z0-9_-]+$/.test(id);
+}
+
+/**
+ * Search yad2 API by city and address to find the real item ID for a listing.
+ * Returns { itemId, url } or null.
+ */
+async function resolveYad2ItemId(listing) {
+  const city = listing.city;
+  const address = listing.address || '';
+  if (!city || !address) return null;
+
+  const cityCode = CITY_CODES[city];
+  if (!cityCode) return null;
+
+  // Extract street name (remove house numbers)
+  const street = address.replace(/\d+/g, '').trim();
+  if (!street || street.length < 2) return null;
+
+  try {
+    const proxyUrl = `${YAD2_PROXY_URL}?city=${cityCode}&propertyGroup=apartments&dealType=forsale&page=1&limit=50&key=pinuy-binuy-2026`;
+    const response = await axios.get(proxyUrl, { timeout: 20000 });
+
+    if (response.data?.error || !response.data?.feed?.feed_items) return null;
+
+    const items = response.data.feed.feed_items.filter(i => i.type === 'ad' && i.id);
+
+    // Match by address similarity
+    const streetWords = street.split(/[\s,]+/).filter(w => w.length > 1);
+    const houseNum = address.match(/\d+/)?.[0];
+    const price = listing.asking_price ? parseFloat(listing.asking_price) : null;
+
+    for (const item of items) {
+      const itemAddr = [item.street || '', item.house_number || ''].join(' ').trim();
+      const itemStreet = (item.street || item.street_name || '').trim();
+
+      // Street name match (at least 2 chars in common word)
+      const matchesStreet = streetWords.some(w => itemStreet.includes(w) || itemAddr.includes(w));
+      if (!matchesStreet) continue;
+
+      // House number match (if available)
+      if (houseNum && item.house_number && String(item.house_number) !== houseNum) continue;
+
+      // Price match (within 15%)
+      if (price && item.price) {
+        const itemPrice = parseInt(String(item.price).replace(/[^\d]/g, ''));
+        if (itemPrice && Math.abs(itemPrice - price) > price * 0.15) continue;
+      }
+
+      // Found a match!
+      return {
+        itemId: String(item.id),
+        url: `https://www.yad2.co.il/item/${item.id}`,
+        matchedAddress: itemAddr
+      };
+    }
+  } catch (err) {
+    logger.debug(`[PhoneOrch] yad2 ID resolve failed for ${address}, ${city}: ${err.message}`);
+  }
+  return null;
+}
+
+/**
+ * Batch resolve yad2 item IDs for listings missing proper IDs.
+ * Groups by city to minimize API calls.
+ */
+async function batchResolveYad2Ids(listings) {
+  const resolved = new Map(); // listing.id → { itemId, url }
+
+  // Group by city
+  const byCity = {};
+  for (const l of listings) {
+    const city = l.city;
+    if (!city || !CITY_CODES[city]) continue;
+    if (!byCity[city]) byCity[city] = [];
+    byCity[city].push(l);
+  }
+
+  for (const [city, cityListings] of Object.entries(byCity)) {
+    const cityCode = CITY_CODES[city];
+    if (!cityCode) continue;
+
+    try {
+      // Fetch ALL listings for this city (up to 3 pages)
+      const allItems = [];
+      for (let page = 1; page <= 3; page++) {
+        const proxyUrl = `${YAD2_PROXY_URL}?city=${cityCode}&propertyGroup=apartments&dealType=forsale&page=${page}&limit=50&key=pinuy-binuy-2026`;
+        const response = await axios.get(proxyUrl, { timeout: 20000 });
+        if (response.data?.error || !response.data?.feed?.feed_items) break;
+        const items = response.data.feed.feed_items.filter(i => i.type === 'ad' && i.id);
+        allItems.push(...items);
+        if (items.length < 50) break;
+        await sleep(1500);
+      }
+
+      if (allItems.length === 0) continue;
+
+      // Match each listing to a yad2 item
+      for (const listing of cityListings) {
+        const address = listing.address || '';
+        const street = address.replace(/\d+/g, '').trim();
+        const streetWords = street.split(/[\s,]+/).filter(w => w.length > 1);
+        const houseNum = address.match(/\d+/)?.[0];
+        const price = listing.asking_price ? parseFloat(listing.asking_price) : null;
+
+        for (const item of allItems) {
+          const itemStreet = (item.street || item.street_name || '').trim();
+          const matchesStreet = streetWords.some(w => w.length > 1 && itemStreet.includes(w));
+          if (!matchesStreet) continue;
+
+          if (houseNum && item.house_number && String(item.house_number) !== houseNum) continue;
+
+          if (price && item.price) {
+            const itemPrice = parseInt(String(item.price).replace(/[^\d]/g, ''));
+            if (itemPrice && Math.abs(itemPrice - price) > price * 0.15) continue;
+          }
+
+          resolved.set(listing.id, {
+            itemId: String(item.id),
+            url: `https://www.yad2.co.il/item/${item.id}`
+          });
+          break;
+        }
+      }
+
+      logger.info(`[PhoneOrch] yad2 ID resolve: ${city} - ${allItems.length} yad2 items, resolved ${cityListings.filter(l => resolved.has(l.id)).length}/${cityListings.length}`);
+      await sleep(2000);
+    } catch (err) {
+      logger.warn(`[PhoneOrch] yad2 city resolve failed for ${city}: ${err.message}`);
+    }
+  }
+
+  return resolved;
+}
+
 // ── Method 4: yad2 direct API phone endpoint (opportunistic, often 403) ─────
 
 async function tryYad2ApiPhone(itemId) {
-  if (!itemId || itemId === 'NULL' || itemId.startsWith('yad2-') || itemId.startsWith('ai-')) return null;
+  if (!itemId || itemId === 'NULL' || !isValidYad2Id(itemId)) return null;
 
+  // Try via proxy first, then direct
   const endpoints = [
+    `${YAD2_PROXY_URL}/phone?itemId=${itemId}&key=pinuy-binuy-2026`,
     `https://gw.yad2.co.il/feed-search/item/${itemId}/phone`,
     `https://gw.yad2.co.il/feed-search-legacy/item/${itemId}/phone`,
   ];
@@ -254,6 +434,44 @@ async function tryYad2ApiPhone(itemId) {
         if (phone) return phone;
       }
     } catch (e) { /* try next */ }
+  }
+  return null;
+}
+
+// ── Method 4b: Komo phone API for yad2 listings (cross-platform enrichment) ──
+// Many yad2 listings also appear on Komo. Use address matching to find them.
+
+async function tryKomoForYad2Listing(listing) {
+  if (!listing.address || !listing.city) return null;
+
+  try {
+    // Search Komo by address
+    const searchUrl = `${KOMO_BASE}/api/modaotService/searchModaot/post/`;
+    const searchData = `luachNum=2&text=${encodeURIComponent(listing.address + ' ' + listing.city)}&source=1`;
+    const r = await axios.post(searchUrl, searchData, {
+      headers: KOMO_HEADERS, timeout: 10000
+    });
+
+    if (r.data?.status === 'OK' && Array.isArray(r.data?.list)) {
+      for (const item of r.data.list) {
+        // Verify address match
+        const itemAddr = (item.address || item.street || '').trim();
+        const listAddr = listing.address.replace(/\d+/g, '').trim();
+        const addrWords = listAddr.split(/[\s,]+/).filter(w => w.length > 1);
+        const matches = addrWords.filter(w => itemAddr.includes(w)).length;
+
+        if (matches >= Math.min(2, addrWords.length) && item.modaaNum) {
+          // Found matching Komo listing — get phone
+          const phoneResult = await fetchKomoPhone(item.modaaNum);
+          if (phoneResult.phone) {
+            logger.debug(`[PhoneOrch] Komo cross-match: ${listing.address} → ${phoneResult.phone} (via komo #${item.modaaNum})`);
+            return phoneResult;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    logger.debug(`[PhoneOrch] Komo cross-search failed for ${listing.address}: ${err.message}`);
   }
   return null;
 }
@@ -357,7 +575,9 @@ async function enrichAllPhones(options = {}) {
     passes: {
       regex: { attempted: 0, enriched: 0 },
       komo_api: { attempted: 0, enriched: 0 },
+      yad2_id_resolve: { attempted: 0, enriched: 0, resolved: 0 },
       yad2_api: { attempted: 0, enriched: 0 },
+      komo_cross: { attempted: 0, enriched: 0 },
       page_scrape: { attempted: 0, enriched: 0 },
       apify: { attempted: 0, enriched: 0 },
     },
@@ -428,12 +648,61 @@ async function enrichAllPhones(options = {}) {
     logger.info(`[PhoneOrch] Pass 2 complete: ${results.passes.komo_api.enriched} phones from Komo API`);
   }
 
+  // ── PASS 2.5: Resolve real yad2 item IDs for Perplexity-sourced listings ──
+  // Many yad2 listings were sourced via Perplexity and have bad IDs (perp-, URL-based).
+  // Search yad2 API by city to find the real item IDs, then update DB.
+
+  const yad2NeedIdResolve = allListings.filter(
+    l => needsPhone.has(l.id) && l.source === 'yad2' && !isValidYad2Id(l.source_listing_id)
+  );
+  if (yad2NeedIdResolve.length > 0) {
+    logger.info(`[PhoneOrch] Pass 2.5: Resolving yad2 item IDs for ${yad2NeedIdResolve.length} Perplexity-sourced listings...`);
+    results.passes.yad2_id_resolve.attempted = yad2NeedIdResolve.length;
+
+    // First check if any have valid item URLs despite bad source_listing_id
+    for (const listing of yad2NeedIdResolve) {
+      const urlId = extractYad2ItemId(listing.url);
+      if (urlId) {
+        listing.source_listing_id = urlId;
+        listing.url = `https://www.yad2.co.il/item/${urlId}`;
+        if (!dryRun) {
+          await pool.query(
+            `UPDATE listings SET source_listing_id = $1, url = $2, updated_at = NOW() WHERE id = $3`,
+            [urlId, listing.url, listing.id]
+          );
+        }
+        results.passes.yad2_id_resolve.resolved++;
+      }
+    }
+
+    // For the rest, batch resolve via yad2 search API
+    const stillNeedResolve = yad2NeedIdResolve.filter(l => !isValidYad2Id(l.source_listing_id));
+    if (stillNeedResolve.length > 0) {
+      const resolvedMap = await batchResolveYad2Ids(stillNeedResolve);
+      for (const [listingId, info] of resolvedMap) {
+        const listing = listingMap.get(listingId);
+        if (listing) {
+          listing.source_listing_id = info.itemId;
+          listing.url = info.url;
+          if (!dryRun) {
+            await pool.query(
+              `UPDATE listings SET source_listing_id = $1, url = $2, updated_at = NOW() WHERE id = $3`,
+              [info.itemId, info.url, listingId]
+            );
+          }
+          results.passes.yad2_id_resolve.resolved++;
+        }
+      }
+    }
+
+    logger.info(`[PhoneOrch] Pass 2.5 complete: resolved ${results.passes.yad2_id_resolve.resolved}/${yad2NeedIdResolve.length} yad2 item IDs`);
+  }
+
   // ── PASS 3: yad2 direct API (phone endpoint, no browser) ─────────────────
+  // Now includes freshly-resolved IDs from Pass 2.5
 
   const yad2Listings = allListings.filter(
-    l => needsPhone.has(l.id) && l.source === 'yad2' && l.source_listing_id &&
-         !l.source_listing_id.startsWith('yad2-') && !l.source_listing_id.startsWith('ai-') &&
-         /^[a-zA-Z0-9_-]+$/.test(l.source_listing_id)
+    l => needsPhone.has(l.id) && l.source === 'yad2' && isValidYad2Id(l.source_listing_id)
   );
   if (yad2Listings.length > 0) {
     logger.info(`[PhoneOrch] Pass 3: yad2 direct API for ${yad2Listings.length} listings...`);
@@ -453,6 +722,34 @@ async function enrichAllPhones(options = {}) {
       await sleep(1500);
     }
     logger.info(`[PhoneOrch] Pass 3 complete: ${results.passes.yad2_api.enriched} phones from yad2 API`);
+  }
+
+  // ── PASS 3.5: Komo cross-platform phone lookup for yad2 listings ─────────
+  // Many yad2 listings also exist on Komo where phone is freely available.
+
+  const yad2StillNeedPhone = allListings.filter(
+    l => needsPhone.has(l.id) && l.source === 'yad2' && l.address && l.city
+  );
+  if (yad2StillNeedPhone.length > 0) {
+    logger.info(`[PhoneOrch] Pass 3.5: Komo cross-platform lookup for ${yad2StillNeedPhone.length} yad2 listings...`);
+    results.passes.komo_cross.attempted = yad2StillNeedPhone.length;
+    let crossFound = 0;
+    for (const listing of yad2StillNeedPhone) {
+      if (crossFound >= 50) break; // Limit to avoid overloading Komo
+      const result = await tryKomoForYad2Listing(listing);
+      if (result && result.phone) {
+        if (!dryRun) {
+          await pool.query(
+            `UPDATE listings SET phone = $1, contact_name = COALESCE($2, contact_name), updated_at = NOW() WHERE id = $3`,
+            [result.phone, result.contact_name, listing.id]
+          );
+        }
+        markEnriched(listing.id, result.phone, result.contact_name, 'komo_cross');
+        crossFound++;
+      }
+      await sleep(1200);
+    }
+    logger.info(`[PhoneOrch] Pass 3.5 complete: ${results.passes.komo_cross.enriched} phones from Komo cross-lookup`);
   }
 
   // ── PASS 4: Direct page scraping (for non-Cloudflare sites) ───────────────
@@ -517,7 +814,7 @@ async function enrichAllPhones(options = {}) {
 
   const coverage = results.total > 0 ? ((results.enriched / results.total) * 100).toFixed(1) : '0';
   logger.info(`[PhoneOrch] ═══ COMPLETE: ${results.enriched}/${results.total} phones found (${coverage}% coverage) ═══`);
-  logger.info(`[PhoneOrch] Breakdown: regex=${results.passes.regex.enriched} komo=${results.passes.komo_api.enriched} yad2api=${results.passes.yad2_api.enriched} scrape=${results.passes.page_scrape.enriched} apify=${results.passes.apify.enriched}`);
+  logger.info(`[PhoneOrch] Breakdown: regex=${results.passes.regex.enriched} komo=${results.passes.komo_api.enriched} yad2resolve=${results.passes.yad2_id_resolve.resolved || 0} yad2api=${results.passes.yad2_api.enriched} komoCross=${results.passes.komo_cross.enriched} scrape=${results.passes.page_scrape.enriched} apify=${results.passes.apify.enriched}`);
 
   for (const [platform, stats] of Object.entries(results.byPlatform)) {
     const pct = stats.total > 0 ? ((stats.enriched / stats.total) * 100).toFixed(1) : '0';
@@ -560,10 +857,38 @@ async function enrichSingleListing(listing) {
     }
   }
 
-  // Pass 3: yad2 API
-  if (!phone && listing.source === 'yad2' && listing.source_listing_id) {
-    phone = await tryYad2ApiPhone(listing.source_listing_id);
-    if (phone) method = 'yad2_api';
+  // Pass 3: yad2 API (resolve ID first if needed)
+  if (!phone && listing.source === 'yad2') {
+    let itemId = listing.source_listing_id;
+    // Resolve real yad2 ID if current one is bad
+    if (!isValidYad2Id(itemId)) {
+      const urlId = extractYad2ItemId(listing.url);
+      if (urlId) {
+        itemId = urlId;
+        await pool.query(`UPDATE listings SET source_listing_id = $1, url = $2 WHERE id = $3`,
+          [urlId, `https://www.yad2.co.il/item/${urlId}`, listing.id]);
+      } else {
+        const resolved = await resolveYad2ItemId(listing);
+        if (resolved) {
+          itemId = resolved.itemId;
+          await pool.query(`UPDATE listings SET source_listing_id = $1, url = $2 WHERE id = $3`,
+            [resolved.itemId, resolved.url, listing.id]);
+        }
+      }
+    }
+    if (isValidYad2Id(itemId)) {
+      phone = await tryYad2ApiPhone(itemId);
+      if (phone) method = 'yad2_api';
+    }
+    // Try Komo cross-platform if still no phone
+    if (!phone && listing.address && listing.city) {
+      const komoResult = await tryKomoForYad2Listing(listing);
+      if (komoResult && komoResult.phone) {
+        phone = komoResult.phone;
+        method = 'komo_cross';
+        if (komoResult.contact_name) listing.contact_name = komoResult.contact_name;
+      }
+    }
   }
 
   // Pass 4: Direct page scrape
@@ -632,6 +957,11 @@ module.exports = {
   fetchKomoPhone,
   tryYad2ApiPhone,
   tryDirectPageScrape,
+  tryKomoForYad2Listing,
+  resolveYad2ItemId,
+  batchResolveYad2Ids,
   runApifyPhoneReveal,
   cleanPhone,
+  isValidYad2Id,
+  extractYad2ItemId,
 };
