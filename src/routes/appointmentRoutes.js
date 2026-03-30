@@ -160,6 +160,45 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /api/appointments — create a simple appointment (from dashboard form)
+router.post('/', async (req, res) => {
+  try {
+    const { client_name, phone, date, type, location, notes, status } = req.body;
+    if (!client_name && !phone) return res.status(400).json({ success: false, error: 'client_name or phone required' });
+    const { rows } = await pool.query(
+      `INSERT INTO appointments (lead_name, phone, status, notes, created_at)
+       VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
+      [client_name || null, phone || null, status || 'scheduled', [type, location, date, notes].filter(Boolean).join(' | ')]
+    );
+    res.json({ success: true, appointment: rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// PATCH /api/appointments/:id — update appointment status
+router.patch('/:id', async (req, res) => {
+  try {
+    const { status, notes } = req.body;
+    const sets = [];
+    const params = [];
+    let n = 1;
+    if (status) { sets.push(`status = $${n++}`); params.push(status); }
+    if (notes !== undefined) { sets.push(`notes = $${n++}`); params.push(notes); }
+    if (status === 'confirmed') sets.push(`confirmed_at = NOW()`);
+    if (status === 'cancelled') sets.push(`cancelled_at = NOW()`);
+    if (sets.length === 0) return res.status(400).json({ success: false, error: 'nothing to update' });
+    params.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE appointments SET ${sets.join(', ')} WHERE id = $${n} RETURNING *`, params
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, error: 'not found' });
+    res.json({ success: true, appointment: rows[0] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // POST /api/appointments/send-slots — send available slots via WhatsApp to a lead
 router.post('/send-slots', async (req, res) => {
   try {

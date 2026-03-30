@@ -12,6 +12,71 @@ function getNewsService() {
   catch (e) { logger.warn('News service not available'); return null; }
 }
 
+// ── In-memory cache for news (1 hour TTL) ────────────────────────────────────
+let newsCache = { data: null, ts: 0 };
+const NEWS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+// GET /api/news — main news feed for dashboard
+router.get('/', async (req, res) => {
+  try {
+    // Return cached if fresh
+    if (newsCache.data && Date.now() - newsCache.ts < NEWS_CACHE_TTL) {
+      return res.json({ success: true, data: newsCache.data, cached: true });
+    }
+
+    // Try Perplexity first
+    const PERPLEXITY_KEY = process.env.PERPLEXITY_API_KEY;
+    if (PERPLEXITY_KEY) {
+      try {
+        const axios = require('axios');
+        const resp = await axios.post('https://api.perplexity.ai/chat/completions', {
+          model: 'sonar',
+          messages: [
+            { role: 'system', content: 'You are a real estate news aggregator for Israel. Return a JSON array of 5-8 news items. Each item must have: title, summary (2 sentences), source, url, category (one of: התחדשות עירונית, פינוי בינוי, נדל"ן, רגולציה, מימון), published_at (ISO date). Return ONLY valid JSON array, no markdown.' },
+            { role: 'user', content: 'חדשות נדל"ן ישראל פינוי בינוי התחדשות עירונית היום' }
+          ],
+          max_tokens: 2000
+        }, {
+          headers: { 'Authorization': `Bearer ${PERPLEXITY_KEY}`, 'Content-Type': 'application/json' },
+          timeout: 15000
+        });
+        const content = resp.data?.choices?.[0]?.message?.content || '[]';
+        // Extract JSON array from response
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        const articles = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+        newsCache = { data: articles, ts: Date.now() };
+        return res.json({ success: true, data: articles });
+      } catch (perplexityErr) {
+        logger.warn('[News] Perplexity fetch failed:', perplexityErr.message);
+      }
+    }
+
+    // Fallback: try RSS service
+    const service = getNewsService();
+    if (service) {
+      try {
+        let items = await service.fetchAllRSSFeeds();
+        items = (service.filterRelevantNews ? service.filterRelevantNews(items) : items).slice(0, 10);
+        const data = items.map(item => ({
+          title: item.title, summary: item.description || item.summary || '',
+          source: item.source || item.feed || '', url: item.link || item.url || '',
+          category: 'נדל"ן', published_at: item.pubDate || item.date || new Date().toISOString()
+        }));
+        newsCache = { data, ts: Date.now() };
+        return res.json({ success: true, data });
+      } catch (rssErr) {
+        logger.warn('[News] RSS fallback failed:', rssErr.message);
+      }
+    }
+
+    // No news source available
+    res.json({ success: true, data: [], message: 'No news sources configured' });
+  } catch (err) {
+    logger.error('[News] Error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/news/status
 router.get('/status', (req, res) => {
   const service = getNewsService();

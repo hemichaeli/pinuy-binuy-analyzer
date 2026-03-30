@@ -160,6 +160,11 @@ function loadAllRoutes() {
     { path: '/api/outreach',           file: 'routes/outreachRoutes.js' },
     { path: '/api/newsletter',         file: 'routes/newsletterRoutes.js' },
     { path: '/api/signatures',         file: 'routes/signatureRoutes.js' },
+    { path: '/api/campaigns',          file: 'routes/campaignRoutes.js' },
+    { path: '/api/appointments',       file: 'routes/appointmentRoutes.js' },
+    { path: '/api/news',               file: 'routes/newsRoutes.js' },
+    { path: '/api/publish',            file: 'routes/publishRoutes.js' },
+    { path: '/api/reminders',          file: 'routes/reminderRoutes.js' },
   ];
 
   // ── MINHELET only: resident coordination, scheduling, events, campaigns ──────

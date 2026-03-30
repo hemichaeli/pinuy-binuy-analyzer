@@ -116,6 +116,13 @@ async function ensureTables() {
       )
     `);
 
+    // Ensure whatsapp_conversations has columns needed by sellers route
+    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS display_name VARCHAR(255)`);
+    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS city VARCHAR(100)`);
+    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS address TEXT`);
+    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS last_message TEXT`);
+    await pool.query(`ALTER TABLE whatsapp_conversations ADD COLUMN IF NOT EXISTS listing_id INTEGER`);
+
     logger.info('[UnifiedComms] Tables ensured');
   } catch (err) {
     logger.error('[UnifiedComms] Table init error:', err.message);
