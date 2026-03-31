@@ -1822,16 +1822,18 @@ router.post('/backup', async (req, res) => {
 
     res.json({ success: true, message: 'Backup started', backup_id: backupId, timestamp: new Date() });
 
-    // Run async
+    // Run async with timeout
     (async () => {
       try {
         const { createBackup } = require('../services/githubBackupService');
-        const result = await createBackup();
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Backup timed out after 5 minutes')), 300000));
+        const result = await Promise.race([createBackup(), timeoutPromise]);
+        const rows = result?.totalRows || result?.total_rows || 0;
         await pool.query(
           `UPDATE backups SET status = 'completed', rows_count = $1, storage_url = $2 WHERE id = $3`,
-          [result.totalRows || 0, 'https://github.com/hemichaeli/pinuy-binuy-backups', backupId]
+          [rows, 'https://github.com/hemichaeli/pinuy-binuy-backups', backupId]
         );
-        logger.info(`[Backup] ✅ Complete: ${result.totalRows} rows backed up to GitHub`);
+        logger.info(`[Backup] ✅ Complete: ${rows} rows backed up to GitHub`);
       } catch (err) {
         await pool.query(
           `UPDATE backups SET status = 'failed', error = $1 WHERE id = $2`,
