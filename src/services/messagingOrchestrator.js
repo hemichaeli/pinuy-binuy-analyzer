@@ -257,8 +257,12 @@ async function sendToListing(listing, messageText, options = {}) {
         }
 
         if (yad2 && yad2.getStatus().hasCredentials && itemUrl && itemUrl.includes('/item/')) {
-          const sendResult = await yad2.sendMessage(itemUrl, messageText);
+          const sendResult = await yad2.sendMessage(itemUrl, messageText, {
+            phone: listing.phone || listing.contact_phone,
+            contactName: listing.contact_name
+          });
           result.success = sendResult.success;
+          if (sendResult.whatsapp_url) result.whatsapp_link = sendResult.whatsapp_url;
           if (!sendResult.success) result.error = sendResult.error;
         }
         if (!result.success) {
@@ -316,13 +320,20 @@ async function sendToListing(listing, messageText, options = {}) {
           const inforu = getInforuService();
           if (inforu) {
             try {
-              const waResult = await inforu.sendWhatsApp(phone, messageText, {
-                listingId: listing.id, complexId: listing.complex_id
+              // Use unified sendMessage: tries WhatsApp chat (24h window) → SMS fallback
+              // WhatsApp chat works if recipient previously messaged QUANTUM's number
+              const waResult = await inforu.sendMessage(phone, messageText, {
+                listingId: listing.id,
+                complexId: listing.complex_id,
+                customerParameter: 'QUANTUM_YAD2',
+                preferWhatsApp: true
               });
               result.success = waResult.success !== false;
-              if (!result.success) result.error = waResult.error;
+              result.inforu_channel = waResult.channel; // 'whatsapp_chat' or 'sms'
+              if (!result.success) result.error = waResult.description || waResult.error;
             } catch (e) {
-              // InForu WA failed, generate link as fallback
+              // InForu failed entirely, generate link as fallback
+              logger.warn('[orchestrator] InForu send failed, generating WA link', { error: e.message });
               result.whatsapp_link = generateWhatsAppLink(listing, messageText);
               result.success = true;
             }
