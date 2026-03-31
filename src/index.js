@@ -166,6 +166,7 @@ function loadAllRoutes() {
     { path: '/api/publish',            file: 'routes/publishRoutes.js' },
     { path: '/api/reminders',          file: 'routes/reminderRoutes.js' },
     { path: '/api/settings',           file: 'routes/settingsRoutes.js' },
+    { path: '/api/templates',          file: 'routes/templateRoutes.js' },
   ];
 
   // ── MINHELET only: resident coordination, scheduling, events, campaigns ──────
