@@ -1,22 +1,25 @@
 /**
- * yad2 Messenger API Service v2 - REST API + Sendbird SDK
+ * yad2 Messenger API Service v2 - REST API + Multi-Channel
  *
  * Replaces the Puppeteer-based yad2Messenger.js with a pure REST API approach.
- * Uses yad2's gateway API for authentication and Sendbird for chat messaging.
+ * Supports 3 messaging channels:
+ *   1. "השארת פרטים" (Leave Details) - yad2 contact form API (PRIMARY)
+ *   2. WhatsApp link generation - for listings with phone numbers
+ *   3. Sendbird SDK - for professional listings with internal chat
  *
  * Architecture:
  *   1. Authenticate via POST gw.yad2.co.il/auth/login → JWT tokens
- *   2. Connect to Sendbird SDK using App ID + user ID from JWT
- *   3. Create/join group channels for listing conversations
- *   4. Send messages via Sendbird SDK
- *   5. Check inbox via Sendbird SDK
- *
- * Fallback: If Sendbird not configured, generates manual chat URLs
+ *   2. Try "leave details" form submission via yad2 API
+ *   3. Generate WhatsApp deep link if phone available
+ *   4. Fall back to Sendbird SDK if configured
+ *   5. Final fallback: manual URL
  *
  * Env vars:
  *   YAD2_EMAIL - yad2 account email
  *   YAD2_PASSWORD - yad2 account password
- *   YAD2_SENDBIRD_APP_ID - Sendbird application ID (extract from browser DevTools)
+ *   YAD2_SENDBIRD_APP_ID - Sendbird application ID (optional)
+ *   YAD2_AGENT_PHONE - Agent phone for callbacks (optional)
+ *   YAD2_AGENT_NAME - Agent name for forms (optional)
  */
 
 const axios = require('axios');
@@ -195,12 +198,29 @@ async function connectSendbird() {
       modules: [new GroupChannelModule()],
     });
 
-    // Connect with user ID from yad2 JWT
-    const sbUserId = `yad2_${_userId}`;
-    await _sendbirdSdk.connect(sbUserId);
+    // Try multiple user ID formats - yad2 may use UUID, numeric ID, or prefixed
+    const userIdCandidates = [
+      _userUUID,                    // UUID from JWT: "0f4bb81f-9eae-11ec-aa75-029c66eb87b5"
+      String(_userId),              // Numeric ID: "2293071"
+      `yad2_${_userId}`,            // Prefixed: "yad2_2293071"
+    ].filter(Boolean);
 
-    _sendbirdConnected = true;
-    logger.info('[yad2Api] Sendbird connected', { userId: sbUserId, appId: appId.substring(0, 8) + '...' });
+    let connected = false;
+    for (const sbUserId of userIdCandidates) {
+      try {
+        await _sendbirdSdk.connect(sbUserId);
+        _sendbirdConnected = true;
+        connected = true;
+        logger.info('[yad2Api] Sendbird connected', { userId: sbUserId, appId: appId.substring(0, 8) + '...' });
+        break;
+      } catch (connErr) {
+        logger.debug('[yad2Api] Sendbird connect attempt failed', { userId: sbUserId, error: connErr.message });
+      }
+    }
+
+    if (!connected) {
+      throw new Error('All Sendbird user ID formats failed');
+    }
     return true;
   } catch (err) {
     logger.error('[yad2Api] Sendbird connection failed', { error: err.message });
@@ -215,9 +235,12 @@ async function connectSendbird() {
  * Send a message to a yad2 listing seller
  * @param {string} listingUrl - yad2 item URL (e.g., https://www.yad2.co.il/item/xxxxx)
  * @param {string} messageText - Message to send
+ * @param {Object} [options] - Additional options
+ * @param {string} [options.phone] - Seller phone for WhatsApp
+ * @param {string} [options.contactName] - Seller name
  * @returns {Object} Result with success, status, channel
  */
-async function sendMessage(listingUrl, messageText) {
+async function sendMessage(listingUrl, messageText, options = {}) {
   const itemId = _extractItemId(listingUrl);
 
   if (!itemId) {
@@ -231,17 +254,33 @@ async function sendMessage(listingUrl, messageText) {
 
   logger.info('[yad2Api] Sending message', { itemId, messageLength: messageText.length });
 
-  // Strategy 1: Try Sendbird SDK
+  // Strategy 1: "השארת פרטים" - Leave Details form via yad2 API
+  try {
+    await ensureAuth();
+    const result = await _sendViaLeaveDetails(itemId, messageText);
+    if (result.success) return result;
+  } catch (err) {
+    logger.warn('[yad2Api] Leave details failed', { error: err.message });
+  }
+
+  // Strategy 2: WhatsApp deep link (if phone available)
+  if (options.phone) {
+    const waResult = _generateWhatsAppLink(options.phone, messageText, itemId);
+    logger.info('[yad2Api] Generated WhatsApp link', { itemId, phone: options.phone.substring(0, 6) + '...' });
+    return waResult;
+  }
+
+  // Strategy 3: Try Sendbird SDK (for professional listings)
   if (_sendbirdConnected && _sendbirdSdk) {
     try {
       const result = await _sendViaSendbird(itemId, messageText);
       if (result.success) return result;
     } catch (err) {
-      logger.warn('[yad2Api] Sendbird send failed, trying fallback', { error: err.message });
+      logger.warn('[yad2Api] Sendbird send failed', { error: err.message });
     }
   }
 
-  // Strategy 2: Try direct API (yad2 internal chat endpoints)
+  // Strategy 4: Try direct chat API endpoints
   try {
     await ensureAuth();
     const result = await _sendViaApi(itemId, messageText);
@@ -250,7 +289,7 @@ async function sendMessage(listingUrl, messageText) {
     logger.warn('[yad2Api] API send failed', { error: err.message });
   }
 
-  // Strategy 3: Return manual URL for human action
+  // Strategy 5: Return manual URL + WhatsApp link if possible
   const manualUrl = `${YAD2_BASE}/item/${itemId}`;
   logger.info('[yad2Api] Returning manual URL', { itemId, url: manualUrl });
 
@@ -259,8 +298,104 @@ async function sendMessage(listingUrl, messageText) {
     status: 'manual',
     channel: 'yad2_chat',
     manual_url: manualUrl,
+    whatsapp_url: options.phone ? `https://wa.me/972${options.phone.replace(/^0/, '')}` : null,
     message: 'Auto-send not available. Use the URL to send manually.',
     itemId,
+  };
+}
+
+/**
+ * Send via yad2 "השארת פרטים" (Leave Details) form
+ * This submits contact info + message to the seller through yad2's platform
+ */
+async function _sendViaLeaveDetails(itemId, messageText) {
+  const agentName = process.env.YAD2_AGENT_NAME || _userName || 'QUANTUM';
+  const agentPhone = process.env.YAD2_AGENT_PHONE || '';
+  const agentEmail = process.env.YAD2_EMAIL || '';
+
+  // yad2 "leave details" form endpoints
+  const leaveDetailsEndpoints = [
+    {
+      url: `https://gw.yad2.co.il/feed-search/realestate/item/${itemId}/contact`,
+      data: { name: agentName, phone: agentPhone, email: agentEmail, message: messageText, itemId },
+    },
+    {
+      url: `https://gw.yad2.co.il/leads/realestate/${itemId}`,
+      data: { fullName: agentName, phone: agentPhone, email: agentEmail, text: messageText, adNumber: itemId },
+    },
+    {
+      url: `https://gw.yad2.co.il/contact/send`,
+      data: { name: agentName, phone: agentPhone, email: agentEmail, message: messageText, token: itemId, type: 'realestate' },
+    },
+  ];
+
+  for (const ep of leaveDetailsEndpoints) {
+    try {
+      const response = await axios.post(ep.url, ep.data, {
+        headers: {
+          ...COMMON_HEADERS,
+          'Content-Type': 'application/json',
+          'Cookie': `accessToken=${_accessToken}`,
+          'Referer': `${YAD2_BASE}/item/${itemId}`,
+        },
+        timeout: 10000,
+        validateStatus: (s) => s < 500,
+      });
+
+      // Check for success (ignore Radware HTML wrapping)
+      const isHtml = typeof response.data === 'string' && response.data.includes('<!DOCTYPE');
+      if ((response.status === 200 || response.status === 201) && !isHtml) {
+        logger.info('[yad2Api] Leave details sent!', { endpoint: ep.url, itemId, status: response.status });
+        return {
+          success: true,
+          status: 'sent',
+          channel: 'yad2_leave_details',
+          method: 'leave_details_form',
+          itemId,
+          timestamp: new Date().toISOString(),
+        };
+      }
+
+      if (typeof response.data === 'object' && response.data?.message) {
+        logger.debug('[yad2Api] Leave details response', {
+          url: ep.url,
+          status: response.status,
+          message: response.data.message,
+        });
+      }
+    } catch (err) {
+      logger.debug('[yad2Api] Leave details endpoint failed', { url: ep.url, error: err.message });
+    }
+  }
+
+  return { success: false, error: 'Leave details form submission failed' };
+}
+
+/**
+ * Generate WhatsApp deep link for a listing
+ */
+function _generateWhatsAppLink(phone, messageText, itemId) {
+  // Normalize Israeli phone: 054-1234567 → 972541234567
+  let normalized = phone.replace(/[\s\-\(\)]/g, '');
+  if (normalized.startsWith('0')) {
+    normalized = '972' + normalized.substring(1);
+  } else if (!normalized.startsWith('972') && !normalized.startsWith('+972')) {
+    normalized = '972' + normalized;
+  }
+  normalized = normalized.replace(/^\+/, '');
+
+  const encodedMsg = encodeURIComponent(messageText);
+  const waUrl = `https://wa.me/${normalized}?text=${encodedMsg}`;
+
+  return {
+    success: true,
+    status: 'whatsapp_link',
+    channel: 'yad2_whatsapp',
+    whatsapp_url: waUrl,
+    phone: normalized,
+    itemId,
+    message: 'WhatsApp link generated. Click to send.',
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -487,7 +622,7 @@ async function _checkRepliesViaApi() {
 function getStatus() {
   return {
     service: 'yad2MessengerApi',
-    version: 2,
+    version: 3,
     hasCredentials: !!(process.env.YAD2_EMAIL && process.env.YAD2_PASSWORD),
     isLoggedIn: !!_accessToken && Date.now() < _tokenExpiry,
     userId: _userId,
@@ -495,12 +630,20 @@ function getStatus() {
     tokenExpiresIn: _tokenExpiry > 0 ? Math.max(0, Math.round((_tokenExpiry - Date.now()) / 1000)) + 's' : 'N/A',
     sendbird: {
       appIdConfigured: !!process.env.YAD2_SENDBIRD_APP_ID,
+      appId: process.env.YAD2_SENDBIRD_APP_ID ? process.env.YAD2_SENDBIRD_APP_ID.substring(0, 8) + '...' : null,
       connected: _sendbirdConnected,
+    },
+    channels: {
+      leaveDetails: true,
+      whatsapp: true,
+      sendbird: _sendbirdConnected,
+      manualUrl: true,
     },
     capabilities: {
       restLogin: true,
+      leaveDetailsForm: !!_accessToken,
+      whatsappLinkGeneration: true,
       sendbirdMessaging: _sendbirdConnected,
-      apiMessaging: !!_accessToken,
       manualUrlGeneration: true,
     },
   };
@@ -583,6 +726,7 @@ module.exports = {
   getMessageUrl,
   connectSendbird,
   ensureAuth,
+  generateWhatsAppLink: _generateWhatsAppLink,
   // Aliased for backward compat with yad2Messenger
   _getPage: () => null, // No puppeteer page
   _getCookies: async () => {

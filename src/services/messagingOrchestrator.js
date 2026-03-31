@@ -50,10 +50,18 @@ function detectAvailableChannels(listing) {
   const hasPhone = listing.phone && listing.phone.length > 5;
   const hasUrl = !!listing.url;
 
-  // Platform-native channels (priority 1)
-  if (source === 'yad2' && (hasUrl || listing.source_listing_id)) {
-    channels.push('yad2_chat');
+  // For yad2: WhatsApp is primary (most private listings use WhatsApp, not internal chat)
+  // yad2_chat (leave details + Sendbird) is secondary
+  if (source === 'yad2') {
+    if (hasPhone) {
+      channels.push('whatsapp'); // WhatsApp first - most yad2 private listings use this
+    }
+    if (hasUrl || listing.source_listing_id) {
+      channels.push('yad2_chat'); // Leave details form + Sendbird as backup
+    }
   }
+
+  // Other platforms: native chat first
   if (source === 'facebook' && hasUrl) {
     channels.push('fb_messenger');
   }
@@ -61,8 +69,8 @@ function detectAvailableChannels(listing) {
     channels.push('komo_chat');
   }
 
-  // WhatsApp (priority 2 — only if phone exists)
-  if (hasPhone) {
+  // WhatsApp for non-yad2 (priority 2 — only if phone exists)
+  if (source !== 'yad2' && hasPhone) {
     channels.push('whatsapp');
   }
 
