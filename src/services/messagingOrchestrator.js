@@ -20,8 +20,11 @@ const pool = require('../db/pool');
 const { logger } = require('./logger');
 
 // Lazy-load services to prevent startup failures
+// Prefer API-based messenger v2, fallback to Puppeteer v1
 function getYad2Messenger() {
-  try { return require('./yad2Messenger'); } catch (e) { return null; }
+  try { return require('./yad2MessengerApi'); } catch (e) {
+    try { return require('./yad2Messenger'); } catch (e2) { return null; }
+  }
 }
 function getInforuService() {
   try { return require('./inforuService'); } catch (e) { return null; }

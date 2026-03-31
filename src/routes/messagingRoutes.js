@@ -31,10 +31,13 @@ function getOrchestrator() {
   }
 }
 
+// Prefer API-based messenger v2, fallback to Puppeteer v1
 let yad2Messenger;
-try { yad2Messenger = require('../services/yad2Messenger'); } catch (e) {
-  logger.warn('yad2Messenger not available:', e.message);
-  yad2Messenger = null;
+try { yad2Messenger = require('../services/yad2MessengerApi'); } catch (e) {
+  try { yad2Messenger = require('../services/yad2Messenger'); } catch (e2) {
+    logger.warn('yad2Messenger not available:', e2.message);
+    yad2Messenger = null;
+  }
 }
 
 // ============================================================
@@ -99,9 +102,30 @@ router.get('/status', (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    if (!yad2Messenger) return res.status(503).json({ error: 'Puppeteer not available' });
+    if (!yad2Messenger) return res.status(503).json({ error: 'yad2 messenger not available' });
     const result = await yad2Messenger.login();
     res.json(result);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// yad2 Chat Status & Diagnostics
+router.get('/yad2-chat-status', async (req, res) => {
+  try {
+    const status = yad2Messenger ? yad2Messenger.getStatus() : { service: 'unavailable' };
+    res.json({
+      ...status,
+      instructions: !process.env.YAD2_SENDBIRD_APP_ID ? {
+        message: 'To enable Sendbird messaging, set YAD2_SENDBIRD_APP_ID env var',
+        howToExtract: [
+          '1. Open https://www.yad2.co.il in Chrome',
+          '2. Login to your account',
+          '3. Open DevTools (F12) → Console tab',
+          '4. Search for "appId" or "SendbirdChat" in Sources',
+          '5. Or type: JSON.stringify(window.__NEXT_DATA__) and search for sendbird/appId',
+          '6. The App ID is a UUID like "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"',
+        ],
+      } : undefined,
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -488,7 +512,7 @@ router.get('/dashboard', async (req, res) => {
 
 router.post('/check-replies', async (req, res) => {
   try {
-    if (!yad2Messenger) return res.status(503).json({ error: 'Puppeteer not available' });
+    if (!yad2Messenger) return res.status(503).json({ error: 'yad2 messenger not available' });
     const result = await yad2Messenger.checkReplies();
     if (result.new_replies && result.new_replies.length > 0) {
       for (const reply of result.new_replies) {
