@@ -1798,4 +1798,99 @@ router.get('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to fetch scan' }); }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// BACKUP: metadata tracking + GitHub backup trigger
+// ═══════════════════════════════════════════════════════════════════
+
+// Auto-create backups metadata table
+(async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS backups (
+        id SERIAL PRIMARY KEY,
+        filename VARCHAR(255),
+        size_bytes BIGINT DEFAULT 0,
+        rows_count INTEGER DEFAULT 0,
+        status VARCHAR(50) DEFAULT 'running',
+        storage_type VARCHAR(50) DEFAULT 'github',
+        storage_url TEXT,
+        error TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) { logger.warn('[Backup] Table creation skipped:', e.message); }
+})();
+
+// POST /api/scan/backup — trigger backup now
+router.post('/backup', async (req, res) => {
+  try {
+    // Insert running record
+    const { rows: [record] } = await pool.query(
+      `INSERT INTO backups (filename, status, storage_type) VALUES ($1, 'running', 'github') RETURNING id`,
+      ['backup_' + new Date().toISOString().replace(/[:.]/g, '-')]
+    );
+    const backupId = record.id;
+
+    res.json({ success: true, message: 'Backup started', backup_id: backupId, timestamp: new Date() });
+
+    // Run async
+    (async () => {
+      try {
+        const { createBackup } = require('../services/githubBackupService');
+        const result = await createBackup();
+        await pool.query(
+          `UPDATE backups SET status = 'completed', rows_count = $1, storage_url = $2 WHERE id = $3`,
+          [result.totalRows || 0, 'https://github.com/hemichaeli/pinuy-binuy-backups', backupId]
+        );
+        logger.info(`[Backup] ✅ Complete: ${result.totalRows} rows backed up to GitHub`);
+      } catch (err) {
+        await pool.query(
+          `UPDATE backups SET status = 'failed', error = $1 WHERE id = $2`,
+          [err.message, backupId]
+        ).catch(() => {});
+        logger.error(`[Backup] ❌ Failed: ${err.message}`);
+
+        // Send WhatsApp alert on failure
+        try {
+          const adminPhone = process.env.ADMIN_PHONE || process.env.INFORU_ADMIN_PHONE;
+          if (adminPhone) {
+            const inforuService = require('../services/inforuService');
+            if (inforuService.sendSMS) {
+              await inforuService.sendSMS(adminPhone, `⚠️ QUANTUM גיבוי נכשל: ${err.message}. תאריך: ${new Date().toLocaleDateString('he-IL')}`);
+            }
+          }
+        } catch (alertErr) { logger.warn('[Backup] Alert send failed:', alertErr.message); }
+      }
+    })();
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// GET /api/scan/backups — list recent backups
+router.get('/backups', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM backups ORDER BY created_at DESC LIMIT 20`
+    );
+    res.json({ success: true, backups: rows, total: rows.length });
+  } catch (e) {
+    // Table might not exist yet — return GitHub backup list as fallback
+    try {
+      const { listBackups } = require('../services/githubBackupService');
+      const ghList = await listBackups();
+      res.json({
+        success: true,
+        backups: ghList.slice(0, 20).map(path => ({
+          filename: path, status: 'completed', storage_type: 'github',
+          created_at: path.replace('backups/', '').replace(/\//g, 'T').replace(/-/g, ':')
+        })),
+        total: ghList.length, source: 'github_fallback'
+      });
+    } catch (e2) {
+      res.json({ success: true, backups: [], total: 0 });
+    }
+  }
+});
+
 module.exports = router;
