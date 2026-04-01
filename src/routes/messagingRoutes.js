@@ -526,7 +526,7 @@ router.post('/check-replies', async (req, res) => {
 router.put('/listing/:id/deal-status', async (req, res) => {
   const { id } = req.params;
   const { deal_status, notes } = req.body;
-  const validStatuses = ['חדש', 'נשלחה הודעה', 'התקבלה תשובה', 'תיווך', 'ללא תיווך', 'נמכרה', 'לא רלוונטי', 'נא ליצור קשר', 'בטיפול', 'סגור'];
+  const validStatuses = ['חדש', 'נשלחה הודעה', 'התקבלה תשובה', 'תיווך', 'ללא תיווך', 'נמכרה', 'לא רלוונטי', 'נא ליצור קשר', 'בטיפול', 'סגור', 'נשלח הסכם', 'התקבל חתום'];
   if (deal_status && !validStatuses.includes(deal_status)) return res.status(400).json({ error: 'Invalid deal_status', valid: validStatuses });
   try {
     const updates = []; const values = []; let idx = 1;

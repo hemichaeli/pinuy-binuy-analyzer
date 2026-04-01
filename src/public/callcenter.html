@@ -9,7 +9,7 @@
   --bg: #0f1117; --bg2: #1a1d27; --bg3: #242836;
   --border: #2d3148; --text: #e2e4e9; --muted: #8b8fa3;
   --teal: #2dd4bf; --green: #22c55e; --gold: #f59e0b;
-  --red: #ef4444; --blue: #3b82f6; --purple: #a78bfa;
+  --red: #ef4444; --blue: #3b82f6; --purple: #a78bfa; --orange: #fb923c;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
@@ -18,10 +18,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .header h1 { font-size: 16px; color: var(--teal); }
 .header .info { font-size: 12px; color: var(--muted); }
 
-.stats-bar { display: flex; gap: 8px; padding: 12px 20px; flex-wrap: wrap; background: var(--bg2); border-bottom: 1px solid var(--border); }
-.stat-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; text-align: center; min-width: 90px; flex: 1; }
-.stat-card .num { font-size: 22px; font-weight: 700; }
-.stat-card .label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.stats-bar { display: flex; gap: 6px; padding: 10px 20px; flex-wrap: wrap; background: var(--bg2); border-bottom: 1px solid var(--border); }
+.stat-card { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; text-align: center; min-width: 75px; flex: 1; }
+.stat-card .num { font-size: 20px; font-weight: 700; }
+.stat-card .label { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
 .toolbar { padding: 10px 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--bg); border-bottom: 1px solid var(--border); }
 .toolbar input, .toolbar select { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 7px 12px; border-radius: 6px; font-size: 13px; }
@@ -36,6 +36,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .item.status-called { border-right: 3px solid var(--blue); }
 .item.status-interested { border-right: 3px solid var(--green); }
 .item.status-agreement { border-right: 3px solid var(--gold); }
+.item.status-signed { border-right: 3px solid var(--green); background: #0f1a12; }
 .item.status-not-interested { border-right: 3px solid var(--red); opacity: 0.6; }
 .item.status-no_answer { border-right: 3px solid var(--muted); }
 .item.status-callback { border-right: 3px solid var(--purple); }
@@ -47,8 +48,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .item-phone a { color: var(--teal); text-decoration: none; }
 .item-phone a:hover { text-decoration: underline; }
 
-.item-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg3); color: var(--text); cursor: pointer; font-size: 12px; transition: all 0.15s; font-family: inherit; }
+.item-actions { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.btn { padding: 5px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg3); color: var(--text); cursor: pointer; font-size: 11px; transition: all 0.15s; font-family: inherit; }
 .btn:hover { background: var(--border); }
 .btn.active-green { background: var(--green); color: #000; border-color: var(--green); }
 .btn.active-gold { background: var(--gold); color: #000; border-color: var(--gold); }
@@ -56,20 +57,29 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .btn.active-blue { background: var(--blue); color: #fff; border-color: var(--blue); }
 .btn.active-purple { background: var(--purple); color: #000; border-color: var(--purple); }
 .btn.active-muted { background: var(--muted); color: #000; border-color: var(--muted); }
+.btn.active-orange { background: var(--orange); color: #000; border-color: var(--orange); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.item-notes { margin-top: 8px; display: flex; gap: 6px; }
-.item-notes input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; }
+.na-badge { display: inline-block; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; margin-right: 2px; }
+
+.notes-log { margin-top: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; max-height: 100px; overflow-y: auto; font-size: 11px; color: var(--muted); white-space: pre-line; line-height: 1.5; }
+.note-add { margin-top: 6px; display: flex; gap: 6px; }
+.note-add input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; }
+
+.msg-panel { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+.msg-panel textarea { flex: 1; min-width: 200px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 36px; }
+
+.sep { width: 1px; height: 24px; background: var(--border); }
 
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--teal); color: #000; padding: 10px 24px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 999; display: none; }
-
 .loading { text-align: center; padding: 60px; color: var(--muted); font-size: 15px; }
 
 @media (max-width: 600px) {
   .item-top { flex-direction: column; }
   .toolbar input { width: 100%; }
   .stats-bar { gap: 4px; }
-  .stat-card { min-width: 70px; padding: 8px 6px; }
-  .stat-card .num { font-size: 18px; }
+  .stat-card { min-width: 60px; padding: 6px 4px; }
+  .stat-card .num { font-size: 16px; }
 }
 </style>
 </head>
@@ -86,13 +96,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </div>
 </div>
 
-<div class="stats-bar" id="stats-bar">
+<div class="stats-bar">
   <div class="stat-card"><div class="num" id="s-total">-</div><div class="label">סה"כ</div></div>
   <div class="stat-card"><div class="num" style="color:var(--muted)" id="s-pending">-</div><div class="label">ממתין</div></div>
   <div class="stat-card"><div class="num" style="color:var(--blue)" id="s-called">-</div><div class="label">נוצר קשר</div></div>
   <div class="stat-card"><div class="num" style="color:var(--muted)" id="s-no-answer">-</div><div class="label">לא ענו</div></div>
   <div class="stat-card"><div class="num" style="color:var(--green)" id="s-interested">-</div><div class="label">מעוניין</div></div>
   <div class="stat-card"><div class="num" style="color:var(--gold)" id="s-agreements">-</div><div class="label">הסכם נשלח</div></div>
+  <div class="stat-card"><div class="num" style="color:var(--green)" id="s-signed">-</div><div class="label">חתום</div></div>
 </div>
 
 <div class="toolbar">
@@ -106,6 +117,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <option value="interested">מעוניין</option>
     <option value="not_interested">לא מעוניין</option>
     <option value="agreement">הסכם נשלח</option>
+    <option value="signed">התקבל חתום</option>
   </select>
   <button class="btn" onclick="loadData()" style="padding:7px 16px;">🔄 רענן</button>
   <span style="font-size:12px;color:var(--muted);margin-right:auto;" id="last-update"></span>
@@ -120,15 +132,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 <script>
 const TOKEN = window.location.pathname.split('/').pop();
 let allItems = [];
-let listData = null;
 
-// Agent name persistence
-function saveAgentName() {
-  localStorage.setItem('quantum_agent_name', document.getElementById('agentName').value);
-}
-function getAgentName() {
-  return document.getElementById('agentName').value || localStorage.getItem('quantum_agent_name') || '';
-}
+function saveAgentName() { localStorage.setItem('quantum_agent_name', document.getElementById('agentName').value); }
+function getAgentName() { return document.getElementById('agentName').value || localStorage.getItem('quantum_agent_name') || ''; }
+
 document.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('quantum_agent_name');
   if (saved) document.getElementById('agentName').value = saved;
@@ -138,130 +145,27 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadData() {
   try {
     const resp = await fetch(`/api/callcenter/ext/${TOKEN}`);
-    if (!resp.ok) throw new Error('Failed to load');
+    if (!resp.ok) throw new Error('Failed');
     const data = await resp.json();
-    listData = data.list;
     allItems = data.items;
-
     document.getElementById('list-name').textContent = `${data.list.name} — ${data.stats.total} מודעות`;
-    document.getElementById('s-total').textContent = data.stats.total;
-    document.getElementById('s-pending').textContent = data.stats.pending;
-    document.getElementById('s-called').textContent = data.stats.called;
-    document.getElementById('s-no-answer').textContent = data.stats.no_answer;
-    document.getElementById('s-interested').textContent = data.stats.interested;
-    document.getElementById('s-agreements').textContent = data.stats.agreements_sent;
+    updateStatsFromData(data.stats);
     document.getElementById('last-update').textContent = 'עדכון: ' + new Date().toLocaleTimeString('he-IL');
-
     filterItems();
   } catch (err) {
-    document.getElementById('items-container').innerHTML = '<div class="loading">שגיאה בטעינת הנתונים. בדוק שהקישור תקין.</div>';
+    document.getElementById('items-container').innerHTML = '<div class="loading">שגיאה בטעינה. בדוק שהקישור תקין.</div>';
   }
 }
 
-function filterItems() {
-  const search = (document.getElementById('search').value || '').toLowerCase();
-  const status = document.getElementById('statusFilter').value;
-
-  let filtered = allItems;
-  if (search) {
-    filtered = filtered.filter(i =>
-      (i.address || '').toLowerCase().includes(search) ||
-      (i.contact_name || '').toLowerCase().includes(search) ||
-      (i.phone || '').includes(search) ||
-      (i.city || '').toLowerCase().includes(search)
-    );
-  }
-  if (status) {
-    if (status === 'interested') filtered = filtered.filter(i => i.interested === true);
-    else if (status === 'not_interested') filtered = filtered.filter(i => i.interested === false);
-    else if (status === 'agreement') filtered = filtered.filter(i => i.agreement_sent === true);
-    else filtered = filtered.filter(i => i.call_status === status);
-  }
-
-  renderItems(filtered);
+function updateStatsFromData(s) {
+  document.getElementById('s-total').textContent = s.total;
+  document.getElementById('s-pending').textContent = s.pending;
+  document.getElementById('s-called').textContent = s.called;
+  document.getElementById('s-no-answer').textContent = s.no_answer;
+  document.getElementById('s-interested').textContent = s.interested;
+  document.getElementById('s-agreements').textContent = s.agreements_sent;
+  document.getElementById('s-signed').textContent = s.agreements_signed || 0;
 }
-
-function renderItems(items) {
-  const container = document.getElementById('items-container');
-  if (items.length === 0) {
-    container.innerHTML = '<div class="loading">אין פריטים מתאימים</div>';
-    return;
-  }
-
-  container.innerHTML = items.map(item => {
-    let statusClass = '';
-    if (item.agreement_sent) statusClass = 'status-agreement';
-    else if (item.interested === true) statusClass = 'status-interested';
-    else if (item.interested === false) statusClass = 'status-not-interested';
-    else if (item.call_status === 'called') statusClass = 'status-called';
-    else if (item.call_status === 'no_answer') statusClass = 'status-no_answer';
-    else if (item.call_status === 'callback') statusClass = 'status-callback';
-
-    const phone = item.phone || '';
-    const displayPhone = phone.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3');
-
-    return `
-    <div class="item ${statusClass}" id="item-${item.id}">
-      <div class="item-top">
-        <div class="item-info">
-          <h3>${item.address || 'ללא כתובת'}${item.city ? ', ' + item.city : ''}</h3>
-          <div class="meta">
-            ${item.contact_name ? '<span>👤 ' + item.contact_name + '</span>' : ''}
-            ${item.rooms ? '<span>🛏 ' + item.rooms + ' חד\'</span>' : ''}
-            ${item.price ? '<span>💰 ' + item.price + '</span>' : ''}
-            ${item.agent_name ? '<span>📞 ' + item.agent_name + '</span>' : ''}
-            ${item.call_status !== 'pending' ? '<span>🕐 ' + (item.called_at ? new Date(item.called_at).toLocaleString('he-IL') : '') + '</span>' : ''}
-          </div>
-        </div>
-        <div class="item-phone">
-          <a href="tel:${phone}">${displayPhone}</a>
-        </div>
-      </div>
-      <div class="item-actions">
-        <button class="btn ${item.call_status === 'called' ? 'active-blue' : ''}" onclick="markCalled(${item.id})">📞 נוצר קשר</button>
-        <button class="btn ${item.call_status === 'no_answer' ? 'active-muted' : ''}" onclick="markNoAnswer(${item.id})">❌ לא ענה</button>
-        <button class="btn ${item.call_status === 'callback' ? 'active-purple' : ''}" onclick="markCallback(${item.id})">🔄 חזרה</button>
-        <span style="width:1px;height:24px;background:var(--border);"></span>
-        <button class="btn ${item.interested === true ? 'active-green' : ''}" onclick="markInterested(${item.id}, true)">✅ מעוניין</button>
-        <button class="btn ${item.interested === false ? 'active-red' : ''}" onclick="markInterested(${item.id}, false)">🚫 לא מעוניין</button>
-        <span style="width:1px;height:24px;background:var(--border);"></span>
-        <button class="btn ${item.agreement_sent ? 'active-gold' : ''}" onclick="markAgreement(${item.id})">${item.agreement_sent ? '📜 הסכם נשלח ✓' : '📜 שלח הסכם'}</button>
-      </div>
-      <div class="item-notes">
-        <input type="text" placeholder="הערות..." value="${(item.notes || '').replace(/"/g, '&quot;')}" onchange="saveNotes(${item.id}, this.value)" id="notes-${item.id}">
-      </div>
-    </div>`;
-  }).join('');
-}
-
-async function updateItem(itemId, data) {
-  data.agent_name = getAgentName();
-  try {
-    const resp = await fetch(`/api/callcenter/ext/${TOKEN}/item/${itemId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    const result = await resp.json();
-    if (result.success) {
-      // Update local data
-      const idx = allItems.findIndex(i => i.id === itemId);
-      if (idx >= 0) Object.assign(allItems[idx], result.item);
-      filterItems();
-      updateLocalStats();
-      showToast('עודכן בהצלחה');
-    }
-  } catch (err) {
-    showToast('שגיאה בעדכון', true);
-  }
-}
-
-function markCalled(id) { updateItem(id, { call_status: 'called' }); }
-function markNoAnswer(id) { updateItem(id, { call_status: 'no_answer' }); }
-function markCallback(id) { updateItem(id, { call_status: 'callback' }); }
-function markInterested(id, val) { updateItem(id, { interested: val, call_status: 'called' }); }
-function markAgreement(id) { updateItem(id, { agreement_sent: true, interested: true, call_status: 'called' }); }
-function saveNotes(id, notes) { updateItem(id, { notes }); }
 
 function updateLocalStats() {
   document.getElementById('s-pending').textContent = allItems.filter(i => i.call_status === 'pending').length;
@@ -269,14 +173,168 @@ function updateLocalStats() {
   document.getElementById('s-no-answer').textContent = allItems.filter(i => i.call_status === 'no_answer').length;
   document.getElementById('s-interested').textContent = allItems.filter(i => i.interested === true).length;
   document.getElementById('s-agreements').textContent = allItems.filter(i => i.agreement_sent === true).length;
+  document.getElementById('s-signed').textContent = allItems.filter(i => i.agreement_signed === true).length;
+}
+
+function filterItems() {
+  const search = (document.getElementById('search').value || '').toLowerCase();
+  const status = document.getElementById('statusFilter').value;
+  let filtered = allItems;
+  if (search) {
+    filtered = filtered.filter(i =>
+      (i.address||'').toLowerCase().includes(search) || (i.contact_name||'').toLowerCase().includes(search) ||
+      (i.phone||'').includes(search) || (i.city||'').toLowerCase().includes(search)
+    );
+  }
+  if (status) {
+    if (status === 'interested') filtered = filtered.filter(i => i.interested === true);
+    else if (status === 'not_interested') filtered = filtered.filter(i => i.interested === false);
+    else if (status === 'agreement') filtered = filtered.filter(i => i.agreement_sent && !i.agreement_signed);
+    else if (status === 'signed') filtered = filtered.filter(i => i.agreement_signed === true);
+    else filtered = filtered.filter(i => i.call_status === status);
+  }
+  renderItems(filtered);
+}
+
+function renderItems(items) {
+  const container = document.getElementById('items-container');
+  if (!items.length) { container.innerHTML = '<div class="loading">אין פריטים</div>'; return; }
+
+  container.innerHTML = items.map(item => {
+    let sc = '';
+    if (item.agreement_signed) sc = 'status-signed';
+    else if (item.agreement_sent) sc = 'status-agreement';
+    else if (item.interested === true) sc = 'status-interested';
+    else if (item.interested === false) sc = 'status-not-interested';
+    else if (item.call_status === 'called') sc = 'status-called';
+    else if (item.call_status === 'no_answer') sc = 'status-no_answer';
+    else if (item.call_status === 'callback') sc = 'status-callback';
+
+    const phone = item.phone || '';
+    const dp = phone.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3');
+    const na = item.na_count || 0;
+    const canMessage = na >= 3;
+
+    return `
+    <div class="item ${sc}" id="item-${item.id}">
+      <div class="item-top">
+        <div class="item-info">
+          <h3>${item.address || 'ללא כתובת'}${item.city ? ', '+item.city : ''}
+            ${na > 0 ? '<span class="na-badge">NA'+na+'</span>' : ''}
+            ${item.agreement_signed ? '<span style="color:var(--green);font-size:12px;font-weight:700;"> ✅ חתום</span>' : ''}
+          </h3>
+          <div class="meta">
+            ${item.contact_name ? '<span>👤 '+item.contact_name+'</span>' : ''}
+            ${item.rooms ? '<span>🛏 '+item.rooms+' חד\'</span>' : ''}
+            ${item.price ? '<span>💰 '+item.price+'</span>' : ''}
+            ${item.agent_name ? '<span>📋 '+item.agent_name+'</span>' : ''}
+            ${item.called_at ? '<span>🕐 '+new Date(item.called_at).toLocaleString('he-IL')+'</span>' : ''}
+          </div>
+        </div>
+        <div class="item-phone"><a href="tel:${phone}">${dp}</a></div>
+      </div>
+
+      <div class="item-actions">
+        <button class="btn ${item.call_status==='called'?'active-blue':''}" onclick="markCalled(${item.id})">📞 ענה</button>
+        <button class="btn ${item.call_status==='no_answer'?'active-muted':''}" onclick="markNA(${item.id})">❌ NA${na<5?na+1:5}</button>
+        <button class="btn ${item.call_status==='callback'?'active-purple':''}" onclick="markCallback(${item.id})">🔄 חזרה</button>
+        <span class="sep"></span>
+        <button class="btn ${item.interested===true?'active-green':''}" onclick="markInterested(${item.id},true)">✅ מעוניין</button>
+        <button class="btn ${item.interested===false?'active-red':''}" onclick="markInterested(${item.id},false)">🚫 לא</button>
+        <span class="sep"></span>
+        ${item.agreement_signed
+          ? '<button class="btn active-green" disabled>✅ התקבל חתום</button>'
+          : item.agreement_sent
+            ? '<button class="btn active-gold" disabled>📜 נשלח ✓</button>'
+            : '<button class="btn" onclick="sendAgreement('+item.id+')">📜 שלח הסכם</button>'}
+      </div>
+
+      ${item.notes ? '<div class="notes-log">'+item.notes.replace(/</g,'&lt;')+'</div>' : ''}
+
+      <div class="note-add">
+        <input type="text" placeholder="הוסף הערה..." id="note-input-${item.id}" onkeydown="if(event.key==='Enter')addNote(${item.id})">
+        <button class="btn" onclick="addNote(${item.id})" style="padding:5px 10px;">💬</button>
+      </div>
+
+      ${canMessage ? `
+      <div class="msg-panel">
+        <textarea id="msg-input-${item.id}" placeholder="שלח הודעה (WA/SMS) — זמין אחרי NA3..." rows="1"></textarea>
+        <button class="btn" onclick="sendMsg(${item.id},'whatsapp')" style="padding:5px 8px;">📱 WA</button>
+        <button class="btn" onclick="sendMsg(${item.id},'sms')" style="padding:5px 8px;">💬 SMS</button>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function updateItem(itemId, data) {
+  data.agent_name = getAgentName();
+  try {
+    const r = await fetch(`/api/callcenter/ext/${TOKEN}/item/${itemId}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+    });
+    const result = await r.json();
+    if (result.success) {
+      const idx = allItems.findIndex(i => i.id === itemId);
+      if (idx >= 0) Object.assign(allItems[idx], result.item);
+      filterItems(); updateLocalStats(); showToast('עודכן');
+    }
+  } catch (e) { showToast('שגיאה', true); }
+}
+
+function markCalled(id) { updateItem(id, { call_status: 'called' }); }
+function markNA(id) { updateItem(id, { call_status: 'no_answer' }); }
+function markCallback(id) { updateItem(id, { call_status: 'callback' }); }
+function markInterested(id, val) { updateItem(id, { interested: val, call_status: 'called' }); }
+
+function addNote(id) {
+  const input = document.getElementById('note-input-' + id);
+  const text = input.value.trim();
+  if (!text) return;
+  updateItem(id, { note_text: text });
+  input.value = '';
+}
+
+async function sendAgreement(id) {
+  const item = allItems.find(i => i.id === id);
+  if (!item) return;
+  const channel = confirm('לשלוח ב-WhatsApp?\n\nOK = WhatsApp\nCancel = SMS') ? 'whatsapp' : 'sms';
+  try {
+    const r = await fetch(`/api/callcenter/ext/${TOKEN}/item/${id}/send-agreement`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ channel })
+    });
+    const result = await r.json();
+    if (result.success) {
+      const idx = allItems.findIndex(i => i.id === id);
+      if (idx >= 0) { allItems[idx].agreement_sent = true; allItems[idx].agreement_token = result.agreement_token; }
+      filterItems(); updateLocalStats();
+      showToast('📜 הסכם נשלח לחתימה דיגיטלית');
+    } else { showToast(result.error || 'שגיאה', true); }
+  } catch(e) { showToast('שגיאה בשליחה', true); }
+}
+
+async function sendMsg(id, channel) {
+  const textarea = document.getElementById('msg-input-' + id);
+  const message = textarea.value.trim();
+  if (!message) { showToast('נא לכתוב הודעה', true); return; }
+  try {
+    const r = await fetch(`/api/callcenter/ext/${TOKEN}/item/${id}/send-message`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message, channel })
+    });
+    const result = await r.json();
+    if (result.success) {
+      textarea.value = '';
+      showToast('📨 הודעה נשלחה');
+      loadData(); // refresh to show note
+    } else { showToast(result.error || 'שגיאה', true); }
+  } catch(e) { showToast('שגיאה', true); }
 }
 
 function showToast(msg, isError) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.background = isError ? 'var(--red)' : 'var(--teal)';
-  t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 2000);
+  t.textContent = msg; t.style.background = isError ? 'var(--red)' : 'var(--teal)';
+  t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 2500);
 }
 </script>
 </body>
