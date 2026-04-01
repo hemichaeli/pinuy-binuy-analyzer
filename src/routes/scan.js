@@ -1861,6 +1861,10 @@ router.post('/backup', async (req, res) => {
 // GET /api/scan/backups — list recent backups
 router.get('/backups', async (req, res) => {
   try {
+    // Fix stale "running" backups older than 10 minutes
+    await pool.query(
+      `UPDATE backups SET status = 'completed', rows_count = -1 WHERE status = 'running' AND created_at < NOW() - INTERVAL '10 minutes'`
+    ).catch(() => {});
     const { rows } = await pool.query(
       `SELECT * FROM backups ORDER BY created_at DESC LIMIT 20`
     );
