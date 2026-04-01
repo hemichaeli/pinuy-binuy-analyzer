@@ -506,6 +506,48 @@
             <div id="bot-recent-escalations" style="max-height:140px;overflow-y:auto;font-size:12px;color:var(--text-secondary);"></div>
         </div>
 
+        <!-- Bulk Outreach Campaign Panel -->
+        <div class="section" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;padding:14px 20px;border-bottom:1px solid var(--border-subtle);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+                <h2 style="margin:0;font-size:14px;">📤 קמפיין שליחה המונית — WhatsApp + SMS</h2>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;">
+                        <input type="checkbox" id="campaignEnabled" onchange="toggleCampaign()" style="accent-color:var(--teal);width:16px;height:16px;">
+                        פעיל (כל 15 דק')
+                    </label>
+                    <button class="btn btn-gold" onclick="startCampaign()" style="padding:5px 14px;font-size:12px;">🚀 שלח עכשיו</button>
+                    <button class="btn btn-secondary" onclick="stopCampaign()" style="padding:5px 12px;font-size:11px;">⏹ עצור</button>
+                    <button class="btn btn-secondary" onclick="loadCampaignStatus()" style="padding:5px 12px;font-size:11px;">🔄</button>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:10px;">
+                <div style="background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:20px;font-weight:700;color:var(--teal);" id="camp-stat-remaining">-</div>
+                    <div style="font-size:11px;color:var(--text-muted);">ממתינות לשליחה</div>
+                </div>
+                <div style="background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:20px;font-weight:700;color:var(--green);" id="camp-stat-today">-</div>
+                    <div style="font-size:11px;color:var(--text-muted);">נשלחו היום</div>
+                </div>
+                <div style="background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:20px;font-weight:700;color:var(--gold);" id="camp-stat-daily-limit">-</div>
+                    <div style="font-size:11px;color:var(--text-muted);">מכסה יומית</div>
+                </div>
+                <div style="background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:6px;padding:10px;text-align:center;">
+                    <div style="font-size:20px;font-weight:700;color:var(--text-secondary);" id="camp-stat-template">-</div>
+                    <div style="font-size:11px;color:var(--text-muted);">תבנית WA</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;">
+                <label style="color:var(--text-muted);">מכסה יומית:</label>
+                <input type="number" class="filter-input" id="campaignDailyLimit" value="200" min="10" max="1000" style="width:70px;padding:4px 8px;font-size:12px;">
+                <label style="color:var(--text-muted);">בכל סבב:</label>
+                <input type="number" class="filter-input" id="campaignBatchSize" value="50" min="5" max="100" style="width:60px;padding:4px 8px;font-size:12px;">
+                <button class="btn btn-secondary" onclick="saveCampaignConfig()" style="padding:4px 12px;font-size:11px;">💾 שמור</button>
+                <span id="camp-last-run" style="color:var(--text-muted);margin-right:auto;"></span>
+            </div>
+        </div>
+
         <div class="section" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                 <h2 style="margin:0;">💬 שיחות - כל הערוצים</h2>
@@ -1550,6 +1592,57 @@
             await toggleBotEscalation();
         }
 
+        // ── Campaign controls ──────────────────────────────────────────────
+        async function loadCampaignStatus() {
+            try {
+                const d = await fetchJSON('/api/messaging/campaign/status');
+                document.getElementById('campaignEnabled').checked = !!d.enabled;
+                document.getElementById('camp-stat-remaining').textContent = d.remaining_unsent ?? '-';
+                document.getElementById('camp-stat-today').textContent = d.today_sent ?? '-';
+                document.getElementById('camp-stat-daily-limit').textContent = d.daily_limit ?? '-';
+                document.getElementById('camp-stat-template').textContent = d.template_id || 'ללא';
+                document.getElementById('campaignDailyLimit').value = d.daily_limit || 200;
+                document.getElementById('campaignBatchSize').value = d.batch_size || 50;
+                if (d.cron?.lastRun?.timestamp) {
+                    const t = new Date(d.cron.lastRun.timestamp).toLocaleTimeString('he-IL');
+                    const sent = d.cron.lastRun.sent || 0;
+                    const failed = d.cron.lastRun.failed || 0;
+                    document.getElementById('camp-last-run').textContent = `סבב אחרון: ${t} | ${sent} נשלחו, ${failed} נכשלו`;
+                }
+            } catch(e) { console.warn('Campaign status load failed', e); }
+        }
+        async function toggleCampaign() {
+            const enabled = document.getElementById('campaignEnabled').checked;
+            await fetchJSON('/api/messaging/campaign/config', {
+                method: 'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ enabled })
+            });
+        }
+        async function startCampaign() {
+            if (!confirm('להפעיל קמפיין שליחה עכשיו? יישלחו הודעות למודעות שטרם נשלחה אליהן הודעה.')) return;
+            try {
+                await fetchJSON('/api/messaging/campaign/start', { method:'POST' });
+                showToast('🚀 קמפיין הופעל — שליחה ברקע');
+                setTimeout(loadCampaignStatus, 5000);
+            } catch(e) { showToast('שגיאה: ' + e.message, 'error'); }
+        }
+        async function stopCampaign() {
+            await fetchJSON('/api/messaging/campaign/stop', { method:'POST' });
+            document.getElementById('campaignEnabled').checked = false;
+            showToast('⏹ קמפיין הופסק');
+        }
+        async function saveCampaignConfig() {
+            const daily_limit = document.getElementById('campaignDailyLimit').value;
+            const batch_size = document.getElementById('campaignBatchSize').value;
+            const template_id = document.getElementById('inforuTemplateId')?.value || '';
+            await fetchJSON('/api/messaging/campaign/config', {
+                method: 'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ daily_limit: parseInt(daily_limit), batch_size: parseInt(batch_size), template_id })
+            });
+            showToast('💾 הגדרות קמפיין נשמרו');
+            loadCampaignStatus();
+        }
+
         // Load config on messages tab open
         async function initMessagesTab() {
             try {
@@ -1559,6 +1652,7 @@
                 document.getElementById('botEscalationDelay').value = cfg.escalation_minutes || 300;
             } catch(e) {}
             loadBotEscalationStatus();
+            loadCampaignStatus();
         }
 
         async function loadConversations() {

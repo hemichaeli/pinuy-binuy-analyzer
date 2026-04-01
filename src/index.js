@@ -396,6 +396,14 @@ async function start() {
       logger.info('[OutreachEscalation] ACTIVE - checking every 30 min');
     } catch (e) { logger.warn('[OutreachEscalation] Failed:', e.message); }
 
+    // ── Bulk Outreach Campaign ─────────────────────────────────────────────────
+    try {
+      const cron = require('node-cron');
+      const { runBulkOutreach } = require('./cron/bulkOutreachCron');
+      cron.schedule('*/15 * * * *', async () => { try { await runBulkOutreach(); } catch (e) {} });
+      logger.info('[BulkOutreach] ACTIVE - checking every 15 min (enable via system_settings)');
+    } catch (e) { logger.warn('[BulkOutreach] Failed:', e.message); }
+
     try { require('./jobs/weeklyScanner').startScheduler(); } catch (e) {}
     try { require('./jobs/stuckScanWatcher').startWatcher(); } catch (e) {}
     try { require('./jobs/discoveryScheduler').startDiscoveryScheduler(); } catch (e) {}

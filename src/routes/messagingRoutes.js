@@ -1096,4 +1096,186 @@ router.get('/bot-escalation/status', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ============================================================
+// BULK OUTREACH CAMPAIGN — start/stop/status
+// ============================================================
+
+function getBulkOutreachCron() {
+  try { return require('../cron/bulkOutreachCron'); }
+  catch (e) { return null; }
+}
+
+/**
+ * GET /api/messaging/campaign/status — Get bulk outreach campaign status
+ */
+router.get('/campaign/status', async (req, res) => {
+  try {
+    const cron = getBulkOutreachCron();
+    const cronStatus = cron ? cron.getStatus() : { running: false };
+
+    // Get config from system_settings
+    const { rows } = await pool.query(`
+      SELECT key, value FROM system_settings
+      WHERE key IN (
+        'bulk_outreach_enabled', 'bulk_outreach_template_id',
+        'bulk_outreach_batch_size', 'bulk_outreach_daily_limit',
+        'bulk_outreach_message_text', 'agent_phone'
+      )
+    `);
+    const config = {};
+    for (const r of rows) config[r.key] = r.value;
+
+    // Get remaining unsent count
+    const unsent = await pool.query(`
+      SELECT COUNT(*) as count FROM listings
+      WHERE is_active = TRUE
+        AND (message_status IS NULL OR message_status = 'לא נשלחה')
+        AND phone IS NOT NULL AND phone != ''
+    `);
+
+    // Get today's sent count
+    const todaySent = await pool.query(`
+      SELECT COUNT(*) as count FROM unified_messages
+      WHERE direction = 'outgoing'
+        AND created_at >= CURRENT_DATE
+        AND metadata->>'campaign' = 'bulk_outreach'
+    `).catch(() => ({ rows: [{ count: 0 }] }));
+
+    res.json({
+      enabled: config.bulk_outreach_enabled === 'true',
+      template_id: config.bulk_outreach_template_id || null,
+      batch_size: parseInt(config.bulk_outreach_batch_size) || 50,
+      daily_limit: parseInt(config.bulk_outreach_daily_limit) || 200,
+      agent_phone: config.agent_phone || '050-0000000',
+      has_message_text: !!(config.bulk_outreach_message_text),
+      remaining_unsent: parseInt(unsent.rows[0].count),
+      today_sent: parseInt(todaySent.rows[0].count),
+      cron: cronStatus,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/messaging/campaign/config — Update campaign configuration
+ */
+router.post('/campaign/config', async (req, res) => {
+  try {
+    const { enabled, template_id, batch_size, daily_limit, message_text, agent_phone } = req.body;
+    const settings = [];
+
+    if (enabled !== undefined) settings.push({ key: 'bulk_outreach_enabled', value: String(!!enabled) });
+    if (template_id !== undefined) settings.push({ key: 'bulk_outreach_template_id', value: String(template_id) });
+    if (batch_size !== undefined) settings.push({ key: 'bulk_outreach_batch_size', value: String(Math.min(parseInt(batch_size) || 50, 100)) });
+    if (daily_limit !== undefined) settings.push({ key: 'bulk_outreach_daily_limit', value: String(parseInt(daily_limit) || 200) });
+    if (message_text !== undefined) settings.push({ key: 'bulk_outreach_message_text', value: message_text });
+    if (agent_phone !== undefined) settings.push({ key: 'agent_phone', value: agent_phone });
+
+    for (const s of settings) {
+      await pool.query(`
+        INSERT INTO system_settings (key, value, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW()
+      `, [s.key, s.value]);
+    }
+
+    res.json({ success: true, updated: settings.length });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/messaging/campaign/start — Enable and trigger campaign immediately
+ */
+router.post('/campaign/start', async (req, res) => {
+  try {
+    // Enable
+    await pool.query(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('bulk_outreach_enabled', 'true', NOW())
+      ON CONFLICT (key) DO UPDATE SET value = 'true', updated_at = NOW()
+    `);
+
+    // Run immediately
+    const cron = getBulkOutreachCron();
+    if (!cron) return res.status(503).json({ error: 'Bulk outreach cron not available' });
+
+    // Don't await — run in background
+    cron.runBulkOutreach().catch(err => {
+      logger.error('[Campaign] Background run failed:', err.message);
+    });
+
+    res.json({ success: true, message: 'Campaign started — processing in background' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/messaging/campaign/stop — Disable campaign
+ */
+router.post('/campaign/stop', async (req, res) => {
+  try {
+    await pool.query(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('bulk_outreach_enabled', 'false', NOW())
+      ON CONFLICT (key) DO UPDATE SET value = 'false', updated_at = NOW()
+    `);
+    res.json({ success: true, message: 'Campaign stopped' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/messaging/campaign/test — Send to ONE listing as a test
+ */
+router.post('/campaign/test', async (req, res) => {
+  try {
+    const { listing_id } = req.body;
+
+    // Get one unsent listing with phone
+    let listing;
+    if (listing_id) {
+      const r = await pool.query(`
+        SELECT l.*, c.name as complex_name FROM listings l
+        LEFT JOIN complexes c ON l.complex_id = c.id WHERE l.id = $1
+      `, [listing_id]);
+      listing = r.rows[0];
+    } else {
+      const r = await pool.query(`
+        SELECT l.*, c.name as complex_name FROM listings l
+        LEFT JOIN complexes c ON l.complex_id = c.id
+        WHERE l.is_active = TRUE
+          AND (l.message_status IS NULL OR l.message_status = 'לא נשלחה')
+          AND l.phone IS NOT NULL AND l.phone != ''
+        ORDER BY l.created_at DESC LIMIT 1
+      `);
+      listing = r.rows[0];
+    }
+
+    if (!listing) return res.status(404).json({ error: 'No unsent listing found' });
+
+    // Send via orchestrator
+    const orch = getOrchestrator();
+    if (!orch) return res.status(503).json({ error: 'Orchestrator not available' });
+
+    const template = orch.getTemplates()['whatsapp_seller'] || orch.getTemplates()['yad2_seller'];
+    const msg = orch.fillTemplate(template.template, listing);
+    const result = await orch.sendToListing(listing, msg);
+
+    res.json({
+      test: true,
+      listing_id: listing.id,
+      address: listing.address,
+      city: listing.city,
+      phone: (listing.phone || '').substring(0, 4) + '****',
+      result
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+/**
+ * POST /api/messaging/campaign/reset-daily — Reset daily counter
+ */
+router.post('/campaign/reset-daily', (req, res) => {
+  const cron = getBulkOutreachCron();
+  if (cron) cron.resetDailyCount();
+  res.json({ success: true, message: 'Daily counter reset' });
+});
+
 module.exports = router;
