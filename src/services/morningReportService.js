@@ -256,7 +256,7 @@ async function sendMorningReport() {
     const skipCheck = shouldSkipToday();
     if (skipCheck.shouldSkip) {
       logger.info(`[MorningReport] SKIPPED: ${skipCheck.reason}`);
-      return { success: false, skipped: true, reason: skipCheck.reasonHe };
+      return { success: true, skipped: true, reason: skipCheck.reasonHe };
     }
 
     // ── Deduplication guard: only send once per calendar day ──
@@ -276,7 +276,7 @@ async function sendMorningReport() {
       );
       if (rows.length > 0) {
         logger.info(`[MorningReport] Already sent today (${todayIL}) - skipping duplicate`);
-        return { success: false, skipped: true, reason: `כבר נשלח היום (${todayIL})` };
+        return { success: true, skipped: true, reason: `כבר נשלח היום (${todayIL})` };
       }
       // Mark as sent immediately to prevent race condition
       await pool.query(

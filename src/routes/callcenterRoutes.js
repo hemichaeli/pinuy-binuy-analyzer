@@ -531,6 +531,82 @@ router.post('/ext/:token/item/:itemId/send-message', async (req, res) => {
 });
 
 // ============================================================
+// JUSTCALL DIALER — Make calls via JustCall API
+// ============================================================
+
+/**
+ * POST /api/callcenter/ext/:token/item/:itemId/call
+ * Initiate an outbound call via JustCall with QUANTUM's number as caller ID
+ * Body: { agent_name }
+ */
+router.post('/ext/:token/item/:itemId/call', async (req, res) => {
+  try {
+    const { rows: [list] } = await pool.query(
+      `SELECT id FROM callcenter_lists WHERE token = $1 AND is_active = TRUE`,
+      [req.params.token]
+    );
+    if (!list) return res.status(404).json({ error: 'Invalid token' });
+
+    const itemId = parseInt(req.params.itemId);
+    const { rows: [item] } = await pool.query(
+      `SELECT * FROM callcenter_items WHERE id = $1 AND list_id = $2`, [itemId, list.id]
+    );
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+
+    const apiKey = process.env.JUSTCALL_API_KEY;
+    const apiSecret = process.env.JUSTCALL_API_SECRET;
+    if (!apiKey || !apiSecret) {
+      return res.status(500).json({ error: 'JustCall API not configured' });
+    }
+
+    // Format phone: ensure +972 prefix
+    let phone = (item.phone || '').replace(/[\s\-()]/g, '');
+    if (phone.startsWith('0')) phone = '+972' + phone.substring(1);
+    else if (!phone.startsWith('+')) phone = '+972' + phone;
+
+    const axios = require('axios');
+    const callResult = await axios.post('https://api.justcall.io/v1/calls/dialout', {
+      to: phone,
+      from: process.env.JUSTCALL_FROM_NUMBER || undefined,
+    }, {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `${apiKey}:${apiSecret}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 15000,
+      validateStatus: () => true,
+    });
+
+    const success = callResult.status >= 200 && callResult.status < 300;
+
+    // Log the call attempt as a note
+    const agentName = req.body.agent_name || 'נציג';
+    const timestamp = new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
+    const noteEntry = `[${timestamp}] ${agentName}: שיחה יוצאת via JustCall → ${phone}`;
+    await pool.query(`
+      UPDATE callcenter_items SET
+        agent_name = $1,
+        called_at = COALESCE(called_at, NOW()),
+        notes = CASE WHEN notes IS NULL OR notes = '' THEN $2 ELSE notes || E'\\n' || $2 END,
+        updated_at = NOW()
+      WHERE id = $3
+    `, [agentName, noteEntry, itemId]).catch(() => {});
+
+    if (success) {
+      logger.info(`[CallCenter] JustCall call initiated: ${phone} by ${agentName}`);
+      res.json({ success: true, call: callResult.data });
+    } else {
+      logger.warn(`[CallCenter] JustCall call failed: ${callResult.status} ${JSON.stringify(callResult.data)}`);
+      res.json({ success: false, error: callResult.data?.message || `JustCall error ${callResult.status}` });
+    }
+  } catch (err) {
+    logger.error('[CallCenter] JustCall call error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================
 // AGREEMENT SIGNING PAGE — public, token-based
 // ============================================================
 
