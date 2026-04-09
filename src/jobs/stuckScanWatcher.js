@@ -1,1 +1,115 @@
-Y29uc3QgY3JvbiA9IHJlcXVpcmUoJ25vZGUtY3JvbicpOwpjb25zdCBwb29sID0gcmVxdWlyZSgnLi4vZGIvcG9vbCcpOwpjb25zdCB7IGxvZ2dlciB9ID0gcmVxdWlyZSgnLi4vc2VydmljZXMvbG9nZ2VyJyk7CmNvbnN0IG5vdGlmaWNhdGlvblNlcnZpY2UgPSByZXF1aXJlKCcuLi9zZXJ2aWNlcy9ub3RpZmljYXRpb25TZXJ2aWNlJyk7CgovLyBDaGVjayBldmVyeSAzMCBtaW51dGVzIGZvciBzdHVjayBzY2Fucwpjb25zdCBXQVRDSEVSX0NST04gPSAnKi8zMCAqICogKiAqJzsKCmxldCB3YXRjaGVyVGFzayA9IG51bGw7CmxldCBsYXN0QWxlcnRTZW50ID0gbnVsbDsKCi8qKgogKiBTZW5kIGFsZXJ0IGFib3V0IHN0dWNrIHNjYW5zCiAqLwphc3luYyBmdW5jdGlvbiBzZW5kU3R1Y2tTY2FuQWxlcnQoc3R1Y2tTY2FucykgewogIGlmICghbm90aWZpY2F0aW9uU2VydmljZS5pc0NvbmZpZ3VyZWQoKSkgewogICAgbG9nZ2VyLmluZm8oJ1N0dWNrIHNjYW4gYWxlcnQgbm90IHNlbnQgLSBubyBlbWFpbCBwcm92aWRlciBjb25maWd1cmVkJyk7CiAgICByZXR1cm47CiAgfQoKICAvLyBEb24ndCBzcGFtIC0gb25seSBzZW5kIGlmIGxhc3QgYWxlcnQgd2FzID4yIGhvdXJzIGFnbwogIGlmIChsYXN0QWxlcnRTZW50ICYmIChEYXRlLm5vdygpIC0gbGFzdEFsZXJ0U2VudCkgPCAyICogNjAgKiA2MCAqIDEwMDApIHsKICAgIGxvZ2dlci5pbmZvKCdTdHVjayBzY2FuIGRldGVjdGVkIGJ1dCBhbGVydCB0aHJvdHRsZWQgKDwgMiBob3VycyBzaW5jZSBsYXN0IGFsZXJ0KScpOwogICAgcmV0dXJuOwogIH0KCiAgY29uc3Qgbm93ID0gbmV3IERhdGUoKTsKICBjb25zdCBpc3JhZWxUaW1lID0gbm93LnRvTG9jYWxlU3RyaW5nKCdoZS1JTCcsIHsgdGltZVpvbmU6ICdBc2lhL0plcnVzYWxlbScgfSk7CgogIGNvbnN0IHN1YmplY3QgPSBgW1FVQU5UVU1dIFN0dWNrIFNjYW5zIERldGVjdGVkIC0gJHtzdHVja1NjYW5zLmxlbmd0aH0gc2NhbnNgOwoKICBjb25zdCBzY2Fuc1Jvd3MgPSBzdHVja1NjYW5zLm1hcCgoc2NhbiwgaSkgPT4gewogICAgY29uc3QgZHVyYXRpb24gPSBNYXRoLnJvdW5kKChEYXRlLm5vdygpIC0gbmV3IERhdGUoc2Nhbi5zdGFydGVkX2F0KS5nZXRUaW1lKCkpIC8gKDEwMDAgKiA2MCkpOwogICAgcmV0dXJuIGA8dHI+PHRkPiMke3NjYW4uaWR9PC90ZD48dGQ+JHtzY2FuLnNjYW5fdHlwZX08L3RkPjx0ZD4ke2R1cmF0aW9ufSBtaW48L3RkPjx0ZD4ke3NjYW4uY29tcGxleGVzX3NjYW5uZWQgfHwgMH08L3RkPjwvdHI+YDsKICB9KS5qb2luKCcnKTsKCiAgY29uc3QgaHRtbCA9IGA8ZGl2PjxoMj5TdHVjayBTY2FucyBEZXRlY3RlZDwvaDI+PHAgPiR7c3R1Y2tTY2Fucy5sZW5ndGh9IHNjYW5zIHJ1bm5pbmcgb3ZlciAyIGhvdXJzLiBUaW1lOiAke2lzcmFlbFRpbWV9PC9wPjx0YWJsZT48dGhlYWQ+PHRyPjx0aD5JRDwvdGg+PHRoPlR5cGU8L3RoPjx0aD5EdXJhdGlvbjwvdGg+PHRoPlNjYW5uZWQ8L3RoPjwvdHI+PC90aGVhZD48dGJvZHk+JHtzY2Fuc1Jvd3N9PC90Ym9keT48L3RhYmxlPjxwPlVzZSBQT1NUIC9hcGkvc2Nhbi9maXgtc3R1Y2sgdG8gcmVzb2x2ZS48L3A+PC9kaXY+YDsKCiAgdHJ5IHsKICAgIGZvciAoY29uc3QgZW1haWwgb2Ygbm90aWZpY2F0aW9uU2VydmljZS5OT1RJRklDQVRJT05fRU1BSUxTKSB7CiAgICAgIGF3YWl0IG5vdGlmaWNhdGlvblNlcnZpY2Uuc2VuZEVtYWlsKGVtYWlsLCBzdWJqZWN0LCBodG1sKTsKICAgIH0KICAgIGxhc3RBbGVydFNlbnQgPSBEYXRlLm5vdygpOwogICAgbG9nZ2VyLmluZm8oYFN0dWNrIHNjYW4gYWxlcnQgc2VudDogJHtzdHVja1NjYW5zLmxlbmd0aH0gc3R1Y2sgc2NhbnNgKTsKICB9IGNhdGNoIChlcnIpIHsKICAgIGxvZ2dlci53YXJuKCdGYWlsZWQgdG8gc2VuZCBzdHVjayBzY2FuIGFsZXJ0JywgeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9CgovKioKICogQ2hlY2sgZm9yIHN0dWNrIHNjYW5zIGFuZCBhdXRvLWZpeCB0aGVtCiAqLwphc3luYyBmdW5jdGlvbiBjaGVja1N0dWNrU2NhbnMoKSB7CiAgdHJ5IHsKICAgIGNvbnN0IHN0dWNrUmVzdWx0ID0gYXdhaXQgcG9vbC5xdWVyeShgCiAgICAgIFNFTEVDVCBpZCwgc2Nhbl90eXBlLCBzdGFydGVkX2F0LCBjb21wbGV4ZXNfc2Nhbm5lZAogICAgICBGUk9NIHNjYW5fbG9ncwogICAgICBXSEVSRSBzdGF0dXMgPSAncnVubmluZycKICAgICAgICBBTkQgc3RhcnRlZF9hdCA8IE5PVygpIC0gSU5URVJWQUwgJzIgaG91cnMnCiAgICAgIE9SREVSIEJZIHN0YXJ0ZWRfYXQgQVNDCiAgICBgKTsKCiAgICBpZiAoc3R1Y2tSZXN1bHQucm93cy5sZW5ndGggPT09IDApIHsKICAgICAgcmV0dXJuOwogICAgfQoKICAgIGxvZ2dlci53YXJuKGBbU1RVQ0stV0FUQ0hFUl0gRm91bmQgJHtzdHVja1Jlc3VsdC5yb3dzLmxlbmd0aH0gc3R1Y2sgc2NhbnMgLSBhdXRvLWZpeGluZ2ApOwoKICAgIGF3YWl0IHNlbmRTdHVja1NjYW5BbGVydChzdHVja1Jlc3VsdC5yb3dzKTsKCiAgICBjb25zdCBmaXhSZXN1bHQgPSBhd2FpdCBwb29sLnF1ZXJ5KGAKICAgICAgVVBEQVRFIHNjYW5fbG9ncwogICAgICBTRVQgc3RhdHVzID0gJ2ZhaWxlZCcsCiAgICAgICAgICBjb21wbGV0ZWRfYXQgPSBOT1coKSwKICAgICAgICAgIGVycm9ycyA9ICdBdXRvLWZhaWxlZCBieSBzdHVjayBzY2FuIHdhdGNoZXIgYWZ0ZXIgMisgaG91cnMnCiAgICAgIFdIRVJFIHN0YXR1cyA9ICdydW5uaW5nJwogICAgICAgIEFORCBzdGFydGVkX2F0IDwgTk9XKCkgLSBJTlRFUlZBTCAnMiBob3VycycKICAgICAgUkVUVVJOSU5HIGlkCiAgICBgKTsKCiAgICBsb2dnZXIuaW5mbyhgW1NUVUNLLVDBVENIRVJDXSBBDXRVLWZPEGVKICR7Zml4UmVzdWx0LnJvd3MubGVuZ3RofSBzdHVjayBzY2Fuc2ApOwogIH0gY2F0Y2ggKGVycikgewogICAgbG9nZ2VyLmVycm9yKCdbU1RVQ0stV0FUQ0hFUl0gQ2hlY2sgZmFpbGVkJywgeyBlcnJvcjogZXJyLm1lc3NhZ2UgfSk7CiAgfQp9CgovKioKICogU3RhcnQgdGhlIHN0dWNrIHNjYW4gd2F0Y2hlcgogKi8KZnVuY3Rpb24gc3RhcnRXYXRjaGVyKCkgewogIGlmICh3YXRjaGVyVGFzaykgewogICAgbG9nZ2VyLndhcm4oJ1tTVFVDSy1XQVRDSEVSXSBBZHJLYWR5IHJ1bm5pbmcnKTsKICAgIHJldHVybjsKICB9CgogIHdhdGNoZXJUYXNrID0gY3Jvbi5zY2hlZHVsZShXQVRDSEVSX0NST04sIGFzeW5jICgpID0+IHsKICAgIGF3YWl0IGNoZWNrU3R1Y2tTY2FucygpOwogIH0pOwoKICBsb2dnZXIuaW5mbyhgW1NUVUNLLVDBVENIRVJDXSBTYXJ0ZWQgLSBjaGVja2luZyBldmVyeSAzMCBtaW51dGVzYCk7CgogIHNldFRpbWVvdXQoYXN5bmMgKCkgPT4gewogICAgYXdhaXQgY2hlY2tTdHVja1NjYW5zKCk7CiAgfSwgNSAqIDYwICogMTAwMCk7Cn0KCmZ1bmN0aW9uIHN0b3BXYXRjaGVyKCkgewogIGlmICh3YXRjaGVyVGFzaykgewogICAgd2F0Y2hlclRhc2suc3RvcCgpOwogICAgd2F0Y2hlclRhc2sgPSBudWxsOwogICAgbG9nZ2VyLmluZm8oJ1tTVFVDSy1XQVRDSEVSXSBTdG9wcGVkJyk7CiAgfQp9Cgptb2R1bGUuZXhwb3J0cyA9IHsgc3RhcnRXYXRjaGVyLCBzdG9wV2F0Y2hlciwgY2hlY2tTdHVja1NjYW5zIH07
+const cron = require('node-cron');
+const pool = require('../db/pool');
+const { logger } = require('../services/logger');
+const notificationService = require('../services/notificationService');
+
+// Check every 30 minutes for stuck scans
+const WATCHER_CRON = '*/30 * * * *';
+
+let watcherTask = null;
+let lastAlertSent = null;
+
+/**
+ * Send alert about stuck scans
+ */
+async function sendStuckScanAlert(stuckScans) {
+  if (!notificationService.isConfigured()) {
+    logger.info('Stuck scan alert not sent - no email provider configured');
+    return;
+  }
+
+  // Don't spam - only send if last alert was >2 hours ago
+  if (lastAlertSent && (Date.now() - lastAlertSent) < 2 * 60 * 60 * 1000) {
+    logger.info('Stuck scan detected but alert throttled (< 2 hours since last alert)');
+    return;
+  }
+
+  const now = new Date();
+  const israelTime = now.toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
+
+  const subject = `[QUANTUM] Stuck Scans Detected - ${stuckScans.length} scans`;
+
+  const scansRows = stuckScans.map((scan) => {
+    const duration = Math.round((Date.now() - new Date(scan.started_at).getTime()) / (1000 * 60));
+    return `<tr><td>#${scan.id}</td><td>${scan.scan_type}</td><td>${duration} min</td><td>${scan.complexes_scanned || 0}</td></tr>`;
+  }).join('');
+
+  const html = `<div><h2>Stuck Scans Detected</h2><p>${stuckScans.length} scans running over 3 hours. Time: ${israelTime}</p><table><thead><tr><th>ID</th><th>Type</th><th>Duration</th><th>Scanned</th></tr></thead><tbody>${scansRows}</tbody></table><p>Use POST /api/scan/fix-stuck to resolve.</p></div>`;
+
+  try {
+    for (const email of notificationService.NOTIFICATION_EMAILS) {
+      await notificationService.sendEmail(email, subject, html);
+    }
+    lastAlertSent = Date.now();
+    logger.info(`Stuck scan alert sent: ${stuckScans.length} stuck scans`);
+  } catch (err) {
+    logger.warn('Failed to send stuck scan alert', { error: err.message });
+  }
+}
+
+/**
+ * Check for stuck scans and auto-fix them
+ */
+async function checkStuckScans() {
+  try {
+    const stuckResult = await pool.query(`
+      SELECT id, scan_type, started_at, complexes_scanned
+      FROM scan_logs
+      WHERE status = 'running'
+        AND started_at < NOW() - INTERVAL '3 hours'
+      ORDER BY started_at ASC
+    `);
+
+    if (stuckResult.rows.length === 0) {
+      return;
+    }
+
+    logger.warn(`[STUCK-WATCHER] Found ${stuckResult.rows.length} stuck scans - auto-fixing`);
+
+    await sendStuckScanAlert(stuckResult.rows);
+
+    const fixResult = await pool.query(`
+      UPDATE scan_logs
+      SET status = 'failed',
+          completed_at = NOW(),
+          errors = 'Auto-failed by stuck scan watcher after 3+ hours'
+      WHERE status = 'running'
+        AND started_at < NOW() - INTERVAL '3 hours'
+      RETURNING id
+    `);
+
+    logger.info(`[STUCK-WATCHER] Auto-fixed ${fixResult.rows.length} stuck scans`);
+  } catch (err) {
+    logger.error('[STUCK-WATCHER] Check failed', { error: err.message });
+  }
+}
+
+/**
+ * Start the stuck scan watcher
+ */
+function startWatcher() {
+  if (watcherTask) {
+    logger.warn('[STUCK-WATCHER] Already running');
+    return;
+  }
+
+  watcherTask = cron.schedule(WATCHER_CRON, async () => {
+    await checkStuckScans();
+  });
+
+  logger.info('[STUCK-WATCHER] Started - checking every 30 minutes (3h threshold)');
+
+  setTimeout(async () => {
+    await checkStuckScans();
+  }, 5 * 60 * 1000);
+}
+
+function stopWatcher() {
+  if (watcherTask) {
+    watcherTask.stop();
+    watcherTask = null;
+    logger.info('[STUCK-WATCHER] Stopped');
+  }
+}
+
+module.exports = { startWatcher, stopWatcher, checkStuckScans };

@@ -48,6 +48,19 @@ let lastResult = null;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+const SCRAPER_TIMEOUT_MS = 10 * 60 * 1000;  // 10 min per scraper
+const ENRICHMENT_TIMEOUT_MS = 5 * 60 * 1000; // 5 min per enrichment
+const SYNTHESIS_TIMEOUT_MS  = 3 * 60 * 1000; // 3 min per synthesis
+
+function withTimeout(promise, ms, name) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${name} timed out after ${ms / 1000}s`)), ms)
+    )
+  ]);
+}
+
 // ─── PHASE 1: PLATFORM SCRAPERS ──────────────────────────────────────────────
 
 const SCRAPER_SEQUENCE = [
@@ -70,7 +83,7 @@ async function runAllScrapers() {
   for (const scraper of SCRAPER_SEQUENCE) {
     try {
       logger.info(`[MasterPipeline] Scraping ${scraper.nameHe}...`);
-      const r = await scraper.fn();
+      const r = await withTimeout(scraper.fn(), SCRAPER_TIMEOUT_MS, scraper.nameHe);
       const newCount = r.totalNew || r.new || r.found || r.count || 0;
       const updatedCount = r.totalUpdated || r.updated || 0;
       results[scraper.name] = { success: true, new: newCount, updated: updatedCount };
@@ -404,7 +417,7 @@ async function runStatutoryEnrichment() {
 
   let enriched = 0, failed = 0;
   for (const complex of complexes) {
-    const result = await enrichComplexStatutory(complex);
+    const result = await withTimeout(enrichComplexStatutory(complex), ENRICHMENT_TIMEOUT_MS, `statutory-${complex.id}`).catch(err => { logger.warn(`[Statutory] ${err.message}`); return null; });
     if (result) enriched++;
     else failed++;
     await sleep(SLEEP_BETWEEN_ENRICHMENTS_MS);
@@ -553,7 +566,7 @@ async function runClaudeSynthesis() {
 
   let synthesized = 0, failed = 0;
   for (const complex of complexes) {
-    const result = await synthesizeComplex(complex);
+    const result = await withTimeout(synthesizeComplex(complex), SYNTHESIS_TIMEOUT_MS, `synthesis-${complex.id}`).catch(err => { logger.warn(`[Synthesis] ${err.message}`); return null; });
     if (result) synthesized++;
     else failed++;
     await sleep(2000); // Rate limit Claude API
