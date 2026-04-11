@@ -85,6 +85,7 @@ const limiter = rateLimit({
     req.path.startsWith('/events/') || req.path.startsWith('/api/events/') ||
     req.path.startsWith('/pro/') || req.path.startsWith('/attend/') ||
     req.path.startsWith('/api/outreach/') ||
+    req.path.startsWith('/api/pilot/') ||
     req.path.startsWith('/api/comms/') ||
     req.path.startsWith('/api/morning/') ||
     req.path.startsWith('/api/newsletter/') ||
@@ -171,6 +172,7 @@ function loadAllRoutes() {
     { path: '/api/reminders',          file: 'routes/reminderRoutes.js' },
     { path: '/api/settings',           file: 'routes/settingsRoutes.js' },
     { path: '/api/templates',          file: 'routes/templateRoutes.js' },
+    { path: '/api/pilot',              file: 'routes/pilotOutreachRoutes.js' },
   ];
 
   // ── MINHELET only: resident coordination, scheduling, events, campaigns ──────
