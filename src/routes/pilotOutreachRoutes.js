@@ -1,11 +1,8 @@
 /**
  * Pilot Outreach Routes — Track A + B
  *
- * Investor pilot programme: targeted outreach to all known contacts
- * in the 8 pilot complexes.
- *   A1 — WhatsApp chat message via sendWhatsAppChat (free text, no template)
- *   A2 — Phone extraction from listing URLs
- *   B  — Facebook/web targeted scan per complex
+ * Every sent WA message is also recorded in unified_messages
+ * so the outreach_escalation_cron can find it and call if no reply.
  */
 
 const express = require('express');
@@ -20,6 +17,21 @@ const WA_MESSAGE = () =>
   `ראיתי שיש לך דירה למכירה.\n` +
   `אני מחפש דירה בסביבה, עבור לקוח שלי.\n` +
   `מתי יהיה לך נח שנדבר?`;
+
+// ── Helper: record sent message in unified_messages ───────────────────────────
+async function recordUnifiedMessage(listingId, complexId, phone, contactName, messageText) {
+  try {
+    await pool.query(`
+      INSERT INTO unified_messages
+        (listing_id, complex_id, contact_phone, contact_name,
+         direction, channel, platform, message_text, status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'outgoing', 'whatsapp', 'inforu', $5, 'sent', NOW(), NOW())
+      ON CONFLICT DO NOTHING
+    `, [listingId, complexId, phone, contactName || null, messageText]);
+  } catch (e) {
+    logger.warn(`[Pilot] unified_messages insert failed for ${phone}: ${e.message}`);
+  }
+}
 
 // ============================================================
 // GET /api/pilot/status
@@ -101,7 +113,6 @@ router.get('/contacts', async (req, res) => {
 
 // ============================================================
 // POST /api/pilot/send-wa
-// Uses sendWhatsAppChat (free text) — no template required
 // body: { dryRun: true/false, limit: 20, complexIds: [...] }
 // ============================================================
 router.post('/send-wa', async (req, res) => {
@@ -139,7 +150,6 @@ router.post('/send-wa', async (req, res) => {
       });
     }
 
-    // sendWhatsAppChat — free text, no INFORU template required
     const { sendWhatsAppChat } = require('../services/inforuService');
     let sent = 0, failed = 0;
     const results = [];
@@ -151,9 +161,16 @@ router.post('/send-wa', async (req, res) => {
           customerParameter: 'QUANTUM_PILOT'
         });
 
+        // Update listing status
         await pool.query(
           `UPDATE listings SET message_status = 'נשלחה', last_message_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
           [contact.listing_id]
+        );
+
+        // ── Record in unified_messages so escalation cron can find it ──
+        await recordUnifiedMessage(
+          contact.listing_id, contact.complex_id,
+          contact.phone, contact.contact_name, message
         );
 
         sent++;
