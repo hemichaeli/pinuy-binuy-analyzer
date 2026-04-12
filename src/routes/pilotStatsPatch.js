@@ -2,8 +2,9 @@
  * Pilot Stats Patch
  * 1. GET /api/stats — augments with pilotWaSent + pilotReplied
  * 2. GET / (dashboard HTML) — injects:
- *    a) Pilot stat card in the main stats grid
- *    b) Pilot outreach panel in the messages tab (with status filters)
+ *    a) Pilot stat card in main stats grid
+ *    b) Pilot status options into existing convStatusFilter dropdown
+ *    c) Override of loadConversations to handle pilot filters inline
  */
 
 const express = require('express');
@@ -17,106 +18,133 @@ const DASHBOARD_PATH = path.join(__dirname, '../public/dashboard.html');
 
 // ── Pilot stat card (main stats grid) ────────────────────────────────────────
 const PILOT_CARD_HTML = `
-            <div id="pilot-stat-card" class="stat-card" style="cursor:pointer;border-color:rgba(245,158,11,0.4);" onclick="loadPilotOutreach('all')">
+            <div id="pilot-stat-card" class="stat-card" style="cursor:pointer;border-color:rgba(245,158,11,0.4);" onclick="if(window.switchTab)switchTab('messages');document.getElementById('convStatusFilter').value='pilot_waiting';loadConversations();">
                 <div class="stat-number" style="color:#f59e0b;"><span class="stat-val" data-stat="pilotWaSent">...</span></div>
                 <div class="stat-label">📤 פיילוט — נשלח</div>
                 <div class="stat-hint"><span class="stat-val" data-stat="pilotReplied">0</span> ענו עד כה</div>
                 <div class="stat-change" style="background:rgba(245,158,11,0.1);color:#f59e0b;border-color:rgba(245,158,11,0.3);">פיילוט משקיעים</div>
             </div>`;
 
-// ── Pilot outreach panel (messages tab) ───────────────────────────────────────
-const PILOT_MESSAGES_PANEL = `
-        <!-- PILOT OUTREACH PANEL -->
-        <div id="pilot-outreach-panel" class="section" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;padding:14px 20px;border-bottom:1px solid var(--border-subtle);">
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-                <h2 style="margin:0;font-size:14px;">📤 פיילוט משקיעים — הודעות יוצאות</h2>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                    <button class="btn" id="pilot-filter-all"     onclick="loadPilotOutreach('all')"     style="padding:4px 12px;font-size:12px;background:var(--teal);">הכל</button>
-                    <button class="btn btn-secondary" id="pilot-filter-sent"    onclick="loadPilotOutreach('sent')"    style="padding:4px 12px;font-size:12px;">📤 יוצאות</button>
-                    <button class="btn btn-secondary" id="pilot-filter-replied" onclick="loadPilotOutreach('replied')" style="padding:4px 12px;font-size:12px;">✅ נענו</button>
-                    <button class="btn btn-secondary" id="pilot-filter-waiting" onclick="loadPilotOutreach('waiting')" style="padding:4px 12px;font-size:12px;">⏳ ממתין</button>
-                    <button class="btn btn-secondary" id="pilot-filter-none"    onclick="loadPilotOutreach('none')"    style="padding:4px 12px;font-size:12px;">🔴 לא נשלח</button>
-                    <button class="btn btn-secondary" onclick="loadPilotOutreach(window._pilotFilter||'all')" style="padding:4px 10px;font-size:12px;">🔄</button>
-                </div>
-            </div>
-            <div id="pilot-outreach-list" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;">
-                <div class="loading" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">לוחץ לטעינה...</div>
-            </div>
-        </div>
+// ── Script injection: pilot filter options + loadConversations override ───────
+const PILOT_SCRIPT = `
+<script>
+(function() {
+  // Add pilot filter options to existing convStatusFilter select
+  function addPilotOptions() {
+    var sel = document.getElementById('convStatusFilter');
+    if (!sel || sel.querySelector('[value="pilot_all"]')) return;
+    var sep = document.createElement('option');
+    sep.disabled = true;
+    sep.textContent = '─── פיילוט ───';
+    sel.appendChild(sep);
+    [
+      { value: 'pilot_all',     label: '📤 כל הפיילוט' },
+      { value: 'pilot_waiting', label: '⏳ ממתין למענה' },
+      { value: 'pilot_replied', label: '✅ ענו' },
+      { value: 'pilot_unsent',  label: '🔴 לא נשלח' }
+    ].forEach(function(o) {
+      var opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      sel.appendChild(opt);
+    });
+  }
 
-        <script>
-        window._pilotFilter = 'all';
-        async function loadPilotOutreach(filter) {
-            window._pilotFilter = filter || 'all';
-            // Update active button
-            ['all','sent','replied','waiting','none'].forEach(function(f) {
-                var btn = document.getElementById('pilot-filter-' + f);
-                if (btn) btn.className = f === window._pilotFilter ? 'btn' : 'btn btn-secondary';
-                if (btn && f === window._pilotFilter) btn.style.background = 'var(--teal)';
-                else if (btn) btn.style.background = '';
-            });
-            var list = document.getElementById('pilot-outreach-list');
-            if (!list) return;
-            list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">טוען...</div>';
-            try {
-                var data = await fetch('/api/pilot/contacts').then(function(r){return r.json();});
-                var contacts = data.contacts || [];
+  // Render a pilot contact as a conv-list item
+  function renderPilotItem(c) {
+    var hasReply   = !!c.last_reply_at;
+    var wasSent    = c.message_status === 'נשלחה';
+    var dotColor   = hasReply ? '#4ade80' : wasSent ? '#f59e0b' : '#6b7280';
+    var statusBadge = hasReply
+      ? '<span style="font-size:10px;color:#4ade80;">✅ ענה</span>'
+      : wasSent
+        ? '<span style="font-size:10px;color:#f59e0b;">⏳ ממתין</span>'
+        : '<span style="font-size:10px;color:#6b7280;">🔴 לא נשלח</span>';
+    var preview = hasReply && c.last_reply_text
+      ? '↩ ' + c.last_reply_text.substring(0, 50)
+      : wasSent
+        ? 'נשלחה הודעת פנייה'
+        : 'טרם נשלחה הודעה';
+    var date = c.last_reply_at
+      ? new Date(c.last_reply_at).toLocaleDateString('he-IL')
+      : c.last_message_sent_at
+        ? new Date(c.last_message_sent_at).toLocaleDateString('he-IL')
+        : '';
+    var name = c.contact_name || c.phone || '';
+    var sub  = (c.complex_name || '') + (c.city ? ' — ' + c.city : '');
+    var waUrl = 'https://wa.me/972' + (c.phone||'').replace(/^0/,'');
+    return '<div class="conv-item" data-convid="pilot_' + c.phone + '" onclick="window.open(\'' + waUrl + '\',\'_blank\')" style="cursor:pointer;">'
+      + '<div style="display:flex;align-items:center;gap:7px;justify-content:space-between;">'
+      + '<div style="display:flex;align-items:center;gap:5px;flex:1;min-width:0;">'
+      + '<div style="width:7px;height:7px;border-radius:50%;background:' + dotColor + ';flex-shrink:0;"></div>'
+      + '<div style="font-weight:600;font-size:13px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + name + '</div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:3px;">' + statusBadge + ' <span style="font-size:12px;">📱</span></div>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0;">' + preview + '</div>'
+      + '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);">'
+      + '<span>' + sub + '</span><span>' + date + '</span>'
+      + '</div>'
+      + '</div>';
+  }
 
-                // Apply filter
-                if (filter === 'sent')    contacts = contacts.filter(function(c){ return c.message_status === 'נשלחה' && !c.last_reply_at; });
-                if (filter === 'replied') contacts = contacts.filter(function(c){ return !!c.last_reply_at; });
-                if (filter === 'waiting') contacts = contacts.filter(function(c){ return c.message_status === 'נשלחה' && !c.last_reply_at; });
-                if (filter === 'none')    contacts = contacts.filter(function(c){ return c.message_status !== 'נשלחה'; });
+  // Wait for loadConversations to exist, then wrap it
+  function wrapLoadConversations() {
+    if (typeof window.loadConversations !== 'function') {
+      setTimeout(wrapLoadConversations, 200);
+      return;
+    }
+    var _origLoad = window.loadConversations;
+    window.loadConversations = async function() {
+      var statusFilter = document.getElementById('convStatusFilter');
+      var val = statusFilter ? statusFilter.value : '';
+      if (!val.startsWith('pilot_')) {
+        return _origLoad.apply(this, arguments);
+      }
 
-                if (contacts.length === 0) {
-                    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">אין תוצאות לסינון זה</div>';
-                    return;
-                }
+      // Pilot filter — fetch from /api/pilot/contacts
+      var container = document.getElementById('conv-list');
+      if (!container) return;
+      container.innerHTML = '<div class="loading">טוען פיילוט...</div>';
+      try {
+        var data = await fetch('/api/pilot/contacts').then(function(r){return r.json();});
+        var contacts = data.contacts || [];
 
-                var html = '';
-                contacts.forEach(function(c) {
-                    var statusColor = c.last_reply_at ? '#4ade80' : c.message_status === 'נשלחה' ? '#f59e0b' : '#6b7280';
-                    var statusLabel = c.last_reply_at ? '✅ ענה' : c.message_status === 'נשלחה' ? '⏳ ממתין' : '🔴 לא נשלח';
-                    var sentTime = c.last_message_sent_at ? new Date(c.last_message_sent_at).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
-                    var replyText = c.last_reply_text ? ('<div style="font-size:11px;color:#4ade80;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px;">↩ ' + c.last_reply_text.substring(0,60) + '</div>') : '';
-                    var price = c.asking_price ? '₪' + Number(c.asking_price).toLocaleString('he-IL') : '';
-                    html += '<div style="display:flex;align-items:center;gap:12px;padding:8px 10px;background:var(--bg-primary);border:1px solid var(--border-subtle);border-radius:6px;font-size:12px;">' +
-                        '<div style="min-width:90px;font-weight:600;color:var(--teal);">' + (c.phone || '') + '</div>' +
-                        '<div style="flex:1;min-width:0;">' +
-                            '<div style="font-weight:500;">' + (c.complex_name || '') + ' <span style="color:var(--text-muted);">— ' + (c.city || '') + '</span></div>' +
-                            '<div style="color:var(--text-muted);font-size:11px;">' + (c.contact_name || 'ללא שם') + (price ? ' · ' + price : '') + (c.rooms ? ' · ' + c.rooms + ' חד׳' : '') + '</div>' +
-                            replyText +
-                        '</div>' +
-                        '<div style="text-align:left;min-width:110px;">' +
-                            '<span style="color:' + statusColor + ';font-weight:600;">' + statusLabel + '</span>' +
-                            (sentTime ? '<div style="color:var(--text-muted);font-size:11px;margin-top:2px;">' + sentTime + '</div>' : '') +
-                        '</div>' +
-                        '<div>' +
-                            '<a href="https://wa.me/972' + (c.phone||'').replace(/^0/,'') + '" target="_blank" style="color:var(--teal);font-size:11px;text-decoration:none;">📱 פתח</a>' +
-                        '</div>' +
-                    '</div>';
-                });
-                list.innerHTML = html;
-            } catch(e) {
-                list.innerHTML = '<div style="text-align:center;padding:16px;color:var(--red);font-size:12px;">שגיאה בטעינת נתוני פיילוט</div>';
-            }
+        if (val === 'pilot_waiting') contacts = contacts.filter(function(c){ return c.message_status === 'נשלחה' && !c.last_reply_at; });
+        if (val === 'pilot_replied') contacts = contacts.filter(function(c){ return !!c.last_reply_at; });
+        if (val === 'pilot_unsent')  contacts = contacts.filter(function(c){ return c.message_status !== 'נשלחה'; });
+
+        if (!contacts.length) {
+          container.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-muted);"><div style="font-size:32px;margin-bottom:10px;">📭</div><p>אין תוצאות</p></div>';
+          return;
         }
-        // Auto-load when messages tab opens
-        document.addEventListener('DOMContentLoaded', function() {
-            var orig = window.switchTab;
-            window.switchTab = function(tab, filter) {
-                if (orig) orig.apply(this, arguments);
-                if (tab === 'messages') setTimeout(function(){ loadPilotOutreach(window._pilotFilter||'all'); }, 200);
-            };
-        });
-        </script>`;
+        container.innerHTML = contacts.map(renderPilotItem).join('');
+      } catch(e) {
+        container.innerHTML = '<div style="padding:20px;color:#fca5a5;">שגיאה: ' + e.message + '</div>';
+      }
+    };
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    addPilotOptions();
+    wrapLoadConversations();
+
+    // Also add options when messages tab opens (tab might init after DOM ready)
+    var _origSwitch = window.switchTab;
+    window.switchTab = function(tab) {
+      if (_origSwitch) _origSwitch.apply(this, arguments);
+      if (tab === 'messages') setTimeout(addPilotOptions, 100);
+    };
+  });
+})();
+</script>`;
 
 // ── 1. Serve modified dashboard HTML ─────────────────────────────────────────
 router.get('/', (req, res, next) => {
   try {
     let html = fs.readFileSync(DASHBOARD_PATH, 'utf8');
 
-    // a) Inject pilot card into stats grid (after kones card)
+    // a) Inject pilot stat card into stats grid (after kones card)
     const cardAnchor = 'נכסים בכינוס</div>\n            </div>\n        </div>';
     if (html.includes(cardAnchor) && !html.includes('pilot-stat-card')) {
       html = html.replace(
@@ -125,10 +153,12 @@ router.get('/', (req, res, next) => {
       );
     }
 
-    // b) Inject pilot outreach panel into messages tab (before "שיחות - כל הערוצים")
-    const msgAnchor = '<div class="section" style="margin:0;border-radius:0;border-left:none;border-right:none;border-top:none;">\n            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">\n                <h2 style="margin:0;">💬 שיחות - כל הערוצים</h2>';
-    if (html.includes(msgAnchor) && !html.includes('pilot-outreach-panel')) {
-      html = html.replace(msgAnchor, PILOT_MESSAGES_PANEL + '\n        ' + msgAnchor);
+    // b) Remove old separate pilot panel if exists
+    // (no-op if not present — safe)
+
+    // c) Inject pilot script before </body>
+    if (!html.includes('pilot_waiting') && html.includes('</body>')) {
+      html = html.replace('</body>', PILOT_SCRIPT + '\n</body>');
     }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
