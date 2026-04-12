@@ -15,11 +15,14 @@ const { logger } = require('../services/logger');
 
 const PILOT_IDS = [250, 205, 1077, 64, 122, 458, 1240, 769];
 
-const WA_MESSAGE = (complexName, city) =>
+// ============================================================
+// WhatsApp message template — natural, no complex name
+// ============================================================
+const WA_MESSAGE = () =>
   `שלום, שמי חמי מ-QUANTUM נדל"ן.\n` +
-  `אני מחפש דירה במתחם "${complexName}" ב${city} עבור משקיע רציני שמוכן לסגור מהר.\n` +
-  `אם אתה/את בעל הדירה או מכיר מישהו שמוכר שם - שמח לשוחח.\n` +
-  `תודה 🙏`;
+  `ראיתי שיש לך דירה למכירה.\n` +
+  `אני מחפש דירה בסביבה, עבור לקוח שלי.\n` +
+  `מתי יהיה לך נח שנדבר?`;
 
 // ============================================================
 // GET /api/pilot/status
@@ -125,13 +128,17 @@ router.post('/send-wa', async (req, res) => {
       return res.json({ success: true, sent: 0, message: 'אין אנשי קשר חדשים לשליחה' });
     }
 
+    const message = WA_MESSAGE();
+
     if (dryRun) {
       return res.json({
         success: true, dry_run: true, would_send: rows.length,
+        message_preview: message,
         preview: rows.map(r => ({
-          phone: r.phone, contact: r.contact_name,
-          complex: r.complex_name, city: r.city,
-          message: WA_MESSAGE(r.complex_name, r.city)
+          phone: r.phone,
+          contact: r.contact_name,
+          complex: r.complex_name,
+          city: r.city
         }))
       });
     }
@@ -142,7 +149,7 @@ router.post('/send-wa', async (req, res) => {
 
     for (const contact of rows) {
       try {
-        await sendWhatsApp({ phone: contact.phone, message: WA_MESSAGE(contact.complex_name, contact.city) });
+        await sendWhatsApp({ phone: contact.phone, message });
         await pool.query(
           `UPDATE listings SET message_status = 'נשלחה', last_message_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
           [contact.listing_id]
@@ -204,7 +211,6 @@ router.post('/enrich-phones', async (req, res) => {
   try {
     const { enrichPilotPhones } = require('../services/facebookGroupsScraper');
 
-    // Count how many listings are waiting for phone enrichment
     const ids = complexIds || PILOT_IDS;
     const { rows: pending } = await pool.query(
       `SELECT COUNT(*) as cnt FROM listings
