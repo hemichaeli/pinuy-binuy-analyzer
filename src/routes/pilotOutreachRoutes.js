@@ -3,8 +3,8 @@
  *
  * Investor pilot programme: targeted outreach to all known contacts
  * in the 8 pilot complexes.
- *   A1 — WhatsApp to existing listings (even via agents - message directed at owner)
- *   A2 — Phone extraction from listing URLs (extractPhoneFromUrl pipeline)
+ *   A1 — WhatsApp chat message via sendWhatsAppChat (free text, no template)
+ *   A2 — Phone extraction from listing URLs
  *   B  — Facebook/web targeted scan per complex
  */
 
@@ -15,9 +15,6 @@ const { logger } = require('../services/logger');
 
 const PILOT_IDS = [250, 205, 1077, 64, 122, 458, 1240, 769];
 
-// ============================================================
-// WhatsApp message template — natural, no complex name
-// ============================================================
 const WA_MESSAGE = () =>
   `שלום, שמי חמי מ-QUANTUM נדל"ן.\n` +
   `ראיתי שיש לך דירה למכירה.\n` +
@@ -104,7 +101,8 @@ router.get('/contacts', async (req, res) => {
 
 // ============================================================
 // POST /api/pilot/send-wa
-// body: { dryRun: true/false, limit: 10, complexIds: [...] }
+// Uses sendWhatsAppChat (free text) — no template required
+// body: { dryRun: true/false, limit: 20, complexIds: [...] }
 // ============================================================
 router.post('/send-wa', async (req, res) => {
   const { dryRun = true, limit = 20, complexIds = PILOT_IDS } = req.body;
@@ -135,27 +133,33 @@ router.post('/send-wa', async (req, res) => {
         success: true, dry_run: true, would_send: rows.length,
         message_preview: message,
         preview: rows.map(r => ({
-          phone: r.phone,
-          contact: r.contact_name,
-          complex: r.complex_name,
-          city: r.city
+          phone: r.phone, contact: r.contact_name,
+          complex: r.complex_name, city: r.city
         }))
       });
     }
 
-    const { sendWhatsApp } = require('../services/inforuService');
+    // sendWhatsAppChat — free text, no INFORU template required
+    const { sendWhatsAppChat } = require('../services/inforuService');
     let sent = 0, failed = 0;
     const results = [];
 
     for (const contact of rows) {
       try {
-        await sendWhatsApp({ phone: contact.phone, message });
+        await sendWhatsAppChat(contact.phone, message, {
+          customerMessageId: `pilot_${contact.listing_id}_${Date.now()}`,
+          customerParameter: 'QUANTUM_PILOT'
+        });
+
         await pool.query(
           `UPDATE listings SET message_status = 'נשלחה', last_message_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
           [contact.listing_id]
         );
+
         sent++;
         results.push({ phone: contact.phone, complex: contact.complex_name, status: 'sent' });
+        logger.info(`[Pilot] WA sent to ${contact.phone} (${contact.complex_name})`);
+
         await new Promise(r => setTimeout(r, 2000));
       } catch (err) {
         failed++;
@@ -164,7 +168,7 @@ router.post('/send-wa', async (req, res) => {
       }
     }
 
-    logger.info(`[Pilot] WA campaign: sent=${sent}, failed=${failed}`);
+    logger.info(`[Pilot] WA campaign done: sent=${sent}, failed=${failed}`);
     res.json({ success: true, sent, failed, results });
 
   } catch (err) {
@@ -175,16 +179,12 @@ router.post('/send-wa', async (req, res) => {
 
 // ============================================================
 // POST /api/pilot/scan-fb
-// Track B — targeted Facebook/web scan per complex
 // ============================================================
 router.post('/scan-fb', async (req, res) => {
   const { complexIds = null } = req.body;
   try {
     const { scanPilotComplexes } = require('../services/facebookGroupsScraper');
-    logger.info('[Pilot] Starting targeted Facebook/web scan...');
-
     res.json({ success: true, message: 'סריקה התחילה ברקע', complexes: complexIds || PILOT_IDS });
-
     setImmediate(async () => {
       try {
         const result = await scanPilotComplexes(complexIds);
@@ -193,7 +193,6 @@ router.post('/scan-fb', async (req, res) => {
         logger.error('[Pilot] FB scan error:', err.message);
       }
     });
-
   } catch (err) {
     logger.error('[Pilot] Scan FB error:', err.message);
     res.status(500).json({ error: err.message });
@@ -202,43 +201,32 @@ router.post('/scan-fb', async (req, res) => {
 
 // ============================================================
 // POST /api/pilot/enrich-phones
-// חילוץ טלפונים מ-URL של ליסטינגים ללא טלפון
-// body: { complexIds: [...] } (optional)
 // ============================================================
 router.post('/enrich-phones', async (req, res) => {
   const { complexIds = null } = req.body;
-
   try {
     const { enrichPilotPhones } = require('../services/facebookGroupsScraper');
-
     const ids = complexIds || PILOT_IDS;
     const { rows: pending } = await pool.query(
       `SELECT COUNT(*) as cnt FROM listings
-       WHERE complex_id = ANY($1)
-         AND phone IS NULL
-         AND url IS NOT NULL
-         AND source ILIKE 'web_%'
-         AND is_active = TRUE`,
+       WHERE complex_id = ANY($1) AND phone IS NULL AND url IS NOT NULL
+         AND source ILIKE 'web_%' AND is_active = TRUE`,
       [ids]
     );
-    const pendingCount = parseInt(pending[0]?.cnt || 0);
-
     res.json({
       success: true,
       message: 'Phone enrichment מתחיל ברקע',
-      pending_listings: pendingCount,
+      pending_listings: parseInt(pending[0]?.cnt || 0),
       complexes: ids
     });
-
     setImmediate(async () => {
       try {
         const result = await enrichPilotPhones(complexIds);
-        logger.info(`[Pilot] Phone enrichment done: ${result?.found}/${result?.total} phones found`);
+        logger.info(`[Pilot] Phone enrichment done: ${result?.found}/${result?.total}`);
       } catch (err) {
         logger.error('[Pilot] Phone enrichment error:', err.message);
       }
     });
-
   } catch (err) {
     logger.error('[Pilot] Enrich phones error:', err.message);
     res.status(500).json({ error: err.message });
