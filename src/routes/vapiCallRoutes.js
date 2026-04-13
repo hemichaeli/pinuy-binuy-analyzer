@@ -1,8 +1,13 @@
 /**
  * VAPI Call Routes
- * - GET  /api/vapi-call/slots        — returns next available calendar slots
- * - POST /api/vapi-call/book         — books a slot and returns confirmation
- * - POST /api/vapi-call/webhook      — called by VAPI on call end → sends WA summary
+ *
+ * VAPI tool servers always receive POST, regardless of declared method.
+ * Tool responses must be plain JSON — VAPI uses the full body as the result.
+ *
+ * - POST /api/vapi-call/slots   — returns available calendar slots (VAPI tool)
+ * - POST /api/vapi-call/book    — books a slot + sends WA summary (VAPI tool)
+ * - POST /api/vapi-call/webhook — end-of-call webhook (logs, fallback WA)
+ * - GET  /api/vapi-call/slots   — manual check
  */
 
 const express = require('express');
@@ -11,8 +16,9 @@ const pool = require('../db/pool');
 const { logger } = require('../services/logger');
 
 const HEMI_CALENDAR_ID = process.env.HEMI_CALENDAR_ID || 'primary';
+const TZ = 'Asia/Jerusalem';
 
-// ── Helper: get Google Calendar service ──────────────────────────────────────
+// ── Helper: Google Calendar ───────────────────────────────────────────────────
 function getCalendar() {
   const { google } = require('googleapis');
   const auth = new google.auth.GoogleAuth({
@@ -25,136 +31,175 @@ function getCalendar() {
   return google.calendar({ version: 'v3', auth });
 }
 
-// ── GET /api/vapi-call/slots ──────────────────────────────────────────────────
-// Returns next 6 available 30-min slots (working hours, next 2 days)
-router.get('/slots', async (req, res) => {
-  try {
-    const calendar = getCalendar();
-    const now = new Date();
-    const end = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000); // +2 days
+// ── Helper: format date in Hebrew ─────────────────────────────────────────────
+function heDate(dt) {
+  const d = new Date(dt);
+  const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+  const months = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+                  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+  // Convert to Israel time
+  const ilStr = d.toLocaleString('en-US', { timeZone: TZ,
+    hour: '2-digit', minute: '2-digit', hour12: false,
+    weekday: 'narrow', day: 'numeric', month: 'numeric' });
+  // Parse manually
+  const il = new Date(d.toLocaleString('en-US', { timeZone: TZ }));
+  const day = days[il.getDay()];
+  const date = il.getDate();
+  const month = months[il.getMonth()];
+  const hh = String(il.getHours()).padStart(2, '0');
+  const mm = String(il.getMinutes()).padStart(2, '0');
+  return `יום ${day}, ${date} ב${month}, בשעה ${hh}:${mm}`;
+}
 
-    const busyRes = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: now.toISOString(),
-        timeMax: end.toISOString(),
-        timeZone: 'Asia/Jerusalem',
-        items: [{ id: HEMI_CALENDAR_ID }]
-      }
-    });
+// ── Get available slots (core logic) ─────────────────────────────────────────
+async function getSlots() {
+  const calendar = getCalendar();
+  const now = new Date();
+  const end = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
 
-    const busy = (busyRes.data.calendars?.[HEMI_CALENDAR_ID]?.busy || []).map(b => ({
-      start: new Date(b.start),
-      end: new Date(b.end)
-    }));
-
-    // Generate candidate slots: 09:00-18:00, every 30 min
-    const slots = [];
-    const cursor = new Date(now);
-    cursor.setMinutes(cursor.getMinutes() < 30 ? 30 : 0, 0, 0);
-    if (cursor.getMinutes() === 0) cursor.setHours(cursor.getHours() + 1);
-
-    while (slots.length < 6 && cursor < end) {
-      const hour = cursor.getHours();
-      const day = cursor.getDay();
-      // Skip weekends (5=Fri, 6=Sat) and outside 9-18
-      if (day !== 5 && day !== 6 && hour >= 9 && hour < 18) {
-        const slotEnd = new Date(cursor.getTime() + 30 * 60 * 1000);
-        const isBusy = busy.some(b => cursor < b.end && slotEnd > b.start);
-        if (!isBusy) {
-          slots.push({
-            start: cursor.toISOString(),
-            end: slotEnd.toISOString(),
-            label: cursor.toLocaleString('he-IL', {
-              timeZone: 'Asia/Jerusalem',
-              weekday: 'long', day: 'numeric', month: 'long',
-              hour: '2-digit', minute: '2-digit'
-            })
-          });
-        }
-      }
-      cursor.setMinutes(cursor.getMinutes() + 30);
+  const busyRes = await calendar.freebusy.query({
+    requestBody: {
+      timeMin: now.toISOString(),
+      timeMax: end.toISOString(),
+      timeZone: TZ,
+      items: [{ id: HEMI_CALENDAR_ID }]
     }
+  });
 
-    res.json({ success: true, slots });
+  const busy = (busyRes.data.calendars?.[HEMI_CALENDAR_ID]?.busy || []).map(b => ({
+    start: new Date(b.start),
+    end: new Date(b.end)
+  }));
+
+  // Build candidate slots in Israel time
+  const slots = [];
+  const cursor = new Date(now);
+  // Round up to next 30-min mark
+  const mins = cursor.getMinutes();
+  if (mins < 30) { cursor.setMinutes(30, 0, 0); }
+  else { cursor.setHours(cursor.getHours() + 1, 0, 0, 0); }
+
+  while (slots.length < 6 && cursor < end) {
+    const ilDate = new Date(cursor.toLocaleString('en-US', { timeZone: TZ }));
+    const hour = ilDate.getHours();
+    const day = ilDate.getDay();
+
+    if (day !== 5 && day !== 6 && hour >= 9 && hour < 18) {
+      const slotEnd = new Date(cursor.getTime() + 30 * 60 * 1000);
+      const isBusy = busy.some(b => cursor < b.end && slotEnd > b.start);
+      if (!isBusy) {
+        slots.push({
+          start: cursor.toISOString(),
+          end: slotEnd.toISOString(),
+          label: heDate(cursor)
+        });
+      }
+    }
+    cursor.setTime(cursor.getTime() + 30 * 60 * 1000);
+  }
+
+  // Today's date for context
+  const todayIL = new Date().toLocaleDateString('he-IL', {
+    timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+
+  return { slots, today: todayIL };
+}
+
+// ── POST /api/vapi-call/slots (VAPI tool call) ────────────────────────────────
+router.post('/slots', async (req, res) => {
+  try {
+    const { slots, today } = await getSlots();
+    const slotText = slots.map(s => s.label).join('\n');
+    // VAPI uses the JSON body as the tool result
+    res.json({
+      today,
+      available_slots: slots.slice(0, 4).map(s => ({ label: s.label, start: s.start, end: s.end })),
+      message: `היום ${today}.\nהמועדים הפנויים הקרובים:\n${slotText}`
+    });
   } catch (err) {
     logger.error('[VapiCall] Slots error:', err.message);
+    res.json({ message: 'לא הצלחתי לבדוק את היומן. שאל את הלקוח מה נוח לו ואמור שנחזור לאשר.' });
+  }
+});
+
+// ── GET /api/vapi-call/slots (manual check) ───────────────────────────────────
+router.get('/slots', async (req, res) => {
+  try {
+    const data = await getSlots();
+    res.json({ success: true, ...data });
+  } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// ── POST /api/vapi-call/book ──────────────────────────────────────────────────
-// body: { start, end, phone, complexName, city, rooms, price }
+// ── POST /api/vapi-call/book (VAPI tool call) ─────────────────────────────────
 router.post('/book', async (req, res) => {
-  const { start, end, phone, complexName, city, rooms, price } = req.body;
+  // VAPI sends tool args inside req.body directly
+  const { start, end, phone, rooms, price } = req.body;
   try {
     const calendar = getCalendar();
     const startDt = new Date(start);
-    const label = startDt.toLocaleString('he-IL', {
-      timeZone: 'Asia/Jerusalem',
-      weekday: 'long', day: 'numeric', month: 'long',
-      hour: '2-digit', minute: '2-digit'
-    });
+    const endDt = end ? new Date(end) : new Date(startDt.getTime() + 30 * 60 * 1000);
+    const label = heDate(startDt);
 
     await calendar.events.insert({
       calendarId: HEMI_CALENDAR_ID,
       requestBody: {
-        summary: `שיחת מנהל — ${phone}`,
-        description: `פינוי-בינוי | ${complexName || ''} ${city || ''}\n${rooms ? rooms + ' חדרים' : ''} ${price ? '| ₪' + Number(price).toLocaleString('he-IL') : ''}\nמקור: שיחת הילה VAPI`,
-        start: { dateTime: start, timeZone: 'Asia/Jerusalem' },
-        end: { dateTime: end || new Date(startDt.getTime() + 30 * 60 * 1000).toISOString(), timeZone: 'Asia/Jerusalem' }
+        summary: `שיחת מנהל — ${phone || 'לא ידוע'}`,
+        description: [
+          'מקור: שיחת הילה VAPI',
+          rooms ? `${rooms} חדרים` : '',
+          price ? `מחיר: ₪${price}` : ''
+        ].filter(Boolean).join('\n'),
+        start: { dateTime: startDt.toISOString(), timeZone: TZ },
+        end: { dateTime: endDt.toISOString(), timeZone: TZ }
       }
     });
 
-    // Save to DB
-    try {
-      await pool.query(
-        `INSERT INTO listings (phone, source, source_listing_id, description_snippet, is_active, created_at, updated_at)
-         VALUES ($1, 'vapi_booked', $2, $3, true, NOW(), NOW())
-         ON CONFLICT DO NOTHING`,
-        [phone, `vapi_${phone}_${Date.now()}`, `שיחת מנהל קבועה ל-${label}`]
-      );
-    } catch (e) { /* non-critical */ }
+    // Send WhatsApp summary to customer
+    if (phone) {
+      try {
+        const normalizedPhone = phone.replace(/^\+972/, '0').replace(/\D/g, '');
+        const waMessage =
+          `שלום רב,\n` +
+          `בהמשך לשיחתנו קבענו שיחת מנהל ב${label}.\n\n` +
+          `המשך יום נעים,\n` +
+          `הילה | קוונטום נדל"ן`;
 
-    res.json({ success: true, label, start, end });
+        const { sendWhatsAppChat } = require('../services/inforuService');
+        await sendWhatsAppChat(normalizedPhone, waMessage, {
+          customerMessageId: `vapi_book_${Date.now()}`,
+          customerParameter: 'QUANTUM_PILOT'
+        });
+        logger.info(`[VapiCall] WA summary sent to ${normalizedPhone}`);
+      } catch (e) {
+        logger.warn(`[VapiCall] WA send failed: ${e.message}`);
+      }
+    }
+
+    logger.info(`[VapiCall] Booked: ${label} for ${phone}`);
+    res.json({
+      success: true,
+      label,
+      message: `הפגישה נקבעה ל${label}. נשלחה הודעת אישור בוואטסאפ.`
+    });
   } catch (err) {
     logger.error('[VapiCall] Book error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.json({
+      success: false,
+      message: 'לא הצלחתי לקבוע ביומן. אמרי ללקוח שהמנהל יתקשר לאשר.'
+    });
   }
 });
 
-// ── POST /api/vapi-call/webhook ───────────────────────────────────────────────
-// VAPI calls this when call ends. Sends WA summary if appointment was booked.
+// ── POST /api/vapi-call/webhook (end-of-call fallback) ───────────────────────
 router.post('/webhook', async (req, res) => {
-  res.json({ received: true }); // respond immediately
-
+  res.json({ received: true });
   try {
-    const { message } = req.body;
-    if (!message || message.type !== 'end-of-call-report') return;
-
-    const call = message.call || {};
-    const vars = call.assistantOverrides?.variableValues || {};
-    const phone = call.customer?.number?.replace(/^\+972/, '0') || vars.lead_phone;
-    const appointmentLabel = vars.appointment_label;
-    const appointmentDay = vars.appointment_day;
-    const appointmentTime = vars.appointment_time;
-
-    if (!phone || (!appointmentLabel && !appointmentDay)) return;
-
-    const timeStr = appointmentLabel || `${appointmentDay}, בשעה ${appointmentTime}`;
-
-    const waMessage =
-      `שלום רב,\n` +
-      `בהמשך לשיחתנו קבענו שיחת מנהל ב${timeStr}.\n\n` +
-      `המשך יום נעים,\n` +
-      `הילה | קוונטום נדל"ן`;
-
-    const { sendWhatsAppChat } = require('../services/inforuService');
-    await sendWhatsAppChat(phone, waMessage, {
-      customerMessageId: `vapi_summary_${Date.now()}`,
-      customerParameter: 'QUANTUM_PILOT'
-    });
-
-    logger.info(`[VapiCall] WA summary sent to ${phone}: ${timeStr}`);
+    const body = req.body;
+    const type = body?.message?.type || body?.type;
+    logger.info(`[VapiCall] Webhook received: ${type}`);
   } catch (err) {
     logger.error('[VapiCall] Webhook error:', err.message);
   }
