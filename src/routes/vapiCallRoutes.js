@@ -1,8 +1,9 @@
 /**
- * VAPI Call Routes v6
+ * VAPI Call Routes v7
  *
- * Key fix: VAPI wraps tool arguments in message.toolCallList[0].function.arguments
- * extractArgs() handles both flat and wrapped formats.
+ * Single unified tool endpoint: POST /api/vapi-call/tool
+ * All 3 tools point to the same URL — routes by function name.
+ * This eliminates the "No result returned" mystery for /book and /schedule-callback.
  */
 
 const express = require('express');
@@ -22,33 +23,39 @@ const HOUR_HE = {
   12:'שתים עשרה',13:'אחת',14:'שתיים',15:'שלוש',16:'ארבע',17:'חמש'
 };
 
-// ── Extract tool args from VAPI's wrapped OR flat body ────────────────────────
+// ── Extract args from VAPI body (any format) ──────────────────────────────────
 function extractArgs(body) {
   try {
-    // VAPI wrapped format
     const toolCalls = body?.message?.toolCallList || body?.message?.toolCalls || [];
     if (toolCalls.length > 0) {
-      const args = toolCalls[0]?.function?.arguments;
-      if (args) return typeof args === 'string' ? JSON.parse(args) : args;
+      const raw = toolCalls[0]?.function?.arguments;
+      if (raw) return typeof raw === 'string' ? JSON.parse(raw) : raw;
     }
-    // Some VAPI versions put it here
-    const args2 = body?.function?.arguments;
-    if (args2) return typeof args2 === 'string' ? JSON.parse(args2) : args2;
+    const raw2 = body?.function?.arguments;
+    if (raw2) return typeof raw2 === 'string' ? JSON.parse(raw2) : raw2;
   } catch (e) {}
-  // Flat format (direct args in body)
-  return body || {};
+  const { message, service, ...rest } = body || {};
+  return Object.keys(rest).length ? rest : {};
 }
 
-// ── Extract call phone from VAPI message ──────────────────────────────────────
+function extractFunctionName(body) {
+  try {
+    const toolCalls = body?.message?.toolCallList || body?.message?.toolCalls || [];
+    if (toolCalls.length > 0) return toolCalls[0]?.function?.name;
+    if (body?.function?.name) return body.function.name;
+  } catch (e) {}
+  return null;
+}
+
 function extractCallPhone(body) {
   try {
-    const num = body?.message?.call?.customer?.number
-      || body?.call?.customer?.number;
+    const num = body?.message?.call?.customer?.number || body?.call?.customer?.number;
     if (num) return num.replace(/^\+972/, '0').replace(/\D/g, '');
   } catch (e) {}
   return null;
 }
 
+// ── Time helpers ──────────────────────────────────────────────────────────────
 function heTime(il) {
   const h = il.getHours(), m = il.getMinutes();
   const base   = HOUR_HE[h] || `${h}`;
@@ -93,6 +100,7 @@ function heToday() {
   return `יום ${DAYS[il.getDay()]}, ${il.getDate()} ב${MONTHS[il.getMonth()]} ${il.getFullYear()}`;
 }
 
+// ── DB busy periods ───────────────────────────────────────────────────────────
 async function getQuantumBusy(from, to) {
   const busy = [];
   try {
@@ -129,7 +137,7 @@ async function computeSlots() {
     });
     gcalBusy = (res.data.calendars?.[HEMI_CALENDAR_ID]?.busy || [])
       .map(b => ({ start: new Date(b.start), end: new Date(b.end) }));
-  } catch (e) { logger.warn('[VapiCall] GCal:', e.message); }
+  } catch (e) { logger.warn('[VapiCall] GCal freebusy:', e.message); }
 
   const dbBusy = await getQuantumBusy(now, end);
   const allBusy = [...gcalBusy, ...dbBusy];
@@ -165,7 +173,38 @@ async function sendWA(phone, message) {
   logger.info(`[VapiCall] WA → ${normalized}`);
 }
 
-async function insertCalendarEvent(startDt, endDt, phone, rooms, price) {
+// ── Tool handlers ─────────────────────────────────────────────────────────────
+async function handleGetAvailableSlots(args, callPhone) {
+  const { slots, today } = await computeSlots();
+  const top4 = slots.slice(0, 4);
+  if (top4.length === 0) {
+    return { today, slots: [], message: `אין מועד פנוי בקרוב. עברי לתיאום חזרה.` };
+  }
+  return {
+    today,
+    slots: top4.map((s, i) => ({ index: i + 1, label: s.label, start: s.start, end: s.end })),
+    message: `היום ${today}. מועדים פנויים:\n${top4.map((s, i) => `${i+1}. ${s.label}`).join('\n')}`
+  };
+}
+
+async function handleBookSlot(args, callPhone) {
+  const slot_index = parseInt(args.slot_index || args.slotIndex || 1);
+  const phone      = args.phone || callPhone || '';
+  const rooms      = args.rooms || '';
+  const price      = args.price || '';
+
+  const { slots } = await computeSlots();
+  const slot = slots[slot_index - 1];
+
+  if (!slot) {
+    return { success: false, message: `לא מצאתי את המועד. הצגי שוב את הרשימה ובקשי בחירה.` };
+  }
+
+  const startDt = new Date(slot.start);
+  const endDt   = new Date(slot.end);
+  const label   = slot.label;
+
+  // Calendar
   try {
     const cal = getCalendar();
     await cal.events.insert({
@@ -178,129 +217,109 @@ async function insertCalendarEvent(startDt, endDt, phone, rooms, price) {
       }
     });
   } catch (e) { logger.warn('[VapiCall] GCal insert:', e.message); }
+
+  // DB
   try {
     await pool.query(
       `INSERT INTO quantum_events (title, event_type, event_date, notes, status, created_at)
        VALUES ($1, 'שיחת_מנהל', $2, $3, 'confirmed', NOW())`,
-      [`שיחת מנהל — ${phone || 'לא ידוע'}`, startDt.toISOString(),
+      [`שיחת מנהל — ${phone}`, startDt.toISOString(),
        [rooms ? `${rooms} חדרים` : '', price ? `₪${price}` : '', 'מקור: VAPI הילה'].filter(Boolean).join(' | ')]
     );
-  } catch (e) { logger.warn('[VapiCall] DB insert:', e.message); }
+  } catch (e) {}
+
+  // WA
+  if (phone) {
+    try {
+      await sendWA(phone,
+        `שלום רב,\n` +
+        `בהמשך לשיחתנו קבענו שיחת מנהל ב${label}.\n\n` +
+        `המשך יום נעים,\n` +
+        `הילה | קוונטום נדל"ן`
+      );
+    } catch (e) {}
+  }
+
+  logger.info(`[VapiCall] Booked: ${label} | ${phone}`);
+  return { success: true, label, message: `הפגישה נקבעה ל${label}. נשלחה הודעת אישור בוואטסאפ.` };
 }
 
-// ── POST /api/vapi-call/slots ─────────────────────────────────────────────────
-router.post('/slots', async (req, res) => {
-  logger.info('[VapiCall] slots called, body keys:', Object.keys(req.body || {}));
+async function handleScheduleCallback(args, callPhone) {
+  const phone         = args.phone || callPhone || '';
+  const callback_time = args.callback_time || args.callbackTime || '';
+  const callback_day  = args.callback_day  || args.callbackDay  || '';
+  const timeDesc      = [callback_day, callback_time].filter(Boolean).join(' ') || 'בהקדם';
+
   try {
-    const { slots, today } = await computeSlots();
-    const top4 = slots.slice(0, 4);
-    if (top4.length === 0) {
-      return res.json({ today, slots: [], message: `אין מועד פנוי בקרוב. עברי לתיאום חזרה.` });
+    await pool.query(
+      `INSERT INTO quantum_events (title, event_type, event_date, notes, status, created_at)
+       VALUES ($1, 'חזרה_ללקוח', NOW(), $2, 'confirmed', NOW())`,
+      [`חזרה ללקוח ${phone}`, `מועד: ${timeDesc} | מקור: VAPI הילה`]
+    );
+  } catch (e) {}
+
+  if (phone) {
+    try {
+      await sendWA(phone,
+        `שלום רב,\n` +
+        `בהמשך לשיחתנו נרשמנו לחזור אליך ${timeDesc}.\n` +
+        `אם תרצה לדבר לפני כן — אנחנו זמינים.\n\n` +
+        `המשך יום נעים,\n` +
+        `הילה | קוונטום נדל"ן`
+      );
+    } catch (e) {}
+  }
+
+  logger.info(`[VapiCall] Callback: ${timeDesc} | ${phone}`);
+  return { success: true, message: `נרשמנו לחזור אליך ${timeDesc}. נשלחה הודעה בוואטסאפ.` };
+}
+
+// ── Unified tool endpoint ─────────────────────────────────────────────────────
+router.post('/tool', async (req, res) => {
+  const body      = req.body;
+  const fnName    = extractFunctionName(body);
+  const args      = extractArgs(body);
+  const callPhone = extractCallPhone(body);
+
+  logger.info(`[VapiCall] tool called: ${fnName} | args: ${JSON.stringify(args)}`);
+
+  try {
+    let result;
+    if (!fnName || fnName === 'getAvailableSlots') {
+      result = await handleGetAvailableSlots(args, callPhone);
+    } else if (fnName === 'bookSlot') {
+      result = await handleBookSlot(args, callPhone);
+    } else if (fnName === 'scheduleCallback') {
+      result = await handleScheduleCallback(args, callPhone);
+    } else {
+      result = { error: `Unknown function: ${fnName}` };
     }
-    res.json({
-      today,
-      slots: top4.map((s, i) => ({ index: i + 1, label: s.label, start: s.start, end: s.end })),
-      message: `היום ${today}. מועדים פנויים:\n${top4.map((s, i) => `${i+1}. ${s.label}`).join('\n')}`
-    });
+    res.json(result);
   } catch (err) {
-    logger.error('[VapiCall] Slots error:', err.message);
-    res.json({ message: 'שגיאה בבדיקת יומן. עברי לתיאום חזרה.' });
+    logger.error(`[VapiCall] tool error (${fnName}):`, err.message);
+    res.json({ error: err.message, message: 'שגיאה פנימית. נסי שוב.' });
   }
 });
 
+// ── Keep individual routes for backwards compat + manual testing ──────────────
 router.get('/slots', async (req, res) => {
   try { res.json({ success: true, ...(await computeSlots()) }); }
   catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-// ── POST /api/vapi-call/book ──────────────────────────────────────────────────
-router.post('/book', async (req, res) => {
-  const raw  = req.body;
-  const args = extractArgs(raw);
-  const callPhone = extractCallPhone(raw);
-
-  logger.info('[VapiCall] book args:', JSON.stringify(args));
-
-  const slot_index = parseInt(args.slot_index || args.slotIndex || 1);
-  const phone      = args.phone || callPhone || '';
-  const rooms      = args.rooms || '';
-  const price      = args.price || '';
-
-  try {
-    const { slots } = await computeSlots();
-    const slot = slots[slot_index - 1];
-
-    if (!slot) {
-      logger.warn(`[VapiCall] slot ${slot_index} not found in ${slots.length} slots`);
-      return res.json({ success: false, message: `לא מצאתי את המועד. הציגי שוב את הרשימה ובקשי בחירה.` });
-    }
-
-    const startDt = new Date(slot.start);
-    const endDt   = new Date(slot.end);
-    const label   = slot.label;
-
-    await insertCalendarEvent(startDt, endDt, phone, rooms, price);
-
-    if (phone) {
-      try {
-        await sendWA(phone,
-          `שלום רב,\n` +
-          `בהמשך לשיחתנו קבענו שיחת מנהל ב${label}.\n\n` +
-          `המשך יום נעים,\n` +
-          `הילה | קוונטום נדל"ן`
-        );
-      } catch (e) { logger.warn('[VapiCall] WA book:', e.message); }
-    }
-
-    logger.info(`[VapiCall] Booked: ${label} | ${phone}`);
-    res.json({ success: true, label, message: `הפגישה נקבעה ל${label}. נשלחה הודעת אישור בוואטסאפ.` });
-  } catch (err) {
-    logger.error('[VapiCall] Book error:', err.message);
-    res.json({ success: false, message: 'שגיאה בקביעה. המנהל יחזור לאשר.' });
-  }
+router.post('/slots', async (req, res) => {
+  try { res.json(await handleGetAvailableSlots({}, null)); }
+  catch (err) { res.json({ error: err.message }); }
 });
 
-// ── POST /api/vapi-call/schedule-callback ─────────────────────────────────────
+router.post('/book', async (req, res) => {
+  try { res.json(await handleBookSlot(req.body, null)); }
+  catch (err) { res.json({ error: err.message }); }
+});
+
 router.post('/schedule-callback', async (req, res) => {
-  const raw  = req.body;
-  const args = extractArgs(raw);
-  const callPhone = extractCallPhone(raw);
-
-  logger.info('[VapiCall] schedule-callback args:', JSON.stringify(args));
-
-  const phone         = args.phone || callPhone || '';
-  const callback_time = args.callback_time || args.callbackTime || '';
-  const callback_day  = args.callback_day  || args.callbackDay  || '';
-
-  try {
-    const timeDesc = [callback_day, callback_time].filter(Boolean).join(' ') || 'בהקדם';
-
-    try {
-      await pool.query(
-        `INSERT INTO quantum_events (title, event_type, event_date, notes, status, created_at)
-         VALUES ($1, 'חזרה_ללקוח', NOW(), $2, 'confirmed', NOW())`,
-        [`חזרה ללקוח ${phone}`, `מועד: ${timeDesc} | מקור: VAPI הילה`]
-      );
-    } catch (e) {}
-
-    if (phone) {
-      try {
-        await sendWA(phone,
-          `שלום רב,\n` +
-          `בהמשך לשיחתנו נרשמנו לחזור אליך ${timeDesc}.\n` +
-          `אם תרצה לדבר לפני כן — אנחנו זמינים.\n\n` +
-          `המשך יום נעים,\n` +
-          `הילה | קוונטום נדל"ן`
-        );
-      } catch (e) { logger.warn('[VapiCall] WA callback:', e.message); }
-    }
-
-    logger.info(`[VapiCall] Callback: ${timeDesc} | ${phone}`);
-    res.json({ success: true, message: `נרשמנו לחזור אליך ${timeDesc}. נשלחה הודעה בוואטסאפ.` });
-  } catch (err) {
-    logger.error('[VapiCall] Callback error:', err.message);
-    res.json({ success: false, message: 'שגיאה. נחזור אליך.' });
-  }
+  try { res.json(await handleScheduleCallback(req.body, null)); }
+  catch (err) { res.json({ error: err.message }); }
 });
 
 router.post('/webhook', (req, res) => {
