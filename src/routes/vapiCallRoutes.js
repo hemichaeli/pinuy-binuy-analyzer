@@ -1,12 +1,8 @@
 /**
- * VAPI Call Routes
- *
- * Slot availability checks BOTH:
- *   1. Google Calendar (personal calendar via service account)
- *   2. QUANTUM DB — quantum_events + meeting_slots tables
- *
- * VAPI tool servers always receive POST regardless of declared method.
- * Phone is passed automatically as lead_phone variable — never asked from user.
+ * VAPI Call Routes v3
+ * - Times formatted as Hebrew words (no digits that TTS mispronounces)
+ * - Slot availability: Google Calendar + QUANTUM DB
+ * - WA summary sent from book endpoint (not webhook)
  */
 
 const express = require('express');
@@ -21,7 +17,25 @@ const DAYS   = ['ראשון','שני','שלישי','רביעי','חמישי','ש
 const MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני',
                 'יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 
-// ── Helper: Google Calendar ───────────────────────────────────────────────────
+// Hour → Hebrew word
+const HOUR_HE = {
+  6:'שש',7:'שבע',8:'שמונה',9:'תשע',10:'עשר',11:'אחת עשרה',
+  12:'שתים עשרה',13:'אחת',14:'שתיים',15:'שלוש',16:'ארבע',
+  17:'חמש',18:'שש'
+};
+const PERIOD = (h) => h < 12 ? 'בבוקר' : h < 17 ? 'אחר הצהריים' : 'בערב';
+
+function heTime(il) {
+  const h = il.getHours();
+  const m = il.getMinutes();
+  const base = HOUR_HE[h] || String(h);
+  const period = PERIOD(h);
+  if (m === 0)  return `${base} ${period}`;
+  if (m === 30) return `${base} וחצי ${period}`;
+  return `${base} ו-${m} ${period}`;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function getCalendar() {
   const { google } = require('googleapis');
   const auth = new google.auth.GoogleAuth({
@@ -34,86 +48,72 @@ function getCalendar() {
   return google.calendar({ version: 'v3', auth });
 }
 
-// ── Helper: convert UTC Date → Israel local Date object ───────────────────────
 function toIsrael(dt) {
   const d = new Date(dt);
-  // Use the en-US locale parts to extract Israel time components
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: TZ,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    timeZone: TZ, year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false
   }).formatToParts(d);
-  const get = (type) => parts.find(p => p.type === type)?.value || '0';
+  const get = (t) => parts.find(p => p.type === t)?.value || '0';
   return new Date(
-    parseInt(get('year')), parseInt(get('month')) - 1, parseInt(get('day')),
+    parseInt(get('year')), parseInt(get('month'))-1, parseInt(get('day')),
     parseInt(get('hour')), parseInt(get('minute')), parseInt(get('second'))
   );
 }
 
-// ── Helper: Hebrew date+time label (all Hebrew, no English) ──────────────────
 function heDate(dt) {
   const il = toIsrael(dt);
-  const hh = String(il.getHours()).padStart(2, '0');
-  const mm = String(il.getMinutes()).padStart(2, '0');
-  return `יום ${DAYS[il.getDay()]}, ${il.getDate()} ב${MONTHS[il.getMonth()]}, בשעה ${hh}:${mm}`;
+  return `יום ${DAYS[il.getDay()]}, ${il.getDate()} ב${MONTHS[il.getMonth()]}, ב${heTime(il)}`;
 }
 
-// ── Helper: today in Hebrew ───────────────────────────────────────────────────
 function heToday() {
   const il = toIsrael(new Date());
   return `יום ${DAYS[il.getDay()]}, ${il.getDate()} ב${MONTHS[il.getMonth()]} ${il.getFullYear()}`;
 }
 
-// ── Helper: QUANTUM DB busy periods ──────────────────────────────────────────
-async function getQuantumBusy(fromDt, toDt) {
+async function getQuantumBusy(from, to) {
   const busy = [];
   try {
-    const { rows } = await pool.query(`
-      SELECT event_date as start, event_date + INTERVAL '30 minutes' as end
-      FROM quantum_events
-      WHERE event_date >= $1 AND event_date < $2
-        AND (status IS NULL OR status NOT IN ('cancelled','ביטול'))
-    `, [fromDt.toISOString(), toDt.toISOString()]);
+    const { rows } = await pool.query(
+      `SELECT event_date as start, event_date + INTERVAL '30 minutes' as end
+       FROM quantum_events
+       WHERE event_date >= $1 AND event_date < $2
+         AND (status IS NULL OR status NOT IN ('cancelled','ביטול'))`,
+      [from.toISOString(), to.toISOString()]
+    );
     busy.push(...rows.map(r => ({ start: new Date(r.start), end: new Date(r.end) })));
-  } catch (e) { logger.warn('[VapiCall] quantum_events:', e.message); }
-
+  } catch (e) {}
   try {
-    const { rows } = await pool.query(`
-      SELECT slot_datetime as start,
-             slot_datetime + (COALESCE(duration_minutes,30) * INTERVAL '1 minute') as end
-      FROM meeting_slots
-      WHERE slot_datetime >= $1 AND slot_datetime < $2
-        AND status IN ('confirmed','reserved')
-    `, [fromDt.toISOString(), toDt.toISOString()]);
+    const { rows } = await pool.query(
+      `SELECT slot_datetime as start,
+              slot_datetime + (COALESCE(duration_minutes,30) * INTERVAL '1 minute') as end
+       FROM meeting_slots
+       WHERE slot_datetime >= $1 AND slot_datetime < $2
+         AND status IN ('confirmed','reserved')`,
+      [from.toISOString(), to.toISOString()]
+    );
     busy.push(...rows.map(r => ({ start: new Date(r.start), end: new Date(r.end) })));
-  } catch (e) { logger.warn('[VapiCall] meeting_slots:', e.message); }
-
+  } catch (e) {}
   return busy;
 }
 
-// ── Core: compute available slots ────────────────────────────────────────────
 async function computeSlots() {
   const now = new Date();
   const end = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
 
-  // Google Calendar busy
   let gcalBusy = [];
   try {
-    const calendar = getCalendar();
-    const res = await calendar.freebusy.query({
-      requestBody: {
-        timeMin: now.toISOString(), timeMax: end.toISOString(),
-        timeZone: TZ, items: [{ id: HEMI_CALENDAR_ID }]
-      }
+    const cal = getCalendar();
+    const res = await cal.freebusy.query({
+      requestBody: { timeMin: now.toISOString(), timeMax: end.toISOString(), timeZone: TZ, items: [{ id: HEMI_CALENDAR_ID }] }
     });
     gcalBusy = (res.data.calendars?.[HEMI_CALENDAR_ID]?.busy || [])
       .map(b => ({ start: new Date(b.start), end: new Date(b.end) }));
-  } catch (e) { logger.warn('[VapiCall] GCal freebusy:', e.message); }
+  } catch (e) { logger.warn('[VapiCall] GCal:', e.message); }
 
   const dbBusy = await getQuantumBusy(now, end);
   const allBusy = [...gcalBusy, ...dbBusy];
 
-  // Generate slots (working hours 09:00–18:00, skip Fri/Sat)
   const slots = [];
   const cursor = new Date(now);
   const mins = cursor.getMinutes();
@@ -122,36 +122,28 @@ async function computeSlots() {
 
   while (slots.length < 6 && cursor < end) {
     const il = toIsrael(cursor);
-    const hour = il.getHours();
-    const day  = il.getDay();
-
+    const hour = il.getHours(), day = il.getDay();
     if (day !== 5 && day !== 6 && hour >= 9 && hour < 18) {
       const slotEnd = new Date(cursor.getTime() + 30 * 60 * 1000);
-      const isBusy  = allBusy.some(b => cursor < b.end && slotEnd > b.start);
-      if (!isBusy) {
-        slots.push({
-          start: cursor.toISOString(),
-          end:   slotEnd.toISOString(),
-          label: heDate(cursor)
-        });
+      if (!allBusy.some(b => cursor < b.end && slotEnd > b.start)) {
+        slots.push({ start: cursor.toISOString(), end: slotEnd.toISOString(), label: heDate(cursor) });
       }
     }
     cursor.setTime(cursor.getTime() + 30 * 60 * 1000);
   }
 
-  return { today: heToday(), slots, gcal_busy: gcalBusy.length, db_busy: dbBusy.length };
+  return { today: heToday(), slots };
 }
 
-// ── POST /api/vapi-call/slots  (VAPI tool) ────────────────────────────────────
+// ── POST /api/vapi-call/slots ─────────────────────────────────────────────────
 router.post('/slots', async (req, res) => {
   try {
     const { slots, today } = await computeSlots();
     const top4 = slots.slice(0, 4);
-    const slotText = top4.map(s => s.label).join('\n');
     res.json({
       today,
       available_slots: top4.map(s => ({ label: s.label, start: s.start, end: s.end })),
-      message: `היום ${today}.\nמועדים פנויים ביומן:\n${slotText}`
+      message: `היום ${today}. המועדים הפנויים:\n${top4.map(s => s.label).join('\n')}`
     });
   } catch (err) {
     logger.error('[VapiCall] Slots error:', err.message);
@@ -159,15 +151,13 @@ router.post('/slots', async (req, res) => {
   }
 });
 
-// ── GET /api/vapi-call/slots  (manual test) ───────────────────────────────────
 router.get('/slots', async (req, res) => {
   try { res.json({ success: true, ...(await computeSlots()) }); }
   catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-// ── POST /api/vapi-call/book  (VAPI tool) ─────────────────────────────────────
+// ── POST /api/vapi-call/book ──────────────────────────────────────────────────
 router.post('/book', async (req, res) => {
-  // phone comes from lead_phone variable — never from user input during call
   const { start, end, phone, rooms, price } = req.body;
   try {
     const startDt = new Date(start);
@@ -176,12 +166,12 @@ router.post('/book', async (req, res) => {
 
     // 1. Google Calendar
     try {
-      const calendar = getCalendar();
-      await calendar.events.insert({
+      const cal = getCalendar();
+      await cal.events.insert({
         calendarId: HEMI_CALENDAR_ID,
         requestBody: {
           summary: `שיחת מנהל — ${phone || 'לא ידוע'}`,
-          description: ['מקור: שיחת הילה VAPI', rooms ? `${rooms} חדרים` : '', price ? `₪${price}` : ''].filter(Boolean).join('\n'),
+          description: ['מקור: VAPI הילה', rooms ? `${rooms} חדרים` : '', price ? `₪${price}` : ''].filter(Boolean).join('\n'),
           start: { dateTime: startDt.toISOString(), timeZone: TZ },
           end:   { dateTime: endDt.toISOString(),   timeZone: TZ }
         }
@@ -190,28 +180,30 @@ router.post('/book', async (req, res) => {
 
     // 2. QUANTUM DB
     try {
-      await pool.query(`
-        INSERT INTO quantum_events (title, event_type, event_date, notes, status, created_at)
-        VALUES ($1, 'שיחת_מנהל', $2, $3, 'confirmed', NOW())
-      `, [
-        `שיחת מנהל — ${phone || 'לא ידוע'}`,
-        startDt.toISOString(),
-        [rooms ? `${rooms} חדרים` : '', price ? `₪${price}` : '', 'מקור: VAPI הילה'].filter(Boolean).join(' | ')
-      ]);
+      await pool.query(
+        `INSERT INTO quantum_events (title, event_type, event_date, notes, status, created_at)
+         VALUES ($1, 'שיחת_מנהל', $2, $3, 'confirmed', NOW())`,
+        [`שיחת מנהל — ${phone || 'לא ידוע'}`, startDt.toISOString(),
+         [rooms ? `${rooms} חדרים` : '', price ? `₪${price}` : '', 'מקור: VAPI הילה'].filter(Boolean).join(' | ')]
+      );
     } catch (e) { logger.warn('[VapiCall] DB insert:', e.message); }
 
-    // 3. WhatsApp summary — phone is already the customer's number
+    // 3. WhatsApp summary
     if (phone) {
       try {
         const normalized = phone.replace(/^\+972/, '0').replace(/\D/g, '');
-        const wa = `שלום רב,\nבהמשך לשיחתנו קבענו שיחת מנהל ב${label}.\n\nהמשך יום נעים,\nהילה | קוונטום נדל"ן`;
+        const wa =
+          `שלום רב,\n` +
+          `בהמשך לשיחתנו קבענו שיחת מנהל ב${label}.\n\n` +
+          `המשך יום נעים,\n` +
+          `הילה | קוונטום נדל"ן`;
         const { sendWhatsAppChat } = require('../services/inforuService');
         await sendWhatsAppChat(normalized, wa, {
           customerMessageId: `vapi_book_${Date.now()}`,
           customerParameter: 'QUANTUM_PILOT'
         });
-        logger.info(`[VapiCall] WA → ${normalized}: ${label}`);
-      } catch (e) { logger.warn('[VapiCall] WA send:', e.message); }
+        logger.info(`[VapiCall] WA → ${normalized} | ${label}`);
+      } catch (e) { logger.warn('[VapiCall] WA:', e.message); }
     }
 
     logger.info(`[VapiCall] Booked: ${label} | ${phone}`);
@@ -222,11 +214,9 @@ router.post('/book', async (req, res) => {
   }
 });
 
-// ── POST /api/vapi-call/webhook ───────────────────────────────────────────────
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', (req, res) => {
   res.json({ received: true });
-  try { logger.info(`[VapiCall] Webhook: ${req.body?.message?.type || req.body?.type}`); }
-  catch (e) {}
+  try { logger.info(`[VapiCall] Webhook: ${req.body?.message?.type}`); } catch (e) {}
 });
 
 module.exports = router;
