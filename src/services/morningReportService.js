@@ -1,12 +1,10 @@
 /**
- * QUANTUM Morning Intelligence Report v2.1
- * Added: Israeli Real Estate Service — investor cost (mas rechisha) per opportunity
+ * QUANTUM Morning Intelligence Report v2.2
  */
 
 const pool = require('../db/pool');
 const { logger } = require('./logger');
 const axios = require('axios');
-const { calcMasRechisha, classifyLandType } = require('./israeliRealEstateService');
 
 const PERSONAL_EMAIL = process.env.PERSONAL_EMAIL || 'hemi.michaeli@gmail.com';
 const OFFICE_EMAIL = process.env.OFFICE_EMAIL || 'Office@u-r-quantum.com';
@@ -40,29 +38,6 @@ async function sendEmail({ subject, html }) {
   }
 }
 
-/**
- * Enrich opportunity with investor cost analysis (mas rechisha)
- */
-function enrichOpportunityWithTax(opp) {
-  try {
-    if (!opp.asking_price && !opp.avg_price) return opp;
-    const price = parseFloat(opp.asking_price || opp.avg_price || 0);
-    if (!price || price < 100000) return opp;
-    const { tax, effectiveRate } = calcMasRechisha(price, 'investor');
-    const land = classifyLandType(opp.city || '');
-    return {
-      ...opp,
-      investor_purchase_tax: tax,
-      investor_tax_rate_pct: Math.round(effectiveRate * 1000) / 10,
-      total_entry_cost: price + tax,
-      land_type: land.landType,
-      land_notes: land.notes
-    };
-  } catch (e) {
-    return opp;
-  }
-}
-
 function buildEmailHtml({ opportunities, sellers, priceDrops, committees, stats, today, scanNum }) {
   const linkStyle = 'color:#4ecdc4; text-decoration:none; font-weight:600;';
   const rowStyle = (bg) => `background:${bg}; border-bottom:1px solid #3a3f4a;`;
@@ -70,10 +45,6 @@ function buildEmailHtml({ opportunities, sellers, priceDrops, committees, stats,
   const oppRows = opportunities.slice(0, 5).map((o, i) => {
     const stage = { declared: 'הכרזה', approved: 'אישור', deposit: 'פיקדון', construction: 'בנייה', planning: 'תכנון', initial: 'ראשוני' }[o.plan_stage] || o.plan_stage || '-';
     const iaiColor = o.iai_score >= 85 ? '#4ade80' : o.iai_score >= 70 ? '#e8b84b' : '#9aa0b0';
-    // Show investor tax if available
-    const taxCell = o.investor_purchase_tax
-      ? `<td style="padding:10px 14px; color:#f87171; font-size:12px;">מס: ₪${o.investor_purchase_tax.toLocaleString('he-IL')}</td>`
-      : `<td style="padding:10px 14px; color:#9aa0b0; font-size:12px;">${o.developer || '-'}</td>`;
     return `
       <tr style="${rowStyle(i % 2 === 0 ? '#2a2d35' : '#32363f')}">
         <td style="padding:10px 14px; color:#e8eaf0;">
@@ -84,7 +55,7 @@ function buildEmailHtml({ opportunities, sellers, priceDrops, committees, stats,
           <span style="background:rgba(78,205,196,0.15); color:${iaiColor}; padding:3px 10px; border-radius:6px; font-weight:700; font-size:13px;">${o.iai_score}</span>
         </td>
         <td style="padding:10px 14px; color:#9aa0b0; font-size:12px;">${stage}</td>
-        ${taxCell}
+        <td style="padding:10px 14px; color:#9aa0b0; font-size:12px;">${o.developer || '-'}</td>
       </tr>`;
   }).join('');
 
@@ -118,10 +89,6 @@ function buildEmailHtml({ opportunities, sellers, priceDrops, committees, stats,
         <td style="padding:10px 14px; color:#9aa0b0; font-size:12px;">${p.price_changes || 1} שינויים</td>
       </tr>`;
   }).join('');
-
-  const oppHeader = opportunities.some(o => o.investor_purchase_tax)
-    ? '<th style="padding:10px 14px; text-align:right; color:#f87171; font-size:12px; font-weight:500;">מס רכישה (8%)</th>'
-    : '<th style="padding:10px 14px; text-align:right; color:#9aa0b0; font-size:12px; font-weight:500;">יזם</th>';
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -166,7 +133,7 @@ function buildEmailHtml({ opportunities, sellers, priceDrops, committees, stats,
           <th style="padding:10px 14px; text-align:right; color:#9aa0b0; font-size:12px; font-weight:500;">מתחם</th>
           <th style="padding:10px 14px; text-align:center; color:#9aa0b0; font-size:12px; font-weight:500;">IAI</th>
           <th style="padding:10px 14px; text-align:right; color:#9aa0b0; font-size:12px; font-weight:500;">שלב</th>
-          ${oppHeader}
+          <th style="padding:10px 14px; text-align:right; color:#9aa0b0; font-size:12px; font-weight:500;">יזם</th>
         </tr>
       </thead>
       <tbody>${oppRows}</tbody>
@@ -248,7 +215,7 @@ async function sendMorningReport() {
     const [oppResult, sellersResult, dropsResult, committeesResult] = await Promise.all([
       pool.query(`
         SELECT id, name, city, iai_score, status, developer, actual_premium,
-               address, plan_stage, signature_percent, asking_price, avg_price
+               address, plan_stage, signature_percent
         FROM complexes WHERE iai_score >= 60 ORDER BY iai_score DESC LIMIT 8
       `),
       pool.query(`
@@ -272,8 +239,7 @@ async function sendMorningReport() {
       `).catch(() => ({ rows: [{ count: 0 }] }))
     ]);
 
-    // Enrich opportunities with investor tax (internal only — not shown to clients)
-    const opportunities = oppResult.rows.map(enrichOpportunityWithTax);
+    const opportunities = oppResult.rows;
     const sellers = sellersResult.rows;
     const priceDrops = dropsResult.rows;
     const committees = committeesResult.rows;
